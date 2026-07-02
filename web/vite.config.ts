@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url"
 import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
-import { loadMonConfig } from "../../Script/Project/monconfig"
+import { loadMonConfig } from "../../Script/Project/monconfig.mjs"
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 const monConfig = loadMonConfig(currentDir)

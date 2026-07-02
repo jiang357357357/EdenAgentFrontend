@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "electron .",
     "start": "electron .",
-    "build": "bun run --cwd ../web build"
+    "build": "npm --prefix ../web run build"
   },
   "devDependencies": {
     "electron": "42.4.0"
