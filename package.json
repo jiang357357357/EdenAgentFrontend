@@ -1,0 +1,19 @@
+{
+  "name": "mon-agent-frontend",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@10.9.7",
+  "scripts": {
+    "dev": "npm --prefix web run dev",
+    "dev:web": "npm --prefix web run dev",
+    "dev:desktop": "npm --prefix desktop run dev",
+    "build": "npm --prefix web run build",
+    "typecheck": "npm --prefix web run typecheck",
+    "preview": "npm --prefix web run preview",
+    "start": "npm run dev"
+  },
+  "workspaces": [
+    "web",
+    "desktop"
+  ]
+}
