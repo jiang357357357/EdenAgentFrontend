@@ -4,9 +4,10 @@
   "type": "module",
   "packageManager": "npm@10.9.7",
   "scripts": {
-    "dev": "npm --prefix web run dev",
+    "dev": "node Script/Project/dev.mjs",
     "dev:web": "npm --prefix web run dev",
-    "dev:desktop": "npm --prefix desktop run dev",
+    "dev:shell": "npm --prefix desktop run dev",
+    "dev:desktop": "npm run dev",
     "build": "npm --prefix web run build",
     "typecheck": "npm --prefix web run typecheck",
     "preview": "npm --prefix web run preview",
