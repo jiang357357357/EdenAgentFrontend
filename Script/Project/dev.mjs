@@ -133,6 +133,31 @@ async function runWithTimeout(args, timeoutMs) {
   })
 }
 
+function runCapture(args, timeoutMs = 3000) {
+  return new Promise((resolve) => {
+    const child = spawn(args[0], args.slice(1), { cwd: frontendRoot, stdout: "pipe", stderr: "pipe", windowsHide: true })
+    let stdout = ""
+    let stderr = ""
+    const timer = setTimeout(() => child.kill(), timeoutMs)
+    child.stdout?.setEncoding("utf8")
+    child.stderr?.setEncoding("utf8")
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk
+    })
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk
+    })
+    child.on("exit", (exitCode) => {
+      clearTimeout(timer)
+      resolve({ stdout, stderr, exitCode })
+    })
+    child.on("error", () => {
+      clearTimeout(timer)
+      resolve({ stdout, stderr, exitCode: 1 })
+    })
+  })
+}
+
 async function killProcessTree(proc) {
   if (!proc?.pid) return
   if (process.platform === "win32") {
@@ -144,6 +169,110 @@ async function killProcessTree(proc) {
   } catch {
     proc.kill("SIGTERM")
   }
+}
+
+async function killPidTree(pid) {
+  if (!Number.isFinite(pid) || pid <= 0 || pid === process.pid) return
+  if (process.platform === "win32") {
+    await runWithTimeout(["taskkill", "/PID", String(pid), "/T", "/F"], 3000)
+    return
+  }
+  try {
+    process.kill(-pid, "SIGTERM")
+  } catch {
+    try {
+      process.kill(pid, "SIGTERM")
+    } catch {}
+  }
+}
+
+async function portPids(port) {
+  const pids = new Set()
+  if (process.platform === "win32") {
+    const result = await runCapture(["netstat", "-ano"], 5000).catch(() => ({ stdout: "", stderr: "", exitCode: 1 }))
+    const pattern = new RegExp(`(?:0\\.0\\.0\\.0|127\\.0\\.0\\.1|\\[?::\\]?):${port}\\s+.*\\s+LISTENING\\s+(\\d+)`, "i")
+    for (const line of result.stdout.split(/\r?\n/)) {
+      const match = line.match(pattern)
+      const pid = match ? Number(match[1]) : NaN
+      if (Number.isFinite(pid)) pids.add(pid)
+    }
+    return [...pids]
+  }
+
+  const lsof = await runCapture(["lsof", `-tiTCP:${port}`, "-sTCP:LISTEN", "-P", "-n"], 5000).catch(() => ({
+    stdout: "",
+    stderr: "",
+    exitCode: 1,
+  }))
+  for (const line of lsof.stdout.split(/\r?\n/)) {
+    const pid = Number(line.trim())
+    if (Number.isFinite(pid)) pids.add(pid)
+  }
+  if (pids.size) return [...pids]
+
+  const ss = await runCapture(["ss", "-ltnp", `( sport = :${port} )`], 5000).catch(() => ({
+    stdout: "",
+    stderr: "",
+    exitCode: 1,
+  }))
+  for (const match of ss.stdout.matchAll(/pid=(\d+)/g)) {
+    const pid = Number(match[1])
+    if (Number.isFinite(pid)) pids.add(pid)
+  }
+  if (pids.size) return [...pids]
+
+  const fuser = await runCapture(["fuser", `${port}/tcp`], 5000).catch(() => ({
+    stdout: "",
+    stderr: "",
+    exitCode: 1,
+  }))
+  for (const token of `${fuser.stdout}\n${fuser.stderr}`.split(/\s+/)) {
+    const pid = Number(token.trim())
+    if (Number.isFinite(pid)) pids.add(pid)
+  }
+  return [...pids]
+}
+
+async function processCommandLine(pid) {
+  if (process.platform === "win32") {
+    const script = `Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" | Select-Object -ExpandProperty CommandLine`
+    const result = await runCapture(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], 5000).catch(() => ({
+      stdout: "",
+      stderr: "",
+      exitCode: 1,
+    }))
+    return result.stdout.trim()
+  }
+
+  try {
+    return fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ").trim()
+  } catch {
+    const result = await runCapture(["ps", "-p", String(pid), "-o", "command="], 3000).catch(() => ({
+      stdout: "",
+      stderr: "",
+      exitCode: 1,
+    }))
+    return result.stdout.trim()
+  }
+}
+
+async function releaseTcpPort(port, label) {
+  const pids = await portPids(port)
+  if (!pids.length) return
+
+  console.log(`[dev] port ${port} is occupied; releasing before starting ${label}`)
+  for (const pid of pids) {
+    const commandLine = await processCommandLine(pid)
+    console.log(`    - PID ${pid}${commandLine ? `: ${commandLine}` : ""}`)
+    await killPidTree(pid)
+  }
+
+  for (let index = 0; index < 20; index += 1) {
+    if (!(await portPids(port)).length) return
+    await sleep(250)
+  }
+
+  throw new Error(`port ${port} is still occupied after cleanup`)
 }
 
 function writeQuitFlag() {
@@ -170,14 +299,11 @@ process.on("SIGTERM", () => void shutdown(0))
 try {
   fs.rmSync(quitFlag, { force: true })
   const port = Number.isFinite(webPort) ? webPort : 40091
-  if (await isWebReady()) {
-    console.log(`[dev] web already ready: http://127.0.0.1:${port}`)
-  } else {
-    console.log(`[dev] start web: http://127.0.0.1:${port}`)
-    const web = start("web", ["--prefix", "web", "run", "dev"])
-    startedWeb = true
-    await waitForWeb(web)
-  }
+  await releaseTcpPort(port, "web")
+  console.log(`[dev] start web: http://127.0.0.1:${port}`)
+  const web = start("web", ["--prefix", "web", "run", "dev"])
+  startedWeb = true
+  await waitForWeb(web)
 
   console.log("[dev] start desktop shell")
   const desktop = start("desktop", ["--prefix", "desktop", "run", "dev"])
