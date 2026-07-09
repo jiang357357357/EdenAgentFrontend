@@ -1,5 +1,6 @@
-import type { MessageData, PendingPermission, PendingQuestion, PromptAttachment, Session, ToolCall } from "../types"
+import type { MessageData, PendingPermission, PendingQuestion, PermissionMode, PromptAttachment, Session, ToolCall } from "../types"
 import { getStoredToken } from "./auth"
+import type { CoreCharacterVisualAction, CoreCharacterVisualActionGroup } from "./auth"
 import { formatLocalTime } from "./time"
 
 const env = (
@@ -26,17 +27,45 @@ export type ApiSession = {
 export type ToolStatus = {
   search: {
     status: "online" | "offline" | "starting"
-    provider?: "duckduckgo"
+    provider?: string
     mode?: "embedded" | "disabled"
     label?: string
     endpoint?: string
     latencyMs?: number
     message?: string
   }
-  tools: {
-    search: string
-    fetch: string
+  tools: Record<string, string>
+}
+
+export type RuntimeModelOption = {
+  id: string
+  aiEntityId: number | string
+  label: string
+  name: string
+  provider: string
+  providerName?: string
+  providerIcon?: string
+  supportedModels?: string[]
+  modelID: string
+  status: string
+  isMultimodal: boolean
+  selected: boolean
+}
+
+export type RuntimeModelConfig = {
+  source: "core" | "env" | string
+  serviceType?: "ai" | string
+  vendors?: Record<string, unknown>
+  assistant?: {
+    id?: number | string
+    name?: string
   }
+  character?: {
+    id?: number | string
+    name?: string
+  }
+  current?: RuntimeModelOption | null
+  options: RuntimeModelOption[]
 }
 
 export type ApiSelfAwakeDiary = {
@@ -399,6 +428,13 @@ export type PermissionRepliedEvent = {
   }
 }
 
+export type PermissionModeEvent = {
+  type: "permission.mode"
+  properties: {
+    mode: PermissionMode
+  }
+}
+
 export type QuestionAskedEvent = {
   type: "question.asked"
   properties: PendingQuestion
@@ -467,12 +503,33 @@ export type MessagePartRemovedEvent = {
   }
 }
 
+export type CharacterActionChangedEvent = {
+  type: "character.action.changed"
+  properties: {
+    sessionID?: string
+    characterID?: number | string | null
+    characterName?: string
+    action?: CoreCharacterVisualAction
+    group?: CoreCharacterVisualActionGroup | null
+    imageUrl?: string
+    reason?: string
+    source?: string
+    motion?: "none" | "jump" | "approach" | "retreat" | "shake" | "nod" | "bounce" | string
+    effect?: "none" | "question" | "exclamation" | "sweat" | "heart" | "anger" | string
+    intensity?: "light" | "normal" | "strong" | string
+    effectAnchor?: "head_left" | "head_right" | "above" | "body_left" | "body_right" | string
+    performanceID?: string
+    time?: number
+  }
+}
+
 export type ApiEvent =
   | SessionCreatedEvent
   | SessionStatusEvent
   | SessionErrorEvent
   | PermissionAskedEvent
   | PermissionRepliedEvent
+  | PermissionModeEvent
   | QuestionAskedEvent
   | QuestionRepliedEvent
   | QuestionRejectedEvent
@@ -480,6 +537,7 @@ export type ApiEvent =
   | MessagePartUpdatedEvent
   | MessagePartDeltaEvent
   | MessagePartRemovedEvent
+  | CharacterActionChangedEvent
   | {
       type: string
       properties?: {
@@ -636,7 +694,7 @@ export function resolveMonAgentUrl(url: string) {
       return url
     }
   }
-  if (url.startsWith("/api/")) return url
+  if (url.startsWith("/api/")) return env?.DEV ? url : `${baseUrl}${url}`
   if (url.startsWith("/")) return `${baseUrl}${url}`
   return url
 }
@@ -788,6 +846,17 @@ export async function listPermissionsRaw() {
   return request<PendingPermission[]>("/permission")
 }
 
+export async function getPermissionMode() {
+  return request<{ mode: PermissionMode }>("/permission/mode")
+}
+
+export async function setPermissionMode(mode: PermissionMode) {
+  return request<{ mode: PermissionMode }>("/permission/mode", {
+    method: "POST",
+    body: JSON.stringify({ mode }),
+  })
+}
+
 export async function replyPermission(requestID: string, reply: "once" | "always" | "reject", message?: string) {
   await request<boolean>(`/permission/${encodeURIComponent(requestID)}/reply`, {
     method: "POST",
@@ -817,6 +886,17 @@ export async function rejectQuestion(requestID: string) {
 
 export async function getToolStatus() {
   return request<ToolStatus>("/tools/status")
+}
+
+export async function getRuntimeModelConfig() {
+  return request<RuntimeModelConfig>("/model")
+}
+
+export async function updateRuntimeModel(aiEntityId: number | string) {
+  return request<RuntimeModelConfig>("/model", {
+    method: "PATCH",
+    body: JSON.stringify({ aiEntityId }),
+  })
 }
 
 export async function listSelfAwakeRuns(limit = 30) {
@@ -877,6 +957,10 @@ export async function completeMemo(id: number) {
     method: "POST",
     body: JSON.stringify({}),
   })
+}
+
+export async function archiveMemo(id: number) {
+  return updateMemo(id, { status: "archived" })
 }
 
 export async function snoozeMemo(id: number, input: { until?: string | null; minutes?: number }) {

@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode } from "react"
 import {
+  AlertCircle,
   ArrowLeft,
+  CheckCircle2,
   Eye,
   Keyboard,
+  LoaderCircle,
+  LocateFixed,
+  MapPin,
   Monitor,
   MousePointer2,
   Move,
@@ -16,7 +21,14 @@ import {
   Sparkles,
 } from "lucide-react"
 import { motion } from "motion/react"
-import type { CoreAssistant } from "../../lib/auth"
+import {
+  fetchUserProfile,
+  getErrorMessage,
+  getStoredToken,
+  updateUserProfile,
+  type CoreAssistant,
+  type UserEnvironment,
+} from "../../lib/auth"
 import {
   applyDesktopPetSettings,
   DEFAULT_PET_SETTINGS,
@@ -66,6 +78,56 @@ interface NumberRowProps {
   value: number | null
   placeholder?: string
   onChange: (value: number | null) => void
+}
+
+type LocationSaveState = "idle" | "loading" | "locating" | "saving" | "saved" | "error"
+
+function currentBrowserEnvironment(position: GeolocationPosition, current?: UserEnvironment | null): UserEnvironment {
+  const now = new Date().toISOString()
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || current?.timezone || "Asia/Shanghai"
+  const locale = navigator.language || current?.locale || "zh-CN"
+  return {
+    ...current,
+    timezone,
+    locale,
+    location: {
+      ...(current?.location ?? {}),
+      latitude: Number(position.coords.latitude.toFixed(6)),
+      longitude: Number(position.coords.longitude.toFixed(6)),
+      accuracy: Number(position.coords.accuracy.toFixed(0)),
+      source: "browser_geolocation",
+      updated_at: now,
+    },
+  }
+}
+
+function geolocationErrorMessage(error: GeolocationPositionError) {
+  if (error.code === error.PERMISSION_DENIED) return "定位权限被拒绝"
+  if (error.code === error.POSITION_UNAVAILABLE) return "当前位置不可用"
+  if (error.code === error.TIMEOUT) return "定位请求超时"
+  return error.message || "定位失败"
+}
+
+function getCurrentPosition() {
+  return new Promise<GeolocationPosition>((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("当前环境不支持定位"))
+      return
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 10_000,
+      maximumAge: 10 * 60 * 1000,
+    })
+  })
+}
+
+function formatCoordinate(value?: number) {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(5) : "-"
+}
+
+function formatAccuracy(value?: number) {
+  return typeof value === "number" && Number.isFinite(value) ? `±${Math.round(value)}m` : "-"
 }
 
 function ToggleRow({ icon: Icon, label, value, onChange }: ToggleRowProps) {
@@ -174,6 +236,9 @@ function Section({
 export function SettingsPage({ assistant, onBack }: SettingsPageProps) {
   const [settings, setSettings] = useState<PetSettings>(DEFAULT_PET_SETTINGS)
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle")
+  const [environment, setEnvironment] = useState<UserEnvironment | null>(null)
+  const [locationState, setLocationState] = useState<LocationSaveState>("idle")
+  const [locationMessage, setLocationMessage] = useState("")
   const hydratedRef = useRef(false)
   const remoteUpdateRef = useRef(false)
   const syncTokenRef = useRef(0)
@@ -226,6 +291,27 @@ export function SettingsPage({ assistant, onBack }: SettingsPageProps) {
   }, [])
 
   useEffect(() => {
+    const token = getStoredToken()
+    if (!token) return
+    let disposed = false
+    setLocationState("loading")
+    void fetchUserProfile(token)
+      .then((profile) => {
+        if (disposed) return
+        setEnvironment(profile.environment ?? null)
+        setLocationState("idle")
+      })
+      .catch((error) => {
+        if (disposed) return
+        setLocationMessage(getErrorMessage(error, "读取位置偏好失败"))
+        setLocationState("error")
+      })
+    return () => {
+      disposed = true
+    }
+  }, [])
+
+  useEffect(() => {
     if (!hydratedRef.current) return
     if (remoteUpdateRef.current) {
       remoteUpdateRef.current = false
@@ -264,6 +350,53 @@ export function SettingsPage({ assistant, onBack }: SettingsPageProps) {
     setSaveState("idle")
     setSettings(DEFAULT_PET_SETTINGS)
   }
+
+  const saveCurrentLocation = async () => {
+    const token = getStoredToken()
+    if (!token) {
+      setLocationState("error")
+      setLocationMessage("请先登录")
+      return
+    }
+    try {
+      setLocationMessage("")
+      setLocationState("locating")
+      const position = await getCurrentPosition()
+      const nextEnvironment = currentBrowserEnvironment(position, environment)
+      setLocationState("saving")
+      const profile = await updateUserProfile(token, { environment: nextEnvironment })
+      setEnvironment(profile.environment ?? nextEnvironment)
+      setLocationState("saved")
+      setLocationMessage("已保存")
+      window.setTimeout(() => {
+        setLocationState((current) => (current === "saved" ? "idle" : current))
+      }, 1200)
+    } catch (error) {
+      const message =
+        typeof GeolocationPositionError !== "undefined" && error instanceof GeolocationPositionError
+          ? geolocationErrorMessage(error)
+          : getErrorMessage(error, "定位保存失败")
+      setLocationState("error")
+      setLocationMessage(message)
+    }
+  }
+
+  const location = environment?.location
+  const locationBusy = locationState === "loading" || locationState === "locating" || locationState === "saving"
+  const locationStatus =
+    locationState === "loading"
+      ? "读取中"
+      : locationState === "locating"
+        ? "定位中"
+        : locationState === "saving"
+          ? "保存中"
+          : locationState === "saved"
+            ? locationMessage || "已保存"
+            : locationState === "error"
+              ? locationMessage
+              : location?.updated_at
+                ? "已配置"
+                : "未配置"
 
   return (
     <motion.div
@@ -336,6 +469,55 @@ export function SettingsPage({ assistant, onBack }: SettingsPageProps) {
               unit="%"
               onChange={(value) => patchSettings({ petScale: value })}
             />
+          </Section>
+
+          <Section icon={MapPin} title="位置">
+            <div className="flex min-h-[64px] items-center justify-between gap-4 border-b border-border/70 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-bg text-accent">
+                  <LocateFixed className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate text-sm text-text">当前位置</div>
+                  <div className={cn("mt-0.5 truncate text-xs", locationState === "error" ? "text-red-500" : "text-text-muted")}>
+                    {locationStatus}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void saveCurrentLocation()}
+                disabled={locationBusy}
+                className="flex h-9 shrink-0 items-center gap-2 rounded-full border border-accent/35 bg-bg px-3 text-sm text-accent shadow-sm transition-colors hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {locationBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
+                获取
+              </button>
+            </div>
+            <div className="grid gap-0 sm:grid-cols-2">
+              <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-border/70 py-2 sm:border-r sm:pr-4">
+                <span className="text-sm text-text-muted">纬度</span>
+                <span className="font-mono text-sm text-text">{formatCoordinate(location?.latitude)}</span>
+              </div>
+              <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-border/70 py-2 sm:pl-4">
+                <span className="text-sm text-text-muted">经度</span>
+                <span className="font-mono text-sm text-text">{formatCoordinate(location?.longitude)}</span>
+              </div>
+              <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-border/70 py-2 sm:border-r sm:pr-4">
+                <span className="text-sm text-text-muted">精度</span>
+                <span className="font-mono text-sm text-text">{formatAccuracy(location?.accuracy)}</span>
+              </div>
+              <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-border/70 py-2 sm:pl-4">
+                <span className="text-sm text-text-muted">时区</span>
+                <span className="max-w-[180px] truncate text-right text-sm text-text">{environment?.timezone || "-"}</span>
+              </div>
+            </div>
+            {locationState === "error" || locationState === "saved" ? (
+              <div className={cn("flex min-h-[44px] items-center gap-2 py-2 text-xs", locationState === "error" ? "text-red-500" : "text-emerald-600")}>
+                {locationState === "error" ? <AlertCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                <span className="truncate">{locationMessage}</span>
+              </div>
+            ) : null}
           </Section>
 
           <Section icon={Monitor} title="窗口">

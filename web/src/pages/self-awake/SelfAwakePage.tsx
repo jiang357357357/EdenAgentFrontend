@@ -333,6 +333,8 @@ export function SelfAwakePage({ currentUser, assistant, toolStatus, onBack }: Se
   const selectedDiary = resolveDiary(selectedRun)
   const selectedAction = resolveAction(selectedRun)
   const searchOnline = toolStatus?.search.status === "online"
+  const calendarAvailable = Boolean(toolStatus?.tools?.get_calendar_context)
+  const weatherAvailable = Boolean(toolStatus?.tools?.get_weather)
   const contextItems = knownContextItems(selectedRun)
   const assistantName = assistant?.name || "默认助手"
   const normalizedDiarySearch = searchQuery.toLowerCase()
@@ -534,9 +536,9 @@ export function SelfAwakePage({ currentUser, assistant, toolStatus, onBack }: Se
             />
             <SummaryCard
               icon={CircleDot}
-              label="联网工具"
-              value={searchOnline ? "可用" : "未确认"}
-              tone={searchOnline ? "ok" : "muted"}
+              label="环境工具"
+              value={calendarAvailable && weatherAvailable ? "日历/天气" : calendarAvailable ? "日历可用" : searchOnline ? "未暴露" : "未确认"}
+              tone={calendarAvailable && weatherAvailable ? "ok" : "muted"}
             />
           </section>
 

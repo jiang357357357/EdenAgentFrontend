@@ -34,7 +34,7 @@ export function ToolCard({ tool }: ToolCardProps) {
   };
 
   return (
-    <div className="my-[0.85vh] max-w-2xl overflow-hidden rounded-[1.35vh] border border-border bg-card text-[1.52vh] shadow-sm transition-all">
+    <div className="my-[0.85vh] w-full max-w-full min-w-0 overflow-hidden rounded-[1.35vh] border border-border bg-card text-[1.52vh] shadow-sm transition-all">
       <button 
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-[1.05vh] p-[1.15vh] text-left transition-colors hover:bg-white/5"
@@ -42,8 +42,8 @@ export function ToolCard({ tool }: ToolCardProps) {
         <span className={cn("flex h-[2.65vh] w-[2.65vh] flex-shrink-0 items-center justify-center rounded-[0.75vh] border border-border bg-bg", getStatusColor())}>
           {getIcon()}
         </span>
-        <div className="flex min-w-0 flex-grow items-center gap-[0.8vh] font-serif text-[1.58vh] text-text">
-          工具: {tool.name}
+        <div className="flex min-w-0 flex-1 items-center gap-[0.8vh] font-serif text-[1.58vh] text-text">
+          <span className="shrink-0">工具: {tool.name}</span>
           <span className="max-w-[24vh] truncate font-sans text-[1.34vh] font-normal text-text-muted">
             {tool.input.length > 30 ? tool.input.substring(0, 30) + '...' : tool.input}
           </span>
@@ -75,10 +75,10 @@ export function ToolCard({ tool }: ToolCardProps) {
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <div className="grid gap-[1.15vh] border-t border-border bg-bg p-[1.15vh]">
-              <div>
+            <div className="grid min-w-0 gap-[1.15vh] border-t border-border bg-bg p-[1.15vh]">
+              <div className="min-w-0">
                 <div className="mb-[0.45vh] text-[1.18vh] font-semibold uppercase tracking-[0.14em] text-text-muted">输入</div>
-                <pre className="overflow-x-auto whitespace-pre-wrap rounded-[1vh] border border-border bg-card p-[0.85vh] font-mono text-[1.34vh] leading-[1.58] text-text">
+                <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[1vh] border border-border bg-card p-[0.85vh] font-mono text-[1.34vh] leading-[1.58] text-text">
                   {tool.input}
                 </pre>
               </div>
@@ -90,18 +90,18 @@ export function ToolCard({ tool }: ToolCardProps) {
               )}
               
               {tool.output && (
-                <div>
+                <div className="min-w-0">
                   <div className="mb-[0.45vh] text-[1.18vh] font-semibold uppercase tracking-[0.14em] text-text-muted">输出</div>
-                  <pre className="overflow-x-auto whitespace-pre-wrap rounded-[1vh] border border-border bg-card p-[0.85vh] font-mono text-[1.34vh] leading-[1.58] text-text-lighter">
+                  <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[1vh] border border-border bg-card p-[0.85vh] font-mono text-[1.34vh] leading-[1.58] text-text-lighter">
                     {tool.output}
                   </pre>
                 </div>
               )}
               
               {tool.error && (
-                <div>
+                <div className="min-w-0">
                   <div className="mb-[0.45vh] text-[1.18vh] font-semibold uppercase tracking-[0.14em] text-red-500/70">错误</div>
-                  <pre className="overflow-x-auto whitespace-pre-wrap rounded-[1vh] border border-red-900/30 bg-red-950/20 p-[0.85vh] font-mono text-[1.34vh] leading-[1.58] text-red-400">
+                  <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[1vh] border border-red-900/30 bg-red-950/20 p-[0.85vh] font-mono text-[1.34vh] leading-[1.58] text-red-400">
                     {tool.error}
                   </pre>
                 </div>

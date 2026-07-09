@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
   createSessionRaw,
+  getPermissionMode,
   listPermissionsRaw,
   listQuestionsRaw,
   listMessagesRaw,
@@ -9,8 +10,10 @@ import {
   replyPermission,
   replyQuestion,
   sendPromptAsync,
+  setPermissionMode as setPermissionModeRaw,
   subscribeEvents,
 } from '../lib/mon_agent_api';
+import type { ApiEvent } from '../lib/mon_agent_api';
 import { getStoredToken } from '../lib/auth';
 import {
   applyRuntimeEvent,
@@ -26,19 +29,30 @@ import {
   setConnectionError,
 } from '../lib/session-reducer';
 import { selectActiveSession, selectPendingPermissions, selectPendingQuestions, selectSessions, selectSessionStatus } from '../lib/session-selectors';
-import type { PromptAttachment } from '../types';
+import type { PermissionMode, PromptAttachment } from '../types';
 
-export function useSessionRuntime(enabled = true) {
+interface UseSessionRuntimeOptions {
+  onEvent?: (event: ApiEvent) => void;
+}
+
+export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOptions = {}) {
   const [state, dispatch] = useReducer(runtimeReducer, initialRuntimeState);
+  const [permissionMode, setPermissionModeState] = useState<PermissionMode>('full_access');
   const activeSessionIdRef = useRef<string | undefined>(state.activeSessionId);
   const hasOpenedStreamRef = useRef(false);
+  const eventErrorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const sendingSessionIdsRef = useRef(new Set<string>());
+  const onEventRef = useRef(options.onEvent);
 
   const isRuntimeReady = useCallback(() => enabled && Boolean(getStoredToken()), [enabled]);
 
   useEffect(() => {
     activeSessionIdRef.current = state.activeSessionId;
   }, [state.activeSessionId]);
+
+  useEffect(() => {
+    onEventRef.current = options.onEvent;
+  }, [options.onEvent]);
 
   useEffect(() => {
     for (const [sessionID, session] of Object.entries(state.sessions)) {
@@ -71,9 +85,14 @@ export function useSessionRuntime(enabled = true) {
 
   const refreshBlockers = useCallback(async () => {
     if (!isRuntimeReady()) return;
-    const [permissions, questions] = await Promise.all([listPermissionsRaw(), listQuestionsRaw()]);
+    const [permissions, questions, permissionModeResponse] = await Promise.all([
+      listPermissionsRaw(),
+      listQuestionsRaw(),
+      getPermissionMode(),
+    ]);
     dispatch(hydratePendingPermissions(permissions));
     dispatch(hydratePendingQuestions(questions));
+    setPermissionModeState(permissionModeResponse.mode);
   }, [isRuntimeReady]);
 
   useEffect(() => {
@@ -134,7 +153,12 @@ export function useSessionRuntime(enabled = true) {
 
     void subscribeEvents({
       onOpen: () => {
+        if (eventErrorTimerRef.current) {
+          clearTimeout(eventErrorTimerRef.current);
+          eventErrorTimerRef.current = undefined;
+        }
         dispatch(setConnectionState('connected'));
+        dispatch(setConnectionError(undefined));
         const sessionID = activeSessionIdRef.current;
         const reconcile = async () => {
           if (!isRuntimeReady()) return;
@@ -157,9 +181,22 @@ export function useSessionRuntime(enabled = true) {
       },
       onError: (error) => {
         dispatch(setConnectionState('disconnected'));
-        dispatch(setConnectionError(error));
+        if (eventErrorTimerRef.current) {
+          clearTimeout(eventErrorTimerRef.current);
+        }
+        eventErrorTimerRef.current = setTimeout(() => {
+          eventErrorTimerRef.current = undefined;
+          dispatch(setConnectionError(error));
+        }, 2000);
       },
       onEvent: (event) => {
+        onEventRef.current?.(event);
+        if (event.type === 'permission.mode') {
+          const nextPermissionMode = event.properties.mode;
+          if (nextPermissionMode === 'ask' || nextPermissionMode === 'full_access') {
+            setPermissionModeState(nextPermissionMode);
+          }
+        }
         dispatch(applyRuntimeEvent(event));
       },
     })
@@ -176,6 +213,10 @@ export function useSessionRuntime(enabled = true) {
 
     return () => {
       disposed = true;
+      if (eventErrorTimerRef.current) {
+        clearTimeout(eventErrorTimerRef.current);
+        eventErrorTimerRef.current = undefined;
+      }
       cleanup?.();
     };
   }, [isRuntimeReady, refreshBlockers, refreshSessionMessages, refreshSessions]);
@@ -233,6 +274,11 @@ export function useSessionRuntime(enabled = true) {
     await replyPermission(requestID, reply, message);
   }, []);
 
+  const updatePermissionMode = useCallback(async (mode: PermissionMode) => {
+    const response = await setPermissionModeRaw(mode);
+    setPermissionModeState(response.mode);
+  }, []);
+
   const answerQuestion = useCallback(async (requestID: string, answers: string[][]) => {
     await replyQuestion(requestID, answers);
   }, []);
@@ -260,10 +306,12 @@ export function useSessionRuntime(enabled = true) {
     isThinking,
     pendingPermissions,
     pendingQuestions,
+    permissionMode,
     respondPermission,
     reset: () => dispatch(resetRuntime()),
     selectSession: chooseSession,
     sendMessage,
     sessions,
+    updatePermissionMode,
   };
 }

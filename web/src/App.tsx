@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { X } from "lucide-react"
 import { AnimatePresence, LayoutGroup, motion } from "motion/react"
 import { ChatPage } from "./pages/chat"
@@ -22,6 +22,7 @@ import {
   loginWithCore,
   logoutWithCore,
   verifyTokenWithCore,
+  type ActiveCharacterAction,
   type CoreAssistant,
   type DevAccount,
 } from "./lib/auth"
@@ -33,7 +34,7 @@ import {
   setDesktopWindowAppearance,
   startDesktopWindowDrag,
 } from "./lib/desktop-window"
-import { getToolStatus, type ToolStatus } from "./lib/mon_agent_api"
+import { getToolStatus, type CharacterActionChangedEvent, type ToolStatus } from "./lib/mon_agent_api"
 
 const screenTransition = {
   duration: 0.28,
@@ -110,6 +111,7 @@ export default function App() {
   const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | undefined>()
   const [defaultAssistant, setDefaultAssistant] = useState<CoreAssistant | null>(null)
   const [defaultAssistantError, setDefaultAssistantError] = useState<string | undefined>()
+  const [activeCharacterAction, setActiveCharacterAction] = useState<ActiveCharacterAction | undefined>()
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
   const [toolStatus, setToolStatus] = useState<ToolStatus | undefined>()
   const messagesScrollRef = useRef<HTMLDivElement>(null)
@@ -117,6 +119,28 @@ export default function App() {
   const authProbeInFlightRef = useRef(false)
   const modeResizeTimerRef = useRef<number | undefined>(undefined)
   const modeSwitchTokenRef = useRef(0)
+  const handleRuntimeEvent = useCallback((event: { type: string; properties?: unknown }) => {
+    if (event.type !== "character.action.changed") return
+    const properties = event.properties as CharacterActionChangedEvent["properties"] | undefined
+    if (!properties) return
+
+    setActiveCharacterAction((current) => ({
+      ...current,
+      characterID: properties.characterID ?? current?.characterID,
+      characterName: properties.characterName ?? current?.characterName,
+      action: properties.action ?? current?.action,
+      group: properties.group ?? current?.group,
+      imageUrl: properties.imageUrl ?? current?.imageUrl,
+      reason: properties.reason,
+      source: properties.source,
+      motion: properties.motion,
+      effect: properties.effect,
+      intensity: properties.intensity,
+      effectAnchor: properties.effectAnchor,
+      performanceID: properties.performanceID ?? `${properties.time ?? Date.now()}`,
+      time: properties.time,
+    }))
+  }, [])
   const {
     activeSession,
     activeSessionId,
@@ -127,13 +151,15 @@ export default function App() {
     isThinking,
     pendingPermissions,
     pendingQuestions,
+    permissionMode,
     reset: resetSessionRuntime,
     respondPermission,
     answerQuestion,
     selectSession: selectRuntimeSession,
     sendMessage: sendRuntimeMessage,
     sessions,
-  } = useSessionRuntime(authStatus === "authenticated")
+    updatePermissionMode,
+  } = useSessionRuntime(authStatus === "authenticated", { onEvent: handleRuntimeEvent })
 
   const reportAuthError = (stage: string, error: unknown, fallback: string) => {
     const message = getErrorMessage(error, fallback)
@@ -148,6 +174,7 @@ export default function App() {
       modeResizeTimerRef.current = undefined
     }
     setModeContentVisible(true)
+    setActiveCharacterAction(undefined)
     setSidebarOpen(false)
     resetSessionRuntime()
     setDefaultAssistant(null)
@@ -527,6 +554,10 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    setActiveCharacterAction(undefined)
+  }, [defaultAssistant?.character?.id])
+
+  useEffect(() => {
     if (authStatus !== "authenticated") return
     const text = `${connectionError ?? ""} ${activeSessionError ?? ""}`
     if (/authentication_expired|not_authenticated|core_authentication_expired/i.test(text)) {
@@ -657,11 +688,14 @@ export default function App() {
                 onSelectSession={selectRuntimeSession}
                 onSendMessage={handleSendMessage}
                 onPermissionReply={handlePermissionReply}
+                permissionMode={permissionMode}
+                onPermissionModeChange={updatePermissionMode}
                 onQuestionReply={handleQuestionReply}
                 onQuestionReject={handleQuestionReject}
                 onStartWindowDrag={startDesktopWindowDrag}
                 assistant={defaultAssistant}
                 assistantError={defaultAssistantError}
+                activeCharacterAction={activeCharacterAction}
                 onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
               />
             ) : activePage === "selfAwake" ? (
@@ -688,6 +722,7 @@ export default function App() {
                 currentUser={currentUser}
                 assistant={defaultAssistant}
                 assistantError={defaultAssistantError}
+                activeCharacterAction={activeCharacterAction}
                 isThinking={isThinking}
                 connectionError={connectionError}
                 activePendingPermissions={activePendingPermissions}
@@ -700,6 +735,8 @@ export default function App() {
                 onNewSession={handleNewSession}
                 onSendMessage={handleSendMessage}
                 onPermissionReply={handlePermissionReply}
+                permissionMode={permissionMode}
+                onPermissionModeChange={updatePermissionMode}
                 onQuestionReply={handleQuestionReply}
                 onQuestionReject={handleQuestionReject}
                 onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}

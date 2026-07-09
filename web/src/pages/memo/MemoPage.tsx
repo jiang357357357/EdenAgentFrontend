@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
+  Archive,
   ArrowLeft,
   Bell,
   Check,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react"
 import { motion } from "motion/react"
 import {
+  archiveMemo,
   completeMemo,
   createMemo,
   listMemos,
@@ -94,7 +96,7 @@ const statusOptions: PaperSelectOption<ApiMemoStatus>[] = [
   { value: "cancelled", label: "已取消" },
 ]
 
-type StatusFilter = "active" | "done" | "all"
+type StatusFilter = "active" | "done" | "archived" | "all"
 type KindFilter = "all" | ApiMemoKind
 type EditorMode = "create" | "edit"
 
@@ -242,9 +244,10 @@ export function MemoPage({ onBack }: MemoPageProps) {
     () => [
       { value: "active", label: `状态 进行中 ${activeCount}` },
       { value: "done", label: `状态 已完成 ${doneCount}` },
+      { value: "archived", label: `状态 已归档 ${memos.filter((memo) => memo.status === "archived").length}` },
       { value: "all", label: `状态 全部 ${memos.length}` },
     ],
-    [activeCount, doneCount, memos.length],
+    [activeCount, doneCount, memos],
   )
 
   const kindFilterOptions = useMemo<PaperSelectOption<KindFilter>[]>(
@@ -344,6 +347,21 @@ export function MemoPage({ onBack }: MemoPageProps) {
       setEditorOpen(false)
     } catch (completeError) {
       setError(completeError instanceof Error ? completeError.message : String(completeError))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleArchive = async (memo: ApiMemo) => {
+    setSaving(true)
+    setError(undefined)
+    try {
+      const updated = await archiveMemo(memo.id)
+      setMemos((items) => items.map((item) => (item.id === updated.id ? updated : item)))
+      if (editingMemo?.id === updated.id) setEditingMemo(updated)
+      setEditorOpen(false)
+    } catch (archiveError) {
+      setError(archiveError instanceof Error ? archiveError.message : String(archiveError))
     } finally {
       setSaving(false)
     }
@@ -613,11 +631,22 @@ export function MemoPage({ onBack }: MemoPageProps) {
                   <button
                     type="button"
                     onClick={() => void handleComplete(editingMemo)}
-                    disabled={saving || editingMemo.status === "done"}
+                    disabled={saving || editingMemo.status === "done" || editingMemo.status === "archived"}
                     className="flex items-center gap-[0.55vh] rounded-full border border-stone-200/65 bg-white/52 px-[1.25vh] py-[0.82vh] text-[1.5vh] text-text-muted shadow-sm transition-colors hover:border-stone-300 hover:text-text disabled:opacity-50"
                   >
                     <CheckCircle2 className="h-[1.8vh] w-[1.8vh]" />
                     完成
+                  </button>
+                )}
+                {editingMemo && (
+                  <button
+                    type="button"
+                    onClick={() => void handleArchive(editingMemo)}
+                    disabled={saving || editingMemo.status === "archived"}
+                    className="flex items-center gap-[0.55vh] rounded-full border border-stone-200/65 bg-white/52 px-[1.25vh] py-[0.82vh] text-[1.5vh] text-text-muted shadow-sm transition-colors hover:border-stone-300 hover:text-text disabled:opacity-50"
+                  >
+                    <Archive className="h-[1.8vh] w-[1.8vh]" />
+                    归档
                   </button>
                 )}
               </div>

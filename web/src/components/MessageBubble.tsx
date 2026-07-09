@@ -103,7 +103,7 @@ export function MessageBubble({
       </div>
 
       {/* Message Content Container */}
-      <div className={cn("flex max-w-[80%] min-w-0 flex-col gap-[0.85vh]", isUser ? "items-end" : "items-start")}>
+      <div className={cn("flex w-full max-w-[80%] min-w-0 flex-col gap-[0.85vh]", isUser ? "items-end" : "items-start")}>
         <div className="flex items-center gap-[0.8vh] px-[0.45vh]">
           <span className="text-[1.24vh] uppercase tracking-[0.08em] text-text-muted">
             {isUser ? "你" : assistantName}

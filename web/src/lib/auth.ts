@@ -3,11 +3,40 @@ export interface AuthUser {
   username: string
   display_name?: string | null
   avatar_url?: string | null
+  environment?: UserEnvironment | null
   ws_session_id?: string | null
   is_staff: boolean
   is_superuser: boolean
   date_joined?: string
   last_login?: string | null
+}
+
+export interface UserEnvironmentLocation {
+  country?: string
+  region?: string
+  city?: string
+  latitude?: number
+  longitude?: number
+  accuracy?: number
+  source?: string
+  updated_at?: string
+}
+
+export interface UserEnvironment {
+  timezone?: string
+  locale?: string
+  location?: UserEnvironmentLocation
+}
+
+export interface UserProfileUpdateInput {
+  display_name?: string | null
+  avatar_url?: string | null
+  background_image_url?: string | null
+  user_tags?: string[]
+  personality_tag?: string | null
+  personality_tag_author?: string | null
+  current_world_id?: number | null
+  environment?: UserEnvironment
 }
 
 export interface LoginResponse {
@@ -31,9 +60,58 @@ export interface VerifyTokenResponse {
 }
 
 export interface CoreCharacterVisualAction {
-  action_key: string
+  id?: number
+  character_id?: number
+  name?: string
+  intent?: string
+  aliases?: string[]
+  description?: string
+  static_image_url?: string | null
+  dynamic_preview_url?: string | null
+  dynamic_fps?: number
+  dynamic_loop?: boolean
+  dynamic_frames?: Array<{
+    id?: number
+    file_url?: string | null
+  }>
+  priority?: number
+  action_key?: string
   action_label?: string
   enabled?: boolean
+}
+
+export interface CoreCharacterVisualActionGroup {
+  id?: number
+  character_id?: number
+  name?: string
+  trigger?: string
+  selection_mode?: string
+  cooldown_ms?: number
+  priority?: number
+  enabled?: boolean
+  items?: Array<{
+    id?: number
+    action?: CoreCharacterVisualAction
+    weight?: number
+    priority?: number
+    enabled?: boolean
+  }>
+}
+
+export interface ActiveCharacterAction {
+  characterID?: number | string | null
+  characterName?: string
+  action?: CoreCharacterVisualAction
+  group?: CoreCharacterVisualActionGroup | null
+  imageUrl?: string
+  reason?: string
+  source?: string
+  motion?: "none" | "jump" | "approach" | "retreat" | "shake" | "nod" | "bounce" | string
+  effect?: "none" | "question" | "exclamation" | "sweat" | "heart" | "anger" | string
+  intensity?: "light" | "normal" | "strong" | string
+  effectAnchor?: "head_left" | "head_right" | "above" | "body_left" | "body_right" | string
+  performanceID?: string
+  time?: number
 }
 
 export interface CoreCharacter {
@@ -43,6 +121,8 @@ export interface CoreCharacter {
   avatar_url?: string | null
   default_standing_image_url?: string | null
   visual_actions?: CoreCharacterVisualAction[]
+  visual_action_groups?: CoreCharacterVisualActionGroup[]
+  visual_preference?: "static" | "dynamic" | string | null
   signature?: string | null
 }
 
@@ -171,6 +251,7 @@ function mergeUserProfile(user: AuthUser, profile?: Partial<AuthUser> | null): A
     ...user,
     display_name: profile.display_name ?? user.display_name,
     avatar_url: profile.avatar_url ?? user.avatar_url,
+    environment: profile.environment ?? user.environment,
   }
 }
 
@@ -326,6 +407,21 @@ export async function fetchUserProfile(token: string) {
   }
 
   return request<AuthUser>("/api/users/me/profile/", { method: "GET" }, token)
+}
+
+export async function updateUserProfile(token: string, input: UserProfileUpdateInput) {
+  if (isDesktopRuntime()) {
+    return invokeDesktop<AuthUser>("core_update_user_profile", { token, input })
+  }
+
+  return request<AuthUser>(
+    "/api/users/me/profile/",
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+    token,
+  )
 }
 
 export async function fetchDefaultAssistant(token: string) {

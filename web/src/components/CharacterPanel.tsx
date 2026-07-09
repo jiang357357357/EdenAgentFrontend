@@ -1,34 +1,39 @@
 import { Bot, ImageOff } from 'lucide-react';
-import { motion } from 'motion/react';
-import { resolveCoreAssetUrl, type CoreAssistant } from '../lib/auth';
-
-const standeeTransition = {
-  duration: 0.34,
-  ease: [0.16, 1, 0.3, 1],
-} as const;
+import { resolveCoreAssetUrl, type ActiveCharacterAction, type CoreAssistant } from '../lib/auth';
+import { CharacterPerformanceStage } from './CharacterPerformanceStage';
+import { CharacterStandeeImage } from './CharacterStandeeImage';
 
 interface CharacterPanelProps {
   assistant?: CoreAssistant | null;
   assistantError?: string;
+  activeAction?: ActiveCharacterAction;
 }
 
-export function CharacterPanel({ assistant, assistantError }: CharacterPanelProps) {
+export function CharacterPanel({ assistant, assistantError, activeAction }: CharacterPanelProps) {
   const character = assistant?.character;
   const displayName = assistant?.name || character?.name || '默认助手';
-  const image = resolveCoreAssetUrl(character?.default_standing_image_url || character?.avatar_url);
+  const activeActionImage =
+    activeAction?.imageUrl ||
+    activeAction?.action?.static_image_url ||
+    activeAction?.action?.dynamic_preview_url ||
+    activeAction?.action?.dynamic_frames?.[0]?.file_url;
+  const activeActionLabel = activeAction?.action?.name || activeAction?.action?.action_label || activeAction?.action?.intent;
+  const image = resolveCoreAssetUrl(activeActionImage || character?.default_standing_image_url || character?.avatar_url);
 
   return (
     <aside className="flex h-[100vh] w-[34vw] flex-none items-end justify-center overflow-hidden border-l border-border bg-bg">
       <div className="relative h-full w-full overflow-hidden">
         {image ? (
-          <motion.img
-            layoutId="mon-agent-character-standee"
-            transition={standeeTransition}
-            src={image}
-            alt={displayName}
-            className="absolute bottom-0 left-1/2 h-[96vh] w-auto max-w-none -translate-x-1/2 object-contain object-bottom"
-            draggable={false}
-          />
+          <CharacterPerformanceStage
+            activeAction={activeAction}
+            className="absolute inset-x-0 bottom-0 flex h-[96vh] justify-center"
+          >
+            <CharacterStandeeImage
+              src={image}
+              alt={activeActionLabel ? `${displayName} - ${activeActionLabel}` : displayName}
+              imageClassName="h-full w-auto max-w-none object-contain object-bottom"
+            />
+          </CharacterPerformanceStage>
         ) : (
           <div className="flex h-full w-full items-center justify-center px-[3vw] text-center">
             <div className="rounded-3xl border border-border bg-card/80 p-[4vh] shadow-sm">

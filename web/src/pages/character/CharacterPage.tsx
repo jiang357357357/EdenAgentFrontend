@@ -1,14 +1,16 @@
 import { useEffect, useState, type CSSProperties } from "react"
 import { ArrowLeft, MessageCircle, X } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
+import { CharacterPerformanceStage } from "../../components/CharacterPerformanceStage"
+import { CharacterStandeeImage } from "../../components/CharacterStandeeImage"
 import { ChatInput } from "../../components/ChatInput"
 import { PermissionRequestCard } from "../../components/PermissionRequestCard"
 import { QuestionRequestCard } from "../../components/QuestionRequestCard"
-import { resolveCoreAssetUrl, type CoreAssistant } from "../../lib/auth"
+import { resolveCoreAssetUrl, type ActiveCharacterAction, type CoreAssistant } from "../../lib/auth"
 import { DEFAULT_PET_SETTINGS, getDesktopPetSettings, listenDesktopPetSettings, type PetSettings } from "../../lib/desktop-window"
 import { resolveMonAgentUrl } from "../../lib/mon_agent_api"
 import { cn } from "../../lib/utils"
-import type { MessageData, PendingPermission, PendingQuestion, PromptAttachment, Session, ToolCall } from "../../types"
+import type { MessageData, PendingPermission, PendingQuestion, PermissionMode, PromptAttachment, Session, ToolCall } from "../../types"
 
 const screenTransition = {
   duration: 0.28,
@@ -53,11 +55,14 @@ interface CharacterPageProps {
   onSelectSession: (id: string) => void
   onSendMessage: (content: string, attachments: PromptAttachment[]) => Promise<void>
   onPermissionReply: (requestID: string, reply: "once" | "always" | "reject", message?: string) => Promise<void>
+  permissionMode: PermissionMode
+  onPermissionModeChange: (mode: PermissionMode) => Promise<void>
   onQuestionReply: (requestID: string, answers: string[][]) => Promise<void>
   onQuestionReject: (requestID: string) => Promise<void>
   onStartWindowDrag: () => Promise<void> | void
   assistant?: CoreAssistant | null
   assistantError?: string
+  activeCharacterAction?: ActiveCharacterAction
   onPreviewImage: (src: string, alt?: string) => void
 }
 
@@ -77,18 +82,28 @@ export function CharacterPage({
   onSelectSession,
   onSendMessage,
   onPermissionReply,
+  permissionMode,
+  onPermissionModeChange,
   onQuestionReply,
   onQuestionReject,
   onStartWindowDrag,
   assistant,
   assistantError,
+  activeCharacterAction,
   onPreviewImage,
 }: CharacterPageProps) {
   const [petSettings, setPetSettings] = useState<PetSettings>(DEFAULT_PET_SETTINGS)
   const [inputCollapsed, setInputCollapsed] = useState(false)
   const character = assistant?.character
   const displayName = assistant?.name || character?.name || "默认助手"
-  const characterImage = resolveCoreAssetUrl(character?.default_standing_image_url || character?.avatar_url)
+  const activeActionImage =
+    activeCharacterAction?.imageUrl ||
+    activeCharacterAction?.action?.static_image_url ||
+    activeCharacterAction?.action?.dynamic_preview_url ||
+    activeCharacterAction?.action?.dynamic_frames?.[0]?.file_url
+  const activeActionLabel =
+    activeCharacterAction?.action?.name || activeCharacterAction?.action?.action_label || activeCharacterAction?.action?.intent
+  const characterImage = resolveCoreAssetUrl(activeActionImage || character?.default_standing_image_url || character?.avatar_url)
   const inputEnabled = petSettings.showInput
   const inputVisible = inputEnabled && !inputCollapsed
   const inputWidth = Math.max(10, Math.min(100, petSettings.inputWidth))
@@ -160,14 +175,16 @@ export function CharacterPage({
             className={cn("relative h-full w-[100vw] overflow-hidden shadow-none", petBackgroundClass)}
           >
             {characterImage ? (
-              <motion.img
-                layoutId="mon-agent-character-standee"
-                transition={screenTransition}
-                src={characterImage}
-                alt={displayName}
-                className="absolute bottom-0 left-1/2 h-full w-auto max-w-none -translate-x-1/2 object-contain object-bottom shadow-none drop-shadow-none"
-                draggable={false}
-              />
+              <CharacterPerformanceStage
+                activeAction={activeCharacterAction}
+                className="absolute inset-x-0 bottom-0 flex h-full justify-center"
+              >
+                <CharacterStandeeImage
+                  src={characterImage}
+                  alt={activeActionLabel ? `${displayName} - ${activeActionLabel}` : displayName}
+                  imageClassName="h-full w-auto max-w-none object-contain object-bottom shadow-none drop-shadow-none"
+                />
+              </CharacterPerformanceStage>
             ) : (
               <div className="flex h-full w-full items-center justify-center px-[8vw]">
                 <div className="rounded-3xl border border-white/20 bg-white/80 px-[6vw] py-[4vh] text-center text-stone-700 shadow-sm backdrop-blur">
@@ -415,6 +432,8 @@ export function CharacterPage({
                 dialogSegments={dialogSegments}
                 assistantName={displayName}
                 onPreviewImage={(src, alt) => onPreviewImage(src, alt ?? "图片预览")}
+                permissionMode={permissionMode}
+                onPermissionModeChange={onPermissionModeChange}
                 overlayCompact
                 hideOverlayActions
                 overlayOpacity={petSettings.inputOpacity}

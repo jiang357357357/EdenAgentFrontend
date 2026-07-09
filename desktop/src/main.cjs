@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, protocol, screen, net } = require("electron")
+const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, protocol, screen, net, session } = require("electron")
 const fs = require("node:fs")
 const path = require("node:path")
 const { pathToFileURL } = require("node:url")
@@ -8,7 +8,9 @@ const DEFAULT_CORE_HOST = "127.0.0.1"
 const DEFAULT_CORE_PORT = 40011
 const DEFAULT_WEB_PORT = 40091
 
-const agentRoot = path.resolve(__dirname, "../../..")
+const frontendRoot = resolveFrontendRoot()
+const agentRoot = resolveAgentRoot()
+const desktopAssetsDir = path.join(frontendRoot, "desktop", "assets")
 const quitFlag = resolveMonConfigPath("desktop", "QUIT_FLAG", ".artifacts/desktop-quit.flag")
 const petSettingsPath = resolveMonConfigPath("desktop", "PET_SETTINGS", ".artifacts/desktop-pet-settings.json")
 const DEFAULT_PET_SETTINGS = {
@@ -38,6 +40,11 @@ let petSettings = readPetSettings()
 let applyingPetBounds = false
 let savePetPositionTimer = null
 
+app.setName("MonAgent")
+if (process.platform === "win32") {
+  app.setAppUserModelId("com.mon.monagent")
+}
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "monagent-file",
@@ -56,6 +63,43 @@ function readText(filePath) {
   } catch {
     return ""
   }
+}
+
+function isAgentRoot(candidate) {
+  if (!candidate) return false
+  const configPath = path.join(candidate, ".monconfig")
+  const contents = readText(configPath)
+  return contents.includes("MonAgent") || contents.includes("SERVICE_ID=monagent")
+}
+
+function findAgentRootFrom(start) {
+  let current = start
+  while (current && current !== path.dirname(current)) {
+    if (isAgentRoot(current)) return current
+    current = path.dirname(current)
+  }
+  return undefined
+}
+
+function resolveFrontendRoot() {
+  if (app.isPackaged) {
+    const packagedRoot = path.join(process.resourcesPath, "app")
+    if (fs.existsSync(path.join(packagedRoot, "web", "dist", "index.html"))) {
+      return packagedRoot
+    }
+  }
+  return path.resolve(__dirname, "../..")
+}
+
+function resolveAgentRoot() {
+  const explicit = process.env.MON_AGENT_ROOT?.trim()
+  if (explicit) return explicit
+  return (
+    findAgentRootFrom(path.resolve(frontendRoot, "..")) ??
+    findAgentRootFrom(path.dirname(process.execPath)) ??
+    findAgentRootFrom(process.cwd()) ??
+    path.resolve(frontendRoot, "..")
+  )
 }
 
 function parseMonConfigValue(contents, targetSection, targetKey) {
@@ -89,6 +133,33 @@ function getAgentConfig(section, key, fallback) {
 function resolveMonConfigPath(section, key, fallback) {
   const value = getAgentConfig(section, key, fallback)
   return path.isAbsolute(value) ? value : path.join(agentRoot, value)
+}
+
+function resolveDesktopIconPath() {
+  const candidates = process.platform === "win32"
+    ? ["icon.ico", "icon.png", "monagent-m-icon-v2.png"]
+    : ["icon.png", "monagent-m-icon-v2.png", "icon.ico"]
+  for (const filename of candidates) {
+    const candidate = path.join(desktopAssetsDir, filename)
+    if (fs.existsSync(candidate)) return candidate
+  }
+  return undefined
+}
+
+function resolveWindowIcon() {
+  const iconPath = resolveDesktopIconPath()
+  return iconPath && fs.existsSync(iconPath) ? iconPath : undefined
+}
+
+function createDesktopIcon() {
+  const iconPath = resolveDesktopIconPath()
+  if (iconPath) {
+    const icon = nativeImage.createFromPath(iconPath)
+    if (!icon.isEmpty()) {
+      return process.platform === "linux" ? icon.resize({ width: 24, height: 24 }) : icon
+    }
+  }
+  return createFallbackTrayIcon()
 }
 
 function findMonRootFrom(start) {
@@ -400,7 +471,7 @@ function resolveWebUrl(page) {
 function loadWebApp(targetWindow, page) {
   if (app.isPackaged) {
     const options = page ? { query: { page } } : undefined
-    targetWindow.loadFile(path.join(agentRoot, "frontend", "web", "dist", "index.html"), options)
+    targetWindow.loadFile(path.join(frontendRoot, "web", "dist", "index.html"), options)
   } else {
     targetWindow.loadURL(resolveWebUrl(page))
   }
@@ -408,7 +479,6 @@ function loadWebApp(targetWindow, page) {
 
 function createWindow() {
   const preload = path.join(__dirname, "preload.cjs")
-  const icon = path.join(__dirname, "..", "assets", "icon.ico")
 
   mainWindow = new BrowserWindow({
     title: APP_WINDOW_TITLE,
@@ -423,7 +493,7 @@ function createWindow() {
     autoHideMenuBar: true,
     transparent: false,
     backgroundColor: "#f5f5f4",
-    icon: fs.existsSync(icon) ? icon : undefined,
+    icon: resolveWindowIcon(),
     webPreferences: {
       preload,
       contextIsolation: true,
@@ -456,7 +526,6 @@ async function createPetWindow() {
   }
 
   const preload = path.join(__dirname, "preload.cjs")
-  const icon = path.join(__dirname, "..", "assets", "icon.ico")
   const bounds = petWindowBounds() ?? { width: 280, height: 640 }
   petWindow = new BrowserWindow({
     title: `${APP_WINDOW_TITLE} 桌宠`,
@@ -472,7 +541,7 @@ async function createPetWindow() {
     autoHideMenuBar: true,
     transparent: true,
     backgroundColor: "#00000000",
-    icon: fs.existsSync(icon) ? icon : undefined,
+    icon: resolveWindowIcon(),
     webPreferences: {
       preload,
       contextIsolation: true,
@@ -504,7 +573,6 @@ async function createSettingsWindow() {
   }
 
   const preload = path.join(__dirname, "preload.cjs")
-  const icon = path.join(__dirname, "..", "assets", "icon.ico")
   settingsWindow = new BrowserWindow({
     title: "MonAgent 设置",
     width: 880,
@@ -518,7 +586,7 @@ async function createSettingsWindow() {
     autoHideMenuBar: true,
     transparent: false,
     backgroundColor: "#f5f5f4",
-    icon: fs.existsSync(icon) ? icon : undefined,
+    icon: resolveWindowIcon(),
     webPreferences: {
       preload,
       contextIsolation: true,
@@ -618,9 +686,7 @@ function updateTray() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, "..", "assets", "icon.ico")
-  const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : createFallbackTrayIcon()
-  tray = new Tray(icon)
+  tray = new Tray(createDesktopIcon())
   tray.setToolTip(APP_WINDOW_TITLE)
   tray.on("click", () => mainWindow?.show())
   updateTray()
@@ -634,6 +700,12 @@ function registerFileProtocol() {
       filePath = filePath.slice(1)
     }
     return net.fetch(pathToFileURL(filePath).toString())
+  })
+}
+
+function registerPermissions() {
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === "geolocation")
   })
 }
 
@@ -656,6 +728,12 @@ ipcMain.handle("mon-agent:invoke", async (_event, command, args = {}) => {
       return coreRequest("/api/assistants/default/", { method: "GET", headers: authHeader(args.token) })
     case "core_user_profile":
       return coreRequest("/api/users/me/profile/", { method: "GET", headers: authHeader(args.token) })
+    case "core_update_user_profile":
+      return coreRequest("/api/users/me/profile/", {
+        method: "PATCH",
+        headers: { ...authHeader(args.token), "content-type": "application/json" },
+        body: JSON.stringify(args.input ?? {}),
+      })
     case "core_logout":
       return coreRequest("/api/users/logout/", { method: "POST", headers: authHeader(args.token) })
     case "set_window_size":
@@ -700,6 +778,7 @@ app.on("second-instance", () => {
     Menu.setApplicationMenu(null)
     watchQuitFlag()
     registerFileProtocol()
+    registerPermissions()
     createWindow()
     createTray()
   })

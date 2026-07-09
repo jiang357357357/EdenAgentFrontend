@@ -6,9 +6,9 @@ import { MessageBubble } from "../../components/MessageBubble"
 import { PermissionRequestCard } from "../../components/PermissionRequestCard"
 import { QuestionRequestCard } from "../../components/QuestionRequestCard"
 import { Sidebar } from "../../components/Sidebar"
-import { resolveCoreAssetUrl, type AuthUser, type CoreAssistant } from "../../lib/auth"
+import { resolveCoreAssetUrl, type ActiveCharacterAction, type AuthUser, type CoreAssistant } from "../../lib/auth"
 import { cn } from "../../lib/utils"
-import type { PendingPermission, PendingQuestion, PromptAttachment, Session } from "../../types"
+import type { PendingPermission, PendingQuestion, PermissionMode, PromptAttachment, Session } from "../../types"
 
 const fullScreenMotion = {
   initial: { opacity: 0, x: -18, filter: "blur(3px)" },
@@ -30,6 +30,7 @@ interface ChatPageProps {
   currentUser?: AuthUser | null
   assistant?: CoreAssistant | null
   assistantError?: string
+  activeCharacterAction?: ActiveCharacterAction
   isThinking: boolean
   connectionError?: string
   activePendingPermissions: PendingPermission[]
@@ -42,6 +43,8 @@ interface ChatPageProps {
   onNewSession: () => void
   onSendMessage: (content: string, attachments: PromptAttachment[]) => Promise<void>
   onPermissionReply: (requestID: string, reply: "once" | "always" | "reject", message?: string) => Promise<void>
+  permissionMode: PermissionMode
+  onPermissionModeChange: (mode: PermissionMode) => Promise<void>
   onQuestionReply: (requestID: string, answers: string[][]) => Promise<void>
   onQuestionReject: (requestID: string) => Promise<void>
   onPreviewImage: (src: string, alt?: string) => void
@@ -59,6 +62,7 @@ export function ChatPage({
   currentUser,
   assistant,
   assistantError,
+  activeCharacterAction,
   isThinking,
   connectionError,
   activePendingPermissions,
@@ -71,6 +75,8 @@ export function ChatPage({
   onNewSession,
   onSendMessage,
   onPermissionReply,
+  permissionMode,
+  onPermissionModeChange,
   onQuestionReply,
   onQuestionReject,
   onPreviewImage,
@@ -231,32 +237,35 @@ export function ChatPage({
           </div>
         </div>
 
-        {(activePendingPermissions.length > 0 || activePendingQuestions.length > 0) && (
-          <div className="pointer-events-none fixed bottom-[15vh] left-[3vw] z-30 w-[min(58vw,760px)] max-h-[44vh] overflow-y-auto">
-            <div className="pointer-events-auto grid gap-[2vh]">
-              {activePendingPermissions.map((request) => (
-                <PermissionRequestCard key={request.id} request={request} onReply={onPermissionReply} />
-              ))}
-              {activePendingQuestions.map((request) => (
-                <QuestionRequestCard
-                  key={request.id}
-                  request={request}
-                  onReply={onQuestionReply}
-                  onReject={onQuestionReject}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
         <div className="px-[3vw]">
           <div className="mx-auto w-[calc(100%_-_5vw)] max-w-[52vw]">
-            <ChatInput onSend={onSendMessage} disabled={isThinking} assistantName={assistantName} />
+            {(activePendingPermissions.length > 0 || activePendingQuestions.length > 0) && (
+              <div className="mb-2 grid max-h-[24vh] gap-2 overflow-y-auto">
+                {activePendingPermissions.map((request) => (
+                  <PermissionRequestCard key={request.id} request={request} onReply={onPermissionReply} />
+                ))}
+                {activePendingQuestions.map((request) => (
+                  <QuestionRequestCard
+                    key={request.id}
+                    request={request}
+                    onReply={onQuestionReply}
+                    onReject={onQuestionReject}
+                  />
+                ))}
+              </div>
+            )}
+            <ChatInput
+              onSend={onSendMessage}
+              disabled={isThinking}
+              assistantName={assistantName}
+              permissionMode={permissionMode}
+              onPermissionModeChange={onPermissionModeChange}
+            />
           </div>
         </div>
       </main>
 
-      <CharacterPanel assistant={assistant} assistantError={assistantError} />
+      <CharacterPanel assistant={assistant} assistantError={assistantError} activeAction={activeCharacterAction} />
     </motion.div>
   )
 }
