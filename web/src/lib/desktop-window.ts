@@ -17,6 +17,7 @@ export type DesktopWindowMode = keyof typeof WINDOW_SIZES;
 export type DesktopViewMode = 'chatWithCharacter' | 'character';
 export type PetDock = 'left' | 'center' | 'right';
 export type PetInputMode = 'compact' | 'panel' | 'hidden';
+export const MIN_PET_CHARACTER_HEIGHT = 120;
 
 export interface PetSettings {
   alwaysOnTop: boolean;
@@ -32,8 +33,27 @@ export interface PetSettings {
   inputMode: PetInputMode;
   inputWidth: number;
   inputHeight: number;
+  inputFontScale: number;
   windowX: number | null;
   windowY: number | null;
+}
+
+export interface DesktopEnvironmentPreview {
+  desktop: string;
+  wallpaper: {
+    filePath: string;
+    mode: string;
+    primaryColor: string;
+  };
+  panel: {
+    id: number;
+    position: 'top' | 'bottom' | 'left' | 'right';
+    height: number;
+    autoHide: boolean;
+    applets: string[];
+  } | null;
+  workArea: { x: number; y: number; width: number; height: number };
+  displayBounds: { x: number; y: number; width: number; height: number };
 }
 
 export const DEFAULT_PET_SETTINGS: PetSettings = {
@@ -50,6 +70,7 @@ export const DEFAULT_PET_SETTINGS: PetSettings = {
   inputMode: 'compact',
   inputWidth: 78,
   inputHeight: 20,
+  inputFontScale: 100,
   windowX: null,
   windowY: null,
 };
@@ -119,6 +140,28 @@ export async function closeDesktopWindow() {
   }
 }
 
+export async function minimizeDesktopWindow() {
+  const bridge = getDesktopBridge();
+  if (!bridge) return;
+
+  try {
+    await bridge.invoke('minimize_current_window');
+  } catch {
+    // Browser preview mode has no outer desktop window.
+  }
+}
+
+export async function toggleMaximizeDesktopWindow() {
+  const bridge = getDesktopBridge();
+  if (!bridge) return;
+
+  try {
+    await bridge.invoke('toggle_maximize_current_window');
+  } catch {
+    // Browser preview mode has no outer desktop window.
+  }
+}
+
 export async function openDesktopPetWindow() {
   const bridge = getDesktopBridge();
   if (!bridge) return false;
@@ -153,6 +196,34 @@ export async function applyDesktopPetSettings(settings: PetSettings) {
   }
 }
 
+export async function setDesktopPetBubbleCollapsed(collapsed: boolean) {
+  const bridge = getDesktopBridge();
+  if (!bridge) return;
+
+  try {
+    await bridge.invoke('set_pet_bubble_collapsed', { collapsed });
+  } catch {
+    // Browser preview mode has no independent desktop-pet bubble window.
+  }
+}
+
+export async function getDesktopEnvironmentPreview() {
+  const bridge = getDesktopBridge();
+  if (!bridge) return null;
+
+  try {
+    return await bridge.invoke<DesktopEnvironmentPreview>('get_desktop_environment');
+  } catch {
+    return null;
+  }
+}
+
+export function resolveDesktopFileUrl(filePath?: string | null) {
+  if (!filePath) return '';
+  const bridge = getDesktopBridge();
+  return bridge?.convertFileSrc?.(filePath) ?? filePath;
+}
+
 export async function listenDesktopViewMode(onMode: (mode: DesktopViewMode) => void) {
   const bridge = getDesktopBridge();
   if (!bridge?.onViewMode) return undefined;
@@ -175,6 +246,19 @@ export async function listenDesktopPetSettings(onSettings: (settings: PetSetting
   try {
     return bridge.onPetSettings((settings) => {
       onSettings({ ...DEFAULT_PET_SETTINGS, ...settings });
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+export async function listenDesktopEnvironment(onEnvironment: (environment: DesktopEnvironmentPreview) => void) {
+  const bridge = getDesktopBridge();
+  if (!bridge?.onDesktopEnvironment) return undefined;
+
+  try {
+    return bridge.onDesktopEnvironment((environment) => {
+      onEnvironment(environment as unknown as DesktopEnvironmentPreview);
     });
   } catch {
     return undefined;

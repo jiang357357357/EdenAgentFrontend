@@ -1,17 +1,26 @@
 const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, protocol, screen, net, session } = require("electron")
+const { execFile, spawn } = require("node:child_process")
 const fs = require("node:fs")
 const path = require("node:path")
-const { pathToFileURL } = require("node:url")
+const { fileURLToPath, pathToFileURL } = require("node:url")
+const { promisify } = require("node:util")
+
+const execFileAsync = promisify(execFile)
 
 const APP_WINDOW_TITLE = "MonAgent — AI 个人助手"
 const DEFAULT_CORE_HOST = "127.0.0.1"
 const DEFAULT_CORE_PORT = 40011
 const DEFAULT_WEB_PORT = 40091
+const SETTINGS_WINDOW_WIDTH_RATIO = 1
+const SETTINGS_WINDOW_HEIGHT_RATIO = 1
+const MIN_PET_CHARACTER_HEIGHT = 120
 
 const frontendRoot = resolveFrontendRoot()
 const agentRoot = resolveAgentRoot()
 const desktopAssetsDir = path.join(frontendRoot, "desktop", "assets")
-const quitFlag = resolveMonConfigPath("desktop", "QUIT_FLAG", ".artifacts/desktop-quit.flag")
+const quitFlag =
+  process.env.MON_AGENT_DESKTOP_QUIT_FLAG?.trim() ||
+  resolveMonConfigPath("desktop", "QUIT_FLAG", ".artifacts/desktop-quit.flag")
 const petSettingsPath = resolveMonConfigPath("desktop", "PET_SETTINGS", ".artifacts/desktop-pet-settings.json")
 const DEFAULT_PET_SETTINGS = {
   alwaysOnTop: true,
@@ -27,11 +36,13 @@ const DEFAULT_PET_SETTINGS = {
   inputMode: "compact",
   inputWidth: 78,
   inputHeight: 20,
+  inputFontScale: 100,
   windowX: null,
   windowY: null,
 }
 let mainWindow = null
 let petWindow = null
+let petBubbleWindow = null
 let settingsWindow = null
 let tray = null
 let isQuitting = false
@@ -39,6 +50,9 @@ let currentViewMode = "chatWithCharacter"
 let petSettings = readPetSettings()
 let applyingPetBounds = false
 let savePetPositionTimer = null
+let petBubbleCollapsed = false
+let desktopEnvironmentBroadcastTimer = null
+const desktopEnvironmentMonitors = []
 
 app.setName("MonAgent")
 if (process.platform === "win32") {
@@ -261,20 +275,24 @@ function clampNumber(value, fallback, min, max) {
 function normalizePetSettings(input = {}) {
   const windowX = Number(input.windowX)
   const windowY = Number(input.windowY)
+  const characterDraggable = Boolean(input.characterDraggable ?? DEFAULT_PET_SETTINGS.characterDraggable)
+  const showInput = Boolean(input.showInput ?? DEFAULT_PET_SETTINGS.showInput)
+  const clickThrough = !characterDraggable && Boolean(input.clickThrough ?? DEFAULT_PET_SETTINGS.clickThrough)
   return {
     alwaysOnTop: Boolean(input.alwaysOnTop ?? DEFAULT_PET_SETTINGS.alwaysOnTop),
     transparentWindow: Boolean(input.transparentWindow ?? DEFAULT_PET_SETTINGS.transparentWindow),
-    clickThrough: Boolean(input.clickThrough ?? DEFAULT_PET_SETTINGS.clickThrough),
-    characterDraggable: Boolean(input.characterDraggable ?? DEFAULT_PET_SETTINGS.characterDraggable),
-    showInput: Boolean(input.showInput ?? DEFAULT_PET_SETTINGS.showInput),
+    clickThrough,
+    characterDraggable,
+    showInput,
     notifyOnWake: Boolean(input.notifyOnWake ?? DEFAULT_PET_SETTINGS.notifyOnWake),
     petScale: clampNumber(input.petScale, DEFAULT_PET_SETTINGS.petScale, 70, 140),
     windowOpacity: clampNumber(input.windowOpacity, DEFAULT_PET_SETTINGS.windowOpacity, 40, 100),
-    inputOpacity: clampNumber(input.inputOpacity, DEFAULT_PET_SETTINGS.inputOpacity, 30, 95),
+    inputOpacity: clampNumber(input.inputOpacity, DEFAULT_PET_SETTINGS.inputOpacity, 30, 100),
     dock: ["left", "center", "right"].includes(input.dock) ? input.dock : DEFAULT_PET_SETTINGS.dock,
     inputMode: ["compact", "panel", "hidden"].includes(input.inputMode) ? input.inputMode : DEFAULT_PET_SETTINGS.inputMode,
     inputWidth: clampNumber(input.inputWidth, DEFAULT_PET_SETTINGS.inputWidth, 10, 100),
     inputHeight: clampNumber(input.inputHeight, DEFAULT_PET_SETTINGS.inputHeight, 12, 32),
+    inputFontScale: clampNumber(input.inputFontScale, DEFAULT_PET_SETTINGS.inputFontScale, 70, 140),
     windowX: Number.isFinite(windowX) ? windowX : null,
     windowY: Number.isFinite(windowY) ? windowY : null,
   }
@@ -294,19 +312,38 @@ function writePetSettings(settings) {
   fs.writeFileSync(petSettingsPath, JSON.stringify(settings, null, 2), "utf8")
 }
 
+function petCoordinate(value) {
+  if (value === null || value === undefined || value === "") return null
+  const coordinate = Number(value)
+  return Number.isFinite(coordinate) ? Math.round(coordinate) : null
+}
+
+function displayForPetSettings(fallbackWindow) {
+  const storedX = petCoordinate(petSettings.windowX)
+  const storedY = petCoordinate(petSettings.windowY)
+  if (storedX !== null && storedY !== null) return screen.getDisplayNearestPoint({ x: storedX, y: storedY })
+  if (petWindow && !petWindow.isDestroyed()) return screen.getDisplayMatching(petWindow.getBounds())
+  if (fallbackWindow && !fallbackWindow.isDestroyed()) return screen.getDisplayMatching(fallbackWindow.getBounds())
+  return screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+}
+
+function petInteractionRatio() {
+  if (!petSettings.showInput) return 0
+  return clamp((petSettings.inputHeight + 16) / 100, 0.28, 0.5)
+}
+
 function petWindowBounds() {
-  if (!petWindow) return undefined
-  const currentBounds = petWindow.getBounds()
-  const display = screen.getDisplayMatching(currentBounds)
+  const storedX = petCoordinate(petSettings.windowX)
+  const storedY = petCoordinate(petSettings.windowY)
+  const display = displayForPetSettings()
   const workArea = display.workArea
   const scale = petSettings.petScale / 100
-  const characterHeight = Math.round(clamp(workArea.height * 0.5 * scale, 260, workArea.height))
-  const inputRatio = petSettings.showInput ? petSettings.inputHeight / 100 : 0
-  const layoutGapRatio = petSettings.showInput ? 0.06 : 0
+  const characterHeight = Math.round(clamp(workArea.height * 0.5 * scale, MIN_PET_CHARACTER_HEIGHT, workArea.height))
+  const inputRatio = petInteractionRatio()
+  const layoutGapRatio = petSettings.showInput ? 0.04 : 0
   const height = Math.round(characterHeight / Math.max(0.12, 1 - inputRatio - layoutGapRatio))
   const width = Math.round(height * (7 / 16))
   const margin = 16
-  const previousHeight = currentBounds.height > 1 ? currentBounds.height : height
   const fallbackX =
     petSettings.dock === "left"
       ? workArea.x + margin
@@ -314,61 +351,250 @@ function petWindowBounds() {
         ? workArea.x + workArea.width - width - margin
         : workArea.x + Math.round((workArea.width - width) / 2)
   const fallbackY = workArea.y + workArea.height - height - margin
-  const x = Number.isFinite(Number(petSettings.windowX)) ? Math.round(Number(petSettings.windowX)) : fallbackX
-  const storedY = Number.isFinite(Number(petSettings.windowY)) ? Math.round(Number(petSettings.windowY)) : fallbackY
-  const y = storedY - (height - previousHeight)
+  const x = storedX ?? fallbackX
+  const y = storedY ?? fallbackY
   return { x, y, width, height }
 }
 
-function applyPetWindowAttributes() {
-  if (!petWindow) return
+function petWindowLayout() {
+  const group = petWindowBounds()
+  const inputRatio = petInteractionRatio()
+  const layoutGapRatio = petSettings.showInput ? 0.04 : 0
+  const characterOffset = Math.round(group.height * (inputRatio + layoutGapRatio))
+  const character = {
+    x: group.x,
+    y: group.y + characterOffset,
+    width: group.width,
+    height: Math.max(1, group.height - characterOffset),
+  }
+  const expandedWidth = Math.max(1, Math.round(group.width * (petSettings.inputWidth / 100)))
+  const expandedHeight = Math.max(1, Math.round(group.height * inputRatio))
+  const expandedBubble = {
+    x: group.x + Math.round((group.width - expandedWidth) / 2),
+    y: group.y,
+    width: expandedWidth,
+    height: expandedHeight,
+  }
+  const buttonSize = Math.max(32, Math.round(group.height * 0.06))
+  const collapsedBubble = {
+    x: group.x,
+    y: character.y - buttonSize - Math.round(group.height * 0.02),
+    width: buttonSize,
+    height: buttonSize,
+  }
+  return { group, character, expandedBubble, collapsedBubble, characterOffset }
+}
 
-  petWindow.setAlwaysOnTop(petSettings.alwaysOnTop)
-  petWindow.setIgnoreMouseEvents(petSettings.clickThrough, { forward: true })
-  petWindow.setOpacity(1)
-  petWindow.setBackgroundColor(petSettings.transparentWindow ? "#00000000" : "#f5f5f4")
-  petWindow.setHasShadow(!petSettings.transparentWindow)
+function applyPetWindowAttributes() {
+  if (petWindow && !petWindow.isDestroyed()) {
+    petWindow.setAlwaysOnTop(petSettings.alwaysOnTop)
+    petWindow.setIgnoreMouseEvents(petSettings.clickThrough)
+    petWindow.setOpacity(clamp(petSettings.windowOpacity / 100, 0.35, 1))
+    petWindow.setBackgroundColor(petSettings.transparentWindow ? "#00000000" : "#f5f5f4")
+    petWindow.setHasShadow(!petSettings.transparentWindow)
+  }
+  if (petBubbleWindow && !petBubbleWindow.isDestroyed()) {
+    petBubbleWindow.setSkipTaskbar(true)
+    petBubbleWindow.setAlwaysOnTop(petSettings.alwaysOnTop)
+    petBubbleWindow.setIgnoreMouseEvents(false)
+    petBubbleWindow.setOpacity(clamp(petSettings.windowOpacity / 100, 0.35, 1))
+    petBubbleWindow.setBackgroundColor("#00000000")
+    petBubbleWindow.setHasShadow(false)
+  }
+}
+
+function applyPetBubbleBounds() {
+  if (!petBubbleWindow || petBubbleWindow.isDestroyed()) return
+  const layout = petWindowLayout()
+  petBubbleWindow.setBounds(petBubbleCollapsed ? layout.collapsedBubble : layout.expandedBubble, false)
+}
+
+function applyPetBubbleVisibility() {
+  if (!petBubbleWindow || petBubbleWindow.isDestroyed()) return
+  const characterVisible = Boolean(petWindow && !petWindow.isDestroyed() && petWindow.isVisible())
+  if (characterVisible && petSettings.showInput) {
+    petBubbleWindow.setSkipTaskbar(true)
+    petBubbleWindow.showInactive()
+    if (petSettings.alwaysOnTop) petBubbleWindow.moveTop()
+  } else {
+    petBubbleWindow.hide()
+  }
 }
 
 function applyPetWindowBounds() {
-  if (!petWindow) return
+  if (!petWindow || petWindow.isDestroyed()) return
 
-  const bounds = petWindowBounds()
-  if (bounds) {
-    petWindow.setMinimumSize(1, 1)
-    petWindow.setMaximumSize(100000, 100000)
-    applyingPetBounds = true
-    petWindow.setBounds(bounds, true)
-    petSettings = normalizePetSettings({ ...petSettings, windowX: bounds.x, windowY: bounds.y })
-    writePetSettings(petSettings)
-    setTimeout(() => {
-      applyingPetBounds = false
-    }, 250)
-  }
+  const layout = petWindowLayout()
+  petWindow.setMinimumSize(1, 1)
+  petWindow.setMaximumSize(100000, 100000)
+  applyingPetBounds = true
+  petWindow.setBounds(layout.character, false)
+  applyPetBubbleBounds()
+  setTimeout(() => {
+    applyingPetBounds = false
+  }, 250)
 }
 
 function applyPetWindowSettings() {
   applyPetWindowAttributes()
   applyPetWindowBounds()
+  applyPetBubbleVisibility()
 }
 
 function savePetWindowPosition() {
   if (!petWindow || applyingPetBounds) return
+  const bounds = petWindow.getBounds()
+  const layout = petWindowLayout()
+  petSettings = normalizePetSettings({
+    ...petSettings,
+    windowX: bounds.x,
+    windowY: bounds.y - layout.characterOffset,
+  })
+  applyPetBubbleBounds()
   if (savePetPositionTimer) clearTimeout(savePetPositionTimer)
   savePetPositionTimer = setTimeout(() => {
     savePetPositionTimer = null
     if (!petWindow || applyingPetBounds) return
-    const bounds = petWindow.getBounds()
-    petSettings = normalizePetSettings({ ...petSettings, windowX: bounds.x, windowY: bounds.y })
     writePetSettings(petSettings)
     broadcastPetSettings()
+    scheduleDesktopEnvironmentBroadcast()
   }, 180)
 }
 
 function broadcastPetSettings() {
   mainWindow?.webContents.send("mon-agent-pet-settings", petSettings)
   petWindow?.webContents.send("mon-agent-pet-settings", petSettings)
+  petBubbleWindow?.webContents.send("mon-agent-pet-settings", petSettings)
   settingsWindow?.webContents.send("mon-agent-pet-settings", petSettings)
+}
+
+function parseGSettingsString(value) {
+  const trimmed = String(value ?? "").trim()
+  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, "\\")
+  }
+  return trimmed
+}
+
+function parseGSettingsArray(value) {
+  const items = []
+  const pattern = /'((?:\\.|[^'])*)'/g
+  let match
+  while ((match = pattern.exec(String(value ?? "")))) {
+    items.push(match[1].replace(/\\'/g, "'").replace(/\\\\/g, "\\"))
+  }
+  return items
+}
+
+async function readGSettings(schema, key) {
+  const result = await execFileAsync("gsettings", ["get", schema, key], {
+    encoding: "utf8",
+    timeout: 1500,
+  })
+  return String(result.stdout ?? "").trim()
+}
+
+function wallpaperPathFromUri(uri) {
+  if (!uri) return ""
+  if (!uri.startsWith("file://")) return uri
+  try {
+    return fileURLToPath(uri)
+  } catch {
+    return decodeURIComponent(uri.replace(/^file:\/\//, ""))
+  }
+}
+
+function panelForDisplay(display, enabled, heights, autoHide, applets) {
+  const displayIndex = Math.max(0, screen.getAllDisplays().findIndex((item) => item.id === display.id))
+  const panelRecord = enabled
+    .map((item) => item.split(":"))
+    .find((parts) => Number(parts[1]) === displayIndex)
+  if (!panelRecord) return null
+  const panelId = Number(panelRecord[0])
+  const heightRecord = heights.map((item) => item.split(":")).find((parts) => Number(parts[0]) === panelId)
+  const autoHideRecord = autoHide.map((item) => item.split(":")).find((parts) => Number(parts[0]) === panelId)
+  return {
+    id: panelId,
+    position: ["top", "bottom", "left", "right"].includes(panelRecord[2]) ? panelRecord[2] : "bottom",
+    height: Math.max(20, Number(heightRecord?.[1]) || 40),
+    autoHide: autoHideRecord?.[1] === "true" || autoHideRecord?.[1] === "always",
+    applets: applets.filter((item) => item.startsWith(`panel${panelId}:`)),
+  }
+}
+
+async function readDesktopEnvironment(display) {
+  const desktopName = String(process.env.XDG_CURRENT_DESKTOP || process.env.DESKTOP_SESSION || "").toLowerCase()
+  const cinnamon = desktopName.includes("cinnamon")
+  const wallpaperSchema = cinnamon ? "org.cinnamon.desktop.background" : "org.gnome.desktop.background"
+  const [pictureUriValue, pictureOptionsValue, primaryColorValue] = await Promise.all([
+    readGSettings(wallpaperSchema, "picture-uri").catch(() => ""),
+    readGSettings(wallpaperSchema, "picture-options").catch(() => "'zoom'"),
+    readGSettings(wallpaperSchema, "primary-color").catch(() => "'#000000'"),
+  ])
+  let panel = null
+  if (cinnamon) {
+    const [enabledValue, heightsValue, autoHideValue, appletsValue] = await Promise.all([
+      readGSettings("org.cinnamon", "panels-enabled").catch(() => "[]"),
+      readGSettings("org.cinnamon", "panels-height").catch(() => "[]"),
+      readGSettings("org.cinnamon", "panels-autohide").catch(() => "[]"),
+      readGSettings("org.cinnamon", "enabled-applets").catch(() => "[]"),
+    ])
+    panel = panelForDisplay(
+      display,
+      parseGSettingsArray(enabledValue),
+      parseGSettingsArray(heightsValue),
+      parseGSettingsArray(autoHideValue),
+      parseGSettingsArray(appletsValue),
+    )
+  }
+  const pictureUri = parseGSettingsString(pictureUriValue)
+  return {
+    desktop: cinnamon ? "cinnamon" : desktopName || "linux",
+    wallpaper: {
+      filePath: wallpaperPathFromUri(pictureUri),
+      mode: parseGSettingsString(pictureOptionsValue) || "zoom",
+      primaryColor: parseGSettingsString(primaryColorValue) || "#000000",
+    },
+    panel,
+    workArea: { ...display.workArea },
+    displayBounds: { ...display.bounds },
+  }
+}
+
+async function broadcastDesktopEnvironment() {
+  if (!settingsWindow || settingsWindow.isDestroyed()) return
+  const display = displayForPetSettings(settingsWindow)
+  const environment = await readDesktopEnvironment(display)
+  if (!settingsWindow || settingsWindow.isDestroyed()) return
+  settingsWindow.webContents.send("mon-agent-desktop-environment", environment)
+}
+
+function scheduleDesktopEnvironmentBroadcast() {
+  if (desktopEnvironmentBroadcastTimer) clearTimeout(desktopEnvironmentBroadcastTimer)
+  desktopEnvironmentBroadcastTimer = setTimeout(() => {
+    desktopEnvironmentBroadcastTimer = null
+    void broadcastDesktopEnvironment()
+  }, 160)
+}
+
+function startDesktopEnvironmentMonitors() {
+  if (process.platform !== "linux") return
+  const desktopName = String(process.env.XDG_CURRENT_DESKTOP || process.env.DESKTOP_SESSION || "").toLowerCase()
+  const schemas = desktopName.includes("cinnamon")
+    ? ["org.cinnamon.desktop.background", "org.cinnamon"]
+    : ["org.gnome.desktop.background"]
+  for (const schema of schemas) {
+    const monitor = spawn("gsettings", ["monitor", schema], { stdio: ["ignore", "pipe", "ignore"] })
+    monitor.stdout.on("data", scheduleDesktopEnvironmentBroadcast)
+    monitor.on("error", () => undefined)
+    desktopEnvironmentMonitors.push(monitor)
+  }
+}
+
+function stopDesktopEnvironmentMonitors() {
+  if (desktopEnvironmentBroadcastTimer) clearTimeout(desktopEnvironmentBroadcastTimer)
+  desktopEnvironmentBroadcastTimer = null
+  for (const monitor of desktopEnvironmentMonitors.splice(0)) monitor.kill()
 }
 
 function updatePetSettings(input) {
@@ -381,11 +607,14 @@ function updatePetSettings(input) {
     previousSettings.dock !== petSettings.dock ||
     previousSettings.showInput !== petSettings.showInput ||
     previousSettings.inputHeight !== petSettings.inputHeight ||
+    previousSettings.inputWidth !== petSettings.inputWidth ||
     previousSettings.windowX !== petSettings.windowX ||
     previousSettings.windowY !== petSettings.windowY
   ) {
     applyPetWindowBounds()
+    scheduleDesktopEnvironmentBroadcast()
   }
+  applyPetBubbleVisibility()
   broadcastPetSettings()
   return petSettings
 }
@@ -393,18 +622,7 @@ function updatePetSettings(input) {
 function setWindowSize(request = {}, targetWindow = mainWindow) {
   if (!targetWindow) return true
   if (request.mode === "character" || request.pet === true) {
-    const bounds = petWindowBounds()
-    if (bounds) {
-      petWindow.setMinimumSize(1, 1)
-      petWindow.setMaximumSize(100000, 100000)
-      applyingPetBounds = true
-      petWindow.setBounds(bounds, true)
-      petSettings = normalizePetSettings({ ...petSettings, windowX: bounds.x, windowY: bounds.y })
-      writePetSettings(petSettings)
-      setTimeout(() => {
-        applyingPetBounds = false
-      }, 250)
-    }
+    applyPetWindowBounds()
     return true
   }
   const display = screen.getDisplayMatching(targetWindow.getBounds())
@@ -512,23 +730,27 @@ function createWindow() {
       mainWindow?.hide()
     }
   })
-  mainWindow.on("move", savePetWindowPosition)
   loadWebApp(mainWindow)
 }
 
 async function createPetWindow() {
+  petSettings = readPetSettings()
+
   if (petWindow && !petWindow.isDestroyed()) {
     if (petWindow.isMinimized()) petWindow.restore()
-    petWindow.show()
-    petWindow.focus()
+    createPetBubbleWindow()
     applyPetWindowSettings()
+    petWindow.showInactive()
+    applyPetBubbleVisibility()
+    broadcastPetSettings()
     return
   }
 
   const preload = path.join(__dirname, "preload.cjs")
-  const bounds = petWindowBounds() ?? { width: 280, height: 640 }
+  const bounds = petWindowLayout().character
   petWindow = new BrowserWindow({
-    title: `${APP_WINDOW_TITLE} 桌宠`,
+    title: `${APP_WINDOW_TITLE} 桌宠角色`,
+    ...(process.platform === "linux" ? { type: "dock" } : {}),
     width: bounds.width,
     height: bounds.height,
     x: bounds.x,
@@ -552,21 +774,93 @@ async function createPetWindow() {
   })
 
   petWindow.once("ready-to-show", () => {
-    petWindow?.show()
     applyPetWindowSettings()
+    petWindow?.showInactive()
+    applyPetBubbleVisibility()
+    broadcastPetSettings()
+  })
+  petWindow.on("show", () => {
+    updateTray()
+    applyPetWindowAttributes()
+    applyPetBubbleVisibility()
+  })
+  petWindow.on("hide", () => {
+    petBubbleWindow?.hide()
+    updateTray()
   })
   petWindow.on("closed", () => {
     petWindow = null
+    if (petBubbleWindow && !petBubbleWindow.isDestroyed()) petBubbleWindow.destroy()
     updateTray()
   })
   petWindow.on("move", savePetWindowPosition)
-  loadWebApp(petWindow, "pet")
+  loadWebApp(petWindow, "pet-character")
+  createPetBubbleWindow()
   updateTray()
 }
 
+function createPetBubbleWindow() {
+  if (petBubbleWindow && !petBubbleWindow.isDestroyed()) return
+
+  const preload = path.join(__dirname, "preload.cjs")
+  const bounds = petBubbleCollapsed ? petWindowLayout().collapsedBubble : petWindowLayout().expandedBubble
+  petBubbleWindow = new BrowserWindow({
+    title: `${APP_WINDOW_TITLE} 桌宠气泡`,
+    ...bounds,
+    minWidth: 1,
+    minHeight: 1,
+    show: false,
+    frame: false,
+    titleBarStyle: "hidden",
+    autoHideMenuBar: true,
+    transparent: true,
+    backgroundColor: "#00000000",
+    hasShadow: false,
+    skipTaskbar: true,
+    icon: resolveWindowIcon(),
+    webPreferences: {
+      preload,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      webSecurity: false,
+    },
+  })
+
+  petBubbleWindow.once("ready-to-show", () => {
+    petBubbleWindow?.setSkipTaskbar(true)
+    applyPetWindowAttributes()
+    applyPetBubbleBounds()
+    applyPetBubbleVisibility()
+    broadcastPetSettings()
+  })
+  petBubbleWindow.on("show", () => {
+    petBubbleWindow?.setSkipTaskbar(true)
+  })
+  petBubbleWindow.on("closed", () => {
+    petBubbleWindow = null
+  })
+  loadWebApp(petBubbleWindow, "pet-bubble")
+}
+
+function hidePetWindows() {
+  petBubbleWindow?.hide()
+  petWindow?.hide()
+}
+
 async function createSettingsWindow() {
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  const workArea = display.workArea
+  const bounds = {
+    x: workArea.x,
+    y: workArea.y,
+    width: Math.round(workArea.width * SETTINGS_WINDOW_WIDTH_RATIO),
+    height: Math.round(workArea.height * SETTINGS_WINDOW_HEIGHT_RATIO),
+  }
+
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     if (settingsWindow.isMinimized()) settingsWindow.restore()
+    settingsWindow.setBounds(bounds)
     settingsWindow.show()
     settingsWindow.focus()
     return
@@ -575,14 +869,10 @@ async function createSettingsWindow() {
   const preload = path.join(__dirname, "preload.cjs")
   settingsWindow = new BrowserWindow({
     title: "MonAgent 设置",
-    width: 880,
-    height: 640,
-    minWidth: 720,
-    minHeight: 520,
-    center: true,
+    ...bounds,
     show: false,
-    frame: true,
-    titleBarStyle: "default",
+    frame: false,
+    titleBarStyle: "hidden",
     autoHideMenuBar: true,
     transparent: false,
     backgroundColor: "#f5f5f4",
@@ -649,7 +939,7 @@ function createFallbackTrayIcon() {
 
 function updateTray() {
   if (!tray) return
-  const petVisible = Boolean(petWindow && !petWindow.isDestroyed() && petWindow.isVisible())
+  const petVisible = isPetWindowVisible()
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "显示主窗口", click: () => mainWindow?.show() },
@@ -658,9 +948,8 @@ function updateTray() {
       {
         label: petVisible ? "隐藏桌宠" : "显示桌宠",
         click: () => {
-          if (petVisible) {
-            petWindow?.hide()
-            updateTray()
+          if (isPetWindowVisible()) {
+            hidePetWindows()
           } else {
             void createPetWindow()
           }
@@ -685,6 +974,10 @@ function updateTray() {
   )
 }
 
+function isPetWindowVisible() {
+  return Boolean(petWindow && !petWindow.isDestroyed() && petWindow.isVisible())
+}
+
 function createTray() {
   tray = new Tray(createDesktopIcon())
   tray.setToolTip(APP_WINDOW_TITLE)
@@ -695,7 +988,7 @@ function createTray() {
 function registerFileProtocol() {
   protocol.handle("monagent-file", (request) => {
     const url = new URL(request.url)
-    let filePath = decodeURIComponent(url.pathname)
+    let filePath = decodeURIComponent(url.host ? `/${url.host}${url.pathname}` : url.pathname)
     if (process.platform === "win32" && /^\/[A-Za-z]:/.test(filePath)) {
       filePath = filePath.slice(1)
     }
@@ -752,6 +1045,20 @@ ipcMain.handle("mon-agent:invoke", async (_event, command, args = {}) => {
       return petSettings
     case "apply_pet_settings":
       return updatePetSettings(args.settings ?? {})
+    case "set_pet_bubble_collapsed": {
+      const targetWindow = BrowserWindow.fromWebContents(_event.sender)
+      if (targetWindow === petBubbleWindow) {
+        petBubbleCollapsed = Boolean(args.collapsed)
+        applyPetBubbleBounds()
+        if (petSettings.alwaysOnTop) petBubbleWindow.moveTop()
+      }
+      return true
+    }
+    case "get_desktop_environment": {
+      const targetWindow = BrowserWindow.fromWebContents(_event.sender) ?? settingsWindow ?? mainWindow
+      const display = displayForPetSettings(targetWindow)
+      return readDesktopEnvironment(display)
+    }
     case "start_window_drag":
       return true
     case "close_current_window": {
@@ -759,12 +1066,29 @@ ipcMain.handle("mon-agent:invoke", async (_event, command, args = {}) => {
       targetWindow?.close()
       return true
     }
+    case "minimize_current_window": {
+      const targetWindow = BrowserWindow.fromWebContents(_event.sender)
+      targetWindow?.minimize()
+      return true
+    }
+    case "toggle_maximize_current_window": {
+      const targetWindow = BrowserWindow.fromWebContents(_event.sender)
+      if (!targetWindow) return false
+      if (targetWindow.isMaximized()) {
+        targetWindow.unmaximize()
+      } else {
+        targetWindow.maximize()
+      }
+      return true
+    }
     default:
       throw new Error(`未知桌面命令: ${command}`)
   }
 })
 
-if (!app.requestSingleInstanceLock()) {
+const allowMultipleInstances = process.env.MON_AGENT_ALLOW_MULTIPLE_INSTANCES === "true"
+
+if (!allowMultipleInstances && !app.requestSingleInstanceLock()) {
   app.quit()
 } else {
 app.on("second-instance", () => {
@@ -779,12 +1103,19 @@ app.on("second-instance", () => {
     watchQuitFlag()
     registerFileProtocol()
     registerPermissions()
+    startDesktopEnvironmentMonitors()
     createWindow()
+    if (process.env.MON_AGENT_DESKTOP_START_PAGE === "settings") {
+      void createSettingsWindow()
+    } else if (process.env.MON_AGENT_DESKTOP_START_PAGE === "pet") {
+      void createPetWindow()
+    }
     createTray()
   })
 
   app.on("before-quit", () => {
     isQuitting = true
+    stopDesktopEnvironmentMonitors()
   })
 
   app.on("window-all-closed", (event) => {

@@ -29,7 +29,6 @@ import {
 import type { MessageData, PromptAttachment } from "./types"
 import {
   listenDesktopOpenSettings,
-  openDesktopPetWindow,
   resizeDesktopWindow,
   setDesktopWindowAppearance,
   startDesktopWindowDrag,
@@ -41,11 +40,11 @@ const screenTransition = {
   ease: [0.16, 1, 0.3, 1],
 } as const
 
-type AppPage = "chat" | "selfAwake" | "memo" | "settings" | "pet"
+type AppPage = "chat" | "selfAwake" | "memo" | "settings" | "pet" | "pet-character" | "pet-bubble"
 
 function initialPageFromLocation(): AppPage {
   const page = new URLSearchParams(window.location.search).get("page")
-  if (page === "settings" || page === "pet") return page
+  if (page === "settings" || page === "pet" || page === "pet-character" || page === "pet-bubble") return page
   return "chat"
 }
 
@@ -103,7 +102,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const initialPage = initialPageFromLocation()
   const isSettingsWindow = initialPage === "settings"
-  const isPetWindow = initialPage === "pet"
+  const isPetWindow = initialPage === "pet" || initialPage === "pet-character" || initialPage === "pet-bubble"
+  const petSurface = initialPage === "pet-character" ? "character" : initialPage === "pet-bubble" ? "bubble" : "combined"
   const [activePage, setActivePage] = useState<AppPage>(() => initialPageFromLocation())
   const [modeContentVisible, setModeContentVisible] = useState(true)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -366,7 +366,20 @@ export default function App() {
       if (devAccount && !cancelled) {
         try {
           console.log("[bootstrapAuth] logging in with dev account:", devAccount.username)
-          const response = await loginWithCore(devAccount.username, devAccount.password)
+          const loginOrReuse = async () => {
+            const sharedToken = getStoredToken()
+            if (sharedToken) {
+              try {
+                return await verifyTokenWithCore(sharedToken)
+              } catch {
+                clearAuth()
+              }
+            }
+            return loginWithCore(devAccount.username, devAccount.password)
+          }
+          const response = navigator.locks
+            ? await navigator.locks.request("mon-agent-bootstrap-auth", loginOrReuse)
+            : await loginOrReuse()
           if (cancelled) return
           console.log("[bootstrapAuth] dev login success, user:", response.user.username)
           setCurrentUser(response.user)
@@ -637,13 +650,6 @@ export default function App() {
     await dismissQuestion(requestID)
   }
 
-  async function handleOpenPetWindow() {
-    const opened = await openDesktopPetWindow()
-    if (!opened) {
-      setActivePage("pet")
-    }
-  }
-
   if (authStatus === "checking") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-bg text-text">
@@ -673,6 +679,7 @@ export default function App() {
           <AnimatePresence mode="wait" initial={false}>
             {isPetWindow || activePage === "pet" ? (
               <CharacterPage
+                surface={petSurface}
                 isThinking={isThinking}
                 activeSession={activeSession}
                 activeReplyMessage={activeReplyMessage}
@@ -710,6 +717,8 @@ export default function App() {
             ) : activePage === "settings" ? (
               <SettingsPage
                 assistant={defaultAssistant}
+                assistantError={defaultAssistantError}
+                activeCharacterAction={activeCharacterAction}
                 onBack={isSettingsWindow ? undefined : () => setActivePage("chat")}
               />
             ) : (

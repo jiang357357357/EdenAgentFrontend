@@ -1,157 +1,231 @@
-import { useEffect, useMemo, useRef, useState } from "react"
-import type { ReactNode } from "react"
+import { useEffect, useRef, useState } from "react"
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react"
 import {
-  AlertCircle,
   ArrowLeft,
+  ArrowUp,
+  BatteryMedium,
+  Bell,
   CheckCircle2,
-  Eye,
+  ChevronRight,
+  CircleHelp,
+  Clock3,
   Keyboard,
   LoaderCircle,
-  LocateFixed,
-  MapPin,
-  Monitor,
-  MousePointer2,
-  Move,
-  PanelBottom,
-  Pin,
+  Menu,
+  Minus,
   RotateCcw,
-  Save,
   Settings,
   SlidersHorizontal,
   Sparkles,
+  Square,
+  Volume2,
+  Wifi,
+  X,
 } from "lucide-react"
 import { motion } from "motion/react"
+import { DesktopPetStage } from "../../components/DesktopPetStage"
 import {
-  fetchUserProfile,
-  getErrorMessage,
-  getStoredToken,
-  updateUserProfile,
+  resolveCoreAssetUrl,
+  type ActiveCharacterAction,
   type CoreAssistant,
-  type UserEnvironment,
 } from "../../lib/auth"
 import {
   applyDesktopPetSettings,
+  closeDesktopWindow,
   DEFAULT_PET_SETTINGS,
+  getDesktopEnvironmentPreview,
   getDesktopPetSettings,
+  listenDesktopEnvironment,
   listenDesktopPetSettings,
+  MIN_PET_CHARACTER_HEIGHT,
+  minimizeDesktopWindow,
+  resolveDesktopFileUrl,
+  toggleMaximizeDesktopWindow,
+  type DesktopEnvironmentPreview,
   type PetSettings,
 } from "../../lib/desktop-window"
 import { cn } from "../../lib/utils"
 
 const screenMotion = {
-  initial: { opacity: 0, x: 18, filter: "blur(3px)" },
-  animate: { opacity: 1, x: 0, filter: "blur(0px)" },
-  exit: { opacity: 0, x: 26, filter: "blur(3px)" },
+  initial: { opacity: 0, x: 12 },
+  animate: { opacity: 1, x: 0 },
+  exit: { opacity: 0, x: 16 },
 }
 
 const transition = {
-  duration: 0.28,
+  duration: 0.22,
   ease: [0.16, 1, 0.3, 1],
 } as const
 
+type SettingsSection = "pet" | "input" | "advanced" | "about"
+type SaveState = "idle" | "saving" | "saved"
+
 interface SettingsPageProps {
   assistant?: CoreAssistant | null
+  assistantError?: string
+  activeCharacterAction?: ActiveCharacterAction
   onBack?: () => void
 }
 
 interface ToggleRowProps {
-  icon: typeof Settings
   label: string
+  description: string
   value: boolean
+  disabled?: boolean
   onChange: (value: boolean) => void
 }
 
-interface SliderRowProps {
-  icon: typeof Settings
+interface RangeControlProps {
   label: string
   value: number
   min: number
   max: number
   step?: number
   unit?: string
+  marks?: number[]
+  compact?: boolean
   onChange: (value: number) => void
 }
 
-interface NumberRowProps {
-  icon: typeof Settings
+const navigationItems: Array<{
+  id: SettingsSection
   label: string
-  value: number | null
-  placeholder?: string
-  onChange: (value: number | null) => void
-}
+  icon: typeof Sparkles
+}> = [
+  { id: "pet", label: "桌宠", icon: Sparkles },
+  { id: "input", label: "对话框", icon: Keyboard },
+  { id: "advanced", label: "高级设置", icon: SlidersHorizontal },
+  { id: "about", label: "关于", icon: CircleHelp },
+]
 
-type LocationSaveState = "idle" | "loading" | "locating" | "saving" | "saved" | "error"
-
-function currentBrowserEnvironment(position: GeolocationPosition, current?: UserEnvironment | null): UserEnvironment {
-  const now = new Date().toISOString()
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || current?.timezone || "Asia/Shanghai"
-  const locale = navigator.language || current?.locale || "zh-CN"
-  return {
-    ...current,
-    timezone,
-    locale,
-    location: {
-      ...(current?.location ?? {}),
-      latitude: Number(position.coords.latitude.toFixed(6)),
-      longitude: Number(position.coords.longitude.toFixed(6)),
-      accuracy: Number(position.coords.accuracy.toFixed(0)),
-      source: "browser_geolocation",
-      updated_at: now,
-    },
-  }
-}
-
-function geolocationErrorMessage(error: GeolocationPositionError) {
-  if (error.code === error.PERMISSION_DENIED) return "定位权限被拒绝"
-  if (error.code === error.POSITION_UNAVAILABLE) return "当前位置不可用"
-  if (error.code === error.TIMEOUT) return "定位请求超时"
-  return error.message || "定位失败"
-}
-
-function getCurrentPosition() {
-  return new Promise<GeolocationPosition>((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error("当前环境不支持定位"))
-      return
-    }
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: 10_000,
-      maximumAge: 10 * 60 * 1000,
-    })
-  })
-}
-
-function formatCoordinate(value?: number) {
-  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(5) : "-"
-}
-
-function formatAccuracy(value?: number) {
-  return typeof value === "number" && Number.isFinite(value) ? `±${Math.round(value)}m` : "-"
-}
-
-function ToggleRow({ icon: Icon, label, value, onChange }: ToggleRowProps) {
+function PetInputPreview({ opacity, height, fontScale }: { opacity: number; height: number; fontScale: number }) {
+  const fontRatio = Math.max(70, Math.min(140, fontScale)) / 100
   return (
-    <div className="flex min-h-[52px] items-center justify-between gap-4 border-b border-border/70 py-2 last:border-b-0">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-bg text-accent">
-          <Icon className="h-4 w-4" />
+    <div
+      className="relative flex flex-col overflow-hidden rounded-[6cqh] border border-white/15 text-stone-100 shadow-sm backdrop-blur-md"
+      style={{
+        height: `${Math.max(28, Math.min(50, height + 16))}cqh`,
+        backgroundColor: `rgba(28, 25, 23, ${Math.max(30, Math.min(100, opacity)) / 100})`,
+      }}
+      aria-label="桌宠快捷输入框预览"
+    >
+      <div className="min-h-0 flex-1 px-[6cqh] py-[5cqh]" style={{ fontSize: `${2 * fontRatio}cqh` }}>
+        <p className="text-stone-200">今天需要我做什么？</p>
+        <p className="mt-[4cqh] rounded-[3cqh] bg-orange-600/70 px-[4cqh] py-[2cqh] text-right text-white">
+          继续优化桌宠交互
+        </p>
+      </div>
+      <div className="flex h-[24%] items-center gap-[3cqh] border-t border-white/12 px-[5cqh]">
+        <span className="min-w-0 flex-1 text-stone-400" style={{ fontSize: `${2 * fontRatio}cqh` }}>输入消息…</span>
+        <span className="flex aspect-square h-[62%] items-center justify-center rounded-full bg-orange-600 text-white">
+          <ArrowUp className="h-[52%] w-[52%]" />
         </span>
-        <span className="truncate text-sm text-text">{label}</span>
+      </div>
+    </div>
+  )
+}
+
+function wallpaperStyle(environment: DesktopEnvironmentPreview | null): CSSProperties {
+  const fileUrl = resolveDesktopFileUrl(environment?.wallpaper.filePath)
+  const mode = environment?.wallpaper.mode ?? "zoom"
+  const style: CSSProperties = {
+    backgroundColor: environment?.wallpaper.primaryColor || "#1c1917",
+    backgroundImage: fileUrl ? `url("${fileUrl}")` : undefined,
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+    backgroundSize: "cover",
+  }
+  if (mode === "scaled") style.backgroundSize = "contain"
+  if (mode === "stretched") style.backgroundSize = "100% 100%"
+  if (mode === "centered") style.backgroundSize = "auto"
+  if (mode === "wallpaper") {
+    style.backgroundRepeat = "repeat"
+    style.backgroundSize = "auto"
+  }
+  return style
+}
+
+function DesktopPanelPreview({ environment }: { environment: DesktopEnvironmentPreview }) {
+  const [now, setNow] = useState(() => new Date())
+  const panel = environment.panel
+
+  useEffect(() => {
+    if (!panel) return
+    const delay = 60_000 - (Date.now() % 60_000)
+    let interval: number | undefined
+    const timer = window.setTimeout(() => {
+      setNow(new Date())
+      interval = window.setInterval(() => setNow(new Date()), 60_000)
+    }, delay)
+    return () => {
+      window.clearTimeout(timer)
+      if (interval !== undefined) window.clearInterval(interval)
+    }
+  }, [panel])
+
+  if (!panel) return null
+  const vertical = panel.position === "left" || panel.position === "right"
+  const displaySize = vertical ? environment.displayBounds.width : environment.displayBounds.height
+  const thickness = `${(panel.height / Math.max(1, displaySize)) * 100}%`
+  const configured = panel.applets.join(" ")
+  const positionStyle: CSSProperties = vertical
+    ? { top: 0, bottom: 0, width: thickness, [panel.position]: 0 }
+    : { left: 0, right: 0, height: thickness, [panel.position]: 0 }
+  const time = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(now)
+
+  return (
+    <div
+      className={cn(
+        "absolute z-30 flex items-center justify-between bg-stone-950/88 px-[0.7%] text-white shadow-[0_-0.1cqh_1cqh_rgba(0,0,0,0.28)] backdrop-blur-sm",
+        vertical && "flex-col px-0 py-[0.7%]",
+        panel.autoHide && "opacity-65",
+      )}
+      style={positionStyle}
+      aria-label={`Cinnamon ${panel.position} panel preview`}
+    >
+      <div className={cn("flex h-full items-center gap-[0.55cqh]", vertical && "h-auto w-full flex-col")}>
+        {configured.includes("menu@cinnamon.org") ? <Menu className="h-[52%] w-auto min-w-0" /> : null}
+        {configured.includes("grouped-window-list@cinnamon.org") ? (
+          <div className={cn("h-[58%] w-[12%] rounded-sm bg-white/12", vertical && "h-[8%] w-[58%]")} />
+        ) : null}
+      </div>
+      <div className={cn("flex h-full items-center gap-[0.65cqh]", vertical && "h-auto w-full flex-col")}>
+        {configured.includes("network@cinnamon.org") ? <Wifi className="h-[42%] w-auto" /> : null}
+        {configured.includes("sound@cinnamon.org") ? <Volume2 className="h-[42%] w-auto" /> : null}
+        {configured.includes("power@cinnamon.org") ? <BatteryMedium className="h-[42%] w-auto" /> : null}
+        {configured.includes("calendar@cinnamon.org") ? (
+          <span className="flex items-center gap-[0.25cqh] text-[clamp(0.375rem,1.15cqh,0.75rem)] tabular-nums">
+            <Clock3 className="h-[1.45cqh] w-[1.45cqh]" />
+            {time}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function ToggleRow({ label, description, value, disabled, onChange }: ToggleRowProps) {
+  return (
+    <div className="flex items-center justify-between gap-5 border-t border-border px-2 py-2 first:border-t-0">
+      <div className="min-w-0 py-3">
+        <div className="text-[clamp(0.8125rem,1.45cqh,0.9375rem)] font-medium text-text">{label}</div>
+        <div className="mt-1 text-[clamp(0.75rem,1.25cqh,0.8125rem)] leading-5 text-text-muted">{description}</div>
       </div>
       <button
         type="button"
+        disabled={disabled}
         onClick={() => onChange(!value)}
         className={cn(
-          "flex h-7 w-12 shrink-0 items-center rounded-full border p-[3px] transition-colors",
-          value ? "border-accent bg-accent" : "border-border bg-bg",
+          "relative h-8 w-[3.25rem] shrink-0 rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-45",
+          value ? "border-accent bg-accent" : "border-border bg-[#e7e5e4]",
         )}
+        aria-label={label}
         aria-pressed={value}
       >
         <span
           className={cn(
-            "h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
-            value ? "translate-x-[20px]" : "translate-x-0",
+            "absolute top-1/2 h-[75%] aspect-square -translate-y-1/2 rounded-full bg-white shadow-sm transition-[left]",
+            value ? "left-[46.15%]" : "left-[7.69%]",
           )}
         />
       </button>
@@ -159,110 +233,181 @@ function ToggleRow({ icon: Icon, label, value, onChange }: ToggleRowProps) {
   )
 }
 
-function SliderRow({ icon: Icon, label, value, min, max, step = 1, unit = "", onChange }: SliderRowProps) {
+function RangeControl({ label, value, min, max, step = 1, unit = "", marks = [], compact = false, onChange }: RangeControlProps) {
+  const progress = ((value - min) / Math.max(1, max - min)) * 100
   return (
-    <div className="border-b border-border/70 py-3 last:border-b-0">
-      <div className="mb-2 flex items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-bg text-accent">
-            <Icon className="h-4 w-4" />
-          </span>
-          <span className="truncate text-sm text-text">{label}</span>
-        </div>
-        <span className="shrink-0 rounded-full border border-border bg-bg px-3 py-1 text-xs text-text-muted">
+    <div className={cn(compact ? "border-t border-border px-[2%] py-[3%]" : "px-2 py-5")}>
+      <div className={cn("flex items-center justify-between gap-[4%]", compact ? "mb-[2%]" : "mb-4")}>
+        <label className="text-[clamp(0.8125rem,1.45cqh,0.9375rem)] font-medium text-text" htmlFor={`settings-range-${label}`}>
+          {label}
+        </label>
+        <output
+          className={cn(
+            "text-[clamp(0.75rem,1.25cqh,0.8125rem)] tabular-nums",
+            compact
+              ? "rounded-full bg-accent-dim px-[3%] py-[1%] font-medium text-accent"
+              : "rounded-md border border-border bg-[#fafaf9] px-3 py-1 text-text-muted",
+          )}
+        >
           {value}
           {unit}
-        </span>
+        </output>
       </div>
       <input
+        id={`settings-range-${label}`}
         type="range"
         min={min}
         max={max}
         step={step}
         value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        className="h-6 w-full accent-[var(--color-accent)]"
+        onInput={(event) => onChange(Number(event.currentTarget.value))}
+        style={{ "--range-progress": `${progress}%` } as CSSProperties}
+        className="settings-range desktop-no-drag w-full"
+        aria-label={label}
       />
+      {!compact && marks.length > 0 ? (
+        <div className="mt-3 flex justify-between text-xs text-text-muted" aria-hidden="true">
+          {marks.map((mark) => (
+            <span key={mark} className={mark === value ? "font-medium text-accent" : undefined}>
+              {mark}
+              {unit}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
 
-function NumberRow({ icon: Icon, label, value, placeholder = "默认", onChange }: NumberRowProps) {
-  return (
-    <div className="flex min-h-[56px] items-center justify-between gap-4 border-b border-border/70 py-2 last:border-b-0">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-bg text-accent">
-          <Icon className="h-4 w-4" />
-        </span>
-        <span className="truncate text-sm text-text">{label}</span>
-      </div>
-      <input
-        type="number"
-        value={value ?? ""}
-        placeholder={placeholder}
-        onChange={(event) => {
-          const nextValue = event.target.value.trim()
-          const numericValue = Number(nextValue)
-          onChange(nextValue === "" || !Number.isFinite(numericValue) ? null : numericValue)
-        }}
-        className="h-9 w-32 rounded-lg border border-border bg-bg px-3 text-right text-sm text-text outline-none transition-colors placeholder:text-text-lighter focus:border-accent/50"
-      />
-    </div>
-  )
-}
-
-function Section({
-  icon: Icon,
-  title,
-  children,
+function RadioRow({
+  label,
+  checked,
+  disabled,
+  onChange,
 }: {
-  icon: typeof Settings
-  title: string
-  children: ReactNode
+  label: string
+  checked: boolean
+  disabled?: boolean
+  onChange: () => void
 }) {
   return (
-    <section className="rounded-lg border border-border bg-card shadow-sm">
-      <div className="flex h-14 items-center gap-3 border-b border-border px-4">
-        <span className="flex h-8 w-8 items-center justify-center rounded-md border border-accent/25 bg-accent-dim text-accent">
-          <Icon className="h-4 w-4" />
-        </span>
-        <div className="font-serif text-lg text-text">{title}</div>
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={onChange}
+      className="flex w-full items-center gap-[6%] rounded-lg px-[4%] py-[4%] text-left transition-colors hover:bg-[#fafaf9] focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-45"
+    >
+      <span
+        className={cn(
+          "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2",
+          checked ? "border-accent" : "border-border",
+        )}
+      >
+        {checked ? <span className="h-2.5 w-2.5 rounded-full bg-accent" /> : null}
+      </span>
+      <span className="text-[clamp(0.75rem,1.35cqh,0.875rem)] font-medium text-text">{label}</span>
+    </button>
+  )
+}
+
+function SettingsGroup({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="border-b border-border px-6 py-5">
+        <h2 className="text-lg font-semibold text-text">{title}</h2>
+        {description ? <p className="mt-1 text-sm text-text-muted">{description}</p> : null}
       </div>
-      <div className="px-4">{children}</div>
+      <div className="px-6">{children}</div>
     </section>
   )
 }
 
-export function SettingsPage({ assistant, onBack }: SettingsPageProps) {
+function WindowControls() {
+  return (
+    <div className="desktop-no-drag flex h-full items-stretch">
+      <button
+        type="button"
+        onClick={() => void minimizeDesktopWindow()}
+        className="flex w-16 items-center justify-center text-text-muted transition-colors hover:bg-[#f1f0ef] hover:text-text"
+        aria-label="最小化"
+      >
+        <Minus className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => void toggleMaximizeDesktopWindow()}
+        className="flex w-16 items-center justify-center text-text-muted transition-colors hover:bg-[#f1f0ef] hover:text-text"
+        aria-label="最大化或还原"
+      >
+        <Square className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={() => void closeDesktopWindow()}
+        className="flex w-16 items-center justify-center text-text-muted transition-colors hover:bg-red-500 hover:text-white"
+        aria-label="关闭"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
+
+export function SettingsPage({ assistant, assistantError, activeCharacterAction, onBack }: SettingsPageProps) {
+  const [activeSection, setActiveSection] = useState<SettingsSection>("pet")
   const [settings, setSettings] = useState<PetSettings>(DEFAULT_PET_SETTINGS)
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle")
-  const [environment, setEnvironment] = useState<UserEnvironment | null>(null)
-  const [locationState, setLocationState] = useState<LocationSaveState>("idle")
-  const [locationMessage, setLocationMessage] = useState("")
+  const [saveState, setSaveState] = useState<SaveState>("idle")
+  const [assistantNotice, setAssistantNotice] = useState("")
+  const [desktopEnvironment, setDesktopEnvironment] = useState<DesktopEnvironmentPreview | null>(null)
+  const [previewDragging, setPreviewDragging] = useState(false)
   const hydratedRef = useRef(false)
   const remoteUpdateRef = useRef(false)
   const syncTokenRef = useRef(0)
   const localRevisionRef = useRef(0)
-  const displayName = assistant?.name || assistant?.character?.name || "默认助手"
-  const { alwaysOnTop, transparentWindow, clickThrough, characterDraggable, showInput, petScale, inputOpacity, windowX, windowY, inputWidth, inputHeight } =
-    settings
+  const previewSurfaceRef = useRef<HTMLDivElement | null>(null)
+  const previewDragRef = useRef<{
+    pointerId: number
+    startClientX: number
+    startClientY: number
+    startWindowX: number
+    startWindowY: number
+    surfaceWidth: number
+    surfaceHeight: number
+  } | null>(null)
+
+  const displayName = assistant?.name || assistant?.character?.name || "白银院 雪音"
+  const characterName = assistant?.character?.name || displayName
+  const avatarUrl =
+    resolveCoreAssetUrl(assistant?.character?.avatar_url || assistant?.character?.default_standing_image_url) || "/favicon-256.png"
+  const supportsDynamicStandee = Boolean(assistant?.character?.visual_actions?.some((action) => action.dynamic_preview_url))
+  const visualPreference = assistant?.character?.visual_preference === "dynamic" ? "dynamic" : "static"
+  const {
+    alwaysOnTop,
+    transparentWindow,
+    clickThrough,
+    characterDraggable,
+    showInput,
+    notifyOnWake,
+    petScale,
+    windowOpacity,
+    inputOpacity,
+    dock,
+    windowX,
+    windowY,
+    inputWidth,
+    inputHeight,
+    inputFontScale,
+  } = settings
 
   const patchSettings = (patch: Partial<PetSettings>) => {
     localRevisionRef.current += 1
     hydratedRef.current = true
+    remoteUpdateRef.current = false
     setSaveState("idle")
     setSettings((current) => ({ ...current, ...patch }))
   }
-
-  const summary = useMemo(
-    () => [
-      alwaysOnTop ? "置顶" : "非置顶",
-      transparentWindow ? "透明" : "实底",
-      showInput ? "输入开启" : "输入隐藏",
-      `缩放 ${petScale}%`,
-    ],
-    [alwaysOnTop, petScale, showInput, transparentWindow],
-  )
 
   useEffect(() => {
     let disposed = false
@@ -291,23 +436,20 @@ export function SettingsPage({ assistant, onBack }: SettingsPageProps) {
   }, [])
 
   useEffect(() => {
-    const token = getStoredToken()
-    if (!token) return
     let disposed = false
-    setLocationState("loading")
-    void fetchUserProfile(token)
-      .then((profile) => {
-        if (disposed) return
-        setEnvironment(profile.environment ?? null)
-        setLocationState("idle")
-      })
-      .catch((error) => {
-        if (disposed) return
-        setLocationMessage(getErrorMessage(error, "读取位置偏好失败"))
-        setLocationState("error")
-      })
+    let unsubscribe: (() => void) | undefined
+    void getDesktopEnvironmentPreview().then((nextEnvironment) => {
+      if (!disposed) setDesktopEnvironment(nextEnvironment)
+    })
+    void listenDesktopEnvironment((nextEnvironment) => {
+      if (!disposed) setDesktopEnvironment(nextEnvironment)
+    }).then((cleanup) => {
+      unsubscribe = cleanup
+      if (disposed) cleanup?.()
+    })
     return () => {
       disposed = true
+      unsubscribe?.()
     }
   }, [])
 
@@ -321,251 +463,425 @@ export function SettingsPage({ assistant, onBack }: SettingsPageProps) {
     const token = syncTokenRef.current + 1
     syncTokenRef.current = token
     setSaveState("saving")
-
     const timer = window.setTimeout(() => {
       void applyDesktopPetSettings(settings).then((nextSettings) => {
         if (syncTokenRef.current !== token) return
         remoteUpdateRef.current = true
         setSettings(nextSettings)
         setSaveState("saved")
-        window.setTimeout(() => {
-          if (syncTokenRef.current === token) setSaveState("idle")
-        }, 900)
       })
-    }, 80)
+    }, 120)
 
     return () => window.clearTimeout(timer)
   }, [settings])
 
-  const save = async () => {
-    setSaveState("saving")
-    const nextSettings = await applyDesktopPetSettings(settings)
-    remoteUpdateRef.current = true
-    setSettings(nextSettings)
-    setSaveState("saved")
-    window.setTimeout(() => setSaveState("idle"), 1200)
-  }
+  useEffect(() => {
+    if (clickThrough && characterDraggable) {
+      patchSettings({ clickThrough: false })
+    }
+  }, [characterDraggable, clickThrough])
 
   const reset = () => {
-    setSaveState("idle")
-    setSettings(DEFAULT_PET_SETTINGS)
+    patchSettings(DEFAULT_PET_SETTINGS)
   }
 
-  const saveCurrentLocation = async () => {
-    const token = getStoredToken()
-    if (!token) {
-      setLocationState("error")
-      setLocationMessage("请先登录")
-      return
+  const saveLabel = saveState === "saving" ? "正在保存" : saveState === "saved" ? "已保存" : "自动保存"
+  const previewInputRatio = showInput ? Math.max(0.28, Math.min(0.5, (inputHeight + 16) / 100)) : 0
+  const previewGapRatio = showInput ? 0.04 : 0
+  const fallbackPreviewWindowHeight =
+    (0.5 * (petScale / 100) * 100) / Math.max(0.12, 1 - previewInputRatio - previewGapRatio)
+  const calculatedDesktopPetHeight = desktopEnvironment
+    ? Math.round(
+        Math.min(
+          desktopEnvironment.workArea.height,
+          Math.max(MIN_PET_CHARACTER_HEIGHT, desktopEnvironment.workArea.height * 0.5 * (petScale / 100)),
+        ) / Math.max(0.12, 1 - previewInputRatio - previewGapRatio),
+      )
+    : 0
+  const calculatedDesktopPetWidth = Math.round(calculatedDesktopPetHeight * (7 / 16))
+  const baseDesktopPetHeight = desktopEnvironment
+    ? Math.round(
+        Math.min(
+          desktopEnvironment.workArea.height,
+          Math.max(MIN_PET_CHARACTER_HEIGHT, desktopEnvironment.workArea.height * 0.5),
+        ) /
+          Math.max(0.12, 1 - previewInputRatio - previewGapRatio),
+      )
+    : 0
+  const baseDesktopPetWidth = Math.round(baseDesktopPetHeight * (7 / 16))
+  const previewPetScale = baseDesktopPetHeight > 0 ? calculatedDesktopPetHeight / baseDesktopPetHeight : 1
+  const previewWindowHeight = Math.min(96, Math.max(36, fallbackPreviewWindowHeight))
+  const desktopAspectRatio =
+    desktopEnvironment && desktopEnvironment.displayBounds.height > 0
+      ? desktopEnvironment.displayBounds.width / desktopEnvironment.displayBounds.height
+      : undefined
+  const workArea = desktopEnvironment?.workArea
+  const displayBounds = desktopEnvironment?.displayBounds
+  const fallbackPetX = workArea
+    ? dock === "left"
+      ? workArea.x + 16
+      : dock === "right"
+        ? workArea.x + workArea.width - calculatedDesktopPetWidth - 16
+        : workArea.x + Math.round((workArea.width - calculatedDesktopPetWidth) / 2)
+    : 0
+  const fallbackPetY = workArea ? workArea.y + workArea.height - calculatedDesktopPetHeight - 16 : 0
+  const petPreviewPlacement =
+    displayBounds && displayBounds.width > 0 && displayBounds.height > 0
+      ? {
+          left: `${(((windowX ?? fallbackPetX) - displayBounds.x) / displayBounds.width) * 100}%`,
+          top: `${(((windowY ?? fallbackPetY) - displayBounds.y) / displayBounds.height) * 100}%`,
+          width: `${(baseDesktopPetWidth / displayBounds.width) * 100}%`,
+          height: `${(baseDesktopPetHeight / displayBounds.height) * 100}%`,
+        }
+      : undefined
+
+  const startPreviewPetDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!displayBounds || displayBounds.width <= 0 || displayBounds.height <= 0) return
+    const surfaceBounds = previewSurfaceRef.current?.getBoundingClientRect()
+    if (!surfaceBounds || surfaceBounds.width <= 0 || surfaceBounds.height <= 0) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    previewDragRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startWindowX: windowX ?? fallbackPetX,
+      startWindowY: windowY ?? fallbackPetY,
+      surfaceWidth: surfaceBounds.width,
+      surfaceHeight: surfaceBounds.height,
     }
-    try {
-      setLocationMessage("")
-      setLocationState("locating")
-      const position = await getCurrentPosition()
-      const nextEnvironment = currentBrowserEnvironment(position, environment)
-      setLocationState("saving")
-      const profile = await updateUserProfile(token, { environment: nextEnvironment })
-      setEnvironment(profile.environment ?? nextEnvironment)
-      setLocationState("saved")
-      setLocationMessage("已保存")
-      window.setTimeout(() => {
-        setLocationState((current) => (current === "saved" ? "idle" : current))
-      }, 1200)
-    } catch (error) {
-      const message =
-        typeof GeolocationPositionError !== "undefined" && error instanceof GeolocationPositionError
-          ? geolocationErrorMessage(error)
-          : getErrorMessage(error, "定位保存失败")
-      setLocationState("error")
-      setLocationMessage(message)
-    }
+    setPreviewDragging(true)
   }
 
-  const location = environment?.location
-  const locationBusy = locationState === "loading" || locationState === "locating" || locationState === "saving"
-  const locationStatus =
-    locationState === "loading"
-      ? "读取中"
-      : locationState === "locating"
-        ? "定位中"
-        : locationState === "saving"
-          ? "保存中"
-          : locationState === "saved"
-            ? locationMessage || "已保存"
-            : locationState === "error"
-              ? locationMessage
-              : location?.updated_at
-                ? "已配置"
-                : "未配置"
+  const movePreviewPet = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = previewDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId || !displayBounds) return
+
+    event.preventDefault()
+    const desktopDeltaX = ((event.clientX - drag.startClientX) / drag.surfaceWidth) * displayBounds.width
+    const desktopDeltaY = ((event.clientY - drag.startClientY) / drag.surfaceHeight) * displayBounds.height
+    patchSettings({
+      windowX: Math.round(drag.startWindowX + desktopDeltaX),
+      windowY: Math.round(drag.startWindowY + desktopDeltaY),
+    })
+  }
+
+  const finishPreviewPetDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = previewDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    previewDragRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    setPreviewDragging(false)
+  }
 
   return (
     <motion.div
-      key="settings"
+      key="settings-control-center"
       {...screenMotion}
       transition={transition}
-      className="fixed inset-0 z-10 flex h-[100vh] w-[100vw] flex-col overflow-hidden bg-bg font-sans text-text"
+      className="fixed inset-0 z-10 flex h-screen w-screen flex-col overflow-hidden bg-[#fafaf9] font-sans text-text [container-type:size]"
     >
-      <header className="flex h-24 shrink-0 items-center justify-between border-b border-border bg-bg/88 px-8 backdrop-blur-md">
-        <div className="flex min-w-0 items-center gap-4">
+      <header className="desktop-drag-region flex h-[10%] shrink-0 items-center justify-between border-b border-border bg-white pl-6 xl:pl-9">
+        <div className="flex min-w-0 items-center gap-6">
           {onBack ? (
             <button
               type="button"
               onClick={onBack}
-              className="rounded-lg p-2 text-text-muted transition-colors hover:bg-card hover:text-accent"
+              className="desktop-no-drag flex h-10 w-10 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-[#f5f5f4] hover:text-accent"
               aria-label="返回"
-              title="返回"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
           ) : null}
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-accent/25 bg-card text-accent shadow-sm">
-            <Settings className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="truncate font-serif text-2xl text-text">设置</h1>
-            <p className="truncate text-sm text-text-muted">{summary.join(" · ")}</p>
-          </div>
+          <Settings className="h-7 w-7 text-accent xl:h-8 xl:w-8" strokeWidth={2.3} />
+          <h1 className="text-[clamp(1.625rem,3cqh,2rem)] font-semibold tracking-tight text-text">设置</h1>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={reset}
-            className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm text-text-muted shadow-sm transition-colors hover:border-accent/35 hover:text-accent"
-          >
-            <RotateCcw className="h-4 w-4" />
-            重置
-          </button>
-          <button
-            type="button"
-            onClick={() => void save()}
-            className="flex items-center gap-2 rounded-full border border-accent/40 bg-accent px-4 py-2 text-sm text-white shadow-sm transition-colors hover:bg-accent/90"
-          >
-            <Save className="h-4 w-4" />
-            保存
-          </button>
+        <div className="flex h-full items-center">
+          <div className="mr-7 flex items-center gap-2 text-sm text-text-muted xl:mr-16">
+            {saveState === "saving" ? (
+              <LoaderCircle className="h-5 w-5 animate-spin text-accent" />
+            ) : (
+              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+            )}
+            <span>{saveLabel}</span>
+          </div>
+          {!onBack ? <div className="h-8 w-[0.0625rem] bg-border" /> : null}
+          {!onBack ? <WindowControls /> : null}
         </div>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-y-auto p-5">
-        <div className="mx-auto grid w-full max-w-[760px] gap-4 pb-2">
-          <Section icon={Sparkles} title="桌宠">
-            <div className="border-b border-border/70 py-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-bg text-accent">
-                  <Sparkles className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <div className="truncate text-sm text-text">{displayName}</div>
-                  <div className="mt-0.5 truncate text-xs text-text-muted">当前默认助手</div>
+      <div className="min-h-0 flex-1 p-[2%]">
+        <div className="grid h-full w-full min-h-0 grid-cols-1 overflow-hidden rounded-2xl border border-border bg-white shadow-[0_0.75cqh_2.8cqh_rgba(41,37,36,0.04)] md:grid-cols-[42%_58%]">
+              <section className="flex h-[52vh] min-h-0 flex-col border-b border-border p-[4%] md:h-full md:border-r md:border-b-0">
+                <h2 className="mb-4 text-[clamp(0.9375rem,1.65cqh,1.0625rem)] font-semibold text-text">桌宠预览</h2>
+                <div
+                  ref={previewSurfaceRef}
+                  className="relative flex w-full shrink-0 items-start justify-center overflow-hidden border border-[#eadfce] bg-[#eeeae4]"
+                  style={{ aspectRatio: desktopAspectRatio ?? 16 / 9 }}
+                >
+                  {desktopEnvironment && desktopAspectRatio ? (
+                    <div className="relative h-full w-full overflow-hidden bg-stone-900 shadow-sm [container-type:size]">
+                      <div className="absolute inset-0" style={wallpaperStyle(desktopEnvironment)} aria-label="当前桌面壁纸" />
+                      {petPreviewPlacement ? (
+                        <div
+                          className={cn(
+                            "absolute z-20 touch-none select-none overflow-hidden will-change-transform",
+                            previewDragging ? "cursor-grabbing" : "cursor-grab",
+                          )}
+                          style={{
+                            ...petPreviewPlacement,
+                            opacity: Math.max(0.35, Math.min(1, windowOpacity / 100)),
+                            transform: `scale(${previewPetScale})`,
+                            transformOrigin: "top left",
+                          }}
+                          aria-label={`${characterName}实时桌宠预览`}
+                          title="拖动调整桌宠位置"
+                          onPointerDown={startPreviewPetDrag}
+                          onPointerMove={movePreviewPet}
+                          onPointerUp={finishPreviewPetDrag}
+                          onPointerCancel={finishPreviewPetDrag}
+                          onDragStart={(event) => event.preventDefault()}
+                        >
+                          <DesktopPetStage
+                            assistant={assistant}
+                            assistantError={assistantError}
+                            activeCharacterAction={activeCharacterAction}
+                            settings={settings}
+                            inputCollapsed={false}
+                            inputContent={<PetInputPreview opacity={inputOpacity} height={inputHeight} fontScale={inputFontScale} />}
+                            preview
+                          />
+                        </div>
+                      ) : null}
+                      <DesktopPanelPreview environment={desktopEnvironment} />
+                    </div>
+                  ) : (
+                    <div
+                      className="absolute bottom-[2%] left-1/2 -translate-x-1/2 overflow-hidden transition-[height,opacity] duration-200"
+                      style={{
+                        height: `${previewWindowHeight}%`,
+                        aspectRatio: 7 / 16,
+                        opacity: Math.max(0.35, Math.min(1, windowOpacity / 100)),
+                      }}
+                    >
+                      <DesktopPetStage
+                        assistant={assistant}
+                        assistantError={assistantError}
+                        activeCharacterAction={activeCharacterAction}
+                        settings={settings}
+                        inputCollapsed={false}
+                        inputContent={<PetInputPreview opacity={inputOpacity} height={inputHeight} fontScale={inputFontScale} />}
+                        preview
+                      />
+                    </div>
+                  )}
                 </div>
-              </div>
-            </div>
-            <SliderRow
-              icon={SlidersHorizontal}
-              label="角色缩放"
-              value={petScale}
-              min={70}
-              max={140}
-              unit="%"
-              onChange={(value) => patchSettings({ petScale: value })}
-            />
-          </Section>
-
-          <Section icon={MapPin} title="位置">
-            <div className="flex min-h-[64px] items-center justify-between gap-4 border-b border-border/70 py-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-bg text-accent">
-                  <LocateFixed className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <div className="truncate text-sm text-text">当前位置</div>
-                  <div className={cn("mt-0.5 truncate text-xs", locationState === "error" ? "text-red-500" : "text-text-muted")}>
-                    {locationStatus}
+                <div className="mt-[3%] shrink-0 border-t border-border pt-[3%]">
+                  <h3 className="text-[clamp(0.8125rem,1.45cqh,0.9375rem)] font-medium text-text">位置调整</h3>
+                  <div className="mt-[3%] grid grid-cols-2 gap-[3%]">
+                    {([
+                      ["当前位置 X", windowX, "windowX"],
+                      ["当前位置 Y", windowY, "windowY"],
+                    ] as const).map(([label, value, key]) => (
+                      <label key={key} className="grid min-w-0 gap-[8%] text-sm text-text-muted">
+                        {label}
+                        <input
+                          type="number"
+                          value={value ?? ""}
+                          placeholder="自动"
+                          onChange={(event) => {
+                            const raw = event.target.value.trim()
+                            const next = Number(raw)
+                            patchSettings({ [key]: raw === "" || !Number.isFinite(next) ? null : next })
+                          }}
+                          className="h-[4.2cqh] w-full min-w-0 rounded-lg border border-border bg-[#fafaf9] px-[6%] text-text outline-none focus:border-accent"
+                        />
+                      </label>
+                    ))}
                   </div>
                 </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => void saveCurrentLocation()}
-                disabled={locationBusy}
-                className="flex h-9 shrink-0 items-center gap-2 rounded-full border border-accent/35 bg-bg px-3 text-sm text-accent shadow-sm transition-colors hover:bg-accent-dim disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {locationBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
-                获取
-              </button>
-            </div>
-            <div className="grid gap-0 sm:grid-cols-2">
-              <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-border/70 py-2 sm:border-r sm:pr-4">
-                <span className="text-sm text-text-muted">纬度</span>
-                <span className="font-mono text-sm text-text">{formatCoordinate(location?.latitude)}</span>
-              </div>
-              <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-border/70 py-2 sm:pl-4">
-                <span className="text-sm text-text-muted">经度</span>
-                <span className="font-mono text-sm text-text">{formatCoordinate(location?.longitude)}</span>
-              </div>
-              <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-border/70 py-2 sm:border-r sm:pr-4">
-                <span className="text-sm text-text-muted">精度</span>
-                <span className="font-mono text-sm text-text">{formatAccuracy(location?.accuracy)}</span>
-              </div>
-              <div className="flex min-h-[52px] items-center justify-between gap-3 border-b border-border/70 py-2 sm:pl-4">
-                <span className="text-sm text-text-muted">时区</span>
-                <span className="max-w-[180px] truncate text-right text-sm text-text">{environment?.timezone || "-"}</span>
-              </div>
-            </div>
-            {locationState === "error" || locationState === "saved" ? (
-              <div className={cn("flex min-h-[44px] items-center gap-2 py-2 text-xs", locationState === "error" ? "text-red-500" : "text-emerald-600")}>
-                {locationState === "error" ? <AlertCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                <span className="truncate">{locationMessage}</span>
-              </div>
-            ) : null}
-          </Section>
+              </section>
 
-          <Section icon={Monitor} title="窗口">
-            <ToggleRow icon={Pin} label="窗口置顶" value={alwaysOnTop} onChange={(value) => patchSettings({ alwaysOnTop: value })} />
-            <ToggleRow icon={Eye} label="透明背景" value={transparentWindow} onChange={(value) => patchSettings({ transparentWindow: value })} />
-            <ToggleRow icon={MousePointer2} label="点击穿透" value={clickThrough} onChange={(value) => patchSettings({ clickThrough: value })} />
-            <ToggleRow
-              icon={Move}
-              label="拖动角色移动"
-              value={characterDraggable}
-              onChange={(value) => patchSettings(value ? { characterDraggable: true, clickThrough: false } : { characterDraggable: false })}
-            />
-            <NumberRow icon={Move} label="当前位置 X" value={windowX} onChange={(value) => patchSettings({ windowX: value })} />
-            <NumberRow icon={Move} label="当前位置 Y" value={windowY} onChange={(value) => patchSettings({ windowY: value })} />
-          </Section>
+              <section className="flex h-full min-h-0 flex-col">
+                <nav className="grid shrink-0 grid-cols-4 border-b border-border px-[3%]" aria-label="设置分类">
+                  {navigationItems.map((item) => {
+                    const Icon = item.icon
+                    const active = activeSection === item.id
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setActiveSection(item.id)}
+                        className={cn(
+                          "relative flex items-center justify-center gap-[4%] py-[6%] text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:text-base",
+                          active ? "font-medium text-accent" : "text-text-muted hover:text-text",
+                        )}
+                      >
+                        {active ? <span className="absolute inset-x-[10%] bottom-0 h-[4%] rounded-full bg-accent" /> : null}
+                        <Icon className="h-5 w-5 shrink-0" strokeWidth={active ? 2.3 : 1.9} />
+                        <span className="whitespace-nowrap">{item.label}</span>
+                      </button>
+                    )
+                  })}
+                </nav>
 
-          <Section icon={Keyboard} title="输入">
-            <ToggleRow icon={Keyboard} label="聊天框" value={showInput} onChange={(value) => patchSettings({ showInput: value })} />
-            <SliderRow
-              icon={PanelBottom}
-              label="聊天框宽度"
-              value={inputWidth}
-              min={10}
-              max={100}
-              unit="%"
-              onChange={(value) => patchSettings({ inputWidth: value })}
-            />
-            <SliderRow
-              icon={PanelBottom}
-              label="聊天框高度"
-              value={inputHeight}
-              min={12}
-              max={32}
-              unit="%"
-              onChange={(value) => patchSettings({ inputHeight: value })}
-            />
-            <SliderRow
-              icon={SlidersHorizontal}
-              label="输入框不透明度"
-              value={inputOpacity}
-              min={30}
-              max={95}
-              unit="%"
-              onChange={(value) => patchSettings({ inputOpacity: value })}
-            />
-          </Section>
-        </div>
-      </main>
+                <div className="min-h-0 flex-1 overflow-y-auto px-[4%]">
+                {activeSection === "pet" ? (
+                  <div>
+                <div className="flex items-center justify-between gap-4 py-5">
+                  <div className="flex min-w-0 items-center gap-4">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-[#fff9f1]">
+                      <img src={avatarUrl} alt={characterName} className="h-full w-full origin-top scale-[2.2] object-contain object-top" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="whitespace-nowrap text-sm text-text-muted">默认助手</div>
+                      <div className="mt-2 truncate text-lg font-semibold text-text">{displayName}</div>
+                      <div className="mt-1 truncate text-sm text-text-muted">当前默认助手</div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAssistantNotice("请在 MonCore 助手管理中更换默认助手")}
+                    className="flex h-10 shrink-0 items-center gap-1 rounded-full border border-accent/45 px-3 text-sm text-accent transition-colors hover:bg-accent-dim focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:px-4"
+                  >
+                    更换<span className="hidden xl:inline">助手</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+                {assistantNotice ? (
+                  <div className="mb-3 flex items-center justify-between rounded-lg bg-[#fff5e9] px-3 py-2 text-xs text-accent">
+                    <span>{assistantNotice}</span>
+                    <button type="button" onClick={() => setAssistantNotice("")} aria-label="关闭提示">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : null}
+
+                <div className="border-t border-border">
+                  <RangeControl
+                    label="角色缩放"
+                    value={petScale}
+                    min={70}
+                    max={140}
+                    unit="%"
+                    marks={[70, 100, 120, 140]}
+                    onChange={(value) => patchSettings({ petScale: value })}
+                  />
+                </div>
+
+                <div className="border-t border-border px-2 py-5">
+                  <h3 className="mb-3 text-[clamp(0.8125rem,1.45cqh,0.9375rem)] font-medium text-text">立绘模式</h3>
+                  <div role="radiogroup" aria-label="立绘模式" className="grid grid-cols-2 gap-[3%]">
+                    <RadioRow
+                      label="静态立绘"
+                      checked={visualPreference === "static"}
+                      onChange={() => undefined}
+                    />
+                    <RadioRow
+                      label="动态立绘"
+                      checked={visualPreference === "dynamic"}
+                      disabled={!supportsDynamicStandee}
+                      onChange={() => undefined}
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t border-border">
+                  <ToggleRow
+                    label="窗口置顶"
+                    description="保持桌宠在其他窗口之上"
+                    value={alwaysOnTop}
+                    onChange={(value) => patchSettings({ alwaysOnTop: value })}
+                  />
+                  <ToggleRow
+                    label="透明背景"
+                    description="隐藏桌宠窗口的背景底色"
+                    value={transparentWindow}
+                    onChange={(value) => patchSettings({ transparentWindow: value })}
+                  />
+                </div>
+                <div className="border-t border-border">
+                  <ToggleRow
+                    label="点击穿透"
+                    description="角色与透明区域穿透，对话框和气泡仍可点击"
+                    value={clickThrough}
+                    disabled={characterDraggable}
+                    onChange={(value) => patchSettings({ clickThrough: value })}
+                  />
+                  <ToggleRow
+                    label="拖动角色移动"
+                    description="开启后可按住角色拖动到任意位置"
+                    value={characterDraggable}
+                    onChange={(value) =>
+                      patchSettings(
+                        value ? { characterDraggable: true, clickThrough: false } : { characterDraggable: false },
+                      )
+                    }
+                  />
+                </div>
+                  </div>
+                ) : null}
+
+          {activeSection === "input" ? (
+            <div className="grid h-full w-full content-start overflow-y-auto px-[4%] pb-[4%] pt-[2%]">
+                <ToggleRow
+                  label="显示对话框"
+                  description="在桌宠上方显示快捷输入区域"
+                  value={showInput}
+                  onChange={(value) => patchSettings({ showInput: value })}
+                />
+                {showInput ? (
+                  <>
+                    <RangeControl compact label="对话框宽度" value={inputWidth} min={10} max={100} unit="%" onChange={(value) => patchSettings({ inputWidth: value })} />
+                    <RangeControl compact label="对话框高度" value={inputHeight} min={12} max={32} unit="%" onChange={(value) => patchSettings({ inputHeight: value })} />
+                    <RangeControl compact label="字体大小" value={inputFontScale} min={70} max={140} unit="%" onChange={(value) => patchSettings({ inputFontScale: value })} />
+                    <RangeControl compact label="对话框不透明度" value={inputOpacity} min={30} max={100} unit="%" onChange={(value) => patchSettings({ inputOpacity: value })} />
+                  </>
+                ) : null}
+            </div>
+          ) : null}
+
+          {activeSection === "advanced" ? (
+            <div className="grid h-full w-full content-start gap-5 overflow-y-auto pb-8">
+              <SettingsGroup title="高级设置" description="调整通知、窗口不透明度并恢复默认配置">
+                <ToggleRow label="自醒通知" description="后台自醒有重要结果时提醒我" value={notifyOnWake} onChange={(value) => patchSettings({ notifyOnWake: value })} />
+                <RangeControl label="窗口不透明度" value={windowOpacity} min={40} max={100} unit="%" marks={[40, 60, 80, 100]} onChange={(value) => patchSettings({ windowOpacity: value })} />
+                <div className="flex items-center justify-between gap-5 border-t border-border py-5">
+                  <div>
+                    <div className="font-medium text-text">恢复默认设置</div>
+                    <div className="mt-1 text-sm text-text-muted">将所有桌宠参数恢复为初始值</div>
+                  </div>
+                  <button type="button" onClick={reset} className="flex h-10 items-center gap-2 rounded-full border border-border px-4 text-sm text-text-muted transition-colors hover:border-accent/40 hover:text-accent">
+                    <RotateCcw className="h-4 w-4" />
+                    恢复默认
+                  </button>
+                </div>
+              </SettingsGroup>
+            </div>
+          ) : null}
+
+          {activeSection === "about" ? (
+            <div className="flex h-full w-full items-center justify-center">
+              <div className="w-full rounded-2xl border border-border bg-white px-8 py-10 text-center shadow-[0_0.75cqh_2.8cqh_rgba(41,37,36,0.04)]">
+                <img src="/favicon-256.png" alt="MonAgent" className="mx-auto h-20 w-20 object-contain" />
+                <h2 className="mt-5 text-2xl font-semibold text-text">MonAgent</h2>
+                <p className="mt-2 text-sm text-text-muted">你的本地 AI 伙伴</p>
+                <div className="mx-auto mt-6 flex w-[72%] items-start gap-3 rounded-xl bg-[#fafaf9] p-4 text-left text-sm leading-6 text-text-muted">
+                  <Bell className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+                  <span>设置会保存在本地，并实时同步到桌宠窗口。</span>
+                </div>
+              </div>
+            </div>
+          ) : null}
+                </div>
+              </section>
+            </div>
+          </div>
+
     </motion.div>
   )
 }

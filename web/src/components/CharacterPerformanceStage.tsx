@@ -2,6 +2,7 @@ import { CircleAlert, CircleHelp, Droplet, Flame, Heart } from "lucide-react"
 import { motion, useAnimationControls } from "motion/react"
 import { useEffect, type ReactNode } from "react"
 import type { ActiveCharacterAction } from "../lib/auth"
+import { cn } from "../lib/utils"
 
 const performanceTransition = {
   duration: 0.58,
@@ -63,10 +64,11 @@ function EffectIcon({ effect }: { effect?: string }) {
 interface CharacterPerformanceStageProps {
   activeAction?: ActiveCharacterAction
   className: string
+  effectClassName?: string
   children: ReactNode
 }
 
-export function CharacterPerformanceStage({ activeAction, className, children }: CharacterPerformanceStageProps) {
+export function CharacterPerformanceStage({ activeAction, className, effectClassName, children }: CharacterPerformanceStageProps) {
   const effect = activeAction?.effect && activeAction.effect !== "none" ? activeAction.effect : undefined
   const effectKey = `${activeAction?.performanceID ?? activeAction?.time ?? ""}:${effect ?? "none"}`
   const controls = useAnimationControls()
@@ -89,7 +91,11 @@ export function CharacterPerformanceStage({ activeAction, className, children }:
             initial={{ opacity: 0, y: 10, scale: 0.72, rotate: -8 }}
             animate={{ opacity: [0, 1, 1, 0], y: [10, -4, -14, -24], scale: [0.72, 1.08, 1, 0.92], rotate: [-8, 4, 0, 0] }}
             transition={{ duration: 1.25, ease: [0.16, 1, 0.3, 1] }}
-            className={`pointer-events-none absolute z-20 h-[6vh] w-[6vh] text-accent drop-shadow-[0_6px_12px_rgba(0,0,0,0.18)] ${effectPosition(activeAction?.effectAnchor)}`}
+            className={cn(
+              "pointer-events-none absolute z-20 text-accent drop-shadow-[0_6px_12px_rgba(0,0,0,0.18)]",
+              effectClassName ?? "h-[6vh] w-[6vh]",
+              effectPosition(activeAction?.effectAnchor),
+            )}
             aria-hidden="true"
           >
             <EffectIcon effect={effect} />

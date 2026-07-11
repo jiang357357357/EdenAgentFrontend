@@ -118,8 +118,15 @@ export function ChatPage({
         onLogout={onLogout}
       />
 
-      <main className="relative flex h-[100vh] w-[66vw] flex-none flex-col">
-        <header className="sticky top-0 z-10 flex h-[12.5vh] items-center justify-between border-b border-border bg-bg/80 px-[3.2vw] backdrop-blur-md">
+      <main
+        className={cn(
+          "relative grid h-[100vh] min-h-0 w-[66vw] flex-none overflow-hidden",
+          activePendingPermissions.length > 0 || activePendingQuestions.length > 0
+            ? "grid-rows-[12.5vh_minmax(0,1fr)_44vh]"
+            : "grid-rows-[12.5vh_minmax(0,1fr)_20vh]",
+        )}
+      >
+        <header className="z-10 flex h-full min-h-0 items-center justify-between border-b border-border bg-bg/80 px-[3.2vw] backdrop-blur-md">
           <div className="flex min-w-0 items-center gap-[1.6vw] font-serif text-[3.1vh] text-text">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -163,7 +170,7 @@ export function ChatPage({
         <div
           key={activeSessionId || "no-session"}
           ref={messagesScrollRef}
-          className="flex-1 overflow-y-auto scroll-smooth"
+          className="min-h-0 flex-1 overflow-y-auto scroll-smooth"
         >
           <div className="mx-auto w-[calc(100%_-_5vw)] max-w-[52vw] px-[1vw]">
             {connectionError ? (
@@ -237,7 +244,7 @@ export function ChatPage({
           </div>
         </div>
 
-        <div className="px-[3vw]">
+        <div className="h-full min-h-0 overflow-visible px-[3vw]">
           <div className="mx-auto w-[calc(100%_-_5vw)] max-w-[52vw]">
             {(activePendingPermissions.length > 0 || activePendingQuestions.length > 0) && (
               <div className="mb-2 grid max-h-[24vh] gap-2 overflow-y-auto">

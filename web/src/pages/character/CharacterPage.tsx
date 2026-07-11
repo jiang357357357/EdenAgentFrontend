@@ -1,13 +1,19 @@
-import { useEffect, useState, type CSSProperties } from "react"
-import { ArrowLeft, MessageCircle, X } from "lucide-react"
+import { useEffect, useLayoutEffect, useState, type CSSProperties } from "react"
+import { ArrowLeft, X } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
-import { CharacterPerformanceStage } from "../../components/CharacterPerformanceStage"
-import { CharacterStandeeImage } from "../../components/CharacterStandeeImage"
 import { ChatInput } from "../../components/ChatInput"
+import { DesktopPetChatBubble } from "../../components/DesktopPetChatBubble"
+import { DesktopPetStage } from "../../components/DesktopPetStage"
 import { PermissionRequestCard } from "../../components/PermissionRequestCard"
 import { QuestionRequestCard } from "../../components/QuestionRequestCard"
-import { resolveCoreAssetUrl, type ActiveCharacterAction, type CoreAssistant } from "../../lib/auth"
-import { DEFAULT_PET_SETTINGS, getDesktopPetSettings, listenDesktopPetSettings, type PetSettings } from "../../lib/desktop-window"
+import type { ActiveCharacterAction, CoreAssistant } from "../../lib/auth"
+import {
+  DEFAULT_PET_SETTINGS,
+  getDesktopPetSettings,
+  listenDesktopPetSettings,
+  setDesktopPetBubbleCollapsed,
+  type PetSettings,
+} from "../../lib/desktop-window"
 import { resolveMonAgentUrl } from "../../lib/mon_agent_api"
 import { cn } from "../../lib/utils"
 import type { MessageData, PendingPermission, PendingQuestion, PermissionMode, PromptAttachment, Session, ToolCall } from "../../types"
@@ -40,6 +46,7 @@ interface DialogSegment {
 }
 
 interface CharacterPageProps {
+  surface?: "combined" | "character" | "bubble"
   isThinking: boolean
   activeSession?: Session
   activeReplyMessage?: MessageData
@@ -67,6 +74,7 @@ interface CharacterPageProps {
 }
 
 export function CharacterPage({
+  surface = "combined",
   isThinking,
   activeSession,
   activeReplyMessage,
@@ -94,26 +102,8 @@ export function CharacterPage({
 }: CharacterPageProps) {
   const [petSettings, setPetSettings] = useState<PetSettings>(DEFAULT_PET_SETTINGS)
   const [inputCollapsed, setInputCollapsed] = useState(false)
-  const character = assistant?.character
-  const displayName = assistant?.name || character?.name || "默认助手"
-  const activeActionImage =
-    activeCharacterAction?.imageUrl ||
-    activeCharacterAction?.action?.static_image_url ||
-    activeCharacterAction?.action?.dynamic_preview_url ||
-    activeCharacterAction?.action?.dynamic_frames?.[0]?.file_url
-  const activeActionLabel =
-    activeCharacterAction?.action?.name || activeCharacterAction?.action?.action_label || activeCharacterAction?.action?.intent
-  const characterImage = resolveCoreAssetUrl(activeActionImage || character?.default_standing_image_url || character?.avatar_url)
-  const inputEnabled = petSettings.showInput
-  const inputVisible = inputEnabled && !inputCollapsed
-  const inputWidth = Math.max(10, Math.min(100, petSettings.inputWidth))
-  const chatTopOffset = 4
-  const chatAreaHeight = 26
-  const characterTopOffset = 34
-  const characterHeight = 64
-  const chatToggleTop = characterTopOffset + 1
-  const petBackgroundClass = petSettings.transparentWindow ? "!bg-transparent" : "bg-bg"
-  const windowDragStyle = petSettings.characterDraggable ? ({ WebkitAppRegion: "drag" } as CSSProperties) : undefined
+  const displayName = assistant?.name || assistant?.character?.name || "默认助手"
+  const petBackgroundClass = surface === "bubble" || petSettings.transparentWindow ? "!bg-transparent" : "bg-bg"
   const noDragStyle = { WebkitAppRegion: "no-drag" } as CSSProperties
 
   useEffect(() => {
@@ -134,74 +124,93 @@ export function CharacterPage({
     }
   }, [])
 
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle("character-transparent", petSettings.transparentWindow)
+    return () => document.documentElement.classList.remove("character-transparent")
+  }, [petSettings.transparentWindow])
+
+  useEffect(() => {
+    if (surface !== "bubble") return
+    void setDesktopPetBubbleCollapsed(inputCollapsed)
+  }, [inputCollapsed, surface])
+
   return (
     <motion.div
       key="character"
       {...characterScreenMotion}
       transition={screenTransition}
       className={cn("fixed inset-0 z-20 h-[100vh] w-[100vw] select-none overflow-hidden font-sans text-text", petBackgroundClass)}
-      style={windowDragStyle}
     >
-      <main className={cn("relative mx-auto h-[100vh] w-[100vw] overflow-hidden", petBackgroundClass)}>
-        <div
-          className="fixed inset-x-0 top-0 z-30 h-[5vh]"
-          style={{ WebkitAppRegion: "drag" } as CSSProperties}
-          aria-hidden="true"
-        />
-        {inputEnabled ? (
-          <button
-            type="button"
-            onClick={() => setInputCollapsed((collapsed) => !collapsed)}
-            className="fixed left-[1.4vh] z-30 flex h-[4.4vh] w-[4.4vh] items-center justify-center rounded-full border border-white/25 bg-stone-950/55 text-stone-100 shadow-sm backdrop-blur-md transition-colors hover:bg-stone-900/70"
-            style={{ ...noDragStyle, top: `${chatToggleTop}vh` }}
-            aria-label={inputCollapsed ? "展开聊天框" : "收起聊天框"}
-            title={inputCollapsed ? "展开聊天框" : "收起聊天框"}
-          >
-            <MessageCircle className="h-[2.3vh] w-[2.3vh]" />
-          </button>
-        ) : null}
-        <section
-          className={cn(
-            "absolute inset-x-0 flex items-end justify-center text-center",
-            petSettings.characterDraggable ? "pointer-events-auto" : "pointer-events-none",
-          )}
-          style={{ top: `${characterTopOffset}vh`, height: `${characterHeight}vh` }}
-        >
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            transition={{ ...screenTransition, delay: 0.08 }}
-            className={cn("relative h-full w-[100vw] overflow-hidden shadow-none", petBackgroundClass)}
-          >
-            {characterImage ? (
-              <CharacterPerformanceStage
-                activeAction={activeCharacterAction}
-                className="absolute inset-x-0 bottom-0 flex h-full justify-center"
-              >
-                <CharacterStandeeImage
-                  src={characterImage}
-                  alt={activeActionLabel ? `${displayName} - ${activeActionLabel}` : displayName}
-                  imageClassName="h-full w-auto max-w-none object-contain object-bottom shadow-none drop-shadow-none"
-                />
-              </CharacterPerformanceStage>
-            ) : (
-              <div className="flex h-full w-full items-center justify-center px-[8vw]">
-                <div className="rounded-3xl border border-white/20 bg-white/80 px-[6vw] py-[4vh] text-center text-stone-700 shadow-sm backdrop-blur">
-                  <div className="font-serif text-[2.4vh] text-stone-900">
-                    {assistant ? "未配置立绘" : "未绑定默认助手"}
-                  </div>
-                  <p className="mt-[1.2vh] text-[1.5vh] leading-relaxed text-stone-500">
-                    {assistantError ||
-                      (assistant ? "请在角色编辑里添加待机动作图片。" : "请在 Core 助手管理里设置默认助手。")}
-                  </p>
-                </div>
+      <DesktopPetStage
+        assistant={assistant}
+        assistantError={assistantError}
+        activeCharacterAction={activeCharacterAction}
+        settings={petSettings}
+        surface={surface}
+        inputCollapsed={inputCollapsed}
+        onInputCollapsedChange={setInputCollapsed}
+        inputContent={
+          surface === "bubble" ? (
+            <DesktopPetChatBubble
+              assistantName={displayName}
+              dialogSegments={dialogSegments}
+              isThinking={isThinking}
+              permissions={activePendingPermissions}
+              questions={activePendingQuestions}
+              opacity={petSettings.inputOpacity}
+              fontScale={petSettings.inputFontScale}
+              onSend={onSendMessage}
+              onPermissionReply={onPermissionReply}
+              onQuestionReply={onQuestionReply}
+              onQuestionReject={onQuestionReject}
+            />
+          ) : <>
+            {(activePendingPermissions.length > 0 || activePendingQuestions.length > 0) && (
+              <div className="mb-3 grid gap-3">
+                {activePendingPermissions.map((request) => (
+                  <PermissionRequestCard key={request.id} request={request} onReply={onPermissionReply} tone="overlay" />
+                ))}
+                {activePendingQuestions.map((request) => (
+                  <QuestionRequestCard
+                    key={request.id}
+                    request={request}
+                    onReply={onQuestionReply}
+                    onReject={onQuestionReject}
+                    tone="overlay"
+                  />
+                ))}
               </div>
             )}
-          </motion.div>
-        </section>
+            <ChatInput
+              onSend={onSendMessage}
+              disabled={isThinking}
+              overlay
+              onHistory={() => {
+                onSetHistoryView("messages")
+                onSetHistoryOpen(true)
+              }}
+              onStartWindowDrag={onStartWindowDrag}
+              outputActive={isThinking}
+              outputContent={activeReplyMessage?.content ?? ""}
+              outputThinking={activeReplyMessage?.thinking}
+              outputTools={activeReplyMessage?.toolCalls}
+              dialogSegments={dialogSegments}
+              assistantName={displayName}
+              onPreviewImage={(src, alt) => onPreviewImage(src, alt ?? "图片预览")}
+              permissionMode={permissionMode}
+              onPermissionModeChange={onPermissionModeChange}
+              overlayCompact
+              hideOverlayActions
+              hideComposerFooter
+              overlayOpacity={petSettings.inputOpacity}
+              overlayHeight={petSettings.inputHeight}
+              overlayFontScale={petSettings.inputFontScale}
+            />
+          </>
+        }
+      />
 
-        <AnimatePresence>
+      <AnimatePresence>
           {historyOpen && (
             <motion.section
               initial={{ opacity: 0, y: 16 }}
@@ -383,66 +392,7 @@ export function CharacterPage({
               </div>
             </motion.section>
           )}
-        </AnimatePresence>
-
-        <motion.div
-          initial={{ opacity: 0, y: -18, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -12, scale: 1 }}
-          transition={{ ...screenTransition, delay: 0.14 }}
-          className="fixed inset-x-0 z-20 px-[4vw]"
-          style={{ ...noDragStyle, top: `${chatTopOffset}vh` }}
-        >
-          <div className="mx-auto w-full" style={{ maxWidth: `${inputWidth}vw` }}>
-            {(activePendingPermissions.length > 0 || activePendingQuestions.length > 0) && (
-              <div className="mb-3 grid gap-3">
-                {activePendingPermissions.map((request) => (
-                  <PermissionRequestCard
-                    key={request.id}
-                    request={request}
-                    onReply={onPermissionReply}
-                    tone="overlay"
-                  />
-                ))}
-                {activePendingQuestions.map((request) => (
-                  <QuestionRequestCard
-                    key={request.id}
-                    request={request}
-                    onReply={onQuestionReply}
-                    onReject={onQuestionReject}
-                    tone="overlay"
-                  />
-                ))}
-              </div>
-            )}
-            {inputVisible ? (
-              <ChatInput
-                onSend={onSendMessage}
-                disabled={isThinking}
-                overlay
-                onHistory={() => {
-                  onSetHistoryView("messages")
-                  onSetHistoryOpen(true)
-                }}
-                onStartWindowDrag={onStartWindowDrag}
-                outputActive={isThinking}
-                outputContent={activeReplyMessage?.content ?? ""}
-                outputThinking={activeReplyMessage?.thinking}
-                outputTools={activeReplyMessage?.toolCalls}
-                dialogSegments={dialogSegments}
-                assistantName={displayName}
-                onPreviewImage={(src, alt) => onPreviewImage(src, alt ?? "图片预览")}
-                permissionMode={permissionMode}
-                onPermissionModeChange={onPermissionModeChange}
-                overlayCompact
-                hideOverlayActions
-                overlayOpacity={petSettings.inputOpacity}
-                overlayHeight={chatAreaHeight}
-              />
-            ) : null}
-          </div>
-        </motion.div>
-      </main>
+      </AnimatePresence>
     </motion.div>
   )
 }

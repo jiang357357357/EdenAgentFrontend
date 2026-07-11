@@ -49,8 +49,11 @@ interface ChatInputProps {
   onPreviewImage?: (src: string, alt?: string) => void
   overlayCompact?: boolean
   hideOverlayActions?: boolean
+  hideComposerFooter?: boolean
   overlayOpacity?: number
   overlayHeight?: number
+  overlayFontScale?: number
+  standaloneOverlay?: boolean
   permissionMode?: PermissionMode
   onPermissionModeChange?: (mode: PermissionMode) => Promise<void>
 }
@@ -75,8 +78,11 @@ export function ChatInput({
   onPreviewImage,
   overlayCompact = false,
   hideOverlayActions = false,
+  hideComposerFooter = false,
   overlayOpacity = 76,
   overlayHeight,
+  overlayFontScale = 100,
+  standaloneOverlay = false,
   permissionMode = "full_access",
   onPermissionModeChange,
 }: ChatInputProps) {
@@ -113,6 +119,7 @@ export function ChatInput({
   const hasDialog = overlay && (outputActive || outputSegments.length > 0)
   const isDialogMode = overlay && overlayMode === "dialog" && hasDialog
   const currentOutput = outputSegments[Math.min(outputIndex, Math.max(outputSegments.length - 1, 0))]
+  const overlayFontRatio = Math.max(70, Math.min(140, overlayFontScale)) / 100
   const canSend = Boolean(input.trim() || attachments.length > 0)
   const activePermission = permissionOptions.find((option) => option.mode === permissionMode) ?? permissionOptions[0]
   const currentModel = modelConfig?.current ?? modelConfig?.options.find((option) => option.selected) ?? null
@@ -136,6 +143,7 @@ export function ChatInput({
   }
 
   useEffect(() => {
+    if (hideComposerFooter) return
     let active = true
     setModelLoading(true)
     setModelError(null)
@@ -152,7 +160,7 @@ export function ChatInput({
     return () => {
       active = false
     }
-  }, [])
+  }, [hideComposerFooter])
 
   useEffect(() => {
     const previousCount = previousSegmentCountRef.current
@@ -340,12 +348,12 @@ export function ChatInput({
   return (
     <div
       className={cn(
-        "sticky bottom-0 z-10",
+        "sticky bottom-0 z-10 [container-type:size]",
         overlay
           ? "bg-transparent p-0"
           : "bg-gradient-to-t from-bg via-bg/95 to-transparent pt-[1.2vh] pb-[2.8vh]",
       )}
-      style={overlay ? { height: `${overlayHeight ?? (overlayCompact ? 20 : 40)}vh` } : undefined}
+      style={overlay ? { height: standaloneOverlay ? "100%" : `${overlayHeight ?? (overlayCompact ? 20 : 40)}vh` } : undefined}
     >
       <AnimatePresence>
         {attachments.length > 0 && (
@@ -378,7 +386,7 @@ export function ChatInput({
       </AnimatePresence>
 
       <div
-        style={overlay ? { backgroundColor: `rgba(28, 25, 23, ${Math.max(30, Math.min(95, overlayOpacity)) / 100})` } : undefined}
+        style={overlay ? { backgroundColor: `rgba(28, 25, 23, ${Math.max(30, Math.min(100, overlayOpacity)) / 100})` } : undefined}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -386,7 +394,8 @@ export function ChatInput({
           "transition-colors",
           overlay
             ? cn(
-                "relative h-full overflow-hidden rounded-[3.3vh] border bg-stone-950/30 shadow-none backdrop-blur-md focus-within:border-white/25",
+                "relative h-full overflow-hidden border bg-stone-950/30 shadow-none backdrop-blur-md focus-within:border-white/25",
+                standaloneOverlay ? "rounded-[10cqh]" : "rounded-[3.3vh]",
                 draggingFiles ? "border-orange-300/70 ring-2 ring-orange-300/30" : "border-white/12",
               )
             : cn(
@@ -406,7 +415,11 @@ export function ChatInput({
         {isDialogMode ? (
           <div
             onClick={advanceOutput}
-            className="absolute inset-0 box-border h-full w-full cursor-pointer overflow-y-auto overflow-x-hidden px-[2.8vh] pt-[2.7vh] pb-[8.2vh] text-left text-[1.72vh] leading-relaxed text-stone-100 [overflow-wrap:anywhere] [&::-webkit-scrollbar]:hidden"
+            className={cn(
+              "absolute inset-0 box-border h-full w-full cursor-pointer overflow-y-auto overflow-x-hidden text-left leading-relaxed text-stone-100 [overflow-wrap:anywhere] [&::-webkit-scrollbar]:hidden",
+              standaloneOverlay ? "px-[8cqh] pb-[8cqh] pt-[8cqh]" : "px-[2.8vh] pb-[8.2vh] pt-[2.7vh]",
+            )}
+            style={{ fontSize: standaloneOverlay ? `${10.5 * overlayFontRatio}cqh` : `${1.72 * overlayFontRatio}vh` }}
           >
             {currentOutput ? (
               <div>
@@ -415,10 +428,10 @@ export function ChatInput({
                     className="mb-3 rounded-lg border border-teal-200/15 bg-teal-300/10 px-3 py-2"
                     onClick={(event) => event.stopPropagation()}
                   >
-                    <summary className="cursor-pointer select-none text-[11px] tracking-[0.14em] text-teal-100/85">
+                    <summary className="cursor-pointer select-none text-[0.8em] tracking-[0.14em] text-teal-100/85">
                       运行过程
                     </summary>
-                    <div className="mt-2 whitespace-pre-wrap text-sm text-stone-200 [overflow-wrap:anywhere]">
+                    <div className="mt-2 whitespace-pre-wrap text-[0.95em] text-stone-200 [overflow-wrap:anywhere]">
                       {currentOutput.runtimeTrace}
                     </div>
                   </details>
@@ -428,10 +441,10 @@ export function ChatInput({
                     className="mb-3 rounded-lg border border-sky-200/15 bg-sky-300/10 px-3 py-2"
                     onClick={(event) => event.stopPropagation()}
                   >
-                    <summary className="cursor-pointer select-none text-[11px] tracking-[0.14em] text-sky-100/85">
+                    <summary className="cursor-pointer select-none text-[0.8em] tracking-[0.14em] text-sky-100/85">
                       思考
                     </summary>
-                    <div className="mt-2 whitespace-pre-wrap text-sm text-stone-200 [overflow-wrap:anywhere]">
+                    <div className="mt-2 whitespace-pre-wrap text-[0.95em] text-stone-200 [overflow-wrap:anywhere]">
                       {currentOutput.thinking}
                     </div>
                   </details>
@@ -441,10 +454,10 @@ export function ChatInput({
                     className="mb-3 rounded-lg border border-emerald-200/15 bg-emerald-300/10 px-3 py-2"
                     onClick={(event) => event.stopPropagation()}
                   >
-                    <summary className="cursor-pointer select-none text-[11px] tracking-[0.14em] text-emerald-100/85">
+                    <summary className="cursor-pointer select-none text-[0.8em] tracking-[0.14em] text-emerald-100/85">
                       工具: {currentOutput.tool.name}
                     </summary>
-                    <div className="mt-2 grid gap-2 text-xs text-stone-200">
+                    <div className="mt-2 grid gap-2 text-[0.88em] text-stone-200">
                       <div>
                         状态: {currentOutput.tool.status}
                         {currentOutput.tool.duration ? ` · ${currentOutput.tool.duration}ms` : ""}
@@ -505,17 +518,31 @@ export function ChatInput({
             onPaste={handlePaste}
             placeholder="要求后续变更"
             rows={overlay ? 10 : 1}
-            style={overlay ? { height: "100%", overflow: "hidden", scrollbarWidth: "none" } : { height: "100%", scrollbarWidth: "none" }}
+            style={
+              overlay
+                ? {
+                    height: "100%",
+                    overflow: "hidden",
+                    scrollbarWidth: "none",
+                    fontSize: standaloneOverlay ? `${11 * overlayFontRatio}cqh` : `${2.2 * overlayFontRatio}vh`,
+                  }
+                : { height: "100%", scrollbarWidth: "none" }
+            }
             className={cn(
               "resize-none overflow-x-hidden overflow-y-hidden bg-transparent outline-none leading-relaxed select-text",
               overlay
-                ? "absolute inset-0 box-border h-full max-h-none min-h-0 w-full overflow-hidden px-[2.8vh] pt-[2.7vh] pb-[8.2vh] text-[2.2vh] text-stone-100 placeholder:text-stone-400/55 [&::-webkit-scrollbar]:hidden"
-                : "absolute inset-0 box-border h-full max-h-none min-h-0 w-full overflow-hidden px-[2.8vh] pt-[2.7vh] pb-[8.2vh] text-[2.2vh] text-text placeholder:text-text-muted/65 [&::-webkit-scrollbar]:hidden",
+                ? cn(
+                    "absolute inset-0 box-border h-full max-h-none min-h-0 w-full overflow-hidden text-stone-100 placeholder:text-stone-400/55 [&::-webkit-scrollbar]:hidden",
+                    standaloneOverlay ? "px-[8cqh] pb-[8cqh] pt-[8cqh]" : "px-[2.8vh] pt-[2.7vh]",
+                  )
+                : "absolute inset-0 box-border h-full max-h-none min-h-0 w-full overflow-hidden px-[2.8vh] pt-[2.7vh] text-[2.2vh] text-text placeholder:text-text-muted/65 [&::-webkit-scrollbar]:hidden",
+              hideComposerFooter ? (standaloneOverlay ? "" : "pb-[2.7vh]") : "pb-[8.2vh]",
             )}
           />
         )}
 
-        <div className={cn("absolute z-20 flex h-[5.4vh] items-center justify-between gap-[1.4vh]", overlay ? "inset-x-[2.4vh] bottom-[1.6vh]" : "inset-x-[2.4vh] bottom-[1.7vh]")}>
+        {!hideComposerFooter && (
+          <div className={cn("absolute z-20 flex h-[5.4vh] items-center justify-between gap-[1.4vh]", overlay ? "inset-x-[2.4vh] bottom-[1.6vh]" : "inset-x-[2.4vh] bottom-[1.7vh]")}>
           <div className="flex min-w-0 items-center gap-[1.6vh]">
             <button
               type="button"
@@ -640,8 +667,9 @@ export function ChatInput({
               <ArrowUp className="h-[2.7vh] w-[2.7vh]" />
             </motion.button>
           </div>
-        </div>
-        {permissionMenuOpen && (
+          </div>
+        )}
+        {!hideComposerFooter && permissionMenuOpen && (
           <div
             role="menu"
             className={cn(
@@ -681,7 +709,7 @@ export function ChatInput({
             })}
           </div>
         )}
-        {modelMenuOpen && (
+        {!hideComposerFooter && modelMenuOpen && (
           <div
             role="menu"
             className={cn(

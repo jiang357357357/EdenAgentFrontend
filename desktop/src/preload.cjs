@@ -20,6 +20,11 @@ contextBridge.exposeInMainWorld("monAgentDesktop", {
     ipcRenderer.on("mon-agent-pet-settings", handler)
     return () => ipcRenderer.removeListener("mon-agent-pet-settings", handler)
   },
+  onDesktopEnvironment(callback) {
+    const handler = (_event, environment) => callback(environment)
+    ipcRenderer.on("mon-agent-desktop-environment", handler)
+    return () => ipcRenderer.removeListener("mon-agent-desktop-environment", handler)
+  },
   onOpenSettings(callback) {
     const handler = () => callback()
     ipcRenderer.on("mon-agent-open-settings", handler)
