@@ -239,6 +239,7 @@ export default function App() {
     const segments: Array<{
       speaker: string
       text?: string
+      speechSegmentId?: string
       images?: string[]
       runtimeTrace?: string
       thinking?: string
@@ -248,12 +249,11 @@ export default function App() {
     if (message.segments?.length) {
       for (const segment of message.segments) {
         if (segment.type === "text") {
-          for (const text of segment.content
-            .split(/\n{2,}/)
-            .map((item) => item.trim())
-            .filter(Boolean)) {
-            segments.push({ speaker, text })
-          }
+          segments.push({
+            speaker,
+            text: segment.content,
+            speechSegmentId: segment.id,
+          })
         } else if (segment.type === "image") {
           segments.push({ speaker, images: [segment.url] })
         } else if (segment.type === "runtimeTrace") {
@@ -298,12 +298,7 @@ export default function App() {
     }
 
     if (message.content) {
-      for (const text of message.content
-        .split(/\n{2,}/)
-        .map((item) => item.trim())
-        .filter(Boolean)) {
-        segments.push({ speaker, text })
-      }
+      segments.push({ speaker, text: message.content, speechSegmentId: `${message.id}:content` })
     }
 
     return segments

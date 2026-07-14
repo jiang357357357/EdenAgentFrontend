@@ -4,6 +4,7 @@ import {
   getPermissionMode,
   listPermissionsRaw,
   listQuestionsRaw,
+  listScreenCaptureRequests,
   listMessagesRaw,
   listSessionsRaw,
   rejectQuestion,
@@ -13,7 +14,7 @@ import {
   setPermissionMode as setPermissionModeRaw,
   subscribeEvents,
 } from '../lib/mon_agent_api';
-import type { ApiEvent } from '../lib/mon_agent_api';
+import type { ApiEvent, PendingScreenCapture } from '../lib/mon_agent_api';
 import { getStoredToken } from '../lib/auth';
 import {
   applyRuntimeEvent,
@@ -30,6 +31,7 @@ import {
 } from '../lib/session-reducer';
 import { selectActiveSession, selectPendingPermissions, selectPendingQuestions, selectSessions, selectSessionStatus } from '../lib/session-selectors';
 import type { PermissionMode, PromptAttachment } from '../types';
+import { handleScreenCaptureRequest } from '../lib/screen-capture';
 
 interface UseSessionRuntimeOptions {
   onEvent?: (event: ApiEvent) => void;
@@ -85,14 +87,16 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
   const refreshBlockers = useCallback(async () => {
     if (!isRuntimeReady()) return;
-    const [permissions, questions, permissionModeResponse] = await Promise.all([
+    const [permissions, questions, permissionModeResponse, screenCaptureRequests] = await Promise.all([
       listPermissionsRaw(),
       listQuestionsRaw(),
       getPermissionMode(),
+      listScreenCaptureRequests(),
     ]);
     dispatch(hydratePendingPermissions(permissions));
     dispatch(hydratePendingQuestions(questions));
     setPermissionModeState(permissionModeResponse.mode);
+    for (const request of screenCaptureRequests) void handleScreenCaptureRequest(request);
   }, [isRuntimeReady]);
 
   useEffect(() => {
@@ -191,6 +195,12 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       },
       onEvent: (event) => {
         onEventRef.current?.(event);
+        if (event.type === 'screen_capture.requested') {
+          const request = event.properties as Partial<PendingScreenCapture> | undefined;
+          if (request && typeof request.id === 'string') {
+            void handleScreenCaptureRequest(request as PendingScreenCapture);
+          }
+        }
         if (event.type === 'permission.mode') {
           const nextPermissionMode = event.properties.mode;
           if (nextPermissionMode === 'ask' || nextPermissionMode === 'full_access') {

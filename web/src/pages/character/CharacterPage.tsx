@@ -39,6 +39,7 @@ function toolStatusLabel(status?: ToolCall["status"]) {
 interface DialogSegment {
   speaker: string
   text?: string
+  speechSegmentId?: string
   images?: string[]
   runtimeTrace?: string
   thinking?: string
@@ -153,6 +154,12 @@ export function CharacterPage({
           surface === "bubble" ? (
             <DesktopPetChatBubble
               assistantName={displayName}
+              sessionId={activeSession?.id}
+              sttConfigId={assistant?.character?.stt_config_id}
+              ttsConfigId={assistant?.character?.tts_config_id}
+              voiceInputEnabled={petSettings.voiceInputEnabled}
+              ttsMode={petSettings.ttsMode}
+              latestAssistantMessage={activeReplyMessage}
               dialogSegments={dialogSegments}
               isThinking={isThinking}
               permissions={activePendingPermissions}

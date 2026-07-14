@@ -14,6 +14,17 @@ const children = []
 let shuttingDown = false
 let startedWeb = false
 
+function handleOutputError(error) {
+  if (error?.code === "EPIPE" || error?.code === "ERR_STREAM_DESTROYED") {
+    void shutdown(0)
+    return
+  }
+  setImmediate(() => { throw error })
+}
+
+process.stdout.on("error", handleOutputError)
+process.stderr.on("error", handleOutputError)
+
 function readMonConfigValue(targetSection, targetKey, fallback) {
   let section = "default"
   let contents = ""
@@ -304,6 +315,7 @@ async function shutdown(code = 0) {
 
 process.on("SIGINT", () => void shutdown(0))
 process.on("SIGTERM", () => void shutdown(0))
+if (process.platform !== "win32") process.on("SIGHUP", () => void shutdown(0))
 
 try {
   fs.rmSync(quitFlag, { force: true })
@@ -315,7 +327,10 @@ try {
   await waitForWeb(web)
 
   console.log("[dev] start desktop shell")
-  const desktop = start("desktop", ["--prefix", "desktop", "run", "dev"], { ELECTRON_RUN_AS_NODE: undefined })
+  const desktop = start("desktop", ["--prefix", "desktop", "run", "dev"], {
+    ELECTRON_RUN_AS_NODE: undefined,
+    MON_AGENT_DEV_PARENT_PID: String(process.pid),
+  })
   desktop.on("exit", () => void shutdown(0))
 } catch (error) {
   process.stderr.write(`[dev] ${error instanceof Error ? error.message : String(error)}\n`)

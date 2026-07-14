@@ -37,6 +37,7 @@ export default defineConfig({
       "/core-api": {
         target: coreBaseUrl,
         changeOrigin: true,
+        ws: true,
         rewrite: (path) => path.replace(/^\/core-api/, ""),
       },
     },

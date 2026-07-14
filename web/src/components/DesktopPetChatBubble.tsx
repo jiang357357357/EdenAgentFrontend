@@ -1,18 +1,37 @@
-import { ArrowUp, ChevronRight, Info, LoaderCircle, Mic, Sparkles, Wrench } from "lucide-react"
+import { Activity, ArrowUp, ChevronRight, Info, LoaderCircle, Mic, Pause, Play, Sparkles, Square, Wrench } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { PendingPermission, PendingQuestion, PromptAttachment, ToolCall } from "../types"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import { resolveCoreAssetUrl } from "../lib/auth"
+import { RealtimeSTTService, type RealtimeSTTStatus } from "../lib/realtime-stt"
+import { updateDesktopActivityFacts, type PetTTSMode } from "../lib/desktop-window"
+import { textForTTS } from "../lib/tts-text"
+import { synthesizeSpeechSegment } from "../lib/mon_agent_api"
 import { cn } from "../lib/utils"
+import type { MessageData, PendingPermission, PendingQuestion, PromptAttachment, ToolCall } from "../types"
 
 interface PetDialogSegment {
   speaker: string
   text?: string
+  speechSegmentId?: string
   runtimeTrace?: string
   thinking?: string
   tool?: ToolCall
 }
 
+interface SpeechClip {
+  status: "synthesizing" | "ready" | "error"
+  source?: string
+}
+
 interface DesktopPetChatBubbleProps {
   assistantName: string
+  sessionId?: string
+  sttConfigId?: number | null
+  ttsConfigId?: number | null
+  voiceInputEnabled: boolean
+  ttsMode: PetTTSMode
+  latestAssistantMessage?: MessageData
   dialogSegments: PetDialogSegment[]
   isThinking: boolean
   permissions: PendingPermission[]
@@ -40,8 +59,87 @@ function toolStatus(status: ToolCall["status"]) {
   return status || "等待"
 }
 
+function isActionDescription(text: string) {
+  return /^\s*(?:（[\s\S]*）|\([\s\S]*\))\s*$/.test(text)
+}
+
+function splitPetMarkdownContent(content: string) {
+  const chunks: Array<{ action: boolean; content: string }> = []
+  let regularLines: string[] = []
+  const flushRegularLines = () => {
+    const value = regularLines.join("\n").trim()
+    if (value) chunks.push({ action: false, content: value })
+    regularLines = []
+  }
+
+  for (const line of content.split("\n")) {
+    if (isActionDescription(line)) {
+      flushRegularLines()
+      chunks.push({ action: true, content: line.trim() })
+    } else {
+      regularLines.push(line)
+    }
+  }
+  flushRegularLines()
+  return chunks
+}
+
+function PetMarkdownBlock({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      skipHtml
+      components={{
+        p: ({ children }) => <p className="m-0 whitespace-pre-wrap leading-[1.4]">{children}</p>,
+        strong: ({ children }) => <strong className="font-semibold text-stone-50">{children}</strong>,
+        em: ({ children }) => <em className="italic text-stone-300">{children}</em>,
+        h1: ({ children }) => <h1 className="mb-[1.5cqh] mt-0 text-[1.18em] font-semibold text-stone-50">{children}</h1>,
+        h2: ({ children }) => <h2 className="mb-[1.25cqh] mt-0 text-[1.1em] font-semibold text-stone-50">{children}</h2>,
+        h3: ({ children }) => <h3 className="mb-[1cqh] mt-0 font-semibold text-stone-50">{children}</h3>,
+        ul: ({ children }) => <ul className="my-[1cqh] list-disc space-y-[0.4cqh] pl-[5cqh]">{children}</ul>,
+        ol: ({ children }) => <ol className="my-[1cqh] list-decimal space-y-[0.4cqh] pl-[5cqh]">{children}</ol>,
+        li: ({ children }) => <li className="pl-[0.5cqh] leading-[1.4] marker:text-stone-500">{children}</li>,
+        blockquote: ({ children }) => <blockquote className="my-[1cqh] border-l-2 border-orange-500/55 pl-[3cqh] text-stone-300">{children}</blockquote>,
+        a: ({ children, href }) => <a href={href} target="_blank" rel="noreferrer" className="text-orange-300 underline decoration-orange-400/45 underline-offset-2">{children}</a>,
+        code: ({ children, className }) => className ? (
+          <code className={className}>{children}</code>
+        ) : (
+          <code className="rounded-[1cqh] bg-white/8 px-[1.2cqh] py-[0.25cqh] font-mono text-[0.9em] text-orange-100">{children}</code>
+        ),
+        pre: ({ children }) => <pre className="my-[1.5cqh] max-w-full overflow-x-auto rounded-[2cqh] bg-black/25 p-[3cqh] font-mono text-[0.86em] leading-[1.45] text-stone-200">{children}</pre>,
+        hr: () => <hr className="my-[2cqh] border-white/10" />,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  )
+}
+
+function DesktopPetMarkdown({ content }: { content: string }) {
+  const chunks = splitPetMarkdownContent(content)
+  return (
+    <div className="grid min-w-0 gap-[1.2cqh] [overflow-wrap:anywhere]">
+      {chunks.map((chunk, index) => chunk.action ? (
+        <p key={`${index}-${chunk.content}`} className="m-0 whitespace-pre-wrap italic leading-[1.4] text-stone-400">
+          {chunk.content}
+        </p>
+      ) : (
+        <div key={`${index}-${chunk.content}`} className="min-w-0">
+          <PetMarkdownBlock content={chunk.content} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function DesktopPetChatBubble({
   assistantName,
+  sessionId,
+  sttConfigId,
+  ttsConfigId,
+  voiceInputEnabled,
+  ttsMode,
+  latestAssistantMessage,
   dialogSegments,
   isThinking,
   permissions,
@@ -56,7 +154,23 @@ export function DesktopPetChatBubble({
   const [input, setInput] = useState("")
   const [submitting, setSubmitting] = useState<string | null>(null)
   const [expandedSegments, setExpandedSegments] = useState<Set<string>>(() => new Set())
+  const [voiceStatus, setVoiceStatus] = useState<RealtimeSTTStatus>("idle")
+  const [voiceLevel, setVoiceLevel] = useState(0)
+  const [voiceError, setVoiceError] = useState("")
+  const [speechClips, setSpeechClips] = useState<Record<string, SpeechClip>>({})
+  const [activeSpeechSegmentId, setActiveSpeechSegmentId] = useState<string | null>(null)
+  const [speechPaused, setSpeechPaused] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const audioSegmentIdRef = useRef<string | null>(null)
+  const finishAudioRef = useRef<(() => void) | null>(null)
+  const playbackGenerationRef = useRef(0)
+  const speechGenerationRef = useRef(0)
+  const speechQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const speechRunActiveRef = useRef(isThinking)
+  const synthesizedSegmentIdsRef = useRef<Set<string>>(new Set())
+  const voicePrefixRef = useRef("")
+  const voiceServiceRef = useRef<RealtimeSTTService | null>(null)
   const visibleSegments = useMemo(
     () => dialogSegments.filter((segment) => Boolean(segmentText(segment))),
     [dialogSegments],
@@ -66,7 +180,8 @@ export function DesktopPetChatBubble({
   const question = questions[0]
   const attentionVisible = Boolean(permission || question)
   const fontRatio = Math.max(70, Math.min(140, fontScale)) / 100
-  const canSend = input.trim().length > 0 && !isThinking
+  const voiceBusy = voiceStatus !== "idle"
+  const canSend = input.trim().length > 0 && !isThinking && !voiceBusy
 
   const toggleSegment = (id: string) => {
     setExpandedSegments((current) => {
@@ -77,17 +192,234 @@ export function DesktopPetChatBubble({
     })
   }
 
+  const stopSpeechPlayback = (cancelSynthesis = false, clearClips = false) => {
+    playbackGenerationRef.current += 1
+    if (cancelSynthesis) speechGenerationRef.current += 1
+    audioRef.current?.pause()
+    audioRef.current = null
+    audioSegmentIdRef.current = null
+    finishAudioRef.current?.()
+    finishAudioRef.current = null
+    speechQueueRef.current = Promise.resolve()
+    setActiveSpeechSegmentId(null)
+    setSpeechPaused(false)
+    if (clearClips) setSpeechClips({})
+  }
+
+  const playSpeechAudio = (segmentID: string, source: string, generation: number) => {
+    return new Promise<void>((resolve, reject) => {
+      if (generation !== speechGenerationRef.current) {
+        resolve()
+        return
+      }
+      const audio = new Audio(source)
+      let settled = false
+      const finish = (error?: unknown) => {
+        if (settled) return
+        settled = true
+        if (finishAudioRef.current === finish) finishAudioRef.current = null
+        if (audioRef.current === audio) audioRef.current = null
+        if (audioSegmentIdRef.current === segmentID) audioSegmentIdRef.current = null
+        setActiveSpeechSegmentId((current) => current === segmentID ? null : current)
+        setSpeechPaused(false)
+        if (error) reject(error)
+        else resolve()
+      }
+      audioRef.current = audio
+      audioSegmentIdRef.current = segmentID
+      finishAudioRef.current = () => finish()
+      setActiveSpeechSegmentId(segmentID)
+      setSpeechPaused(false)
+      audio.addEventListener("ended", () => finish(), { once: true })
+      audio.addEventListener("error", () => finish(new Error(`语音段 ${segmentID} 播放失败`)), { once: true })
+      void audio.play().catch((error) => finish(error))
+    })
+  }
+
+  const enqueueSpeechSegment = (segmentID: string, messageID: string, text: string) => {
+    if (!sessionId || !messageID || typeof ttsConfigId !== "number" || ttsMode === "none") {
+      console.warn("[DesktopPet][TTS] 当前角色未关联可用的 TTS 配置")
+      return
+    }
+
+    const generation = speechGenerationRef.current
+    const playbackGeneration = playbackGenerationRef.current
+    setSpeechClips((current) => ({ ...current, [segmentID]: { status: "synthesizing" } }))
+    const synthesis = synthesizeSpeechSegment({
+      sessionId,
+      messageId: messageID,
+      segmentId: segmentID,
+      text,
+      configId: ttsConfigId,
+      mode: ttsMode,
+    })
+      .then((result) => {
+        if (!result.success) throw new Error(result.error_message || `语音段 ${segmentID} 合成失败`)
+        const source = result.audio_data
+          ? `data:audio/wav;base64,${result.audio_data}`
+          : resolveCoreAssetUrl(result.audio_url)
+        if (!source) throw new Error(`语音段 ${segmentID} 未返回音频`)
+        if (generation === speechGenerationRef.current) {
+          setSpeechClips((current) => ({ ...current, [segmentID]: { status: "ready", source } }))
+        }
+        return { source, error: null }
+      })
+      .catch((error: unknown) => {
+        if (generation === speechGenerationRef.current) {
+          setSpeechClips((current) => ({ ...current, [segmentID]: { status: "error" } }))
+        }
+        return { source: null, error }
+      })
+    const previous = speechQueueRef.current.catch(() => undefined)
+    speechQueueRef.current = previous
+      .then(async () => {
+        const outcome = await synthesis
+        if (generation !== speechGenerationRef.current) return
+        if (playbackGeneration !== playbackGenerationRef.current) return
+        if (outcome.error) throw outcome.error
+        if (!outcome.source) throw new Error(`语音段 ${segmentID} 未返回音频`)
+        await playSpeechAudio(segmentID, outcome.source, generation)
+      })
+      .catch((error) => {
+        console.warn("[DesktopPet][TTS] 分段合成或播放失败", error)
+      })
+  }
+
+  const toggleSpeechClip = (segmentID: string) => {
+    const clip = speechClips[segmentID]
+    if (clip?.status !== "ready" || !clip.source) return
+
+    if (audioSegmentIdRef.current === segmentID && audioRef.current) {
+      if (audioRef.current.paused) {
+        setSpeechPaused(false)
+        void audioRef.current.play().catch((error) => {
+          console.warn("[DesktopPet][TTS] 恢复播放失败", error)
+          finishAudioRef.current?.()
+        })
+      } else {
+        audioRef.current.pause()
+        setSpeechPaused(true)
+      }
+      return
+    }
+
+    stopSpeechPlayback(false)
+    const generation = speechGenerationRef.current
+    speechQueueRef.current = playSpeechAudio(segmentID, clip.source, generation).catch((error) => {
+      console.warn("[DesktopPet][TTS] 手动播放失败", error)
+    })
+  }
+
   useEffect(() => {
     const element = scrollRef.current
     if (!element) return
     element.scrollTop = element.scrollHeight
   }, [scrollKey])
 
+  useEffect(() => {
+    return () => {
+      void voiceServiceRef.current?.cancel()
+      voiceServiceRef.current = null
+      stopSpeechPlayback(true)
+      void updateDesktopActivityFacts({
+        surface: "pet-bubble",
+        chat_input_focused: false,
+        voice_recording: false,
+        tts_playing: false,
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    void updateDesktopActivityFacts({
+      surface: "pet-bubble",
+      voice_recording: voiceStatus === "recording",
+      ...(voiceStatus === "recording" ? { last_user_interaction_at: new Date().toISOString() } : {}),
+    })
+  }, [voiceStatus])
+
+  useEffect(() => {
+    void updateDesktopActivityFacts({
+      surface: "pet-bubble",
+      tts_playing: Boolean(activeSpeechSegmentId) && !speechPaused,
+    })
+  }, [activeSpeechSegmentId, speechPaused])
+
+  useEffect(() => {
+    if (voiceInputEnabled) return
+    void voiceServiceRef.current?.cancel()
+    voiceServiceRef.current = null
+    setVoiceError("")
+  }, [voiceInputEnabled])
+
+  useEffect(() => {
+    if (ttsMode === "none") {
+      stopSpeechPlayback(true, true)
+      speechRunActiveRef.current = isThinking
+      return
+    }
+    const runWasActive = speechRunActiveRef.current
+    if (isThinking) speechRunActiveRef.current = true
+    const maySpeakCurrentRun = isThinking || runWasActive
+    if (maySpeakCurrentRun) {
+      for (const segment of latestAssistantMessage?.segments ?? []) {
+        if (segment.type !== "text" || segment.state !== "done" || !segment.content.trim()) continue
+        const text = textForTTS(segment.content, ttsMode)
+        if (!text || synthesizedSegmentIdsRef.current.has(segment.id)) continue
+        synthesizedSegmentIdsRef.current.add(segment.id)
+        enqueueSpeechSegment(segment.id, latestAssistantMessage.id, text)
+      }
+    }
+    if (!isThinking && runWasActive) speechRunActiveRef.current = false
+  }, [isThinking, latestAssistantMessage, sessionId, ttsConfigId, ttsMode])
+
   const send = async () => {
     const content = input.trim()
-    if (!content || isThinking) return
+    if (!content || isThinking || voiceBusy) return
     setInput("")
+    void updateDesktopActivityFacts({
+      surface: "pet-bubble",
+      last_user_interaction_at: new Date().toISOString(),
+    })
     await onSend(content, [])
+  }
+
+  const toggleVoiceInput = async () => {
+    if (!voiceInputEnabled || isThinking || voiceStatus === "connecting" || voiceStatus === "transcribing") return
+
+    if (voiceStatus === "recording") {
+      const service = voiceServiceRef.current
+      if (!service) return
+      try {
+        await service.finish()
+      } catch (error) {
+        setVoiceError(error instanceof Error ? error.message : "语音转写失败")
+      } finally {
+        if (voiceServiceRef.current === service) voiceServiceRef.current = null
+      }
+      return
+    }
+
+    if (typeof sttConfigId !== "number") {
+      setVoiceError("当前角色尚未关联语音识别服务")
+      return
+    }
+
+    setVoiceError("")
+    stopSpeechPlayback()
+    voicePrefixRef.current = input.trim() ? `${input.trim()} ` : ""
+    const service = new RealtimeSTTService({
+      onStatus: setVoiceStatus,
+      onLevel: setVoiceLevel,
+      onTranscript: ({ text }) => setInput(`${voicePrefixRef.current}${text}`),
+      onError: (error) => setVoiceError(error.message),
+    })
+    voiceServiceRef.current = service
+    try {
+      await service.start({ configId: sttConfigId, endSilenceMs: 1_200 })
+    } catch {
+      if (voiceServiceRef.current === service) voiceServiceRef.current = null
+    }
   }
 
   const replyPermission = async (reply: "once" | "reject") => {
@@ -121,16 +453,21 @@ export function DesktopPetChatBubble({
           className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-[6cqh] pb-[3cqh] pt-[6cqh] [scrollbar-color:rgba(168,162,158,0.45)_transparent] [scrollbar-width:thin]"
         >
           {visibleSegments.length > 0 ? (
-            <div className="grid gap-[4cqh]">
+            <div className="grid gap-[2cqh]">
               {visibleSegments.map((segment, index) => {
                 const assistant = segment.speaker === assistantName
+                const startsNewSpeaker = index > 0 && visibleSegments[index - 1]?.speaker !== segment.speaker
                 if (segment.thinking || segment.runtimeTrace) {
-                  const segmentID = `thinking-${index}`
+                  const isThinkingSegment = Boolean(segment.thinking)
+                  const traceLabel = isThinkingSegment ? "思考" : "运行过程"
+                  const traceContent = segment.thinking || segment.runtimeTrace
+                  const TraceIcon = isThinkingSegment ? Sparkles : Activity
+                  const segmentID = `${isThinkingSegment ? "thinking" : "runtime"}-${index}`
                   const expanded = expandedSegments.has(segmentID)
                   return (
                     <div
                       key={`${segment.speaker}-${index}-thinking`}
-                      className="min-w-0 text-stone-400"
+                      className={cn("min-w-0 text-stone-400", startsNewSpeaker && "mt-[4cqh]")}
                     >
                       <button
                         type="button"
@@ -138,9 +475,16 @@ export function DesktopPetChatBubble({
                         className="flex w-full min-w-0 items-center gap-[2cqh] text-left transition-colors hover:text-stone-200"
                         aria-expanded={expanded}
                       >
-                        <Sparkles className="h-[4.5cqh] w-[4.5cqh] shrink-0 text-orange-500" />
-                        <span className="shrink-0 text-stone-300">思考</span>
-                        <span className="min-w-0 flex-1 truncate">{segment.thinking || segment.runtimeTrace}</span>
+                        <TraceIcon
+                          className={cn(
+                            "h-[4.5cqh] w-[4.5cqh] shrink-0",
+                            isThinkingSegment ? "text-orange-500" : "text-sky-400",
+                          )}
+                        />
+                        <span className={cn("shrink-0", isThinkingSegment ? "text-orange-400" : "text-sky-300")}>
+                          {traceLabel}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{traceContent}</span>
                         <ChevronRight
                           className={cn(
                             "h-[4cqh] w-[4cqh] shrink-0 text-stone-500 transition-transform",
@@ -150,7 +494,7 @@ export function DesktopPetChatBubble({
                       </button>
                       {expanded ? (
                         <div className="mt-[2cqh] whitespace-pre-wrap rounded-[3cqh] border border-white/8 bg-black/20 px-[4cqh] py-[3cqh] leading-[1.55] text-stone-300 [overflow-wrap:anywhere]">
-                          {segment.thinking || segment.runtimeTrace}
+                          {traceContent}
                         </div>
                       ) : null}
                     </div>
@@ -162,7 +506,7 @@ export function DesktopPetChatBubble({
                   return (
                     <div
                       key={`${segment.speaker}-${index}-${segment.tool.id}`}
-                      className="min-w-0 text-stone-400"
+                      className={cn("min-w-0 text-stone-400", startsNewSpeaker && "mt-[4cqh]")}
                     >
                       <button
                         type="button"
@@ -170,9 +514,9 @@ export function DesktopPetChatBubble({
                         className="flex w-full min-w-0 items-center gap-[2cqh] text-left transition-colors hover:text-stone-200"
                         aria-expanded={expanded}
                       >
-                        <Wrench className="h-[4.5cqh] w-[4.5cqh] shrink-0 text-orange-500" />
-                        <span className="shrink-0 text-stone-300">工具:</span>
-                        <span className="min-w-0 flex-1 truncate text-stone-300">{segment.tool.name}</span>
+                        <Wrench className="h-[4.5cqh] w-[4.5cqh] shrink-0 text-violet-400" />
+                        <span className="shrink-0 text-violet-300">工具:</span>
+                        <span className="min-w-0 flex-1 truncate text-violet-300">{segment.tool.name}</span>
                         <span
                           className={cn(
                             "shrink-0 rounded-full border px-[2cqh] py-[0.7cqh] text-[0.82em]",
@@ -218,21 +562,60 @@ export function DesktopPetChatBubble({
                     </div>
                   )
                 }
+                const speechSegmentID = assistant ? segment.speechSegmentId : undefined
+                const speechClip = speechSegmentID ? speechClips[speechSegmentID] : undefined
+                const speechClipPlaying = Boolean(
+                  speechSegmentID && activeSpeechSegmentId === speechSegmentID && !speechPaused,
+                )
+                const content = segmentText(segment)
                 return (
                   <div
-                    key={`${segment.speaker}-${index}-${segmentText(segment).slice(0, 16)}`}
-                    className={cn("flex items-start gap-[3cqh]", assistant ? "justify-start" : "justify-end")}
+                    key={`${segment.speaker}-${index}-${content.slice(0, 16)}`}
+                    className={cn(
+                      "flex items-start gap-[3cqh]",
+                      assistant ? "justify-start" : "justify-center",
+                      startsNewSpeaker && "mt-[4cqh]",
+                    )}
                   >
-                    <p
-                      className={cn(
-                        "whitespace-pre-wrap leading-[1.5] [overflow-wrap:anywhere]",
-                        assistant
-                          ? "w-full max-w-none pt-[1cqh] text-stone-100"
-                          : "max-w-[86%] rounded-[4cqh] bg-orange-600/75 px-[4cqh] py-[2.4cqh] text-white",
-                      )}
-                    >
-                      {segmentText(segment)}
-                    </p>
+                    {assistant ? (
+                      <div className="flex w-full min-w-0 items-end gap-[2cqh] pt-[0.5cqh] text-stone-100">
+                        <div className="min-w-0 flex-1">
+                          <DesktopPetMarkdown content={content} />
+                        </div>
+                        {speechSegmentID && speechClip?.status === "synthesizing" ? (
+                          <span
+                            className="mb-[0.2cqh] inline-flex h-[5cqh] w-[5cqh] shrink-0 text-stone-500"
+                            title="正在合成语音"
+                          >
+                            <LoaderCircle className="h-full w-full animate-spin" />
+                          </span>
+                        ) : null}
+                        {speechSegmentID && speechClip?.status === "ready" ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleSpeechClip(speechSegmentID)}
+                            className={cn(
+                              "mb-[0.2cqh] inline-flex h-[5cqh] w-[5cqh] shrink-0 items-center justify-center rounded-full transition-colors",
+                              speechClipPlaying
+                                ? "bg-orange-500/15 text-orange-400 hover:bg-orange-500/25"
+                                : "text-stone-400 hover:bg-white/8 hover:text-stone-200",
+                            )}
+                            aria-label={speechClipPlaying ? "暂停这段语音" : "播放这段语音"}
+                            title={speechClipPlaying ? "暂停" : "播放"}
+                          >
+                            {speechClipPlaying ? (
+                              <Pause className="h-[3.5cqh] w-[3.5cqh] fill-current" />
+                            ) : (
+                              <Play className="h-[3.5cqh] w-[3.5cqh] fill-current" />
+                            )}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="max-w-[86%] whitespace-pre-wrap py-[0.5cqh] text-center font-serif text-[0.94em] leading-[1.4] text-stone-500 [overflow-wrap:anywhere]">
+                        {content}
+                      </p>
+                    )}
                   </div>
                 )
               })}
@@ -254,17 +637,60 @@ export function DesktopPetChatBubble({
           <div className="flex h-full min-w-0 flex-1 items-center gap-[2cqh] rounded-[5cqh] border border-white/20 px-[4cqh] focus-within:border-white/35">
             <input
               value={input}
+              readOnly={voiceBusy}
               onChange={(event) => setInput(event.target.value)}
+              onFocus={() => void updateDesktopActivityFacts({
+                surface: "pet-bubble",
+                chat_input_focused: true,
+                last_user_interaction_at: new Date().toISOString(),
+              })}
+              onBlur={() => void updateDesktopActivityFacts({
+                surface: "pet-bubble",
+                chat_input_focused: false,
+              })}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault()
                   void send()
                 }
               }}
-              placeholder="输入消息…"
+              placeholder={
+                voiceStatus === "recording"
+                  ? "正在聆听…"
+                  : voiceStatus === "connecting"
+                    ? "正在连接语音服务…"
+                    : voiceStatus === "transcribing"
+                      ? "正在完成转写…"
+                      : "输入消息…"
+              }
               className="min-w-0 flex-1 bg-transparent text-stone-100 outline-none placeholder:text-stone-400"
             />
-            <Mic className="h-[5cqh] w-[5cqh] shrink-0 text-stone-400" aria-hidden="true" />
+            {voiceInputEnabled ? (
+              <button
+                type="button"
+                onClick={() => void toggleVoiceInput()}
+                disabled={isThinking || voiceStatus === "connecting" || voiceStatus === "transcribing"}
+                className={cn(
+                  "flex h-[8cqh] w-[8cqh] shrink-0 items-center justify-center rounded-full transition-[color,background-color,transform] disabled:cursor-wait",
+                  voiceStatus === "recording"
+                    ? "bg-red-500/18 text-red-400"
+                    : voiceError
+                      ? "text-red-400 hover:bg-red-500/10"
+                      : "text-stone-400 hover:bg-white/8 hover:text-stone-200",
+                )}
+                style={{ transform: voiceStatus === "recording" ? `scale(${1 + voiceLevel * 0.12})` : undefined }}
+                aria-label={voiceStatus === "recording" ? "停止录音" : "开始语音输入"}
+                title={voiceError || (voiceStatus === "recording" ? "停止录音" : "语音输入")}
+              >
+                {voiceStatus === "connecting" || voiceStatus === "transcribing" ? (
+                  <LoaderCircle className="h-[5cqh] w-[5cqh] animate-spin" />
+                ) : voiceStatus === "recording" ? (
+                  <Square className="h-[3.8cqh] w-[3.8cqh] fill-current" />
+                ) : (
+                  <Mic className="h-[5cqh] w-[5cqh]" />
+                )}
+              </button>
+            ) : null}
           </div>
           <button
             type="button"

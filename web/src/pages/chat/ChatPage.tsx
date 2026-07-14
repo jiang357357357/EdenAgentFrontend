@@ -1,5 +1,6 @@
 import { Lock, Menu, MessageSquare, NotebookPen, Unlock } from "lucide-react"
 import { motion } from "motion/react"
+import { useEffect, useMemo, useState } from "react"
 import { CharacterPanel } from "../../components/CharacterPanel"
 import { ChatInput } from "../../components/ChatInput"
 import { MessageBubble } from "../../components/MessageBubble"
@@ -7,6 +8,13 @@ import { PermissionRequestCard } from "../../components/PermissionRequestCard"
 import { QuestionRequestCard } from "../../components/QuestionRequestCard"
 import { Sidebar } from "../../components/Sidebar"
 import { resolveCoreAssetUrl, type ActiveCharacterAction, type AuthUser, type CoreAssistant } from "../../lib/auth"
+import {
+  DEFAULT_PET_SETTINGS,
+  getDesktopPetSettings,
+  listenDesktopPetSettings,
+  type PetSettings,
+} from "../../lib/desktop-window"
+import { useTTSSpeech } from "../../hooks/useTTSSpeech"
 import { cn } from "../../lib/utils"
 import type { PendingPermission, PendingQuestion, PermissionMode, PromptAttachment, Session } from "../../types"
 
@@ -84,17 +92,64 @@ export function ChatPage({
   onOpenSelfAwake,
   onOpenMemo,
 }: ChatPageProps) {
+  const [petSettings, setPetSettings] = useState<PetSettings>(DEFAULT_PET_SETTINGS)
   const assistantName = assistant?.name || assistant?.character?.name || "助手"
   const assistantInitial = assistantName.trim().slice(0, 1) || "助"
   const assistantAvatarUrl = resolveCoreAssetUrl(assistant?.character?.avatar_url)
   const userAvatarUrl = resolveCoreAssetUrl(currentUser?.avatar_url)
   const messages = activeSession?.messages ?? []
+  const lastUserMessageIndex = messages.reduce(
+    (lastIndex, message, index) => (message.role === "user" ? index : lastIndex),
+    -1,
+  )
+  const activeReplyMessage = messages
+    .slice(Math.max(lastUserMessageIndex + 1, 0))
+    .reverse()
+    .find((message) => message.role === "assistant")
+  const speechSegments = useMemo(() => {
+    if (!activeReplyMessage) return []
+    if (activeReplyMessage.segments?.length) {
+      return activeReplyMessage.segments.flatMap((segment) => {
+        if (segment.type !== "text" || segment.state === "streaming") return []
+        return segment.content.trim()
+          ? [{ id: segment.id, messageId: activeReplyMessage.id, text: segment.content }]
+          : []
+      })
+    }
+    if (!activeReplyMessage.content || activeReplyMessage.isStreaming) return []
+    return [{ id: `${activeReplyMessage.id}:content`, messageId: activeReplyMessage.id, text: activeReplyMessage.content }]
+  }, [activeReplyMessage])
+  const speech = useTTSSpeech({
+    configId: assistant?.character?.tts_config_id,
+    sessionId: activeSessionId,
+    mode: petSettings.ttsMode,
+    isThinking,
+    segments: speechSegments,
+  })
   const hasStreamingAssistantMessage = messages.some(
     (message) => message.role === "assistant" && Boolean(message.isStreaming),
   )
   const toggleAutoScroll = () => {
     onAutoScrollChange(!autoScrollEnabled)
   }
+
+  useEffect(() => {
+    let disposed = false
+    let unsubscribe: (() => void) | undefined
+    void getDesktopPetSettings().then((settings) => {
+      if (!disposed) setPetSettings(settings)
+    })
+    void listenDesktopPetSettings((settings) => {
+      if (!disposed) setPetSettings(settings)
+    }).then((cleanup) => {
+      unsubscribe = cleanup
+      if (disposed) cleanup?.()
+    })
+    return () => {
+      disposed = true
+      unsubscribe?.()
+    }
+  }, [])
 
   return (
     <motion.div
@@ -214,6 +269,11 @@ export function ChatPage({
                     onTextReveal={() => {
                       if (autoScrollEnabled) messagesEndRef.current?.scrollIntoView({ block: "end" })
                     }}
+                    ttsMode={petSettings.ttsMode}
+                    speechClips={speech.clips}
+                    activeSpeechSegmentId={speech.activeSegmentId}
+                    speechPaused={speech.paused}
+                    onToggleSpeech={speech.toggle}
                     onPreviewImage={(src, alt) => onPreviewImage(src, alt ?? "图片预览")}
                   />
                 ))}
@@ -267,6 +327,8 @@ export function ChatPage({
               assistantName={assistantName}
               permissionMode={permissionMode}
               onPermissionModeChange={onPermissionModeChange}
+              voiceInputEnabled={petSettings.voiceInputEnabled}
+              sttConfigId={assistant?.character?.stt_config_id}
             />
           </div>
         </div>

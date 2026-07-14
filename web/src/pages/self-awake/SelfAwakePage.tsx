@@ -95,6 +95,13 @@ const actionLabels: Record<string, string> = {
   set_self_awake_timer: "设置定时器",
 }
 
+const eventLabels: Record<string, string> = {
+  startup: "重启自醒",
+  scheduled: "定时自醒",
+  manual: "手动自醒",
+  retry: "重试自醒",
+}
+
 const selfAwakePageSize = 20
 
 function toneClass(tone: StatusTone) {
@@ -230,19 +237,18 @@ function stringifyCompact(value: unknown) {
 
 function knownContextItems(run?: ApiSelfAwakeRun) {
   const context = run?.context_payload
-  if (!context) return []
-
-  const preferred: Array<[string, keyof typeof context | string]> = [
-    ["触发", "trigger"],
-    ["来源", "source_service"],
-    ["时间", "current_time"],
-    ["活动", "user_activity"],
+  const preferred: Array<[string, unknown]> = [
+    ["事件", eventLabels[run?.event_type || ""] || run?.event_type],
+    ["来源", run?.event_source],
+    ["原因", run?.event_reason],
+    ["时间", run?.event_occurred_at || context?.current_time],
+    ["活动", context?.user_activity],
   ]
   const items = preferred
-    .map(([label, key]) => [label, context[key]] as const)
     .filter(([, value]) => value !== undefined && value !== null && value !== "")
 
   if (items.length) return items
+  if (!context) return []
 
   return Object.entries(context)
     .filter(([, value]) => ["string", "number", "boolean"].includes(typeof value))
@@ -595,7 +601,7 @@ export function SelfAwakePage({ currentUser, assistant, toolStatus, onBack }: Se
                         </div>
                         <div className="mt-[0.6vh] flex items-center justify-between text-[1.45vh] text-text-muted">
                           <span>{formatDateTime(run.finished_at ?? run.created_at)}</span>
-                          <span>{run.source_service || "monagent"}</span>
+                          <span>{eventLabels[run.event_type] || run.event_type || run.source_service || "monagent"}</span>
                         </div>
                         <div className="mt-[0.7vh] line-clamp-2 text-[1.55vh] leading-relaxed text-text-muted">
                           {trimText(run.current_desire || diary?.content, "没有留下想法。")}

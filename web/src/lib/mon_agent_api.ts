@@ -1,6 +1,6 @@
 import type { MessageData, PendingPermission, PendingQuestion, PermissionMode, PromptAttachment, Session, ToolCall } from "../types"
 import { getStoredToken } from "./auth"
-import type { CoreCharacterVisualAction, CoreCharacterVisualActionGroup } from "./auth"
+import type { CoreCharacterVisualAction, CoreCharacterVisualActionGroup, CoreTTSSynthesisResponse } from "./auth"
 import { formatLocalTime } from "./time"
 
 const env = (
@@ -103,6 +103,11 @@ export type ApiSelfAwakeRun = {
   character?: number | null
   source_service: string
   external_run_id: string
+  event_type: "startup" | "scheduled" | "manual" | "retry"
+  event_source: string
+  event_reason: string
+  event_id: string
+  event_occurred_at?: string | null
   status: string
   started_at?: string
   finished_at?: string | null
@@ -457,6 +462,28 @@ export type QuestionRejectedEvent = {
   }
 }
 
+export interface PendingScreenCapture {
+  id: string
+  sessionID?: string
+  toolCallID?: string
+  display?: "cursor" | "primary" | string
+}
+
+export type ScreenCaptureRequestedEvent = {
+  type: "screen_capture.requested"
+  properties: PendingScreenCapture
+}
+
+export type ScreenCaptureRepliedEvent = {
+  type: "screen_capture.replied"
+  properties: {
+    sessionID?: string
+    requestID: string
+    success: boolean
+    error?: string | null
+  }
+}
+
 export type MessageUpdatedEvent = {
   type: "message.updated"
   properties: {
@@ -514,8 +541,8 @@ export type CharacterActionChangedEvent = {
     imageUrl?: string
     reason?: string
     source?: string
-    motion?: "none" | "jump" | "approach" | "retreat" | "shake" | "nod" | "bounce" | string
-    effect?: "none" | "question" | "exclamation" | "sweat" | "heart" | "anger" | string
+    motion?: "none" | "jump" | "approach" | "retreat" | "shake" | "bounce" | "float" | "tremble" | "vertical_shake" | "sink" | "emphasize" | string
+    effect?: "none" | "question" | "exclamation" | "sweat" | "heart" | "anger" | "sigh" | "speechless" | "gloomy" | "sleepy" | string
     intensity?: "light" | "normal" | "strong" | string
     effectAnchor?: "head_left" | "head_right" | "above" | "body_left" | "body_right" | string
     performanceID?: string
@@ -533,6 +560,8 @@ export type ApiEvent =
   | QuestionAskedEvent
   | QuestionRepliedEvent
   | QuestionRejectedEvent
+  | ScreenCaptureRequestedEvent
+  | ScreenCaptureRepliedEvent
   | MessageUpdatedEvent
   | MessagePartUpdatedEvent
   | MessagePartDeltaEvent
@@ -878,6 +907,28 @@ export async function replyQuestion(requestID: string, answers: string[][]) {
   })
 }
 
+export async function listScreenCaptureRequests() {
+  return request<PendingScreenCapture[]>("/screen-capture")
+}
+
+export async function replyScreenCapture(
+  requestID: string,
+  result?: {
+    dataUrl: string
+    mime: string
+    width: number
+    height: number
+    displayId: string
+    sourceName?: string
+  },
+  error?: string,
+) {
+  return request<boolean>(`/screen-capture/${encodeURIComponent(requestID)}/reply`, {
+    method: "POST",
+    body: JSON.stringify({ result, error }),
+  })
+}
+
 export async function rejectQuestion(requestID: string) {
   await request<boolean>(`/question/${encodeURIComponent(requestID)}/reject`, {
     method: "POST",
@@ -896,6 +947,27 @@ export async function updateRuntimeModel(aiEntityId: number | string) {
   return request<RuntimeModelConfig>("/model", {
     method: "PATCH",
     body: JSON.stringify({ aiEntityId }),
+  })
+}
+
+export async function synthesizeSpeechSegment(input: {
+  sessionId: string
+  messageId: string
+  segmentId: string
+  text: string
+  configId: number
+  mode: "text_only" | "all"
+}) {
+  return request<CoreTTSSynthesisResponse & { cached?: boolean; cache_key?: string }>("/speech/synthesize", {
+    method: "POST",
+    body: JSON.stringify({
+      session_id: input.sessionId,
+      message_id: input.messageId,
+      segment_id: input.segmentId,
+      text: input.text,
+      config_id: input.configId,
+      mode: input.mode,
+    }),
   })
 }
 

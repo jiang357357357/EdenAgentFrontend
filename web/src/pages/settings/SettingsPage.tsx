@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react"
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react"
 import {
   ArrowLeft,
   ArrowUp,
@@ -312,18 +312,6 @@ function RadioRow({
   )
 }
 
-function SettingsGroup({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
-  return (
-    <section className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="border-b border-border px-6 py-5">
-        <h2 className="text-lg font-semibold text-text">{title}</h2>
-        {description ? <p className="mt-1 text-sm text-text-muted">{description}</p> : null}
-      </div>
-      <div className="px-6">{children}</div>
-    </section>
-  )
-}
-
 function WindowControls() {
   return (
     <div className="desktop-no-drag flex h-full items-stretch">
@@ -389,9 +377,9 @@ export function SettingsPage({ assistant, assistantError, activeCharacterAction,
     clickThrough,
     characterDraggable,
     showInput,
-    notifyOnWake,
+    voiceInputEnabled,
+    ttsMode,
     petScale,
-    windowOpacity,
     inputOpacity,
     dock,
     windowX,
@@ -634,7 +622,6 @@ export function SettingsPage({ assistant, assistantError, activeCharacterAction,
                           )}
                           style={{
                             ...petPreviewPlacement,
-                            opacity: Math.max(0.35, Math.min(1, windowOpacity / 100)),
                             transform: `scale(${previewPetScale})`,
                             transformOrigin: "top left",
                           }}
@@ -665,7 +652,6 @@ export function SettingsPage({ assistant, assistantError, activeCharacterAction,
                       style={{
                         height: `${previewWindowHeight}%`,
                         aspectRatio: 7 / 16,
-                        opacity: Math.max(0.35, Math.min(1, windowOpacity / 100)),
                       }}
                     >
                       <DesktopPetStage
@@ -846,21 +832,29 @@ export function SettingsPage({ assistant, assistantError, activeCharacterAction,
           ) : null}
 
           {activeSection === "advanced" ? (
-            <div className="grid h-full w-full content-start gap-5 overflow-y-auto pb-8">
-              <SettingsGroup title="高级设置" description="调整通知、窗口不透明度并恢复默认配置">
-                <ToggleRow label="自醒通知" description="后台自醒有重要结果时提醒我" value={notifyOnWake} onChange={(value) => patchSettings({ notifyOnWake: value })} />
-                <RangeControl label="窗口不透明度" value={windowOpacity} min={40} max={100} unit="%" marks={[40, 60, 80, 100]} onChange={(value) => patchSettings({ windowOpacity: value })} />
-                <div className="flex items-center justify-between gap-5 border-t border-border py-5">
-                  <div>
-                    <div className="font-medium text-text">恢复默认设置</div>
-                    <div className="mt-1 text-sm text-text-muted">将所有桌宠参数恢复为初始值</div>
-                  </div>
-                  <button type="button" onClick={reset} className="flex h-10 items-center gap-2 rounded-full border border-border px-4 text-sm text-text-muted transition-colors hover:border-accent/40 hover:text-accent">
-                    <RotateCcw className="h-4 w-4" />
-                    恢复默认
-                  </button>
+            <div className="grid h-full w-full content-start overflow-y-auto px-[4%] pb-[4%] pt-[2%]">
+              <ToggleRow label="开启语音输入" description="允许通过麦克风向当前角色输入消息" value={voiceInputEnabled} onChange={(value) => patchSettings({ voiceInputEnabled: value })} />
+              <div className="border-t border-border px-2 py-5">
+                <div className="mb-3">
+                  <div className="text-[clamp(0.8125rem,1.45cqh,0.9375rem)] font-medium text-text">语音合成范围</div>
+                  <div className="mt-1 text-[clamp(0.75rem,1.25cqh,0.8125rem)] leading-5 text-text-muted">使用当前角色关联的 TTS 服务朗读回复</div>
                 </div>
-              </SettingsGroup>
+                <div role="radiogroup" aria-label="语音合成范围" className="grid grid-cols-3 gap-[2%]">
+                  <RadioRow label="关闭" checked={ttsMode === "none"} onChange={() => patchSettings({ ttsMode: "none" })} />
+                  <RadioRow label="仅对话" checked={ttsMode === "text_only"} onChange={() => patchSettings({ ttsMode: "text_only" })} />
+                  <RadioRow label="全部内容" checked={ttsMode === "all"} onChange={() => patchSettings({ ttsMode: "all" })} />
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-5 border-t border-border px-2 py-5">
+                <div className="min-w-0 py-1">
+                  <div className="text-[clamp(0.8125rem,1.45cqh,0.9375rem)] font-medium text-text">恢复默认设置</div>
+                  <div className="mt-1 text-[clamp(0.75rem,1.25cqh,0.8125rem)] leading-5 text-text-muted">将所有桌宠参数恢复为初始值</div>
+                </div>
+                <button type="button" onClick={reset} className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-border px-4 text-sm text-text-muted transition-colors hover:border-accent/40 hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+                  <RotateCcw className="h-4 w-4" />
+                  恢复默认
+                </button>
+              </div>
             </div>
           ) : null}
 

@@ -1,16 +1,19 @@
 import { useState, useRef, useEffect } from "react"
 import {
   ArrowUp,
+  Check,
   ChevronDown,
   ChevronLeft,
   FileText,
   History,
   Keyboard,
   LoaderCircle,
+  Mic,
   MessageSquare,
   Move,
   Plus,
   ShieldAlert,
+  Square,
   X,
 } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
@@ -23,6 +26,8 @@ import {
 } from "../lib/mon_agent_api"
 import { cn } from "../lib/utils"
 import { MarkdownContent } from "./MarkdownContent"
+import { RealtimeSTTService, type RealtimeSTTStatus } from "../lib/realtime-stt"
+import { updateDesktopActivityFacts } from "../lib/desktop-window"
 import type { PermissionMode, PromptAttachment, ToolCall } from "../types"
 
 type DialogSegment = {
@@ -56,12 +61,82 @@ interface ChatInputProps {
   standaloneOverlay?: boolean
   permissionMode?: PermissionMode
   onPermissionModeChange?: (mode: PermissionMode) => Promise<void>
+  voiceInputEnabled?: boolean
+  sttConfigId?: number | null
 }
 
 const permissionOptions: Array<{ mode: PermissionMode; label: string; description: string }> = [
   { mode: "full_access", label: "完全访问", description: "自动允许工具权限" },
   { mode: "ask", label: "询问授权", description: "写入、命令等操作前确认" },
 ]
+
+function VoiceLevelWaveform({ level, active }: { level: number; active: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const targetLevelRef = useRef(0)
+
+  useEffect(() => {
+    targetLevelRef.current = active ? Math.max(0, Math.min(1, level)) : 0
+  }, [active, level])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const history = Array.from<number>({ length: 72 }).fill(0)
+    let currentLevel = 0
+    let lastSampleAt = performance.now()
+    let animationFrame = 0
+
+    const draw = (now: number) => {
+      const ratio = window.devicePixelRatio || 1
+      const width = Math.max(1, Math.round(canvas.clientWidth * ratio))
+      const height = Math.max(1, Math.round(canvas.clientHeight * ratio))
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width
+        canvas.height = height
+      }
+
+      currentLevel += (targetLevelRef.current - currentLevel) * (targetLevelRef.current > currentLevel ? 0.3 : 0.12)
+      if (now - lastSampleAt >= 48) {
+        history.shift()
+        history.push(currentLevel < 0.025 ? 0 : Math.pow(currentLevel, 0.72))
+        lastSampleAt = now
+      }
+
+      const context = canvas.getContext("2d")
+      if (context) {
+        context.clearRect(0, 0, width, height)
+        const centerY = height / 2
+        context.beginPath()
+        context.moveTo(0, centerY)
+        context.lineTo(width, centerY)
+        context.strokeStyle = "rgba(217, 119, 6, 0.28)"
+        context.lineWidth = Math.max(1, ratio * 0.8)
+        context.stroke()
+
+        const slot = width / history.length
+        context.strokeStyle = "rgba(217, 119, 6, 0.92)"
+        context.lineWidth = Math.max(1, slot * 0.32)
+        context.lineCap = "round"
+        history.forEach((sample, index) => {
+          if (sample <= 0) return
+          const x = slot * index + slot / 2
+          const halfHeight = Math.max(ratio, sample * height * 0.43)
+          context.beginPath()
+          context.moveTo(x, centerY - halfHeight)
+          context.lineTo(x, centerY + halfHeight)
+          context.stroke()
+        })
+      }
+      animationFrame = window.requestAnimationFrame(draw)
+    }
+
+    animationFrame = window.requestAnimationFrame(draw)
+    return () => window.cancelAnimationFrame(animationFrame)
+  }, [])
+
+  return <canvas ref={canvasRef} className="h-[2.6vh] w-[54%]" aria-hidden="true" />
+}
 
 export function ChatInput({
   onSend,
@@ -85,6 +160,8 @@ export function ChatInput({
   standaloneOverlay = false,
   permissionMode = "full_access",
   onPermissionModeChange,
+  voiceInputEnabled = false,
+  sttConfigId,
 }: ChatInputProps) {
   const [input, setInput] = useState("")
   const [attachments, setAttachments] = useState<PromptAttachment[]>([])
@@ -96,10 +173,18 @@ export function ChatInput({
   const [modelLoading, setModelLoading] = useState(false)
   const [modelSubmitting, setModelSubmitting] = useState<string | null>(null)
   const [modelError, setModelError] = useState<string | null>(null)
+  const [voiceStatus, setVoiceStatus] = useState<RealtimeSTTStatus>("idle")
+  const [voiceLevel, setVoiceLevel] = useState(0)
+  const [voiceError, setVoiceError] = useState("")
+  const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragTimerRef = useRef<number | undefined>(undefined)
   const previousSegmentCountRef = useRef(0)
+  const voicePrefixRef = useRef("")
+  const voiceOriginalInputRef = useRef("")
+  const voiceStartedAtRef = useRef<number | null>(null)
+  const voiceServiceRef = useRef<RealtimeSTTService | null>(null)
   const outputToolsKey = outputTools.map((tool) => `${tool.id}:${tool.status}:${tool.duration ?? ""}`).join("|")
   const fallbackOutputSegments: DialogSegment[] = [
     ...(outputThinking ? [{ speaker: assistantName, thinking: outputThinking }] : []),
@@ -120,7 +205,8 @@ export function ChatInput({
   const isDialogMode = overlay && overlayMode === "dialog" && hasDialog
   const currentOutput = outputSegments[Math.min(outputIndex, Math.max(outputSegments.length - 1, 0))]
   const overlayFontRatio = Math.max(70, Math.min(140, overlayFontScale)) / 100
-  const canSend = Boolean(input.trim() || attachments.length > 0)
+  const voiceBusy = voiceStatus !== "idle"
+  const canSend = Boolean(input.trim() || attachments.length > 0) && !voiceBusy
   const activePermission = permissionOptions.find((option) => option.mode === permissionMode) ?? permissionOptions[0]
   const currentModel = modelConfig?.current ?? modelConfig?.options.find((option) => option.selected) ?? null
   const currentModelLabel = currentModel?.label || (modelLoading ? "..." : "模型")
@@ -185,12 +271,110 @@ export function ChatInput({
     }
   }, [input, overlay])
 
+  useEffect(() => () => {
+    void voiceServiceRef.current?.cancel()
+    voiceServiceRef.current = null
+    void updateDesktopActivityFacts({
+      surface: overlay ? "chat-overlay" : "main-chat",
+      chat_input_focused: false,
+      voice_recording: false,
+    })
+  }, [])
+
+  useEffect(() => {
+    void updateDesktopActivityFacts({
+      surface: overlay ? "chat-overlay" : "main-chat",
+      voice_recording: voiceStatus === "recording",
+      ...(voiceStatus === "recording" ? { last_user_interaction_at: new Date().toISOString() } : {}),
+    })
+  }, [overlay, voiceStatus])
+
+  useEffect(() => {
+    if (voiceInputEnabled) return
+    void voiceServiceRef.current?.cancel()
+    voiceServiceRef.current = null
+    setVoiceError("")
+  }, [voiceInputEnabled])
+
+  useEffect(() => {
+    if (voiceStatus !== "recording" || voiceStartedAtRef.current === null) return
+    const updateElapsed = () => {
+      const startedAt = voiceStartedAtRef.current
+      if (startedAt === null) return
+      setVoiceElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1_000)))
+    }
+    updateElapsed()
+    const timer = window.setInterval(updateElapsed, 250)
+    return () => window.clearInterval(timer)
+  }, [voiceStatus])
+
   const handleSend = () => {
-    if ((!input.trim() && attachments.length === 0) || disabled) return
+    if ((!input.trim() && attachments.length === 0) || disabled || voiceBusy) return
     onSend(input.trim(), attachments)
+    void updateDesktopActivityFacts({
+      surface: overlay ? "chat-overlay" : "main-chat",
+      last_user_interaction_at: new Date().toISOString(),
+    })
     setInput("")
     setAttachments([])
   }
+
+  const finishVoiceInput = async () => {
+    const service = voiceServiceRef.current
+    if (!service) return
+    try {
+      await service.finish()
+    } catch (error) {
+      setVoiceError(error instanceof Error ? error.message : "语音转写失败")
+    } finally {
+      voiceStartedAtRef.current = null
+      if (voiceServiceRef.current === service) voiceServiceRef.current = null
+    }
+  }
+
+  const cancelVoiceInput = async () => {
+    const service = voiceServiceRef.current
+    voiceServiceRef.current = null
+    voiceStartedAtRef.current = null
+    setVoiceElapsedSeconds(0)
+    setInput(voiceOriginalInputRef.current)
+    setVoiceError("")
+    await service?.cancel()
+  }
+
+  const toggleVoiceInput = async () => {
+    if (!voiceInputEnabled || disabled || voiceStatus === "connecting" || voiceStatus === "transcribing") return
+    if (voiceStatus === "recording") {
+      await finishVoiceInput()
+      return
+    }
+    if (typeof sttConfigId !== "number") {
+      setVoiceError("当前角色尚未关联语音识别服务")
+      return
+    }
+    setVoiceError("")
+    setPermissionMenuOpen(false)
+    setModelMenuOpen(false)
+    voiceOriginalInputRef.current = input
+    voicePrefixRef.current = input.trim() ? `${input.trim()} ` : ""
+    voiceStartedAtRef.current = Date.now()
+    setVoiceElapsedSeconds(0)
+    const service = new RealtimeSTTService({
+      onStatus: setVoiceStatus,
+      onLevel: setVoiceLevel,
+      onTranscript: ({ text }) => setInput(`${voicePrefixRef.current}${text}`),
+      onError: (error) => setVoiceError(error.message),
+    })
+    voiceServiceRef.current = service
+    try {
+      await service.start({ configId: sttConfigId, endSilenceMs: 1_200 })
+    } catch {
+      voiceStartedAtRef.current = null
+      if (voiceServiceRef.current === service) voiceServiceRef.current = null
+    }
+  }
+
+  const voiceElapsedLabel = `${String(Math.floor(voiceElapsedSeconds / 60)).padStart(2, "0")}:${String(voiceElapsedSeconds % 60).padStart(2, "0")}`
 
   const selectPermissionMode = async (mode: PermissionMode) => {
     if (!onPermissionModeChange || mode === permissionMode) {
@@ -509,14 +693,101 @@ export function ChatInput({
               <span className="text-stone-300">{assistantName}正在回复…</span>
             )}
           </div>
+        ) : voiceBusy && !overlay ? (
+          <div
+            className="absolute inset-0 grid h-full w-full grid-cols-[26%_1fr_23%] items-center"
+            aria-live="polite"
+            aria-label={voiceStatus === "recording" ? `正在转写，已录音 ${voiceElapsedLabel}` : "正在完成转写"}
+          >
+            <div className="flex h-[58%] items-center justify-center gap-[1.5vh] border-r border-border/75 px-[8%]">
+              <span
+                className="flex h-[6.2vh] w-[6.2vh] flex-shrink-0 items-center justify-center rounded-full bg-accent text-white shadow-[0_0_0_0.9vh_rgba(217,119,6,0.10)] transition-transform"
+                style={{ transform: `scale(${1 + voiceLevel * 0.1})` }}
+              >
+                {voiceStatus === "recording" ? (
+                  <Mic className="h-[3vh] w-[3vh]" />
+                ) : (
+                  <LoaderCircle className="h-[3vh] w-[3vh] animate-spin" />
+                )}
+              </span>
+              <span className="min-w-0">
+                <span className="flex items-center gap-[0.8vh] whitespace-nowrap text-[1.9vh] text-text-muted">
+                  <span className="h-[0.8vh] w-[0.8vh] rounded-full bg-accent" />
+                  {voiceStatus === "recording" ? "正在转写" : "正在完成"}
+                </span>
+                <span className="mt-[0.4vh] block text-[1.8vh] tabular-nums text-text-muted/80">{voiceElapsedLabel}</span>
+              </span>
+            </div>
+
+            <div className="flex h-[66%] min-w-0 flex-col justify-center px-[5%]">
+              <div className="line-clamp-2 min-h-[5.8vh] text-[2.25vh] leading-[1.55] text-text">
+                {input || (voiceStatus === "connecting" ? "正在连接语音服务…" : "请开始说话，识别结果会实时显示在这里")}
+              </div>
+              <div className="mt-[1.2vh] flex h-[2.6vh] w-full items-center overflow-hidden">
+                <VoiceLevelWaveform level={voiceLevel} active={voiceStatus === "recording"} />
+              </div>
+              {voiceError ? <div className="mt-[0.6vh] truncate text-[1.45vh] text-red-500">{voiceError}</div> : null}
+            </div>
+
+            <div className="flex h-[58%] items-center justify-evenly border-l border-border/75 px-[5%]">
+              <button
+                type="button"
+                onClick={() => void cancelVoiceInput()}
+                className="group flex min-w-[42%] flex-col items-center gap-[0.7vh] text-text-muted transition-colors hover:text-text disabled:cursor-wait disabled:opacity-50"
+                disabled={voiceStatus === "transcribing"}
+                aria-label="取消录音"
+                title="取消录音"
+              >
+                <span className="flex h-[5.3vh] w-[5.3vh] items-center justify-center rounded-full bg-bg transition-colors group-hover:bg-stone-200">
+                  <X className="h-[2.7vh] w-[2.7vh]" />
+                </span>
+                <span className="text-[1.55vh]">取消</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void finishVoiceInput()}
+                className="group flex min-w-[42%] flex-col items-center gap-[0.7vh] text-accent transition-colors disabled:cursor-wait disabled:opacity-60"
+                disabled={voiceStatus !== "recording"}
+                aria-label="完成转写"
+                title="完成转写"
+              >
+                <span className="flex h-[5.3vh] w-[5.3vh] items-center justify-center rounded-full bg-accent text-white transition-opacity group-hover:opacity-85">
+                  {voiceStatus === "transcribing" ? (
+                    <LoaderCircle className="h-[2.7vh] w-[2.7vh] animate-spin" />
+                  ) : (
+                    <Check className="h-[2.9vh] w-[2.9vh] stroke-[2.5]" />
+                  )}
+                </span>
+                <span className="text-[1.55vh]">完成</span>
+              </button>
+            </div>
+          </div>
         ) : (
           <textarea
             ref={textareaRef}
             value={input}
+            readOnly={voiceBusy}
             onChange={(e) => setInput(e.target.value)}
+            onFocus={() => void updateDesktopActivityFacts({
+              surface: overlay ? "chat-overlay" : "main-chat",
+              chat_input_focused: true,
+              last_user_interaction_at: new Date().toISOString(),
+            })}
+            onBlur={() => void updateDesktopActivityFacts({
+              surface: overlay ? "chat-overlay" : "main-chat",
+              chat_input_focused: false,
+            })}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="要求后续变更"
+            placeholder={
+              voiceStatus === "recording"
+                ? "正在聆听…"
+                : voiceStatus === "connecting"
+                  ? "正在连接语音服务…"
+                  : voiceStatus === "transcribing"
+                    ? "正在完成转写…"
+                    : "要求后续变更"
+            }
             rows={overlay ? 10 : 1}
             style={
               overlay
@@ -541,7 +812,7 @@ export function ChatInput({
           />
         )}
 
-        {!hideComposerFooter && (
+        {!hideComposerFooter && !(!overlay && voiceBusy) && (
           <div className={cn("absolute z-20 flex h-[5.4vh] items-center justify-between gap-[1.4vh]", overlay ? "inset-x-[2.4vh] bottom-[1.6vh]" : "inset-x-[2.4vh] bottom-[1.7vh]")}>
           <div className="flex min-w-0 items-center gap-[1.6vh]">
             <button
@@ -591,6 +862,32 @@ export function ChatInput({
           <div className="flex flex-shrink-0 items-center gap-[1.5vh]">
             {outputActive || disabled ? (
               <LoaderCircle className={cn("h-[2.5vh] w-[2.5vh] animate-spin", overlay ? "text-stone-300/80" : "text-text-muted")} aria-label="正在处理" />
+            ) : null}
+            {voiceInputEnabled && !overlay ? (
+              <button
+                type="button"
+                onClick={() => void toggleVoiceInput()}
+                disabled={Boolean(disabled) || voiceStatus === "connecting" || voiceStatus === "transcribing"}
+                className={cn(
+                  "flex h-[4.2vh] w-[4.2vh] flex-shrink-0 items-center justify-center rounded-full transition-[color,background-color,transform] disabled:cursor-wait",
+                  voiceStatus === "recording"
+                    ? "bg-red-500/10 text-red-500"
+                    : voiceError
+                      ? "text-red-500 hover:bg-red-500/10"
+                      : "text-text-muted hover:bg-bg hover:text-text",
+                )}
+                style={{ transform: voiceStatus === "recording" ? `scale(${1 + voiceLevel * 0.12})` : undefined }}
+                aria-label={voiceStatus === "recording" ? "停止录音" : "开始语音输入"}
+                title={voiceError || (voiceStatus === "recording" ? "停止录音" : "语音输入")}
+              >
+                {voiceStatus === "connecting" || voiceStatus === "transcribing" ? (
+                  <LoaderCircle className="h-[2.4vh] w-[2.4vh] animate-spin" />
+                ) : voiceStatus === "recording" ? (
+                  <Square className="h-[1.8vh] w-[1.8vh] fill-current" />
+                ) : (
+                  <Mic className="h-[2.5vh] w-[2.5vh]" />
+                )}
+              </button>
             ) : null}
             <button
               type="button"

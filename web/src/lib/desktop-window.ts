@@ -17,6 +17,7 @@ export type DesktopWindowMode = keyof typeof WINDOW_SIZES;
 export type DesktopViewMode = 'chatWithCharacter' | 'character';
 export type PetDock = 'left' | 'center' | 'right';
 export type PetInputMode = 'compact' | 'panel' | 'hidden';
+export type PetTTSMode = 'none' | 'text_only' | 'all';
 export const MIN_PET_CHARACTER_HEIGHT = 120;
 
 export interface PetSettings {
@@ -25,9 +26,9 @@ export interface PetSettings {
   clickThrough: boolean;
   characterDraggable: boolean;
   showInput: boolean;
-  notifyOnWake: boolean;
+  voiceInputEnabled: boolean;
+  ttsMode: PetTTSMode;
   petScale: number;
-  windowOpacity: number;
   inputOpacity: number;
   dock: PetDock;
   inputMode: PetInputMode;
@@ -56,15 +57,32 @@ export interface DesktopEnvironmentPreview {
   displayBounds: { x: number; y: number; width: number; height: number };
 }
 
+export interface DesktopScreenCapture {
+  dataUrl: string;
+  mime: 'image/png';
+  width: number;
+  height: number;
+  displayId: string;
+  sourceName?: string;
+}
+
+export interface DesktopActivityFacts {
+  surface?: string;
+  chat_input_focused?: boolean;
+  voice_recording?: boolean;
+  tts_playing?: boolean;
+  last_user_interaction_at?: string;
+}
+
 export const DEFAULT_PET_SETTINGS: PetSettings = {
   alwaysOnTop: true,
   transparentWindow: true,
   clickThrough: false,
   characterDraggable: false,
   showInput: true,
-  notifyOnWake: false,
+  voiceInputEnabled: true,
+  ttsMode: 'none',
   petScale: 100,
-  windowOpacity: 92,
   inputOpacity: 78,
   dock: 'center',
   inputMode: 'compact',
@@ -215,6 +233,22 @@ export async function getDesktopEnvironmentPreview() {
     return await bridge.invoke<DesktopEnvironmentPreview>('get_desktop_environment');
   } catch {
     return null;
+  }
+}
+
+export async function captureDesktopScreen() {
+  const bridge = getDesktopBridge();
+  if (!bridge) throw new Error('当前不是 MonAgent 桌面客户端，无法截取屏幕');
+  return await bridge.invoke<DesktopScreenCapture>('capture_screen');
+}
+
+export async function updateDesktopActivityFacts(facts: DesktopActivityFacts) {
+  const bridge = getDesktopBridge();
+  if (!bridge) return false;
+  try {
+    return await bridge.invoke<boolean>('update_activity_facts', { facts });
+  } catch {
+    return false;
   }
 }
 

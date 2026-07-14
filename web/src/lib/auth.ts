@@ -47,6 +47,14 @@ export interface LoginResponse {
   expires_in: number
 }
 
+export interface CoreTTSSynthesisResponse {
+  success: boolean
+  audio_data?: string | null
+  audio_url?: string | null
+  text?: string
+  error_message?: string | null
+}
+
 export interface VerifyTokenResponse {
   valid: boolean
   user: AuthUser
@@ -106,8 +114,8 @@ export interface ActiveCharacterAction {
   imageUrl?: string
   reason?: string
   source?: string
-  motion?: "none" | "jump" | "approach" | "retreat" | "shake" | "nod" | "bounce" | string
-  effect?: "none" | "question" | "exclamation" | "sweat" | "heart" | "anger" | string
+  motion?: "none" | "jump" | "approach" | "retreat" | "shake" | "bounce" | "float" | "tremble" | "vertical_shake" | "sink" | "emphasize" | string
+  effect?: "none" | "question" | "exclamation" | "sweat" | "heart" | "anger" | "sigh" | "speechless" | "gloomy" | "sleepy" | string
   intensity?: "light" | "normal" | "strong" | string
   effectAnchor?: "head_left" | "head_right" | "above" | "body_left" | "body_right" | string
   performanceID?: string
@@ -123,6 +131,10 @@ export interface CoreCharacter {
   visual_actions?: CoreCharacterVisualAction[]
   visual_action_groups?: CoreCharacterVisualActionGroup[]
   visual_preference?: "static" | "dynamic" | string | null
+  tts_config_id?: number | null
+  tts_config_name?: string | null
+  stt_config_id?: number | null
+  stt_config_name?: string | null
   signature?: string | null
 }
 
@@ -283,6 +295,14 @@ export function getStoredToken() {
   return window.localStorage.getItem(TOKEN_KEY)
 }
 
+export async function resolveCoreBaseUrl() {
+  if (isDesktopRuntime()) {
+    return (await invokeDesktop<string>("resolve_core_base_url_command")).replace(/\/$/, "")
+  }
+
+  return new URL(browserCoreBaseUrl, window.location.origin).toString().replace(/\/$/, "")
+}
+
 export function getStoredTokenExpiresAt() {
   return parseExpiresAt(window.localStorage.getItem(EXPIRES_KEY))
 }
@@ -373,7 +393,11 @@ export async function loginWithCore(username: string, password: string) {
 
 export async function verifyTokenWithCore(token: string) {
   if (isDesktopRuntime()) {
-    const response = await invokeDesktop<VerifyTokenResponse>("core_verify_token", { token })
+    const client = getClientMetadata()
+    const response = await invokeDesktop<VerifyTokenResponse>("core_verify_token", {
+      token,
+      clientId: client.clientId,
+    })
     if (!response.valid) {
       throw new Error("Token无效")
     }

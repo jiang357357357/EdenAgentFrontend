@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, protocol, screen, net, session } = require("electron")
+const { app, BrowserWindow, Menu, Tray, desktopCapturer, ipcMain, nativeImage, powerMonitor, protocol, screen, net, session } = require("electron")
 const { execFile, spawn } = require("node:child_process")
 const fs = require("node:fs")
 const path = require("node:path")
@@ -28,9 +28,9 @@ const DEFAULT_PET_SETTINGS = {
   clickThrough: false,
   characterDraggable: false,
   showInput: true,
-  notifyOnWake: false,
+  voiceInputEnabled: true,
+  ttsMode: "none",
   petScale: 100,
-  windowOpacity: 92,
   inputOpacity: 78,
   dock: "center",
   inputMode: "compact",
@@ -53,8 +53,54 @@ let savePetPositionTimer = null
 let petBubbleCollapsed = false
 let desktopEnvironmentBroadcastTimer = null
 const desktopEnvironmentMonitors = []
+let devParentWatchTimer = null
+let activityPresenceToken = ""
+let activityPresenceClientId = ""
+let activityPresenceHeartbeatTimer = null
+let activityPresencePublishInFlight = false
+let activityPresencePublishQueued = false
+let systemSuspended = false
+const rendererActivityFacts = new Map()
+const recentActivityEvents = []
+
+function isOutputPipeError(error) {
+  return error?.code === "EPIPE" || error?.code === "ERR_STREAM_DESTROYED"
+}
+
+function handleOutputError(error) {
+  if (!isOutputPipeError(error)) {
+    setImmediate(() => { throw error })
+    return
+  }
+  if (!isQuitting) {
+    isQuitting = true
+    app.quit()
+  }
+}
+
+process.stdout.on("error", handleOutputError)
+process.stderr.on("error", handleOutputError)
+
+function startDevParentWatch() {
+  const parentPid = Number(process.env.MON_AGENT_DEV_PARENT_PID)
+  if (!Number.isSafeInteger(parentPid) || parentPid <= 1) return
+  devParentWatchTimer = setInterval(() => {
+    try {
+      process.kill(parentPid, 0)
+    } catch {
+      clearInterval(devParentWatchTimer)
+      devParentWatchTimer = null
+      if (!isQuitting) {
+        isQuitting = true
+        app.quit()
+      }
+    }
+  }, 750)
+  devParentWatchTimer.unref?.()
+}
 
 app.setName("MonAgent")
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required")
 if (process.platform === "win32") {
   app.setAppUserModelId("com.mon.monagent")
 }
@@ -253,6 +299,252 @@ function authHeader(token) {
   return { Authorization: `Token ${token}` }
 }
 
+function recordActivityEvent(type, details = {}) {
+  recentActivityEvents.push({ type, occurred_at: new Date().toISOString(), ...details })
+  if (recentActivityEvents.length > 20) recentActivityEvents.splice(0, recentActivityEvents.length - 20)
+}
+
+function attachWindowActivityEvents(targetWindow, surface) {
+  const webContentsId = targetWindow.webContents.id
+  targetWindow.on("focus", () => {
+    recordActivityEvent("window_focused", { surface })
+    void publishActivityPresence()
+  })
+  targetWindow.on("blur", () => {
+    recordActivityEvent("window_blurred", { surface })
+    void publishActivityPresence()
+  })
+  targetWindow.on("show", () => void publishActivityPresence())
+  targetWindow.on("hide", () => void publishActivityPresence())
+  targetWindow.webContents.on("destroyed", () => {
+    rendererActivityFacts.delete(webContentsId)
+    void publishActivityPresence()
+  })
+}
+
+function quotedXPropertyValues(text) {
+  return Array.from(String(text || "").matchAll(/"([^"]*)"/g), (match) => match[1])
+}
+
+async function readForegroundWindowFacts() {
+  if (process.platform !== "linux") {
+    return {
+      available: false,
+      application_name: null,
+      process_name: null,
+      window_title: null,
+      fullscreen: null,
+      error: `当前平台 ${process.platform} 尚未接入活动窗口采集器`,
+    }
+  }
+  if (String(process.env.XDG_SESSION_TYPE || "").toLowerCase() === "wayland") {
+    return {
+      available: false,
+      application_name: null,
+      process_name: null,
+      window_title: null,
+      fullscreen: null,
+      error: "当前 Wayland 会话没有通用活动窗口接口",
+    }
+  }
+
+  try {
+    const root = await execFileAsync("xprop", ["-root", "_NET_ACTIVE_WINDOW"], { timeout: 1500 })
+    const windowId = String(root.stdout || "").match(/0x[0-9a-f]+/i)?.[0]
+    if (!windowId || windowId === "0x0") throw new Error("系统没有报告活动窗口")
+    const detail = await execFileAsync(
+      "xprop",
+      ["-id", windowId, "_NET_WM_PID", "WM_CLASS", "_NET_WM_NAME", "WM_NAME", "_NET_WM_STATE"],
+      { timeout: 1500 },
+    )
+    const output = String(detail.stdout || "")
+    const pid = Number(output.match(/_NET_WM_PID\(CARDINAL\)\s*=\s*(\d+)/)?.[1])
+    const wmClassLine = output.split(/\r?\n/).find((line) => line.startsWith("WM_CLASS")) || ""
+    const windowNameLine = output.split(/\r?\n/).find((line) => line.startsWith("_NET_WM_NAME"))
+      || output.split(/\r?\n/).find((line) => line.startsWith("WM_NAME"))
+      || ""
+    const applicationName = quotedXPropertyValues(wmClassLine).at(-1) || null
+    const windowTitle = quotedXPropertyValues(windowNameLine).at(-1) || null
+    let processName = null
+    if (Number.isSafeInteger(pid) && pid > 0) {
+      processName = readText(`/proc/${pid}/comm`).trim() || null
+    }
+    return {
+      available: true,
+      application_name: applicationName,
+      process_name: processName,
+      window_title: windowTitle,
+      fullscreen: output.includes("_NET_WM_STATE_FULLSCREEN"),
+      error: "",
+    }
+  } catch (error) {
+    return {
+      available: false,
+      application_name: null,
+      process_name: null,
+      window_title: null,
+      fullscreen: null,
+      error: String(error?.message || error),
+    }
+  }
+}
+
+function combinedRendererActivityFacts() {
+  const facts = Array.from(rendererActivityFacts.values())
+  const latestInteraction = facts
+    .map((item) => String(item.last_user_interaction_at || ""))
+    .filter(Boolean)
+    .sort()
+    .at(-1) || null
+  return {
+    chat_input_focused: facts.some((item) => item.chat_input_focused === true),
+    voice_recording: facts.some((item) => item.voice_recording === true),
+    tts_playing: facts.some((item) => item.tts_playing === true),
+    last_user_interaction_at: latestInteraction,
+  }
+}
+
+async function collectActivityPresenceFacts() {
+  const foregroundWindow = await readForegroundWindowFacts()
+  const collectionErrors = []
+  if (foregroundWindow.error) collectionErrors.push(`foreground_window: ${foregroundWindow.error}`)
+  let idleSeconds = null
+  let sessionLocked = null
+  try {
+    idleSeconds = powerMonitor.getSystemIdleTime()
+    sessionLocked = powerMonitor.getSystemIdleState(1) === "locked"
+  } catch (error) {
+    collectionErrors.push(`system_input: ${String(error?.message || error)}`)
+  }
+  const rendererFacts = combinedRendererActivityFacts()
+  return {
+    captured_at: new Date().toISOString(),
+    system_input: {
+      idle_seconds: idleSeconds,
+    },
+    session: {
+      locked: sessionLocked,
+      suspended: systemSuspended,
+      display_on: null,
+      screen_saver_running: null,
+      do_not_disturb: null,
+    },
+    foreground_window: foregroundWindow,
+    media: {
+      available: false,
+      audio_playing: null,
+      microphone_in_use: null,
+      camera_in_use: null,
+      error: "系统媒体会话采集器尚未接入",
+    },
+    monagent: {
+      main_window_visible: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()),
+      main_window_focused: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()),
+      pet_visible: Boolean(petWindow && !petWindow.isDestroyed() && petWindow.isVisible()),
+      bubble_visible: Boolean(petBubbleWindow && !petBubbleWindow.isDestroyed() && petBubbleWindow.isVisible()),
+      settings_window_visible: Boolean(settingsWindow && !settingsWindow.isDestroyed() && settingsWindow.isVisible()),
+      current_view_mode: currentViewMode,
+      ...rendererFacts,
+    },
+    recent_events: recentActivityEvents.slice(-12),
+    sources: {
+      system_input: "electron.powerMonitor",
+      session: "electron.powerMonitor",
+      foreground_window: process.platform === "linux" ? "linux.x11.xprop" : `electron.${process.platform}`,
+      monagent: "electron",
+      media: "unavailable",
+    },
+    collection_errors: collectionErrors,
+  }
+}
+
+async function publishActivityPresence() {
+  if (!activityPresenceToken || isQuitting) return false
+  if (activityPresencePublishInFlight) {
+    activityPresencePublishQueued = true
+    return false
+  }
+  activityPresencePublishInFlight = true
+  try {
+    const payload = await collectActivityPresenceFacts()
+    await coreRequest("/api/users/me/activity-presence/", {
+      method: "PUT",
+      headers: {
+        ...authHeader(activityPresenceToken),
+        "content-type": "application/json",
+        ...(activityPresenceClientId ? { "X-MON-CLIENT-ID": activityPresenceClientId } : {}),
+      },
+      body: JSON.stringify(payload),
+    })
+    return true
+  } catch (error) {
+    if (!isQuitting) console.warn(`[MonAgent][ActivityPresence][WARN] 上报失败: ${error?.message || error}`)
+    return false
+  } finally {
+    activityPresencePublishInFlight = false
+    if (activityPresencePublishQueued) {
+      activityPresencePublishQueued = false
+      setTimeout(() => void publishActivityPresence(), 250)
+    }
+  }
+}
+
+function startActivityPresence(token, clientId = "") {
+  activityPresenceToken = String(token || "")
+  activityPresenceClientId = String(clientId || "")
+  if (activityPresenceHeartbeatTimer) clearInterval(activityPresenceHeartbeatTimer)
+  activityPresenceHeartbeatTimer = setInterval(() => void publishActivityPresence(), 60_000)
+  activityPresenceHeartbeatTimer.unref?.()
+  void publishActivityPresence()
+}
+
+function stopActivityPresence() {
+  activityPresenceToken = ""
+  activityPresenceClientId = ""
+  if (activityPresenceHeartbeatTimer) clearInterval(activityPresenceHeartbeatTimer)
+  activityPresenceHeartbeatTimer = null
+}
+
+function updateRendererActivityFacts(webContents, input) {
+  if (!webContents || webContents.isDestroyed()) return false
+  const previous = rendererActivityFacts.get(webContents.id) || {}
+  const next = { ...previous }
+  for (const key of ["chat_input_focused", "voice_recording", "tts_playing"]) {
+    if (typeof input?.[key] === "boolean") next[key] = input[key]
+  }
+  if (typeof input?.last_user_interaction_at === "string") {
+    next.last_user_interaction_at = input.last_user_interaction_at
+  }
+  rendererActivityFacts.set(webContents.id, next)
+  recordActivityEvent("monagent_interaction_updated", {
+    surface: String(input?.surface || "unknown"),
+    changed_fields: Object.keys(input || {}).filter((key) => key !== "surface"),
+  })
+  void publishActivityPresence()
+  return true
+}
+
+function startActivityPresenceSystemEvents() {
+  powerMonitor.on("suspend", () => {
+    systemSuspended = true
+    recordActivityEvent("system_suspended")
+    void publishActivityPresence()
+  })
+  powerMonitor.on("resume", () => {
+    systemSuspended = false
+    recordActivityEvent("system_resumed")
+    void publishActivityPresence()
+  })
+  powerMonitor.on("lock-screen", () => {
+    recordActivityEvent("session_locked")
+    void publishActivityPresence()
+  })
+  powerMonitor.on("unlock-screen", () => {
+    recordActivityEvent("session_unlocked")
+    void publishActivityPresence()
+  })
+}
+
 function jsonPost(body) {
   return {
     method: "POST",
@@ -278,15 +570,19 @@ function normalizePetSettings(input = {}) {
   const characterDraggable = Boolean(input.characterDraggable ?? DEFAULT_PET_SETTINGS.characterDraggable)
   const showInput = Boolean(input.showInput ?? DEFAULT_PET_SETTINGS.showInput)
   const clickThrough = !characterDraggable && Boolean(input.clickThrough ?? DEFAULT_PET_SETTINGS.clickThrough)
+  const legacyTTSMode = input.speechSynthesisEnabled === true ? "text_only" : "none"
+  const ttsMode = ["none", "text_only", "all"].includes(input.ttsMode)
+    ? input.ttsMode
+    : legacyTTSMode
   return {
     alwaysOnTop: Boolean(input.alwaysOnTop ?? DEFAULT_PET_SETTINGS.alwaysOnTop),
     transparentWindow: Boolean(input.transparentWindow ?? DEFAULT_PET_SETTINGS.transparentWindow),
     clickThrough,
     characterDraggable,
     showInput,
-    notifyOnWake: Boolean(input.notifyOnWake ?? DEFAULT_PET_SETTINGS.notifyOnWake),
+    voiceInputEnabled: Boolean(input.voiceInputEnabled ?? DEFAULT_PET_SETTINGS.voiceInputEnabled),
+    ttsMode,
     petScale: clampNumber(input.petScale, DEFAULT_PET_SETTINGS.petScale, 70, 140),
-    windowOpacity: clampNumber(input.windowOpacity, DEFAULT_PET_SETTINGS.windowOpacity, 40, 100),
     inputOpacity: clampNumber(input.inputOpacity, DEFAULT_PET_SETTINGS.inputOpacity, 30, 100),
     dock: ["left", "center", "right"].includes(input.dock) ? input.dock : DEFAULT_PET_SETTINGS.dock,
     inputMode: ["compact", "panel", "hidden"].includes(input.inputMode) ? input.inputMode : DEFAULT_PET_SETTINGS.inputMode,
@@ -389,7 +685,7 @@ function applyPetWindowAttributes() {
   if (petWindow && !petWindow.isDestroyed()) {
     petWindow.setAlwaysOnTop(petSettings.alwaysOnTop)
     petWindow.setIgnoreMouseEvents(petSettings.clickThrough)
-    petWindow.setOpacity(clamp(petSettings.windowOpacity / 100, 0.35, 1))
+    petWindow.setOpacity(1)
     petWindow.setBackgroundColor(petSettings.transparentWindow ? "#00000000" : "#f5f5f4")
     petWindow.setHasShadow(!petSettings.transparentWindow)
   }
@@ -397,7 +693,7 @@ function applyPetWindowAttributes() {
     petBubbleWindow.setSkipTaskbar(true)
     petBubbleWindow.setAlwaysOnTop(petSettings.alwaysOnTop)
     petBubbleWindow.setIgnoreMouseEvents(false)
-    petBubbleWindow.setOpacity(clamp(petSettings.windowOpacity / 100, 0.35, 1))
+    petBubbleWindow.setOpacity(1)
     petBubbleWindow.setBackgroundColor("#00000000")
     petBubbleWindow.setHasShadow(false)
   }
@@ -730,6 +1026,7 @@ function createWindow() {
       mainWindow?.hide()
     }
   })
+  attachWindowActivityEvents(mainWindow, "main")
   loadWebApp(mainWindow)
 }
 
@@ -794,6 +1091,7 @@ async function createPetWindow() {
     updateTray()
   })
   petWindow.on("move", savePetWindowPosition)
+  attachWindowActivityEvents(petWindow, "pet-character")
   loadWebApp(petWindow, "pet-character")
   createPetBubbleWindow()
   updateTray()
@@ -806,6 +1104,7 @@ function createPetBubbleWindow() {
   const bounds = petBubbleCollapsed ? petWindowLayout().collapsedBubble : petWindowLayout().expandedBubble
   petBubbleWindow = new BrowserWindow({
     title: `${APP_WINDOW_TITLE} 桌宠气泡`,
+    ...(process.platform === "linux" ? { type: "dock" } : {}),
     ...bounds,
     minWidth: 1,
     minHeight: 1,
@@ -817,6 +1116,7 @@ function createPetBubbleWindow() {
     backgroundColor: "#00000000",
     hasShadow: false,
     skipTaskbar: true,
+    focusable: true,
     icon: resolveWindowIcon(),
     webPreferences: {
       preload,
@@ -840,6 +1140,7 @@ function createPetBubbleWindow() {
   petBubbleWindow.on("closed", () => {
     petBubbleWindow = null
   })
+  attachWindowActivityEvents(petBubbleWindow, "pet-bubble")
   loadWebApp(petBubbleWindow, "pet-bubble")
 }
 
@@ -892,6 +1193,7 @@ async function createSettingsWindow() {
   settingsWindow.on("closed", () => {
     settingsWindow = null
   })
+  attachWindowActivityEvents(settingsWindow, "settings")
   loadWebApp(settingsWindow, "settings")
 }
 
@@ -997,9 +1299,65 @@ function registerFileProtocol() {
 }
 
 function registerPermissions() {
-  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    callback(permission === "geolocation")
+  const isVoiceInputContents = (webContents) => {
+    if (!webContents) return false
+    const owner = BrowserWindow.fromWebContents(webContents)
+    const isMainWindow = Boolean(mainWindow && !mainWindow.isDestroyed() && owner === mainWindow)
+    const isPetBubbleWindow = Boolean(petBubbleWindow && !petBubbleWindow.isDestroyed() && owner === petBubbleWindow)
+    return isMainWindow || isPetBubbleWindow
+  }
+
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, _origin, details) => {
+    if (permission === "geolocation") return true
+    if (permission !== "media" || !isVoiceInputContents(webContents)) return false
+    return details.mediaType === "audio"
   })
+
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    if (permission === "geolocation") {
+      callback(true)
+      return
+    }
+    const mediaTypes = Array.isArray(details.mediaTypes) ? details.mediaTypes : []
+    callback(
+      permission === "media" &&
+      isVoiceInputContents(webContents) &&
+      mediaTypes.includes("audio") &&
+      !mediaTypes.includes("video"),
+    )
+  })
+}
+
+async function captureDesktopScreen() {
+  if (!app.isReady()) throw new Error("桌面应用尚未就绪，无法截屏")
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  const scaleFactor = Number(display.scaleFactor) || 1
+  const thumbnailSize = {
+    width: Math.max(1, Math.round(display.size.width * scaleFactor)),
+    height: Math.max(1, Math.round(display.size.height * scaleFactor)),
+  }
+  const sources = await desktopCapturer.getSources({
+    types: ["screen"],
+    thumbnailSize,
+    fetchWindowIcons: false,
+  })
+  const displayID = String(display.id)
+  const source =
+    sources.find((item) => String(item.display_id || "") === displayID) ||
+    sources.find((item) => String(item.id || "").includes(`:${displayID}:`)) ||
+    sources[0]
+  if (!source || source.thumbnail.isEmpty()) {
+    throw new Error("Electron 未能获取当前显示器截图；请检查系统的屏幕捕获权限")
+  }
+  const size = source.thumbnail.getSize()
+  return {
+    dataUrl: source.thumbnail.toDataURL(),
+    mime: "image/png",
+    width: size.width,
+    height: size.height,
+    displayId: displayID,
+    sourceName: source.name,
+  }
 }
 
 ipcMain.handle("mon-agent:invoke", async (_event, command, args = {}) => {
@@ -1008,15 +1366,21 @@ ipcMain.handle("mon-agent:invoke", async (_event, command, args = {}) => {
       return resolveCoreBaseUrl()
     case "get_dev_account":
       return getDevAccount()
-    case "core_login":
-      return coreRequest("/api/users/login/", jsonPost({
+    case "core_login": {
+      const response = await coreRequest("/api/users/login/", jsonPost({
         username: args.request?.username,
         password: args.request?.password,
         client_id: args.request?.clientId ?? args.request?.client_id ?? "",
         client_type: args.request?.clientType ?? args.request?.client_type ?? "",
       }))
-    case "core_verify_token":
-      return coreRequest("/api/users/verify-token/", { method: "GET", headers: authHeader(args.token) })
+      startActivityPresence(response?.token, args.request?.clientId ?? args.request?.client_id ?? "")
+      return response
+    }
+    case "core_verify_token": {
+      const response = await coreRequest("/api/users/verify-token/", { method: "GET", headers: authHeader(args.token) })
+      if (response?.valid) startActivityPresence(args.token, args.clientId ?? args.client_id ?? "")
+      return response
+    }
     case "core_default_assistant":
       return coreRequest("/api/assistants/default/", { method: "GET", headers: authHeader(args.token) })
     case "core_user_profile":
@@ -1027,8 +1391,17 @@ ipcMain.handle("mon-agent:invoke", async (_event, command, args = {}) => {
         headers: { ...authHeader(args.token), "content-type": "application/json" },
         body: JSON.stringify(args.input ?? {}),
       })
-    case "core_logout":
-      return coreRequest("/api/users/logout/", { method: "POST", headers: authHeader(args.token) })
+    case "core_logout": {
+      try {
+        return await coreRequest("/api/users/logout/", { method: "POST", headers: authHeader(args.token) })
+      } finally {
+        stopActivityPresence()
+      }
+    }
+    case "update_activity_facts":
+      return updateRendererActivityFacts(_event.sender, args.facts ?? {})
+    case "publish_activity_presence":
+      return publishActivityPresence()
     case "set_window_size":
       return setWindowSize(args.request ?? {}, BrowserWindow.fromWebContents(_event.sender) ?? mainWindow)
     case "set_window_appearance":
@@ -1059,6 +1432,8 @@ ipcMain.handle("mon-agent:invoke", async (_event, command, args = {}) => {
       const display = displayForPetSettings(targetWindow)
       return readDesktopEnvironment(display)
     }
+    case "capture_screen":
+      return captureDesktopScreen()
     case "start_window_drag":
       return true
     case "close_current_window": {
@@ -1099,6 +1474,8 @@ app.on("second-instance", () => {
   })
 
   app.whenReady().then(() => {
+    startDevParentWatch()
+    startActivityPresenceSystemEvents()
     Menu.setApplicationMenu(null)
     watchQuitFlag()
     registerFileProtocol()
@@ -1115,6 +1492,11 @@ app.on("second-instance", () => {
 
   app.on("before-quit", () => {
     isQuitting = true
+    stopActivityPresence()
+    if (devParentWatchTimer) {
+      clearInterval(devParentWatchTimer)
+      devParentWatchTimer = null
+    }
     stopDesktopEnvironmentMonitors()
   })
 

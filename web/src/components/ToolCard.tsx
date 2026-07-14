@@ -1,115 +1,88 @@
-import { useState } from 'react';
-import { ChevronDown, ChevronRight, Wrench, Search, Code, Terminal, Eye, AlertCircle } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import { ToolCall } from '../types';
-import { cn } from '../lib/utils';
+import { useState } from "react"
+import { AnimatePresence, motion } from "motion/react"
+import { AlertCircle, ChevronRight, Wrench } from "lucide-react"
+import type { ToolCall } from "../types"
+import { cn } from "../lib/utils"
 
 interface ToolCardProps {
-  tool: ToolCall;
+  tool: ToolCall
+}
+
+function statusLabel(status: ToolCall["status"]) {
+  if (status === "running") return "运行中"
+  if (status === "error") return "失败"
+  return "完成"
 }
 
 export function ToolCard({ tool }: ToolCardProps) {
-  const [expanded, setExpanded] = useState(false);
-
-  const getIcon = () => {
-    switch (tool.name.toLowerCase()) {
-      case 'search': return <Search className="h-[1.72vh] w-[1.72vh]" />;
-      case 'write': return <Code className="h-[1.72vh] w-[1.72vh]" />;
-      case 'shell': return <Terminal className="h-[1.72vh] w-[1.72vh]" />;
-      case 'vision': return <Eye className="h-[1.72vh] w-[1.72vh]" />;
-      default: return <Wrench className="h-[1.72vh] w-[1.72vh]" />;
-    }
-  };
-
-  const getStatusColor = () => {
-    if (tool.status === 'error') return 'text-red-500';
-    if (tool.status === 'running') return 'text-accent animate-pulse';
-    return 'text-accent';
-  };
-
-  const getStatusLabel = () => {
-    if (tool.status === 'error') return '失败';
-    if (tool.status === 'running') return '运行中';
-    return '完成';
-  };
+  const [expanded, setExpanded] = useState(false)
+  const preview = tool.input.replace(/\s+/g, " ").trim()
 
   return (
-    <div className="my-[0.85vh] w-full max-w-full min-w-0 overflow-hidden rounded-[1.35vh] border border-border bg-card text-[1.52vh] shadow-sm transition-all">
-      <button 
-        onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-[1.05vh] p-[1.15vh] text-left transition-colors hover:bg-white/5"
+    <div className="my-[0.65vh] w-full min-w-0 overflow-hidden rounded-[1.1vh] border border-border bg-card shadow-sm">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full min-w-0 items-center gap-[0.8vh] px-[1.15vh] py-[0.9vh] text-left font-sans text-[1.42vh] transition-colors hover:bg-violet-50/35"
+        aria-expanded={expanded}
       >
-        <span className={cn("flex h-[2.65vh] w-[2.65vh] flex-shrink-0 items-center justify-center rounded-[0.75vh] border border-border bg-bg", getStatusColor())}>
-          {getIcon()}
+        <Wrench className={cn("h-[1.65vh] w-[1.65vh] shrink-0 text-violet-500", tool.status === "running" && "animate-pulse")} />
+        <span className="shrink-0 text-violet-600">工具:</span>
+        <span className="shrink-0 font-medium text-violet-700">{tool.name}</span>
+        {preview ? <span className="min-w-0 flex-1 truncate text-text-muted/65">{preview}</span> : <span className="flex-1" />}
+        <span
+          className={cn(
+            "shrink-0 rounded-full border px-[0.8vh] py-[0.12vh] text-[1.12vh]",
+            tool.status === "error"
+              ? "border-red-200 text-red-500"
+              : tool.status === "running"
+                ? "border-violet-200 text-violet-500"
+                : "border-border text-text-muted",
+          )}
+        >
+          {statusLabel(tool.status)}
         </span>
-        <div className="flex min-w-0 flex-1 items-center gap-[0.8vh] font-serif text-[1.58vh] text-text">
-          <span className="shrink-0">工具: {tool.name}</span>
-          <span className="max-w-[24vh] truncate font-sans text-[1.34vh] font-normal text-text-muted">
-            {tool.input.length > 30 ? tool.input.substring(0, 30) + '...' : tool.input}
-          </span>
-        </div>
-        <div className="flex flex-shrink-0 items-center gap-[0.75vh] font-sans text-[1.32vh] uppercase tracking-[0.12em] text-text-muted">
-          <span
-            className={cn(
-              'rounded-full border px-[0.85vh] py-[0.18vh] text-[1.18vh] tracking-[0.11em]',
-              tool.status === 'error'
-                ? 'border-red-500/30 text-red-400'
-                : tool.status === 'running'
-                  ? 'border-accent/30 text-accent'
-                  : 'border-border text-text-muted',
-            )}
-          >
-            {getStatusLabel()}
-          </span>
-          {tool.duration && <span>{tool.duration}ms</span>}
-          {tool.status === 'error' && <AlertCircle className="h-[1.72vh] w-[1.72vh] text-red-500" />}
-          {expanded ? <ChevronDown className="h-[1.72vh] w-[1.72vh]" /> : <ChevronRight className="h-[1.72vh] w-[1.72vh]" />}
-        </div>
+        {tool.duration ? <span className="shrink-0 text-[1.18vh] text-text-muted/60">{tool.duration}ms</span> : null}
+        {tool.status === "error" ? <AlertCircle className="h-[1.5vh] w-[1.5vh] shrink-0 text-red-500" /> : null}
+        <ChevronRight
+          className={cn("h-[1.55vh] w-[1.55vh] shrink-0 text-text-muted/60 transition-transform", expanded && "rotate-90")}
+        />
       </button>
 
       <AnimatePresence initial={false}>
-        {expanded && (
+        {expanded ? (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
+            animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <div className="grid min-w-0 gap-[1.15vh] border-t border-border bg-bg p-[1.15vh]">
-              <div className="min-w-0">
-                <div className="mb-[0.45vh] text-[1.18vh] font-semibold uppercase tracking-[0.14em] text-text-muted">输入</div>
-                <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[1vh] border border-border bg-card p-[0.85vh] font-mono text-[1.34vh] leading-[1.58] text-text">
+            <div className="grid min-w-0 gap-[1vh] border-t border-border bg-violet-50/20 px-[1.2vh] py-[1.1vh]">
+              <div className="text-[1.25vh] text-text-muted">状态：{statusLabel(tool.status)}</div>
+              {tool.input ? (
+                <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[0.9vh] bg-bg/80 p-[0.9vh] font-mono text-[1.28vh] leading-[1.5] text-text">
                   {tool.input}
                 </pre>
-              </div>
-
-              {tool.status === 'running' && !tool.output && !tool.error && (
-                <div className="rounded-[1vh] border border-accent/20 bg-accent/5 px-[1.1vh] py-[0.8vh] text-[1.34vh] text-text-muted">
-                  正在执行中...
+              ) : null}
+              {tool.status === "running" && !tool.output && !tool.error ? (
+                <div className="rounded-[0.9vh] border border-violet-200/60 bg-violet-50/55 px-[1vh] py-[0.75vh] text-[1.28vh] text-violet-600">
+                  正在执行中…
                 </div>
-              )}
-              
-              {tool.output && (
-                <div className="min-w-0">
-                  <div className="mb-[0.45vh] text-[1.18vh] font-semibold uppercase tracking-[0.14em] text-text-muted">输出</div>
-                  <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[1vh] border border-border bg-card p-[0.85vh] font-mono text-[1.34vh] leading-[1.58] text-text-lighter">
-                    {tool.output}
-                  </pre>
-                </div>
-              )}
-              
-              {tool.error && (
-                <div className="min-w-0">
-                  <div className="mb-[0.45vh] text-[1.18vh] font-semibold uppercase tracking-[0.14em] text-red-500/70">错误</div>
-                  <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[1vh] border border-red-900/30 bg-red-950/20 p-[0.85vh] font-mono text-[1.34vh] leading-[1.58] text-red-400">
-                    {tool.error}
-                  </pre>
-                </div>
-              )}
+              ) : null}
+              {tool.output ? (
+                <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[0.9vh] bg-bg/80 p-[0.9vh] font-mono text-[1.28vh] leading-[1.5] text-text-muted">
+                  {tool.output}
+                </pre>
+              ) : null}
+              {tool.error ? (
+                <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[0.9vh] border border-red-200/60 bg-red-50/65 p-[0.9vh] font-mono text-[1.28vh] leading-[1.5] text-red-600">
+                  {tool.error}
+                </pre>
+              ) : null}
             </div>
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
     </div>
-  );
+  )
 }

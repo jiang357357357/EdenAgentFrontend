@@ -6,15 +6,45 @@ interface MarkdownContentProps {
   content: string
   imageClassName?: string
   paragraphClassName?: string
+  separateActionLines?: boolean
+  actionParagraphClassName?: string
+}
+
+function isActionDescription(text: string) {
+  return /^\s*(?:（[\s\S]*）|\([\s\S]*\))\s*$/.test(text)
+}
+
+function splitActionLines(content: string) {
+  const chunks: Array<{ action: boolean; content: string }> = []
+  let regularLines: string[] = []
+  const flushRegularLines = () => {
+    const value = regularLines.join("\n").trim()
+    if (value) chunks.push({ action: false, content: value })
+    regularLines = []
+  }
+
+  for (const line of content.split("\n")) {
+    if (isActionDescription(line)) {
+      flushRegularLines()
+      chunks.push({ action: true, content: line.trim() })
+    } else {
+      regularLines.push(line)
+    }
+  }
+  flushRegularLines()
+  return chunks
 }
 
 export function MarkdownContent({
   content,
   imageClassName = "my-2 max-w-full rounded-lg border border-border object-contain",
   paragraphClassName,
+  separateActionLines = false,
+  actionParagraphClassName = "my-[1.2vh] italic text-text-muted",
 }: MarkdownContentProps) {
-  return (
+  const renderMarkdown = (value: string, key?: string) => (
     <ReactMarkdown
+      key={key}
       remarkPlugins={[remarkGfm]}
       components={{
         img: ({ src = "", alt = "" }) => (
@@ -40,7 +70,19 @@ export function MarkdownContent({
         },
       }}
     >
-      {content}
+      {value}
     </ReactMarkdown>
+  )
+
+  if (!separateActionLines) return renderMarkdown(content)
+
+  return (
+    <>
+      {splitActionLines(content).map((chunk, index) => chunk.action ? (
+        <p key={`${index}-${chunk.content}`} className={actionParagraphClassName}>
+          {chunk.content}
+        </p>
+      ) : renderMarkdown(chunk.content, `${index}-${chunk.content}`))}
+    </>
   )
 }

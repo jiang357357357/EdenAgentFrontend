@@ -5,8 +5,11 @@ import { MetaPartCard } from "./MetaPartCard"
 import { cn } from "../lib/utils"
 import { resolveMonAgentUrl } from "../lib/mon_agent_api"
 import { MarkdownContent } from "./MarkdownContent"
-import { Code2, User } from "lucide-react"
+import { Code2, LoaderCircle, Pause, Play, User } from "lucide-react"
 import { useTypewriterText } from "../hooks/useTypewriterText"
+import type { SpeechClip } from "../hooks/useTTSSpeech"
+import type { PetTTSMode } from "../lib/desktop-window"
+import { textForTTS } from "../lib/tts-text"
 
 interface MessageBubbleProps {
   message: MessageData
@@ -16,6 +19,11 @@ interface MessageBubbleProps {
   assistantAvatarUrl?: string
   onPreviewImage?: (src: string, alt?: string) => void
   onTextReveal?: () => void
+  ttsMode?: PetTTSMode
+  speechClips?: Record<string, SpeechClip>
+  activeSpeechSegmentId?: string | null
+  speechPaused?: boolean
+  onToggleSpeech?: (segmentId: string, text: string, messageId: string) => void
 }
 
 interface TextSegmentProps {
@@ -24,30 +32,75 @@ interface TextSegmentProps {
   messageId: string
   isMessageStreaming?: boolean
   onTextReveal?: () => void
+  ttsMode: PetTTSMode
+  speechClips: Record<string, SpeechClip>
+  activeSpeechSegmentId?: string | null
+  speechPaused: boolean
+  onToggleSpeech?: (segmentId: string, text: string, messageId: string) => void
 }
 
-function TextSegment({ segment, isUser, messageId, isMessageStreaming, onTextReveal }: TextSegmentProps) {
+function TextSegment({
+  segment,
+  isUser,
+  messageId,
+  isMessageStreaming,
+  onTextReveal,
+  ttsMode,
+  speechClips,
+  activeSpeechSegmentId,
+  speechPaused,
+  onToggleSpeech,
+}: TextSegmentProps) {
   const visibleContent = useTypewriterText({
     active: !isUser && Boolean(isMessageStreaming) && segment.state === "streaming",
     cacheKey: `${messageId}:${segment.id}`,
     target: segment.content,
     onFrame: onTextReveal,
   })
+  const speechSegmentId = segment.id
+  const clip = speechClips[speechSegmentId]
+  const segmentComplete = segment.state !== "streaming"
+  const canSpeak = segmentComplete && Boolean(textForTTS(visibleContent, ttsMode))
+  const playing = activeSpeechSegmentId === speechSegmentId && !speechPaused
 
   return (
     <div
       className={cn(
-        "relative px-[2.05vh] py-[1.35vh] text-[1.82vh] leading-[1.68]",
+        "relative text-[1.82vh] leading-[1.58]",
         isUser
-          ? "bg-card border border-border text-text rounded-[2vh] rounded-tr-[0.45vh] font-sans"
-          : "bg-transparent text-text w-full prose max-w-none",
+          ? "rounded-[2vh] rounded-tr-[0.45vh] border border-border bg-card px-[2.05vh] py-[1.35vh] font-sans text-text"
+          : "w-full max-w-none bg-transparent px-[2.05vh] py-[0.35vh] text-text prose",
       )}
     >
       {isUser ? (
         <div className="whitespace-pre-wrap">{visibleContent}</div>
       ) : (
-        <div className="markdown-body">
-          <MarkdownContent content={visibleContent} />
+        <div className="flex min-w-0 items-end gap-[0.8vh]">
+          <div className="markdown-body min-w-0 flex-1">
+            <MarkdownContent
+              content={visibleContent}
+              paragraphClassName="my-0"
+              separateActionLines
+              actionParagraphClassName="my-0 italic text-text-muted"
+            />
+          </div>
+          {canSpeak && clip?.status === "synthesizing" ? (
+            <LoaderCircle className="mb-[0.35vh] h-[1.8vh] w-[1.8vh] shrink-0 animate-spin text-text-muted" aria-label="正在合成语音" />
+          ) : null}
+          {canSpeak && clip?.status !== "synthesizing" ? (
+            <button
+              type="button"
+              onClick={() => onToggleSpeech?.(speechSegmentId, visibleContent, messageId)}
+              className={cn(
+                "mb-[0.15vh] flex h-[2.5vh] w-[2.5vh] shrink-0 items-center justify-center rounded-full transition-colors",
+                playing ? "bg-accent/10 text-accent" : clip?.status === "error" ? "text-red-500" : "text-text-muted hover:bg-bg hover:text-accent",
+              )}
+              aria-label={playing ? "暂停这段语音" : "播放这段语音"}
+              title={clip?.status === "error" ? "重新合成并播放" : playing ? "暂停" : "播放"}
+            >
+              {playing ? <Pause className="h-[1.45vh] w-[1.45vh] fill-current" /> : <Play className="h-[1.45vh] w-[1.45vh] fill-current" />}
+            </button>
+          ) : null}
         </div>
       )}
     </div>
@@ -76,6 +129,11 @@ export function MessageBubble({
   assistantAvatarUrl,
   onPreviewImage,
   onTextReveal,
+  ttsMode = "none",
+  speechClips = {},
+  activeSpeechSegmentId,
+  speechPaused = false,
+  onToggleSpeech,
 }: MessageBubbleProps) {
   const isUser = message.role === "user"
   const orderedSegments = message.segments && message.segments.length > 0 ? message.segments : undefined
@@ -103,7 +161,7 @@ export function MessageBubble({
       </div>
 
       {/* Message Content Container */}
-      <div className={cn("flex w-full max-w-[80%] min-w-0 flex-col gap-[0.85vh]", isUser ? "items-end" : "items-start")}>
+      <div className={cn("flex w-full max-w-[80%] min-w-0 flex-col gap-[0.35vh]", isUser ? "items-end" : "items-start")}>
         <div className="flex items-center gap-[0.8vh] px-[0.45vh]">
           <span className="text-[1.24vh] uppercase tracking-[0.08em] text-text-muted">
             {isUser ? "你" : assistantName}
@@ -140,6 +198,11 @@ export function MessageBubble({
                     messageId={message.id}
                     isMessageStreaming={message.isStreaming}
                     onTextReveal={onTextReveal}
+                    ttsMode={ttsMode}
+                    speechClips={speechClips}
+                    activeSpeechSegmentId={activeSpeechSegmentId}
+                    speechPaused={speechPaused}
+                    onToggleSpeech={onToggleSpeech}
                   />
                 )
               }
@@ -237,6 +300,11 @@ export function MessageBubble({
               messageId={message.id}
               isMessageStreaming={message.isStreaming}
               onTextReveal={onTextReveal}
+              ttsMode={ttsMode}
+              speechClips={speechClips}
+              activeSpeechSegmentId={activeSpeechSegmentId}
+              speechPaused={speechPaused}
+              onToggleSpeech={onToggleSpeech}
             />
             {!isUser && !message.isStreaming && <RawOutput content={renderedContent} />}
           </>
