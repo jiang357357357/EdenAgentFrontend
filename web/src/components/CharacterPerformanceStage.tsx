@@ -1,5 +1,5 @@
-import { motion, useAnimationControls } from "motion/react"
-import { useEffect, type ReactNode } from "react"
+import { AnimatePresence, motion, useAnimationControls, useReducedMotion } from "motion/react"
+import { useEffect, useState, type ReactNode } from "react"
 import type { ActiveCharacterAction } from "../lib/auth"
 import { cn } from "../lib/utils"
 
@@ -19,6 +19,145 @@ const performanceTransition = {
   duration: 0.58,
   ease: [0.16, 1, 0.3, 1],
 } as const
+
+interface VisibleEffect {
+  effect: string
+  key: string
+  anchor?: string
+}
+
+function effectAnimation(effect: string, reducedMotion: boolean) {
+  if (reducedMotion) {
+    return {
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+      visibleMs: 1250,
+    }
+  }
+
+  switch (effect) {
+    case "question":
+      return {
+        initial: { opacity: 0, y: 10, scale: 0.66, rotate: -14 },
+        animate: {
+          opacity: [0, 1, 1, 1],
+          y: [10, -11, -6, -8],
+          scale: [0.66, 1.12, 0.96, 1],
+          rotate: [-14, 10, -6, 0],
+        },
+        exit: { opacity: 0, y: -18, scale: 0.84, rotate: 8 },
+        visibleMs: 1900,
+      }
+    case "exclamation":
+      return {
+        initial: { opacity: 0, y: 13, scale: 0.5, rotate: -4 },
+        animate: {
+          opacity: [0, 1, 1, 1],
+          y: [13, -14, -6, -8],
+          scale: [0.5, 1.28, 0.9, 1],
+          rotate: [-4, 3, -2, 0],
+        },
+        exit: { opacity: 0, y: -20, scale: 0.78 },
+        visibleMs: 1550,
+      }
+    case "sweat":
+      return {
+        initial: { opacity: 0, y: -13, x: -5, scale: 0.72, rotate: -8 },
+        animate: {
+          opacity: [0, 1, 1, 1],
+          y: [-13, 2, 11, 7],
+          x: [-5, 1, 0, 0],
+          scale: [0.72, 1.08, 0.96, 1],
+          rotate: [-8, 4, -2, 0],
+        },
+        exit: { opacity: 0, y: 25, scale: 0.78 },
+        visibleMs: 1800,
+      }
+    case "heart":
+      return {
+        initial: { opacity: 0, y: 11, scale: 0.48, rotate: -9 },
+        animate: {
+          opacity: [0, 1, 1, 1, 1],
+          y: [11, -10, -14, -11, -13],
+          scale: [0.48, 1.2, 0.92, 1.1, 1],
+          rotate: [-9, 6, -3, 2, 0],
+        },
+        exit: { opacity: 0, y: -30, scale: 1.12, rotate: 7 },
+        visibleMs: 2200,
+      }
+    case "anger":
+      return {
+        initial: { opacity: 0, x: 0, y: 7, scale: 0.55, rotate: -10 },
+        animate: {
+          opacity: [0, 1, 1, 1, 1, 1],
+          x: [0, -5, 5, -4, 3, 0],
+          y: [7, -8, -8, -8, -8, -8],
+          scale: [0.55, 1.18, 1.02, 1.1, 0.98, 1],
+          rotate: [-10, -7, 7, -5, 3, 0],
+        },
+        exit: { opacity: 0, y: -12, scale: 0.75, rotate: 8 },
+        visibleMs: 1750,
+      }
+    case "sigh":
+      return {
+        initial: { opacity: 0, x: -12, y: 8, scale: 0.72, rotate: -7 },
+        animate: {
+          opacity: [0, 1, 1, 1],
+          x: [-12, -2, 5, 9],
+          y: [8, -7, -10, -12],
+          scale: [0.72, 1.04, 1, 0.96],
+          rotate: [-7, 2, -1, 0],
+        },
+        exit: { opacity: 0, x: 22, y: -17, scale: 0.82 },
+        visibleMs: 1950,
+      }
+    case "speechless":
+      return {
+        initial: { opacity: 0, y: 5, scale: 0.75 },
+        animate: {
+          opacity: [0, 1, 0.72, 1],
+          y: [5, -7, -6, -8],
+          scale: [0.75, 1.06, 0.98, 1],
+          rotate: [0, -2, 2, 0],
+        },
+        exit: { opacity: 0, y: -3, scale: 0.88 },
+        visibleMs: 1900,
+      }
+    case "gloomy":
+      return {
+        initial: { opacity: 0, y: -7, scale: 0.7, rotate: 5 },
+        animate: {
+          opacity: [0, 1, 1, 1],
+          y: [-7, 8, 14, 10],
+          scale: [0.7, 1.06, 0.97, 1],
+          rotate: [5, -4, 2, 0],
+        },
+        exit: { opacity: 0, y: 25, scale: 0.82, rotate: -5 },
+        visibleMs: 2150,
+      }
+    case "sleepy":
+      return {
+        initial: { opacity: 0, x: -6, y: 11, scale: 0.65, rotate: -8 },
+        animate: {
+          opacity: [0, 1, 0.78, 1],
+          x: [-6, 1, -2, 5],
+          y: [11, -7, -14, -19],
+          scale: [0.65, 1.08, 0.94, 1],
+          rotate: [-8, 5, -3, 2],
+        },
+        exit: { opacity: 0, x: 13, y: -34, scale: 0.78, rotate: 9 },
+        visibleMs: 2400,
+      }
+    default:
+      return {
+        initial: { opacity: 0, y: 10, scale: 0.72, rotate: -8 },
+        animate: { opacity: 1, y: -8, scale: 1, rotate: 0 },
+        exit: { opacity: 0, y: -18, scale: 0.84 },
+        visibleMs: 1800,
+      }
+  }
+}
 
 function level(activeAction?: ActiveCharacterAction) {
   if (activeAction?.intensity === "light") return 0.72
@@ -98,6 +237,8 @@ export function CharacterPerformanceStage({ activeAction, className, effectClass
   const effect = activeAction?.effect && activeAction.effect !== "none" ? activeAction.effect : undefined
   const effectKey = `${activeAction?.performanceID ?? activeAction?.time ?? ""}:${effect ?? "none"}`
   const controls = useAnimationControls()
+  const reducedMotion = useReducedMotion()
+  const [visibleEffect, setVisibleEffect] = useState<VisibleEffect | null>(null)
 
   useEffect(() => {
     Object.values(effectImagePaths).forEach((src) => {
@@ -110,6 +251,29 @@ export function CharacterPerformanceStage({ activeAction, className, effectClass
     void controls.start(motionAnimate(activeAction))
   }, [activeAction?.intensity, activeAction?.motion, activeAction?.performanceID, controls])
 
+  useEffect(() => {
+    if (!effect) {
+      setVisibleEffect(null)
+      return
+    }
+
+    const nextEffect = {
+      effect,
+      key: effectKey,
+      anchor: activeAction?.effectAnchor,
+    }
+    setVisibleEffect(nextEffect)
+    const timeout = window.setTimeout(() => {
+      setVisibleEffect((current) => current?.key === effectKey ? null : current)
+    }, effectAnimation(effect, Boolean(reducedMotion)).visibleMs)
+
+    return () => window.clearTimeout(timeout)
+  }, [activeAction?.effectAnchor, effect, effectKey, reducedMotion])
+
+  const visibleEffectAnimation = visibleEffect
+    ? effectAnimation(visibleEffect.effect, Boolean(reducedMotion))
+    : null
+
   return (
     <motion.div
       className={className}
@@ -118,22 +282,29 @@ export function CharacterPerformanceStage({ activeAction, className, effectClass
     >
       <div className="relative h-full w-fit">
         {children}
-        {effect ? (
-          <motion.div
-            key={effectKey}
-            initial={{ opacity: 0, y: 10, scale: 0.72, rotate: -8 }}
-            animate={{ opacity: 1, y: -8, scale: 1, rotate: 0 }}
-            transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-            className={cn(
-              "pointer-events-none absolute z-20 drop-shadow-[0_2px_3px_rgba(255,255,255,0.9)] drop-shadow-[0_2px_5px_rgba(0,0,0,0.16)]",
-              effectClassName ?? "h-[8vh] w-[8vh]",
-              effectPosition(activeAction?.effectAnchor),
-            )}
-            aria-hidden="true"
-          >
-            <EffectIcon effect={effect} />
-          </motion.div>
-        ) : null}
+        <AnimatePresence>
+          {visibleEffect && visibleEffectAnimation ? (
+            <motion.div
+              key={visibleEffect.key}
+              initial={visibleEffectAnimation.initial}
+              animate={visibleEffectAnimation.animate}
+              exit={visibleEffectAnimation.exit}
+              transition={
+                reducedMotion
+                  ? { duration: 0.18, ease: "easeOut" }
+                  : { duration: 0.68, ease: [0.16, 1, 0.3, 1] }
+              }
+              className={cn(
+                "pointer-events-none absolute z-20 drop-shadow-[0_2px_3px_rgba(255,255,255,0.9)] drop-shadow-[0_2px_5px_rgba(0,0,0,0.16)]",
+                effectClassName ?? "h-[8vh] w-[8vh]",
+                effectPosition(visibleEffect.anchor),
+              )}
+              aria-hidden="true"
+            >
+              <EffectIcon effect={visibleEffect.effect} />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </div>
     </motion.div>
   )

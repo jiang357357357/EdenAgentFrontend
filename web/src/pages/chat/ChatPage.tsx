@@ -1,11 +1,10 @@
-import { Lock, Menu, MessageSquare, NotebookPen, Unlock } from "lucide-react"
+import { Lock, Menu, MessageSquare, NotebookPen, Sparkles, Unlock } from "lucide-react"
 import { motion } from "motion/react"
 import { useEffect, useMemo, useState } from "react"
 import { CharacterPanel } from "../../components/CharacterPanel"
 import { ChatInput } from "../../components/ChatInput"
 import { MessageBubble } from "../../components/MessageBubble"
 import { PermissionRequestCard } from "../../components/PermissionRequestCard"
-import { QuestionRequestCard } from "../../components/QuestionRequestCard"
 import { Sidebar } from "../../components/Sidebar"
 import { resolveCoreAssetUrl, type ActiveCharacterAction, type AuthUser, type CoreAssistant } from "../../lib/auth"
 import {
@@ -16,7 +15,7 @@ import {
 } from "../../lib/desktop-window"
 import { useTTSSpeech } from "../../hooks/useTTSSpeech"
 import { cn } from "../../lib/utils"
-import type { PendingPermission, PendingQuestion, PermissionMode, PromptAttachment, Session } from "../../types"
+import type { PendingPermission, PermissionMode, PromptAttachment, Session } from "../../types"
 
 const fullScreenMotion = {
   initial: { opacity: 0, x: -18, filter: "blur(3px)" },
@@ -42,7 +41,6 @@ interface ChatPageProps {
   isThinking: boolean
   connectionError?: string
   activePendingPermissions: PendingPermission[]
-  activePendingQuestions: PendingQuestion[]
   messagesScrollRef: React.RefObject<HTMLDivElement | null>
   messagesEndRef: React.RefObject<HTMLDivElement | null>
   autoScrollEnabled: boolean
@@ -53,8 +51,6 @@ interface ChatPageProps {
   onPermissionReply: (requestID: string, reply: "once" | "always" | "reject", message?: string) => Promise<void>
   permissionMode: PermissionMode
   onPermissionModeChange: (mode: PermissionMode) => Promise<void>
-  onQuestionReply: (requestID: string, answers: string[][]) => Promise<void>
-  onQuestionReject: (requestID: string) => Promise<void>
   onPreviewImage: (src: string, alt?: string) => void
   onLogout: () => Promise<void> | void
   onOpenSelfAwake: () => void
@@ -74,7 +70,6 @@ export function ChatPage({
   isThinking,
   connectionError,
   activePendingPermissions,
-  activePendingQuestions,
   messagesScrollRef,
   messagesEndRef,
   autoScrollEnabled,
@@ -85,8 +80,6 @@ export function ChatPage({
   onPermissionReply,
   permissionMode,
   onPermissionModeChange,
-  onQuestionReply,
-  onQuestionReject,
   onPreviewImage,
   onLogout,
   onOpenSelfAwake,
@@ -169,14 +162,13 @@ export function ChatPage({
         isOpen={sidebarOpen}
         setIsOpen={setSidebarOpen}
         currentUser={currentUser}
-        onSelfAwake={onOpenSelfAwake}
         onLogout={onLogout}
       />
 
       <main
         className={cn(
           "relative grid h-[100vh] min-h-0 w-[66vw] flex-none overflow-hidden",
-          activePendingPermissions.length > 0 || activePendingQuestions.length > 0
+          activePendingPermissions.length > 0
             ? "grid-rows-[12.5vh_minmax(0,1fr)_44vh]"
             : "grid-rows-[12.5vh_minmax(0,1fr)_20vh]",
         )}
@@ -196,28 +188,41 @@ export function ChatPage({
           <div className="flex items-center gap-[1vw]">
             <button
               type="button"
+              onClick={onOpenSelfAwake}
+              className="group relative flex h-[5.4vh] w-[5.4vh] items-center justify-center text-text-muted outline-none transition-colors hover:text-accent focus-visible:text-accent"
+              aria-label="打开自醒"
+            >
+              <Sparkles className="h-[2.45vh] w-[2.45vh]" />
+              <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.7vh)] z-30 -translate-x-1/2 whitespace-nowrap rounded-[0.55vh] border border-border bg-card/96 px-[0.7vw] py-[0.45vh] text-[1.35vh] tracking-normal text-text opacity-0 shadow-md backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                自醒
+              </span>
+            </button>
+            <button
+              type="button"
               onClick={onOpenMemo}
-              className="flex items-center gap-[0.6vw] rounded-full border border-border bg-card px-[1.6vw] py-[1.35vh] text-[1.75vh] tracking-[0.12em] text-text-muted shadow-sm transition-colors hover:border-accent/40 hover:text-accent"
-              title="打开备忘录"
+              className="group relative flex h-[5.4vh] w-[5.4vh] items-center justify-center text-text-muted outline-none transition-colors hover:text-accent focus-visible:text-accent"
               aria-label="打开备忘录"
             >
               <NotebookPen className="h-[2.45vh] w-[2.45vh]" />
-              <span className="hidden sm:inline">备忘录</span>
+              <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.7vh)] z-30 -translate-x-1/2 whitespace-nowrap rounded-[0.55vh] border border-border bg-card/96 px-[0.7vw] py-[0.45vh] text-[1.35vh] tracking-normal text-text opacity-0 shadow-md backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                备忘录
+              </span>
             </button>
             <button
               type="button"
               onClick={toggleAutoScroll}
               className={cn(
-                "flex items-center gap-[0.6vw] rounded-full border px-[1.6vw] py-[1.35vh] text-[1.75vh] tracking-[0.12em] shadow-sm transition-colors",
+                "group relative flex h-[5.4vh] w-[5.4vh] items-center justify-center outline-none transition-colors",
                 autoScrollEnabled
-                  ? "border-accent/25 bg-card text-accent hover:border-accent/45"
-                  : "border-border bg-card text-text-muted hover:border-accent/35 hover:text-accent",
+                  ? "text-accent"
+                  : "text-text-muted hover:text-accent focus-visible:text-accent",
               )}
-              title={autoScrollEnabled ? "自动滚动已开启，点击关闭" : "自动滚动已关闭，点击恢复到底部"}
               aria-label={autoScrollEnabled ? "关闭自动滚动" : "开启自动滚动"}
             >
               {autoScrollEnabled ? <Lock className="h-[2.45vh] w-[2.45vh]" /> : <Unlock className="h-[2.45vh] w-[2.45vh]" />}
-              <span className="hidden sm:inline">{autoScrollEnabled ? "自动滚动" : "已关闭"}</span>
+              <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.7vh)] z-30 -translate-x-1/2 whitespace-nowrap rounded-[0.55vh] border border-border bg-card/96 px-[0.7vw] py-[0.45vh] text-[1.35vh] tracking-normal text-text opacity-0 shadow-md backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                {autoScrollEnabled ? "自动滚动" : "自动滚动已关闭"}
+              </span>
             </button>
           </div>
         </header>
@@ -306,18 +311,10 @@ export function ChatPage({
 
         <div className="h-full min-h-0 overflow-visible px-[3vw]">
           <div className="mx-auto w-[calc(100%_-_5vw)] max-w-[52vw]">
-            {(activePendingPermissions.length > 0 || activePendingQuestions.length > 0) && (
+            {activePendingPermissions.length > 0 && (
               <div className="mb-2 grid max-h-[24vh] gap-2 overflow-y-auto">
                 {activePendingPermissions.map((request) => (
                   <PermissionRequestCard key={request.id} request={request} onReply={onPermissionReply} />
-                ))}
-                {activePendingQuestions.map((request) => (
-                  <QuestionRequestCard
-                    key={request.id}
-                    request={request}
-                    onReply={onQuestionReply}
-                    onReject={onQuestionReject}
-                  />
                 ))}
               </div>
             )}

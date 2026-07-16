@@ -38,6 +38,14 @@
     -webkit-app-region: no-drag;
   }
 
+  .question-decision-body-single {
+    scrollbar-width: none;
+  }
+
+  .question-decision-body-single::-webkit-scrollbar {
+    display: none;
+  }
+
   .settings-range {
     width: 100%;
     height: 2.25rem;

@@ -3,14 +3,19 @@ import {
   Archive,
   ArrowLeft,
   Bell,
+  CalendarDays,
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
+  Clock3,
   ListChecks,
   NotebookPen,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
+  Tag,
   TimerReset,
   X,
 } from "lucide-react"
@@ -71,12 +76,6 @@ const statusMeta: Record<ApiMemoStatus, { label: string; tone: string }> = {
   cancelled: { label: "已取消", tone: "border-stone-200/70 bg-stone-100/52 text-stone-500" },
 }
 
-const priorityLabel: Record<ApiMemoPriority, string> = {
-  low: "低",
-  normal: "普通",
-  high: "高",
-}
-
 const kindOptions: PaperSelectOption<ApiMemoKind>[] = [
   { value: "note", label: "备忘" },
   { value: "reminder", label: "提醒" },
@@ -109,6 +108,46 @@ function triggerLabel(memo: ApiMemo) {
   if (memo.remind_at) return `提醒 ${formatLocalMonthDayTime(memo.remind_at)}`
   if (memo.due_at) return `截止 ${formatLocalMonthDayTime(memo.due_at)}`
   return "未定时"
+}
+
+function memoTimestamp(memo: ApiMemo) {
+  return memo.trigger_at || memo.remind_at || memo.due_at || memo.created_at
+}
+
+function parseMemoDate(value?: string | null) {
+  if (!value) return undefined
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+
+function pad2(value: number) {
+  return String(value).padStart(2, "0")
+}
+
+function memoDateKey(value?: string | null) {
+  const date = parseMemoDate(value)
+  if (!date) return "unknown"
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+}
+
+function memoClock(value?: string | null) {
+  const date = parseMemoDate(value)
+  if (!date) return "--:--"
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+}
+
+function memoFullDateTime(value?: string | null) {
+  const date = parseMemoDate(value)
+  if (!date) return "未设置"
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+}
+
+function memoDateGroupLabel(value?: string | null) {
+  const date = parseMemoDate(value)
+  if (!date) return "未设置日期"
+  const now = new Date()
+  const isToday = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
+  return `${memoDateKey(value)}${isToday ? "（今天）" : ""}`
 }
 
 function paperStyle(alpha = 0.54) {
@@ -204,10 +243,11 @@ export function MemoPage({ onBack }: MemoPageProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | undefined>()
   const [query, setQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active")
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [kindFilter, setKindFilter] = useState<KindFilter>("all")
   const [editorMode, setEditorMode] = useState<EditorMode>("create")
   const [editingMemo, setEditingMemo] = useState<ApiMemo | undefined>()
+  const [selectedMemoId, setSelectedMemoId] = useState<number | undefined>()
   const [editorOpen, setEditorOpen] = useState(false)
   const [form, setForm] = useState(emptyForm)
 
@@ -268,6 +308,36 @@ export function MemoPage({ onBack }: MemoPageProps) {
     })
   }, [kindFilter, memos, statusFilter])
 
+  const memoGroups = useMemo(() => {
+    const groups = new Map<string, ApiMemo[]>()
+    for (const memo of visibleMemos) {
+      const key = memoDateKey(memoTimestamp(memo))
+      groups.set(key, [...(groups.get(key) ?? []), memo])
+    }
+    return Array.from(groups.entries())
+      .map(([dateKey, items]) => ({
+        dateKey,
+        label: memoDateGroupLabel(memoTimestamp(items[0])),
+        items: items.sort((left, right) => new Date(memoTimestamp(left) || 0).getTime() - new Date(memoTimestamp(right) || 0).getTime()),
+      }))
+      .sort((left, right) => right.dateKey.localeCompare(left.dateKey))
+  }, [visibleMemos])
+
+  const orderedVisibleMemos = useMemo(() => memoGroups.flatMap((group) => group.items), [memoGroups])
+
+  const selectedMemo = useMemo(
+    () => orderedVisibleMemos.find((memo) => memo.id === selectedMemoId) ?? orderedVisibleMemos[0],
+    [orderedVisibleMemos, selectedMemoId],
+  )
+
+  useEffect(() => {
+    if (!orderedVisibleMemos.length) {
+      setSelectedMemoId(undefined)
+      return
+    }
+    if (!orderedVisibleMemos.some((memo) => memo.id === selectedMemoId)) setSelectedMemoId(orderedVisibleMemos[0].id)
+  }, [orderedVisibleMemos, selectedMemoId])
+
   const openCreate = () => {
     setEditorMode("create")
     setEditingMemo(undefined)
@@ -277,6 +347,7 @@ export function MemoPage({ onBack }: MemoPageProps) {
   }
 
   const openEdit = (memo: ApiMemo) => {
+    setSelectedMemoId(memo.id)
     setEditorMode("edit")
     setEditingMemo(memo)
     setForm({
@@ -387,10 +458,12 @@ export function MemoPage({ onBack }: MemoPageProps) {
       key="memo"
       {...screenMotion}
       transition={transition}
-      className="fixed inset-0 z-10 flex h-[100vh] w-[100vw] flex-col overflow-hidden bg-bg bg-cover bg-center font-sans text-text"
-      style={{ backgroundImage: `url(${memoWorkspaceBackground})` }}
+      className="fixed inset-0 z-10 flex h-[100vh] w-[100vw] flex-col overflow-hidden bg-[#f7f5f0] bg-cover bg-center font-sans text-text"
+      style={{
+        backgroundImage: `linear-gradient(rgba(250,249,246,0.965), rgba(250,249,246,0.965)), url(${memoWorkspaceBackground})`,
+      }}
     >
-      <header className="flex h-[10.5vh] items-center justify-between border-b border-stone-200/45 bg-white/58 px-[2.8vw] shadow-sm backdrop-blur-md">
+      <header className="flex h-[10.5vh] shrink-0 items-center justify-between border-b border-stone-200/55 bg-[#fbfaf7]/92 px-[2.15vw] shadow-[0_0.25vh_0.8vh_rgba(87,83,78,0.06)] backdrop-blur-md">
         <div className="flex min-w-0 items-center gap-[1.15vw]">
           <button
             type="button"
@@ -401,7 +474,7 @@ export function MemoPage({ onBack }: MemoPageProps) {
           >
             <ArrowLeft className="h-[2.7vh] w-[2.7vh]" />
           </button>
-          <div className="flex h-[5.7vh] w-[5.7vh] rotate-[-2deg] items-center justify-center rounded-[1.1vh] border border-stone-200/70 bg-white/72 text-stone-700 shadow-sm">
+          <div className="flex h-[5.7vh] w-[5.7vh] items-center justify-center rounded-[0.9vh] border border-stone-200/70 bg-white/72 text-stone-700 shadow-sm">
             <NotebookPen className="h-[2.7vh] w-[2.7vh]" />
           </div>
           <div className="min-w-0">
@@ -431,85 +504,143 @@ export function MemoPage({ onBack }: MemoPageProps) {
         </div>
       </header>
 
-      <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-[3vw] py-[2.2vh]">
-        <section className="mb-[1.75vh] flex flex-wrap items-center gap-[1.05vh]">
-          <div className="relative min-w-[32vh] flex-1">
-            <Search className="absolute left-[1.25vh] top-1/2 h-[1.9vh] w-[1.9vh] -translate-y-1/2 text-stone-500" />
+      <main className="grid min-h-0 flex-1 grid-cols-[32.2vw_minmax(0,1fr)] gap-[1.1vw] overflow-hidden px-[2.15vw] py-[2vh]">
+        <aside className="flex min-h-0 flex-col overflow-hidden">
+          <button
+            type="button"
+            onClick={() => nextMemo && setSelectedMemoId(nextMemo.id)}
+            disabled={!nextMemo}
+            className="flex h-[8.4vh] shrink-0 items-center gap-[1vw] rounded-[0.55vh] border border-amber-200/55 bg-[#fff7e8]/72 px-[1.25vw] text-left text-stone-700 shadow-[0_0.18vh_0.55vh_rgba(87,83,78,0.05)] outline-none transition-colors hover:border-amber-300/70 hover:bg-[#fff4dd] focus-visible:border-amber-400/70 disabled:cursor-default"
+          >
+            <Bell className="h-[2.45vh] w-[2.45vh] shrink-0 text-amber-700" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[1.72vh]">
+                {nextMemo ? `下一次提醒 ${memoDateKey(memoTimestamp(nextMemo))} ${memoClock(memoTimestamp(nextMemo))}` : "暂无待提醒纸条"}
+              </span>
+              <span className="mt-[0.35vh] block truncate text-[1.48vh] text-stone-600">{nextMemo?.title || "新建一张提醒纸条"}</span>
+            </span>
+            <ChevronRight className="h-[1.9vh] w-[1.9vh] shrink-0 text-stone-500" />
+          </button>
+
+          <div className="relative mt-[1.15vh] shrink-0">
+            <Search className="absolute left-[1.15vw] top-1/2 h-[2.05vh] w-[2.05vh] -translate-y-1/2 text-stone-500" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索纸条"
-              className="h-[5.4vh] w-full rounded-[0.8vh] border border-stone-200/70 bg-white/58 pl-[4.25vh] pr-[1.35vh] text-[1.72vh] text-text shadow-sm outline-none backdrop-blur-[1px] transition-colors placeholder:text-text-lighter focus:border-stone-400/70"
+              className="h-[6.1vh] w-full rounded-[0.55vh] border border-stone-200/75 bg-white/64 pl-[3.15vw] pr-[1vw] text-[1.68vh] text-text shadow-[0_0.18vh_0.45vh_rgba(87,83,78,0.04)] outline-none transition-colors placeholder:text-text-lighter focus:border-stone-400/70"
             />
           </div>
-          <div className="grid w-full grid-cols-2 gap-[1vh] sm:w-auto">
-            <div className="w-full sm:w-[18vh]">
-              <PaperSelect<StatusFilter> value={statusFilter} options={statusFilterOptions} onChange={setStatusFilter} />
-            </div>
-            <div className="w-full sm:w-[18vh]">
-              <PaperSelect<KindFilter> value={kindFilter} options={kindFilterOptions} onChange={setKindFilter} />
-            </div>
-          </div>
-        </section>
 
-        {error && (
-          <div className="mb-[1.2vh] rounded-[0.8vh] border border-stone-300 bg-white/86 px-[1vw] py-[1vh] text-[1.55vh] text-stone-700">
-            {error}
+          <div className="mt-[1.5vh] grid shrink-0 grid-cols-[12vw_11vw] gap-[1vw]">
+            <PaperSelect<StatusFilter> value={statusFilter} options={statusFilterOptions} onChange={setStatusFilter} />
+            <PaperSelect<KindFilter> value={kindFilter} options={kindFilterOptions} onChange={setKindFilter} />
           </div>
-        )}
 
-        <section className="min-h-0 flex-1 overflow-y-auto rounded-[1vh] border border-stone-200/45 bg-white/18 p-[1.8vh] shadow-[0_18px_48px_rgba(120,113,108,0.08)] backdrop-blur-[1px]">
-          {visibleMemos.length === 0 ? (
-            <button
-              type="button"
-              onClick={openCreate}
-              className="flex h-full min-h-[46vh] w-full flex-col items-center justify-center rounded-[0.9vh] border border-stone-200/45 bg-white/28 text-center text-text-muted transition-colors hover:border-stone-300/70 hover:bg-white/42"
-            >
-              <NotebookPen className="mb-[1.5vh] h-[5.8vh] w-[5.8vh] text-stone-400" />
-              <p className="font-serif text-[2.8vh] text-text">还没有纸条</p>
-              <p className="mt-[0.8vh] text-[1.6vh]">写下第一条备忘。</p>
-            </button>
+          {error ? (
+            <div className="mt-[1vh] rounded-[0.55vh] border border-stone-300 bg-white/86 px-[1vw] py-[0.8vh] text-[1.48vh] text-stone-700">{error}</div>
+          ) : null}
+
+          <section className="mt-[1.15vh] min-h-0 flex-1 overflow-y-auto border-x border-b border-stone-200/70 bg-white/22" style={{ scrollbarGutter: "stable" }}>
+            {visibleMemos.length === 0 ? (
+              <button
+                type="button"
+                onClick={openCreate}
+                className="flex h-full min-h-[38vh] w-full flex-col items-center justify-center text-center text-text-muted outline-none transition-colors hover:bg-white/32"
+              >
+                <NotebookPen className="mb-[1.3vh] h-[4.8vh] w-[4.8vh] text-stone-400" />
+                <p className="font-serif text-[2.55vh] text-text">还没有纸条</p>
+                <p className="mt-[0.65vh] text-[1.5vh]">写下第一条备忘。</p>
+              </button>
+            ) : (
+              memoGroups.map((group) => (
+                <div key={group.dateKey}>
+                  <div className="flex h-[5.45vh] items-center border-y border-stone-200/65 bg-white/28 px-[1vw] text-[1.62vh] text-stone-500 first:border-t-0">
+                    {group.label}
+                  </div>
+                  {group.items.map((memo) => {
+                    const selected = memo.id === selectedMemo?.id
+                    const KindIcon = kindMeta[memo.kind].icon
+                    return (
+                      <button
+                        key={memo.id}
+                        type="button"
+                        onClick={() => setSelectedMemoId(memo.id)}
+                        onDoubleClick={() => openEdit(memo)}
+                        aria-pressed={selected}
+                        className={cn(
+                          "relative grid h-[9.55vh] w-full grid-cols-[4.45vw_minmax(0,1fr)_auto] items-center gap-[0.7vw] border-b border-stone-200/58 px-[0.9vw] text-left outline-none transition-colors",
+                          selected ? "bg-[#fff3dc]/76" : "bg-white/18 hover:bg-white/42 focus-visible:bg-white/48",
+                        )}
+                      >
+                        <span className={cn("absolute inset-y-0 left-0 w-[0.18vw]", selected ? "bg-amber-500" : "bg-transparent")} />
+                        <span className="text-[1.62vh] text-stone-600">{memoClock(memoTimestamp(memo))}</span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-serif text-[1.82vh] text-text">{memo.title}</span>
+                          <span className="mt-[0.42vh] block truncate text-[1.35vh] text-text-muted">{memo.content || "没有正文。"}</span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-[0.55vw]">
+                          <KindIcon className="h-[1.9vh] w-[1.9vh] text-stone-500" />
+                          <span className={cn("rounded-full border px-[0.62vw] py-[0.3vh] text-[1.18vh]", statusMeta[memo.status].tone)}>
+                            {statusMeta[memo.status].label}
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              ))
+            )}
+            {visibleMemos.length ? (
+              <div className="flex h-[7vh] items-center justify-center text-[1.48vh] text-text-muted">已显示全部 {visibleMemos.length} 张纸条</div>
+            ) : null}
+          </section>
+        </aside>
+
+        <section className="min-h-0 overflow-hidden rounded-[0.55vh] border border-stone-200/70 bg-white/42 shadow-[0_0.2vh_0.8vh_rgba(87,83,78,0.035)]" style={paperStyle(0.94)}>
+          {selectedMemo ? (
+            <article className="relative h-full min-h-0 overflow-y-auto px-[2.75vw] pb-[4vh] pt-[9.2vh]" style={{ scrollbarGutter: "stable" }}>
+              <button
+                type="button"
+                onClick={() => openEdit(selectedMemo)}
+                className="absolute right-[1.9vw] top-[2.8vh] flex items-center gap-[0.45vw] rounded-[0.45vh] px-[0.55vw] py-[0.55vh] text-[1.52vh] text-text-muted outline-none transition-colors hover:bg-white/55 hover:text-text focus-visible:bg-white/65 focus-visible:text-text"
+              >
+                <Pencil className="h-[1.65vh] w-[1.65vh]" />
+                编辑
+              </button>
+
+              <h2 className="max-w-[53vw] font-serif text-[4.45vh] leading-[1.22] tracking-[0.015em] text-[#292524]">{selectedMemo.title}</h2>
+              <p className="mt-[2.5vh] max-w-[58vw] whitespace-pre-wrap text-[2.35vh] leading-[1.68] text-stone-700">
+                {selectedMemo.content || "没有正文。"}
+              </p>
+
+              <div className="mt-[4.6vh] border-t border-stone-200/75 pt-[3.25vh]">
+                <dl className="grid gap-[2.25vh] text-[1.85vh]">
+                  <div className="grid grid-cols-[11.5vw_minmax(0,1fr)] items-center">
+                    <dt className="flex items-center gap-[0.85vw] text-text-muted"><Clock3 className="h-[2.05vh] w-[2.05vh]" />提醒时间</dt>
+                    <dd className="text-stone-600">{memoFullDateTime(selectedMemo.trigger_at || selectedMemo.remind_at || selectedMemo.due_at)}</dd>
+                  </div>
+                  <div className="grid grid-cols-[11.5vw_minmax(0,1fr)] items-center">
+                    <dt className="flex items-center gap-[0.85vw] text-text-muted"><CalendarDays className="h-[2.05vh] w-[2.05vh]" />创建时间</dt>
+                    <dd className="text-stone-600">{memoFullDateTime(selectedMemo.created_at)}</dd>
+                  </div>
+                  <div className="grid grid-cols-[11.5vw_minmax(0,1fr)] items-center">
+                    <dt className="flex items-center gap-[0.85vw] text-text-muted"><Tag className="h-[2.05vh] w-[2.05vh]" />类型</dt>
+                    <dd className="text-stone-600">{kindMeta[selectedMemo.kind].label}</dd>
+                  </div>
+                  <div className="grid grid-cols-[11.5vw_minmax(0,1fr)] items-center">
+                    <dt className="flex items-center gap-[0.85vw] text-text-muted"><Archive className="h-[2.05vh] w-[2.05vh]" />状态</dt>
+                    <dd className="text-stone-600">{statusMeta[selectedMemo.status].label}</dd>
+                  </div>
+                </dl>
+              </div>
+            </article>
           ) : (
-            <div className="grid auto-rows-fr grid-cols-3 gap-[1.65vh]">
-              {visibleMemos.map((memo) => {
-                const KindIcon = kindMeta[memo.kind].icon
-                return (
-                  <button
-                    key={memo.id}
-                    type="button"
-                    onClick={() => openEdit(memo)}
-                    className="group relative min-h-[19.2vh] overflow-hidden rounded-[0.85vh] border border-stone-200/58 px-[2.25vh] pb-[5.35vh] pt-[0.95vh] text-left shadow-[0_12px_28px_rgba(120,113,108,0.1)] transition-colors hover:border-stone-300/80 focus-visible:border-stone-400/80 focus-visible:outline-none"
-                    style={paperStyle(0.58)}
-                  >
-                    <span
-                      className={cn(
-                        "absolute inset-y-[1.2vh] left-0 w-[0.36vh] rounded-r-full transition-[width,opacity] duration-200 group-hover:w-[0.72vh] group-hover:opacity-100 group-focus-visible:w-[0.72vh] group-focus-visible:opacity-100",
-                        kindMeta[memo.kind].rail,
-                      )}
-                    />
-                    <h2 className="line-clamp-2 font-serif text-[2.65vh] leading-[1.18] text-text">{memo.title}</h2>
-                    <p className="mt-[0.82vh] line-clamp-4 text-[1.68vh] leading-relaxed text-text-muted">
-                      {memo.content || "没有正文。"}
-                    </p>
-                    <div className="absolute inset-x-[2.25vh] bottom-[0.95vh] flex items-end justify-between gap-[1.1vh] border-t border-stone-200/35 pt-[0.68vh] text-[1.26vh] text-text-lighter">
-                      <div className="grid min-w-0 gap-[0.22vh] leading-tight">
-                        <span className="truncate">{triggerLabel(memo)}</span>
-                        <span className="truncate">创建 {formatLocalMonthDayTime(memo.created_at)}</span>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-[0.65vh]">
-                        <span className={cn("inline-flex items-center gap-[0.5vh] rounded-full border px-[1vh] py-[0.32vh] text-[1.2vh]", kindMeta[memo.kind].tone)}>
-                          <KindIcon className="h-[1.42vh] w-[1.42vh]" />
-                          {kindMeta[memo.kind].label}
-                        </span>
-                        <span className={cn("rounded-full border px-[1vh] py-[0.32vh] text-[1.18vh]", statusMeta[memo.status].tone)}>
-                          {statusMeta[memo.status].label}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
+            <button type="button" onClick={openCreate} className="flex h-full w-full flex-col items-center justify-center text-center text-text-muted outline-none hover:bg-white/16">
+              <NotebookPen className="mb-[1.3vh] h-[5.2vh] w-[5.2vh] text-stone-400" />
+              <span className="font-serif text-[2.75vh] text-text">选择或新建一张纸条</span>
+              <span className="mt-[0.7vh] text-[1.55vh]">内容会在这里展开。</span>
+            </button>
           )}
         </section>
       </main>

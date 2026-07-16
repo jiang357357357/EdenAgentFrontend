@@ -1,4 +1,4 @@
-import { Plus, Menu, LogOut, Sparkles } from 'lucide-react';
+import { Plus, Menu, LogOut } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Session } from '../types';
 import type { AuthUser } from '../lib/auth';
@@ -11,7 +11,6 @@ interface SidebarProps {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   currentUser?: AuthUser | null;
-  onSelfAwake: () => void;
   onLogout: () => void;
 }
 
@@ -23,7 +22,6 @@ export function Sidebar({
   isOpen, 
   setIsOpen,
   currentUser,
-  onSelfAwake,
   onLogout,
 }: SidebarProps) {
   
@@ -100,13 +98,6 @@ export function Sidebar({
               {currentUser?.is_superuser ? 'Core Admin' : currentUser?.is_staff ? 'Core Staff' : 'Core User'}
             </div>
           </div>
-          <button
-            onClick={onSelfAwake}
-            className="mb-[1.5vh] flex w-full items-center justify-center gap-[0.8vw] rounded-full border border-border bg-card px-[1vw] py-[1.65vh] text-[1.85vh] uppercase tracking-[0.15em] text-text-muted transition-colors hover:border-accent/40 hover:text-accent"
-          >
-            <Sparkles className="h-[2.5vh] w-[2.5vh]" />
-            自醒
-          </button>
           <button
             onClick={onLogout}
             className="flex w-full items-center justify-center gap-[0.8vw] rounded-full border border-border bg-card px-[1vw] py-[1.65vh] text-[1.85vh] uppercase tracking-[0.15em] text-text-muted transition-colors hover:border-accent/40 hover:text-accent"

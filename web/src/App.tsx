@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { X } from "lucide-react"
 import { AnimatePresence, LayoutGroup, motion } from "motion/react"
+import { QuestionDecisionOverlay } from "./components/QuestionDecisionOverlay"
 import { ChatPage } from "./pages/chat"
 import { CharacterPage } from "./pages/character"
 import { LoginPage } from "./pages/login"
@@ -730,7 +731,6 @@ export default function App() {
                 isThinking={isThinking}
                 connectionError={connectionError}
                 activePendingPermissions={activePendingPermissions}
-                activePendingQuestions={activePendingQuestions}
                 messagesScrollRef={messagesScrollRef}
                 messagesEndRef={messagesEndRef}
                 autoScrollEnabled={autoScrollEnabled}
@@ -741,8 +741,6 @@ export default function App() {
                 onPermissionReply={handlePermissionReply}
                 permissionMode={permissionMode}
                 onPermissionModeChange={updatePermissionMode}
-                onQuestionReply={handleQuestionReply}
-                onQuestionReject={handleQuestionReject}
                 onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
                 onLogout={handleLogout}
                 onOpenSelfAwake={() => {
@@ -788,6 +786,16 @@ export default function App() {
               draggable={false}
             />
           </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {!isPetWindow && activePage !== "pet" && activePendingQuestions[0] && (
+          <QuestionDecisionOverlay
+            key={activePendingQuestions[0].id}
+            request={activePendingQuestions[0]}
+            onReply={handleQuestionReply}
+            onReject={handleQuestionReject}
+          />
         )}
       </AnimatePresence>
     </>

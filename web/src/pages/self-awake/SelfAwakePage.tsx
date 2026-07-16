@@ -1,24 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
+  Activity,
   AlertCircle,
   ArrowLeft,
-  Bell,
-  BookOpenText,
+  ArrowRight,
   CalendarDays,
-  CalendarClock,
-  CheckCircle2,
   ChevronDown,
-  CircleDot,
-  Clock3,
+  ChevronUp,
   NotebookText,
   RefreshCw,
   Search,
   Sparkles,
-  TimerReset,
+  UserRound,
   X,
 } from "lucide-react"
 import { motion } from "motion/react"
-import diaryPaperTexture from "../../assets/self-awake/diary-paper.png"
 import journalWorkspaceBackground from "../../assets/self-awake/journal-workspace-bg.png"
 import type { AuthUser, CoreAssistant } from "../../lib/auth"
 import { getErrorMessage } from "../../lib/auth"
@@ -104,19 +100,11 @@ const eventLabels: Record<string, string> = {
 
 const selfAwakePageSize = 20
 
-function toneClass(tone: StatusTone) {
-  if (tone === "ok") return "border-emerald-200 bg-emerald-50 text-emerald-700"
-  if (tone === "warn") return "border-amber-200 bg-amber-50 text-amber-700"
-  if (tone === "danger") return "border-red-200 bg-red-50 text-red-700"
-  return "border-border bg-bg text-text-muted"
-}
-
-function treeNodeClass(active: boolean, level: "year" | "month" | "day") {
-  const activeClass =
-    level === "day"
-      ? "border-accent/70 bg-card/82 shadow-sm ring-1 ring-accent/20 backdrop-blur-[1px]"
-      : "border-accent/45 bg-card/78 shadow-sm backdrop-blur-[1px]"
-  return active ? activeClass : "border-white/55 bg-card/58 shadow-sm backdrop-blur-[1px] hover:border-accent/35 hover:bg-card/78"
+function toneTextClass(tone: StatusTone) {
+  if (tone === "ok") return "text-emerald-600"
+  if (tone === "warn") return "text-amber-600"
+  if (tone === "danger") return "text-red-600"
+  return "text-text-muted"
 }
 
 function formatDateTime(value?: string | null) {
@@ -225,35 +213,43 @@ function trimText(value?: string | null, fallback = "未记录") {
   return text || fallback
 }
 
-function stringifyCompact(value: unknown) {
-  if (value === null || value === undefined || value === "") return "无"
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value)
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
+function formatDisplayTitle(value?: string | null) {
+  return trimText(value, "一次自醒").replace(/\s*·\s*/g, " · ")
 }
 
-function knownContextItems(run?: ApiSelfAwakeRun) {
-  const context = run?.context_payload
-  const preferred: Array<[string, unknown]> = [
-    ["事件", eventLabels[run?.event_type || ""] || run?.event_type],
-    ["来源", run?.event_source],
-    ["原因", run?.event_reason],
-    ["时间", run?.event_occurred_at || context?.current_time],
-    ["活动", context?.user_activity],
-  ]
-  const items = preferred
-    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
 
-  if (items.length) return items
-  if (!context) return []
+function formatFact(value: unknown, fallback = "未记录") {
+  if (value === true) return "是"
+  if (value === false) return "否"
+  if (value === null || value === undefined || value === "") return fallback
+  return String(value)
+}
 
-  return Object.entries(context)
-    .filter(([, value]) => ["string", "number", "boolean"].includes(typeof value))
-    .slice(0, 4)
-    .map(([key, value]) => [key, value] as const)
+function formatClock(value?: string | null) {
+  const date = parseDate(value)
+  if (!date) return "--:--"
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+}
+
+function formatDateGroup(value?: string | null) {
+  const date = parseDate(value)
+  if (!date) return "未记录日期"
+  return `${pad2(date.getMonth() + 1)}月${pad2(date.getDate())}日`
+}
+
+function relativeDateGroup(value?: string | null) {
+  const date = parseDate(value)
+  if (!date) return "未记录日期"
+  const today = new Date()
+  const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
+  const difference = Math.round((todayStart - dateStart) / 86_400_000)
+  if (difference === 0) return "今天"
+  if (difference === 1) return "昨天"
+  return formatDateGroup(value)
 }
 
 function resolveDiary(run?: ApiSelfAwakeRun) {
@@ -264,31 +260,7 @@ function resolveAction(run?: ApiSelfAwakeRun): ApiSelfAwakeAction | undefined {
   return run?.actions?.[0]
 }
 
-function SummaryCard({
-  icon: Icon,
-  label,
-  value,
-  tone = "muted",
-}: {
-  icon: typeof Clock3
-  label: string
-  value: string
-  tone?: StatusTone
-}) {
-  return (
-    <div className="min-w-0 rounded-[1.2vh] border border-border bg-card px-[1.2vw] py-[1.4vh] shadow-sm">
-      <div className="flex items-center gap-[0.7vw] text-[1.55vh] text-text-muted">
-        <span className={`flex h-[3vh] w-[3vh] items-center justify-center rounded-[0.8vh] border ${toneClass(tone)}`}>
-          <Icon className="h-[1.7vh] w-[1.7vh]" />
-        </span>
-        <span>{label}</span>
-      </div>
-      <div className="mt-[0.9vh] truncate font-serif text-[2.45vh] text-text">{value}</div>
-    </div>
-  )
-}
-
-export function SelfAwakePage({ currentUser, assistant, toolStatus, onBack }: SelfAwakePageProps) {
+export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageProps) {
   const [runs, setRuns] = useState<ApiSelfAwakeRun[]>([])
   const [selectedRunId, setSelectedRunId] = useState<number | undefined>()
   const [currentPage, setCurrentPage] = useState(1)
@@ -298,7 +270,9 @@ export function SelfAwakePage({ currentUser, assistant, toolStatus, onBack }: Se
   const [expandedDiaryYears, setExpandedDiaryYears] = useState<string[]>([])
   const [expandedDiaryMonths, setExpandedDiaryMonths] = useState<string[]>([])
   const [expandedDiaryDates, setExpandedDiaryDates] = useState<string[]>([])
+  const [expandedDiaryEntryDates, setExpandedDiaryEntryDates] = useState<string[]>([])
   const [diarySearch, setDiarySearch] = useState("")
+  const [rawDataExpanded, setRawDataExpanded] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | undefined>()
@@ -334,16 +308,32 @@ export function SelfAwakePage({ currentUser, assistant, toolStatus, onBack }: Se
   }, [loadRuns])
 
   const selectedRun = useMemo(() => runs.find((run) => run.id === selectedRunId) ?? runs[0], [runs, selectedRunId])
-  const latestRun = runs[0]
   const hasMoreRuns = currentPage < totalPages
   const selectedDiary = resolveDiary(selectedRun)
   const selectedAction = resolveAction(selectedRun)
-  const searchOnline = toolStatus?.search.status === "online"
-  const calendarAvailable = Boolean(toolStatus?.tools?.get_calendar_context)
-  const weatherAvailable = Boolean(toolStatus?.tools?.get_weather)
-  const contextItems = knownContextItems(selectedRun)
   const assistantName = assistant?.name || "默认助手"
   const normalizedDiarySearch = searchQuery.toLowerCase()
+  const overviewRuns = runs
+  const overviewRunGroups = useMemo(() => {
+    const groups = new Map<string, ApiSelfAwakeRun[]>()
+    for (const run of overviewRuns) {
+      const timestamp = run.finished_at ?? run.created_at ?? run.started_at
+      const dateKey = diaryDateKey(timestamp)
+      groups.set(dateKey, [...(groups.get(dateKey) ?? []), run])
+    }
+    return Array.from(groups.entries()).map(([dateKey, groupRuns]) => ({
+      dateKey,
+      label: relativeDateGroup(groupRuns[0]?.finished_at ?? groupRuns[0]?.created_at ?? groupRuns[0]?.started_at),
+      runs: groupRuns,
+    }))
+  }, [overviewRuns])
+  const selectedContext = asRecord(selectedRun?.context_payload)
+  const selectedActivity = asRecord(selectedContext.user_activity)
+  const selectedSystemInput = asRecord(selectedActivity.system_input)
+  const selectedSession = asRecord(selectedActivity.session)
+  const selectedForeground = asRecord(selectedActivity.foreground_window)
+  const selectedTimestamp = selectedRun?.finished_at ?? selectedRun?.created_at ?? selectedRun?.started_at
+  const selectedStatus = statusMeta[selectedRun?.status || ""] ?? { label: selectedRun?.status || "未知", tone: "muted" as const }
   const allDiaryEntries = useMemo(
     () =>
       runs
@@ -418,10 +408,20 @@ export function SelfAwakePage({ currentUser, assistant, toolStatus, onBack }: Se
   }, [])
 
   useEffect(() => {
+    if (activeView !== "overview" || !overviewRuns.length) return
+    if (!overviewRuns.some((run) => run.id === selectedRunId)) setSelectedRunId(overviewRuns[0].id)
+  }, [activeView, overviewRuns, selectedRunId])
+
+  useEffect(() => {
+    setRawDataExpanded(false)
+  }, [selectedRunId])
+
+  useEffect(() => {
     if (!diaryGroups.length) {
       setExpandedDiaryYears([])
       setExpandedDiaryMonths([])
       setExpandedDiaryDates([])
+      setExpandedDiaryEntryDates([])
       return
     }
     const latestDate = diaryGroups[0]?.dateKey
@@ -443,6 +443,7 @@ export function SelfAwakePage({ currentUser, assistant, toolStatus, onBack }: Se
       const next = current.filter((item) => validDates.has(item))
       return next.length ? next : latestDate && latestDate !== "unknown" ? [latestDate] : next
     })
+    setExpandedDiaryEntryDates((current) => current.filter((item) => validDates.has(item)))
   }, [diaryGroups])
 
   useEffect(() => {
@@ -460,10 +461,10 @@ export function SelfAwakePage({ currentUser, assistant, toolStatus, onBack }: Se
       transition={transition}
       className="fixed inset-0 z-10 flex h-[100vh] w-[100vw] flex-col overflow-hidden bg-bg bg-cover bg-center font-sans text-text"
       style={{
-        backgroundImage: `linear-gradient(rgba(245, 245, 244, 0.56), rgba(245, 245, 244, 0.56)), url(${journalWorkspaceBackground})`,
+        backgroundImage: `linear-gradient(rgba(250, 250, 249, 0.88), rgba(250, 250, 249, 0.88)), url(${journalWorkspaceBackground})`,
       }}
     >
-      <header className="flex h-[11vh] items-center justify-between border-b border-white/45 bg-bg/70 px-[2.8vw] shadow-sm backdrop-blur-xl">
+      <header className="flex h-[9.2vh] shrink-0 items-center justify-between border-b border-white/45 bg-bg/76 px-[3vw] shadow-sm backdrop-blur-xl">
         <div className="flex min-w-0 items-center gap-[1.2vw]">
           <button
             type="button"
@@ -474,19 +475,19 @@ export function SelfAwakePage({ currentUser, assistant, toolStatus, onBack }: Se
           >
             <ArrowLeft className="h-[2.7vh] w-[2.7vh]" />
           </button>
-          <div className="flex h-[5.7vh] w-[5.7vh] items-center justify-center rounded-[1.2vh] border border-accent/25 bg-card text-accent shadow-sm">
-            <Sparkles className="h-[2.7vh] w-[2.7vh]" />
+          <div className="flex h-[5.1vh] w-[5.1vh] items-center justify-center rounded-[0.9vh] border border-accent/25 bg-card text-accent shadow-sm">
+            <Sparkles className="h-[2.45vh] w-[2.45vh]" />
           </div>
           <div className="min-w-0">
-            <h1 className="truncate font-serif text-[3.15vh] text-text">自醒</h1>
-            <p className="truncate text-[1.65vh] text-text-muted">后台观察、工作日记、下次醒来。</p>
+            <h1 className="truncate font-serif text-[2.8vh] text-text">自醒</h1>
+            <p className="truncate text-[1.7vh] text-text-muted">后台观察、工作日记、下次醒来。</p>
           </div>
         </div>
         <div className="flex items-center gap-[0.8vw]">
-          <div className="flex rounded-full border border-border bg-card p-[0.45vh] shadow-sm">
+          <div className="flex overflow-hidden rounded-[0.75vh] border border-border bg-card shadow-sm">
             {[
-              { key: "overview" as const, label: "概览", icon: Sparkles },
-              { key: "diary" as const, label: "日记", icon: BookOpenText },
+              { key: "overview" as const, label: "概览" },
+              { key: "diary" as const, label: "日记" },
             ].map((item) => (
               <button
                 key={item.key}
@@ -495,11 +496,10 @@ export function SelfAwakePage({ currentUser, assistant, toolStatus, onBack }: Se
                   setActiveView(item.key)
                   if (item.key === "overview" && diarySearch) setDiarySearch("")
                 }}
-                className={`flex items-center gap-[0.45vw] rounded-full px-[1vw] py-[0.7vh] text-[1.55vh] transition-colors ${
-                  activeView === item.key ? "bg-accent text-white shadow-sm" : "text-text-muted hover:bg-bg hover:text-accent"
+                className={`border-b-[0.22vh] px-[2vw] py-[1vh] text-[1.76vh] transition-colors ${
+                  activeView === item.key ? "border-accent bg-bg/60 text-accent" : "border-transparent text-text-muted hover:bg-bg hover:text-accent"
                 }`}
               >
-                <item.icon className="h-[1.8vh] w-[1.8vh]" />
                 {item.label}
               </button>
             ))}
@@ -507,485 +507,402 @@ export function SelfAwakePage({ currentUser, assistant, toolStatus, onBack }: Se
           <button
             type="button"
             onClick={() => void loadRuns()}
-            className="flex items-center gap-[0.5vw] rounded-full border border-border bg-card px-[1.1vw] py-[1vh] text-[1.55vh] text-text-muted shadow-sm transition-colors hover:border-accent/35 hover:text-accent"
+            className="flex items-center gap-[0.5vw] rounded-[0.75vh] border border-border bg-card px-[1.1vw] py-[1vh] text-[1.72vh] text-text-muted shadow-sm transition-colors hover:border-accent/35 hover:text-accent"
             title="刷新自醒记录"
           >
             <RefreshCw className={`h-[1.9vh] w-[1.9vh] ${loading ? "animate-spin" : ""}`} />
             刷新
           </button>
-          <div className="rounded-full border border-border bg-card px-[1.2vw] py-[1vh] text-[1.55vh] text-text-muted shadow-sm">
+          <div className="flex items-center gap-[0.45vw] rounded-[0.75vh] border border-border bg-card px-[1.2vw] py-[1vh] text-[1.72vh] text-text-muted shadow-sm">
+            <UserRound className="h-[1.65vh] w-[1.65vh]" />
             {currentUser?.username ?? "未登录"}
           </div>
         </div>
       </header>
 
       {activeView === "overview" ? (
-        <main className="grid min-h-0 flex-1 grid-rows-[12.5vh_minmax(0,1fr)] gap-[1.8vh] overflow-hidden p-[2vw]">
-          <section className="grid min-h-0 grid-cols-4 gap-[1.2vw]">
-            <SummaryCard
-              icon={Clock3}
-              label="最近醒来"
-              value={formatDateTime(latestRun?.finished_at ?? latestRun?.created_at)}
-              tone={latestRun ? (statusMeta[latestRun.status]?.tone ?? "muted") : "muted"}
-            />
-            <SummaryCard
-              icon={TimerReset}
-              label="下次醒来"
-              value={latestRun?.next_wake_at ? formatDateTime(latestRun.next_wake_at) : formatMinutes(latestRun?.next_wake_after_minutes)}
-              tone="warn"
-            />
-            <SummaryCard
-              icon={Bell}
-              label="通知用户"
-              value={latestRun?.should_interrupt_user ? "需要提醒" : "保持安静"}
-              tone={latestRun?.should_interrupt_user ? "warn" : "ok"}
-            />
-            <SummaryCard
-              icon={CircleDot}
-              label="环境工具"
-              value={calendarAvailable && weatherAvailable ? "日历/天气" : calendarAvailable ? "日历可用" : searchOnline ? "未暴露" : "未确认"}
-              tone={calendarAvailable && weatherAvailable ? "ok" : "muted"}
-            />
-          </section>
-
-          <section className="grid min-h-0 grid-cols-[32vw_minmax(0,1fr)] gap-[1.6vw] overflow-hidden">
-          <aside className="flex min-h-0 flex-col overflow-hidden rounded-[1.4vh] border border-border bg-card shadow-sm">
-            <div className="flex h-[7.2vh] items-center justify-between border-b border-border px-[1.4vw]">
-              <div>
-                <div className="font-serif text-[2.55vh] text-text">自醒记录</div>
-                <div className="text-[1.45vh] text-text-muted">
-                  {loading ? "正在读取" : totalRuns ? `已加载 ${runs.length} / ${totalRuns} 次` : `${runs.length} 次记录`}
-                </div>
-              </div>
-              {error ? <AlertCircle className="h-[2.4vh] w-[2.4vh] text-red-500" /> : null}
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-[2.4vw] pb-[2.1vh] pt-[1.8vh]">
+          <div className="flex h-[5.1vh] shrink-0 items-center justify-between px-[0.6vw] font-serif text-[1.85vh] text-text-muted">
+            <div className="flex items-center gap-[0.65vw]">
+              <span>{formatDateTime(selectedTimestamp)}</span>
+              <span>·</span>
+              <span>{selectedRun ? eventLabels[selectedRun.event_type] || selectedRun.event_type : "等待自醒"}</span>
+              <span>·</span>
+              <span className={toneTextClass(selectedStatus.tone)}>{selectedStatus.label}</span>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-scroll" style={{ scrollbarGutter: "stable" }}>
-              <div className="p-[1vh] pr-[2.4vh]">
+            <span>下次&nbsp; {selectedRun ? formatDateTime(selectedRun.next_wake_at) : "未安排"}</span>
+          </div>
+
+          <div className="grid min-h-0 flex-1 grid-cols-[24.3vw_minmax(0,1fr)] gap-[1.25vw]">
+            <aside className="flex min-h-0 flex-col overflow-hidden rounded-[0.8vh] border border-border/90 bg-card/94 shadow-[0_0.35vh_1.4vh_rgba(41,37,36,0.06)]">
+              <div className="flex h-[6.2vh] shrink-0 items-center border-b border-border px-[1.35vw] font-serif text-[2.15vh] text-text">近期自醒</div>
+              <div className="min-h-0 flex-1 overflow-y-auto" style={{ scrollbarGutter: "stable" }}>
                 {error ? (
-                  <div className="rounded-[1.1vh] border border-red-200 bg-red-50 p-[1.4vh] text-[1.75vh] leading-relaxed text-red-700">
+                  <div className="m-[1vw] flex items-start gap-[0.65vw] rounded-[0.7vh] border border-red-200 bg-red-50 p-[1vh] text-[1.55vh] text-red-700">
+                    <AlertCircle className="mt-[0.1vh] h-[1.7vh] w-[1.7vh] shrink-0" />
                     {error}
                   </div>
                 ) : null}
-
-                {!loading && !error && runs.length === 0 ? (
-                  <div className="flex h-full flex-col items-center justify-center text-center text-text-muted">
-                    <Sparkles className="mb-[1.2vh] h-[4vh] w-[4vh] text-accent/70" />
-                    <div className="font-serif text-[2.3vh] text-text">还没有自醒记录</div>
-                    <div className="mt-[0.8vh] max-w-[22vw] text-[1.65vh] leading-relaxed">
-                      Agent 启动自醒或定时自醒完成后，会显示在这里。
-                    </div>
+                {!loading && !error && overviewRunGroups.length === 0 ? (
+                  <div className="flex h-full flex-col items-center justify-center px-[2vw] text-center text-text-muted">
+                    <Activity className="mb-[1vh] h-[3.4vh] w-[3.4vh] text-accent/65" />
+                    <div className="font-serif text-[2vh] text-text">还没有自醒记录</div>
                   </div>
                 ) : null}
+                {overviewRunGroups.map((group) => (
+                  <div key={group.dateKey}>
+                    <div className="flex h-[4.5vh] items-center border-b border-border bg-bg/45 px-[1.35vw] text-[1.55vh] text-text-muted">{group.label}</div>
+                    {group.runs.slice(0, 5).map((run) => {
+                      const diary = resolveDiary(run)
+                      const selected = run.id === selectedRun?.id
+                      return (
+                        <button
+                          key={run.id}
+                          type="button"
+                          onClick={() => setSelectedRunId(run.id)}
+                          className={`relative flex min-h-[8.2vh] w-full flex-col justify-center border-b border-border px-[1.35vw] text-left transition-colors ${selected ? "bg-accent-dim/55" : "bg-card hover:bg-bg/70"}`}
+                        >
+                          {selected ? <span className="absolute left-[1.25vw] top-1/2 h-[0.75vh] w-[0.75vh] -translate-y-1/2 rounded-full bg-accent" /> : null}
+                          <div className={`flex min-w-0 items-center justify-between gap-[0.8vw] ${selected ? "pl-[1.3vw]" : ""}`}>
+                            <span className={`truncate font-serif text-[1.78vh] ${selected ? "text-accent" : "text-text"}`}>{formatDisplayTitle(diary?.title)}</span>
+                            <span className="shrink-0 text-[1.42vh] text-text-muted">{formatClock(run.finished_at ?? run.created_at ?? run.started_at)}</span>
+                          </div>
+                          <div className={`mt-[0.7vh] truncate text-[1.38vh] text-text-muted ${selected ? "pl-[1.3vw]" : ""}`}>
+                            {eventLabels[run.event_type] || run.event_type} · {run.event_source || run.source_service} · {run.event_reason || "未记录原因"}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+              {!loading && !error && hasMoreRuns ? (
+                <button
+                  type="button"
+                  onClick={() => void loadRuns(currentPage + 1, true)}
+                  disabled={loadingMore}
+                  className="flex h-[5.4vh] shrink-0 items-center justify-center gap-[0.45vw] border-t border-border text-[1.48vh] text-text transition-colors hover:bg-bg hover:text-accent disabled:cursor-wait disabled:opacity-60"
+                >
+                  {loadingMore ? <RefreshCw className="h-[1.55vh] w-[1.55vh] animate-spin" /> : null}
+                  {loadingMore ? "正在加载" : "查看更多"}
+                  {!loadingMore ? <ChevronDown className="h-[1.55vh] w-[1.55vh]" /> : null}
+                </button>
+              ) : null}
+            </aside>
 
-                <div className="space-y-[1vh]">
-                  {runs.map((run) => {
-                    const selected = run.id === selectedRun?.id
-                    const meta = statusMeta[run.status] ?? { label: run.status || "未知", tone: "muted" as const }
-                    const diary = resolveDiary(run)
-                    return (
+            <section className="min-h-0 overflow-hidden rounded-[0.8vh] border border-border/90 bg-card/95 shadow-[0_0.35vh_1.4vh_rgba(41,37,36,0.06)]">
+              {selectedRun ? (
+                <div className="grid h-full min-h-0 grid-cols-[minmax(0,1.33fr)_minmax(22vw,0.9fr)]">
+                  <article className="flex min-h-0 flex-col overflow-hidden px-[2.2vw] py-[2.6vh]">
+                    <h2 className="truncate font-serif text-[3vh] leading-tight text-text">{formatDisplayTitle(selectedDiary?.title)}</h2>
+                    <div className="mt-[1vh] flex items-center gap-[0.5vw] text-[1.52vh] text-text-muted">
+                      <UserRound className="h-[1.75vh] w-[1.75vh]" />
+                      <span>{assistantName}</span>
+                    </div>
+
+                    <div className="mt-[2.3vh] flex min-h-[6.1vh] shrink-0 items-center gap-[0.85vw] rounded-[0.55vh] bg-accent-dim/45 px-[1vw] text-[1.62vh] leading-relaxed text-text">
+                      <Sparkles className="h-[2.05vh] w-[2.05vh] shrink-0 text-accent" />
+                      <span className="line-clamp-2">{trimText(selectedAction?.message || selectedDiary?.summary || selectedRun.current_desire, "完成本轮观察。")}</span>
+                    </div>
+
+                    <div className="mt-[3.2vh] flex min-h-0 flex-1 flex-col">
+                      <h3 className="border-l-[0.22vw] border-accent pl-[0.8vw] font-serif text-[2.08vh] text-text">工作日记</h3>
+                      <div className="mt-[1.8vh] min-h-0 flex-1 overflow-y-auto pr-[0.8vw]" style={{ scrollbarGutter: "stable" }}>
+                        <p className="whitespace-pre-wrap font-serif text-[1.75vh] leading-[2.05] text-text">
+                          {trimText(selectedDiary?.content, "没有写入工作日记。")}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-[1.6vh] flex h-[5.4vh] shrink-0 items-center gap-[0.65vw] border-t border-border text-[1.46vh] text-text-muted">
+                      <NotebookText className="h-[1.65vh] w-[1.65vh]" />
+                      <span>{actionLabels[selectedAction?.action_type || ""] || selectedAction?.action_type || "未记录动作"}</span>
+                      <span>·</span>
+                      <span className={toneTextClass(selectedAction?.status === "failed" ? "danger" : selectedAction?.status === "succeeded" ? "ok" : "muted")}>{selectedAction?.status || "未执行"}</span>
+                    </div>
+                  </article>
+
+                  <aside className="min-h-0 overflow-y-auto border-l border-border px-[1.65vw] py-[2.8vh]" style={{ scrollbarGutter: "stable" }}>
+                    <section>
+                      <h3 className="border-l-[0.22vw] border-accent pl-[0.75vw] font-serif text-[1.98vh] text-text">本轮判断</h3>
+                      <dl className="mt-[2vh] space-y-[1.35vh] text-[1.5vh] leading-relaxed">
+                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">状态</dt><dd>{trimText(selectedRun.mood, "平稳")}</dd></div>
+                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">当前想法</dt><dd>{trimText(selectedRun.current_desire, "没有留下明确想法。")}</dd></div>
+                      </dl>
+                    </section>
+
+                    <section className="mt-[2.4vh] border-t border-border pt-[2.1vh]">
+                      <h3 className="border-l-[0.22vw] border-accent pl-[0.75vw] font-serif text-[1.98vh] text-text">观察事实</h3>
+                      <dl className="mt-[1.8vh] space-y-[0.72vh] text-[1.46vh] leading-relaxed">
+                        {[
+                          ["触发", eventLabels[selectedRun.event_type] || selectedRun.event_type],
+                          ["来源", selectedRun.event_source || selectedRun.source_service],
+                          ["原因", selectedRun.event_reason],
+                          ["系统空闲", selectedSystemInput.idle_seconds !== undefined ? `${formatFact(selectedSystemInput.idle_seconds)} 秒` : "未采集"],
+                          ["会话状态", selectedSession.locked === true ? "已锁定" : selectedSession.locked === false ? "未锁定" : "未采集"],
+                          ["前台应用", formatFact(selectedForeground.application_name, "未采集")],
+                          ["文档/窗口", formatFact(selectedForeground.window_title, "未采集")],
+                          ["捕获时间", typeof selectedActivity.captured_at === "string" ? formatClock(selectedActivity.captured_at) : "未记录"],
+                        ].map(([label, value]) => (
+                          <div key={label} className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">{label}</dt><dd className="truncate" title={String(value)}>{value || "未记录"}</dd></div>
+                        ))}
+                      </dl>
+                    </section>
+
+                    <section className="mt-[2.4vh] border-t border-border pt-[2.1vh]">
+                      <h3 className="border-l-[0.22vw] border-accent pl-[0.75vw] font-serif text-[1.98vh] text-text">后续</h3>
+                      <dl className="mt-[1.8vh] space-y-[0.9vh] text-[1.46vh] leading-relaxed">
+                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">下次醒来</dt><dd>{formatDateTime(selectedRun.next_wake_at)}</dd></div>
+                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">间隔估计</dt><dd>{formatMinutes(selectedRun.next_wake_after_minutes)}</dd></div>
+                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">原因说明</dt><dd>{trimText(selectedRun.next_wake_reason, "没有记录原因。")}</dd></div>
+                      </dl>
+                    </section>
+
+                    {selectedRun.error || selectedAction?.error ? (
+                      <div className="mt-[1.8vh] rounded-[0.6vh] border border-red-200 bg-red-50 p-[0.85vh] text-[1.4vh] text-red-700">{selectedRun.error || selectedAction?.error}</div>
+                    ) : null}
+
+                    <div className="mt-[2.2vh] border-t border-border pt-[1.7vh]">
                       <button
-                        key={run.id}
                         type="button"
-                        onClick={() => setSelectedRunId(run.id)}
-                        className={`w-full rounded-[1.1vh] border p-[1.3vh] text-left transition-colors ${
-                          selected
-                            ? "border-accent/55 bg-accent-dim shadow-sm"
-                            : "border-border bg-bg hover:border-accent/30 hover:bg-card"
-                        }`}
+                        onClick={() => setRawDataExpanded((current) => !current)}
+                        className="flex items-center gap-[0.45vw] text-[1.45vh] text-text-muted transition-colors hover:text-accent"
                       >
-                        <div className="flex items-center justify-between gap-[0.8vw]">
-                          <div className="truncate font-serif text-[2.1vh] text-text">{diary?.title || "一次自醒"}</div>
-                          <span className={`shrink-0 rounded-full border px-[0.6vw] py-[0.35vh] text-[1.25vh] ${toneClass(meta.tone)}`}>
-                            {meta.label}
-                          </span>
-                        </div>
-                        <div className="mt-[0.6vh] flex items-center justify-between text-[1.45vh] text-text-muted">
-                          <span>{formatDateTime(run.finished_at ?? run.created_at)}</span>
-                          <span>{eventLabels[run.event_type] || run.event_type || run.source_service || "monagent"}</span>
-                        </div>
-                        <div className="mt-[0.7vh] line-clamp-2 text-[1.55vh] leading-relaxed text-text-muted">
-                          {trimText(run.current_desire || diary?.content, "没有留下想法。")}
-                        </div>
+                        {rawDataExpanded ? "收起原始数据" : "查看原始数据"}
+                        {rawDataExpanded ? <ChevronUp className="h-[1.55vh] w-[1.55vh]" /> : <ArrowRight className="h-[1.55vh] w-[1.55vh]" />}
                       </button>
-                    )
-                  })}
-                  {!loading && !error && hasMoreRuns ? (
-                    <button
-                      type="button"
-                      onClick={() => void loadRuns(currentPage + 1, true)}
-                      disabled={loadingMore}
-                      className="flex w-full items-center justify-center gap-[0.55vw] rounded-[1vh] border border-dashed border-border bg-bg px-[1vw] py-[1.1vh] text-[1.55vh] text-text-muted transition-colors hover:border-accent/35 hover:text-accent disabled:cursor-wait disabled:opacity-60"
-                    >
-                      <RefreshCw className={`h-[1.75vh] w-[1.75vh] ${loadingMore ? "animate-spin" : ""}`} />
-                      {loadingMore ? "正在加载" : "加载更多"}
-                    </button>
-                  ) : null}
+                      {rawDataExpanded ? (
+                        <pre className="mt-[1vh] max-h-[20vh] overflow-auto rounded-[0.6vh] bg-bg p-[0.85vh] text-[1.18vh] leading-relaxed text-text-muted">{JSON.stringify(selectedRun, null, 2)}</pre>
+                      ) : null}
+                    </div>
+                  </aside>
                 </div>
-              </div>
-            </div>
-          </aside>
-
-          <section className="min-h-0 overflow-hidden rounded-[1.4vh] border border-border bg-card shadow-sm">
-            {selectedRun ? (
-              <div className="flex h-full min-h-0 flex-col">
-                <div className="min-h-0 flex-1 overflow-y-scroll" style={{ scrollbarGutter: "stable" }}>
-                  <div className="p-[1.6vw] pr-[2.8vw]">
-                    <div className="grid grid-cols-4 gap-[1vw]">
-                    <div className="rounded-[1vh] border border-border bg-bg p-[1.2vh]">
-                      <div className="text-[1.35vh] text-text-muted">执行身份</div>
-                      <div className="mt-[0.6vh] truncate text-[1.85vh] text-text">{assistantName}</div>
-                    </div>
-                    <div className="rounded-[1vh] border border-border bg-bg p-[1.2vh]">
-                      <div className="text-[1.35vh] text-text-muted">状态</div>
-                      <div className="mt-[0.6vh] truncate text-[1.9vh] text-text">{trimText(selectedRun.mood, "平稳")}</div>
-                    </div>
-                    <div className="rounded-[1vh] border border-border bg-bg p-[1.2vh]">
-                      <div className="text-[1.35vh] text-text-muted">下次</div>
-                      <div className="mt-[0.6vh] truncate text-[1.9vh] text-text">
-                        {formatDateTime(selectedRun.next_wake_at)}
-                      </div>
-                    </div>
-                    <div className="rounded-[1vh] border border-border bg-bg p-[1.2vh]">
-                      <div className="text-[1.35vh] text-text-muted">间隔</div>
-                      <div className="mt-[0.6vh] truncate text-[1.9vh] text-text">
-                        {formatMinutes(selectedRun.next_wake_after_minutes)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-[1.5vh] grid grid-cols-[1fr_0.92fr] gap-[1.2vw]">
-                    <div className="space-y-[1.2vh]">
-                      <DetailBlock icon={Sparkles} title="观察">
-                        {contextItems.length ? (
-                          <div className="grid gap-[0.8vh]">
-                            {contextItems.map(([label, value]) => (
-                              <div key={label} className="grid grid-cols-[5.2vw_1fr] gap-[0.8vw] text-[1.65vh] leading-relaxed">
-                                <span className="text-text-muted">{label}</span>
-                                <span className="text-text">{stringifyCompact(value)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-text-muted">没有保存观察上下文。</p>
-                        )}
-                      </DetailBlock>
-
-                      <DetailBlock icon={NotebookText} title="工作日记">
-                        <p className="whitespace-pre-wrap text-[1.8vh] leading-relaxed text-text">
-                          {trimText(selectedDiary?.content, "没有写入日记。")}
-                        </p>
-                      </DetailBlock>
-                    </div>
-
-                    <div className="space-y-[1.2vh]">
-                      <DetailBlock icon={CheckCircle2} title="当前想法">
-                        <p className="whitespace-pre-wrap text-[1.8vh] leading-relaxed text-text">
-                          {trimText(selectedRun.current_desire, "没有留下明确想法。")}
-                        </p>
-                      </DetailBlock>
-
-                      <DetailBlock icon={CalendarClock} title="动作">
-                        <div className="space-y-[0.9vh] text-[1.7vh] leading-relaxed">
-                          <div className="flex items-center justify-between rounded-[0.9vh] border border-border bg-bg px-[1vw] py-[1vh]">
-                            <span>{actionLabels[selectedAction?.action_type || ""] || selectedAction?.action_type || "未记录"}</span>
-                            <span className="text-text-muted">{selectedAction?.status || "none"}</span>
-                          </div>
-                          {selectedAction?.message ? <p className="text-text-muted">{selectedAction.message}</p> : null}
-                          {selectedRun.next_wake_reason ? (
-                            <p className="text-text-muted">下次原因：{selectedRun.next_wake_reason}</p>
-                          ) : null}
-                          {selectedRun.error || selectedAction?.error ? (
-                            <p className="rounded-[0.9vh] border border-red-200 bg-red-50 p-[1vh] text-red-700">
-                              {selectedRun.error || selectedAction?.error}
-                            </p>
-                          ) : null}
-                        </div>
-                      </DetailBlock>
-                    </div>
-                  </div>
-                  </div>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center text-center text-text-muted">
+                  <NotebookText className="mb-[1.2vh] h-[4.6vh] w-[4.6vh] text-accent/70" />
+                  <div className="font-serif text-[2.6vh] text-text">等待第一次自醒</div>
+                  <div className="mt-[0.7vh] text-[1.75vh]">这里会显示她后台醒来后的观察报告。</div>
                 </div>
-              </div>
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center text-center text-text-muted">
-                <NotebookText className="mb-[1.2vh] h-[4.6vh] w-[4.6vh] text-accent/70" />
-                <div className="font-serif text-[2.6vh] text-text">等待第一次自醒</div>
-                <div className="mt-[0.7vh] text-[1.75vh]">这里会显示她后台醒来后的记录。</div>
-              </div>
-            )}
-          </section>
-          </section>
+              )}
+            </section>
+          </div>
         </main>
       ) : (
-        <main className="grid min-h-0 flex-1 grid-cols-[33vw_minmax(0,1fr)] gap-[1.6vw] overflow-hidden p-[2vw]">
-          <aside className="flex min-h-0 flex-col overflow-hidden rounded-[1.4vh] border border-white/55 bg-card/68 shadow-[0_1vh_3vh_rgba(48,36,24,0.10)] backdrop-blur-[3px]">
-            <div className="flex h-[7.2vh] items-center justify-between border-b border-white/45 px-[1.4vw]">
-              <div>
-                <div className="font-serif text-[2.55vh] text-text">手帐目录</div>
-                <div className="text-[1.45vh] text-text-muted">
-                  {loading
-                    ? "正在读取"
-                    : normalizedDiarySearch
-                      ? `匹配 ${totalRuns} 篇 · 已加载 ${diaryEntries.length} 篇`
-                      : totalRuns
-                        ? `${diaryYears.length} 年 · ${diaryGroups.length} 天 · ${diaryEntries.length} / ${totalRuns} 篇`
-                        : `${diaryYears.length} 年 · ${diaryGroups.length} 天 · ${diaryEntries.length} 篇`}
-                </div>
+        <main className="grid min-h-0 flex-1 grid-cols-[31.8vw_minmax(0,1fr)] overflow-hidden bg-[#fbfaf7]">
+          <aside className="flex min-h-0 flex-col overflow-hidden border-r border-[#ded8cf] bg-[rgba(255,255,255,0.82)]">
+            <div className="flex shrink-0 items-baseline gap-[0.85vw] px-[3vw] pb-[1.8vh] pt-[2.7vh]">
+              <div className="shrink-0 font-serif text-[2.5vh] text-text">手帐目录</div>
+              <div className="min-w-0 truncate text-[1.75vh] text-text-muted">
+                {loading
+                  ? "正在读取"
+                  : normalizedDiarySearch
+                    ? `匹配 ${totalRuns} 篇 · 已加载 ${diaryEntries.length} 篇`
+                    : totalRuns
+                      ? `${diaryYears.length} 年 · ${diaryGroups.length} 天 · ${diaryEntries.length} / ${totalRuns} 篇`
+                      : `${diaryYears.length} 年 · ${diaryGroups.length} 天 · ${diaryEntries.length} 篇`}
               </div>
-              <BookOpenText className="h-[2.5vh] w-[2.5vh] text-accent" />
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-scroll" style={{ scrollbarGutter: "stable" }}>
-              <div className="p-[1vh] pr-[2.4vh]">
-                <div className="mb-[0.9vh] flex h-[4.6vh] items-center gap-[0.65vw] rounded-[1vh] border border-[#eadfcf]/80 bg-[#fffdf8]/72 px-[0.85vw] shadow-sm backdrop-blur-[1px] focus-within:border-accent/55 focus-within:ring-2 focus-within:ring-accent/10">
-                  <Search className="h-[1.9vh] w-[1.9vh] shrink-0 text-accent" />
-                  <input
-                    value={diarySearch}
-                    onChange={(event) => setDiarySearch(event.target.value)}
-                    placeholder="搜索标题、正文或日期"
-                    className="min-w-0 flex-1 bg-transparent text-[1.55vh] text-text outline-none placeholder:text-text-muted/70"
-                  />
-                  {diarySearch ? (
+            <div className="mx-[2.55vw] mb-[1.6vh] flex h-[4.45vh] shrink-0 items-center gap-[0.72vw] rounded-[0.7vh] border border-[#ddd5c9] bg-white/86 px-[0.88vw] shadow-[0_0.18vh_0.55vh_rgba(65,54,42,0.10)] focus-within:border-accent/55 focus-within:ring-2 focus-within:ring-accent/10">
+              <Search className="h-[1.8vh] w-[1.8vh] shrink-0 text-accent" />
+              <input
+                value={diarySearch}
+                onChange={(event) => setDiarySearch(event.target.value)}
+                placeholder="搜索标题、正文或日期"
+                className="min-w-0 flex-1 bg-transparent text-[1.55vh] text-text outline-none placeholder:text-text-muted/75"
+              />
+              {diarySearch ? (
+                <button
+                  type="button"
+                  onClick={() => setDiarySearch("")}
+                  className="rounded-full p-[0.28vh] text-text-muted transition-colors hover:bg-accent-dim hover:text-accent"
+                  aria-label="清空搜索"
+                  title="清空搜索"
+                >
+                  <X className="h-[1.65vh] w-[1.65vh]" />
+                </button>
+              ) : (
+                <CalendarDays className="h-[1.72vh] w-[1.72vh] shrink-0 text-text-muted" />
+              )}
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto border-t border-[#e5dfd6] pb-[2vh]" style={{ scrollbarGutter: "stable" }}>
+              {error ? (
+                <div className="m-[1.2vw] rounded-[0.7vh] border border-red-200 bg-red-50 p-[1.2vh] text-[1.6vh] leading-relaxed text-red-700">{error}</div>
+              ) : null}
+              {!loading && !error && allDiaryEntries.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center px-[3vw] text-center text-text-muted">
+                  <NotebookText className="mb-[1.2vh] h-[4vh] w-[4vh] text-accent/70" />
+                  <div className="font-serif text-[2.3vh] text-text">还没有日记</div>
+                  <div className="mt-[0.8vh] text-[1.6vh] leading-relaxed">自醒完成并写入工作日记后，会出现在这里。</div>
+                </div>
+              ) : null}
+              {!loading && !error && allDiaryEntries.length > 0 && diaryEntries.length === 0 ? (
+                <div className="mx-[2.55vw] mt-[2vh] border-y border-dashed border-[#ddd2c1] py-[2vh] text-center">
+                  <Search className="mx-auto mb-[0.9vh] h-[3.1vh] w-[3.1vh] text-accent/70" />
+                  <div className="font-serif text-[2vh] text-text">没有找到日记</div>
+                  <div className="mt-[0.5vh] text-[1.45vh] text-text-muted">换个关键词试试。</div>
+                </div>
+              ) : null}
+
+              {diaryYears.map((year) => {
+                const yearExpanded = expandedDiaryYears.includes(year.yearKey)
+                return (
+                  <div key={year.yearKey}>
                     <button
                       type="button"
-                      onClick={() => setDiarySearch("")}
-                      className="rounded-full p-[0.35vh] text-text-muted transition-colors hover:bg-accent-dim hover:text-accent"
-                      aria-label="清空搜索"
-                      title="清空搜索"
+                      onClick={() => setExpandedDiaryYears((current) => toggleExpanded(current, year.yearKey))}
+                      className="flex h-[5.6vh] w-full items-center gap-[0.7vw] px-[3vw] text-left outline-none transition-colors hover:bg-[#fff9ef] focus-visible:bg-[#fff8ec] focus-visible:text-accent"
                     >
-                      <X className="h-[1.75vh] w-[1.75vh]" />
+                      <span className="min-w-0 flex-1 truncate font-serif text-[2.55vh] text-text">{diaryYearTitle(year.yearKey)}</span>
+                      <span className="text-[1.7vh] text-text-muted">{year.count} 篇</span>
+                      <ChevronDown className={`h-[2vh] w-[2vh] text-text-muted transition-transform ${yearExpanded ? "" : "-rotate-90"}`} />
                     </button>
-                  ) : null}
-                </div>
-                <div className="mb-[0.8vh] flex items-center gap-[0.6vw] px-[0.3vw] text-[1.45vh] text-text-muted">
-                  <CalendarDays className="h-[1.8vh] w-[1.8vh]" />
-                  按年 / 月 / 日展开
-                </div>
-                {error ? (
-                  <div className="rounded-[1.1vh] border border-red-200 bg-red-50 p-[1.4vh] text-[1.75vh] leading-relaxed text-red-700">
-                    {error}
-                  </div>
-                ) : null}
-                {!loading && !error && allDiaryEntries.length === 0 ? (
-                  <div className="flex h-full flex-col items-center justify-center text-center text-text-muted">
-                    <NotebookText className="mb-[1.2vh] h-[4vh] w-[4vh] text-accent/70" />
-                    <div className="font-serif text-[2.3vh] text-text">还没有日记</div>
-                    <div className="mt-[0.8vh] max-w-[20vw] text-[1.65vh] leading-relaxed">
-                      自醒完成并写入工作日记后，会出现在这里。
-                    </div>
-                  </div>
-                ) : null}
-                {!loading && !error && allDiaryEntries.length > 0 && diaryEntries.length === 0 ? (
-                  <div className="mt-[2vh] rounded-[1.1vh] border border-dashed border-[#eadfcf]/80 bg-[#fffdf8]/72 p-[1.6vh] text-center backdrop-blur-[1px]">
-                    <Search className="mx-auto mb-[0.9vh] h-[3.4vh] w-[3.4vh] text-accent/70" />
-                    <div className="font-serif text-[2.05vh] text-text">没有找到日记</div>
-                    <div className="mt-[0.55vh] text-[1.5vh] text-text-muted">换个关键词试试。</div>
-                  </div>
-                ) : null}
-                <div className="space-y-[0.95vh]">
-                  {diaryYears.map((year) => {
-                    const yearExpanded = expandedDiaryYears.includes(year.yearKey)
-                    return (
-                      <div key={year.yearKey} className="rounded-[1.2vh]">
-                        <button
-                          type="button"
-                          onClick={() => setExpandedDiaryYears((current) => toggleExpanded(current, year.yearKey))}
-                          className={`grid w-full grid-cols-[1fr_auto_2.4vh] items-center gap-[0.8vw] rounded-[1.1vh] border px-[1vw] py-[1.05vh] text-left transition-colors ${treeNodeClass(yearExpanded, "year")}`}
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate font-serif text-[2.3vh] text-text">{diaryYearTitle(year.yearKey)}</span>
-                            <span className="block text-[1.35vh] text-text-muted">{year.months.length} 个月</span>
-                          </span>
-                          <span className="rounded-full border border-border bg-card px-[0.75vw] py-[0.42vh] text-[1.35vh] text-text-muted">
-                            {year.count} 篇
-                          </span>
-                          <ChevronDown className={`h-[2vh] w-[2vh] text-text-muted transition-transform ${yearExpanded ? "rotate-180" : ""}`} />
-                        </button>
 
-                        {yearExpanded ? (
-                          <div className="mt-[0.8vh] space-y-[0.8vh] border-l border-dashed border-accent/25 pl-[0.75vw]">
-                            {year.months.map((month) => {
-                              const monthExpanded = expandedDiaryMonths.includes(month.monthKey)
-                              return (
-                                <div key={month.monthKey}>
-                                  <button
-                                    type="button"
-                                    onClick={() => setExpandedDiaryMonths((current) => toggleExpanded(current, month.monthKey))}
-                                    className={`grid w-full grid-cols-[4.4vh_1fr_auto_2.2vh] items-center gap-[0.75vw] rounded-[1vh] border px-[0.85vw] py-[0.9vh] text-left transition-colors ${treeNodeClass(monthExpanded, "month")}`}
-                                  >
-                                    <span className="flex h-[4.4vh] w-[4.4vh] items-center justify-center rounded-[0.9vh] bg-accent-dim font-serif text-[1.8vh] text-accent">
-                                      {diaryMonthTitle(month.monthKey).replace(" 月", "")}
-                                    </span>
-                                    <span className="min-w-0">
-                                      <span className="block truncate font-serif text-[1.95vh] text-text">{diaryMonthTitle(month.monthKey)}</span>
-                                      <span className="block text-[1.3vh] text-text-muted">{month.days.length} 天</span>
-                                    </span>
-                                    <span className="rounded-full border border-border bg-card px-[0.65vw] py-[0.35vh] text-[1.25vh] text-text-muted">
-                                      {month.count} 篇
-                                    </span>
-                                    <ChevronDown className={`h-[1.85vh] w-[1.85vh] text-text-muted transition-transform ${monthExpanded ? "rotate-180" : ""}`} />
-                                  </button>
+                    {yearExpanded ? year.months.map((month) => {
+                      const monthExpanded = expandedDiaryMonths.includes(month.monthKey)
+                      return (
+                        <div key={month.monthKey}>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedDiaryMonths((current) => toggleExpanded(current, month.monthKey))}
+                            className="flex h-[5.1vh] w-full items-center gap-[0.7vw] pl-[3.8vw] pr-[3vw] text-left outline-none transition-colors hover:bg-[#fff9ef] focus-visible:bg-[#fff8ec] focus-visible:text-accent"
+                          >
+                            <span className="min-w-0 flex-1 truncate font-serif text-[2.38vh] text-text">{diaryMonthTitle(month.monthKey)}</span>
+                            <span className="text-[1.68vh] text-text-muted">{month.count} 篇</span>
+                            <ChevronDown className={`h-[1.95vh] w-[1.95vh] text-text-muted transition-transform ${monthExpanded ? "" : "-rotate-90"}`} />
+                          </button>
 
-                                  {monthExpanded ? (
-                                    <div className="mt-[0.7vh] space-y-[0.7vh] border-l border-dashed border-accent/20 pl-[0.75vw]">
-                                      {month.days.map((day) => {
-                                        const dayExpanded = expandedDiaryDates.includes(day.dateKey)
-                                        const date = diaryMonthDay(day.dateKey)
-                                        return (
-                                          <div key={day.dateKey}>
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setExpandedDiaryDates((current) => toggleExpanded(current, day.dateKey))
-                                                if (!dayExpanded) setSelectedRunId(day.entries[0]?.run.id)
-                                              }}
-                                              className={`grid w-full grid-cols-[4.8vh_1fr_auto_2vh] items-center gap-[0.72vw] rounded-[1vh] border px-[0.75vw] py-[0.8vh] text-left transition-colors ${treeNodeClass(dayExpanded, "day")}`}
-                                            >
-                                              <span className="flex h-[4.8vh] w-[4.8vh] flex-col items-center justify-center rounded-[0.9vh] bg-card font-serif shadow-sm">
-                                                <span className="text-[1.05vh] text-text-muted">{date.month}</span>
-                                                <span className="text-[2.05vh] leading-none text-text">{date.day}</span>
-                                              </span>
-                                              <span className="min-w-0">
-                                                <span className="block truncate font-serif text-[1.82vh] text-text">{diaryDateTitle(day.dateKey)}</span>
-                                                <span className="block text-[1.25vh] text-text-muted">{diaryWeekday(day.dateKey)}</span>
-                                              </span>
-                                              <span className="rounded-full border border-border bg-card px-[0.6vw] py-[0.32vh] text-[1.2vh] text-text-muted">
-                                                {day.count} 篇
-                                              </span>
-                                              <ChevronDown className={`h-[1.75vh] w-[1.75vh] text-text-muted transition-transform ${dayExpanded ? "rotate-180" : ""}`} />
-                                            </button>
+                          {monthExpanded ? month.days.map((day) => {
+                            const dayExpanded = expandedDiaryDates.includes(day.dateKey)
+                            const allDayEntriesExpanded = expandedDiaryEntryDates.includes(day.dateKey)
+                            const visibleDayEntries = allDayEntriesExpanded ? day.entries : day.entries.slice(0, 3)
+                            return (
+                              <div key={day.dateKey} className="pl-[4.6vw] pr-[3vw]">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setExpandedDiaryDates((current) => toggleExpanded(current, day.dateKey))
+                                    if (!dayExpanded) setSelectedRunId(day.entries[0]?.run.id)
+                                  }}
+                                  className="flex h-[4.75vh] w-full items-center gap-[0.75vw] border-b border-[#e7dfd3] text-left outline-none transition-colors hover:text-accent focus-visible:bg-[#fff8ec] focus-visible:text-accent"
+                                >
+                                  <span className="font-serif text-[2.08vh] text-text">{diaryMonthDay(day.dateKey).month}{diaryMonthDay(day.dateKey).day}日</span>
+                                  <span className="min-w-0 flex-1 text-[1.7vh] text-text-muted">{diaryWeekday(day.dateKey)}</span>
+                                  <span className="text-[1.66vh] text-text-muted">{day.count} 篇</span>
+                                </button>
 
-                                            {dayExpanded ? (
-                                              <div className="mt-[0.65vh] space-y-[0.65vh] border-l border-dashed border-accent/35 pl-[0.75vw]">
-                                                {day.entries.map(({ run, diary, timestamp }) => {
-                                                  const selected = run.id === selectedRun?.id && diary.id === selectedDiary?.id
-                                                  return (
-                                                    <button
-                                                      key={`${run.id}-${diary.id}`}
-                                                      type="button"
-                                                      onClick={() => {
-                                                        openDiaryPath(day.dateKey)
-                                                        setSelectedRunId(run.id)
-                                                      }}
-                                                      className={`w-full rounded-[1vh] border-l-[0.32vw] p-[1.05vh] text-left transition-colors ${
-                                                        selected
-                                                          ? "border-accent bg-card/82 shadow-sm ring-1 ring-accent/15 backdrop-blur-[1px]"
-                                                          : "border-transparent bg-bg/58 backdrop-blur-[1px] hover:border-accent/25 hover:bg-card/76"
-                                                      }`}
-                                                    >
-                                                      <div className="truncate font-serif text-[1.92vh] text-text">{diary.title || "一次自醒"}</div>
-                                                      <div className="mt-[0.45vh] text-[1.28vh] text-text-muted">{formatDateTime(timestamp)}</div>
-                                                      <div className="mt-[0.65vh] line-clamp-2 text-[1.46vh] leading-relaxed text-text-muted">
-                                                        {trimText(diary.summary || diary.content, "没有内容。")}
-                                                      </div>
-                                                    </button>
-                                                  )
-                                                })}
-                                              </div>
-                                            ) : null}
-                                          </div>
-                                        )
-                                      })}
-                                    </div>
-                                  ) : null}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        ) : null}
-                      </div>
-                    )
-                  })}
-                  {!loading && !error && hasMoreRuns ? (
-                    <button
-                      type="button"
-                      onClick={() => void loadRuns(currentPage + 1, true)}
-                      disabled={loadingMore}
-                      className="flex w-full items-center justify-center gap-[0.55vw] rounded-[1vh] border border-dashed border-[#eadfcf]/80 bg-[#fffdf8]/72 px-[1vw] py-[1.1vh] text-[1.55vh] text-text-muted transition-colors hover:border-accent/35 hover:text-accent disabled:cursor-wait disabled:opacity-60"
-                    >
-                      <RefreshCw className={`h-[1.75vh] w-[1.75vh] ${loadingMore ? "animate-spin" : ""}`} />
-                      {loadingMore ? "正在加载" : "加载更多"}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
+                                {dayExpanded ? (
+                                  <div className="py-[0.55vh]">
+                                    {visibleDayEntries.map(({ run, diary, timestamp }) => {
+                                      const selected = run.id === selectedRun?.id && diary.id === selectedDiary?.id
+                                      return (
+                                        <button
+                                          key={`${run.id}-${diary.id}`}
+                                          type="button"
+                                          onClick={() => {
+                                            openDiaryPath(day.dateKey)
+                                            setSelectedRunId(run.id)
+                                          }}
+                                          className={`flex h-[4.05vh] w-full items-center gap-[0.75vw] rounded-[0.45vh] px-[1.15vw] text-left transition-colors ${
+                                            selected
+                                              ? "bg-[#fff0d6] text-text shadow-[0_0.12vh_0.38vh_rgba(217,119,6,0.16)]"
+                                              : "text-text hover:bg-[#fff8ec]"
+                                          } outline-none focus-visible:bg-[#fff0d6]`}
+                                        >
+                                          <span className={`h-[0.72vh] w-[0.72vh] shrink-0 rounded-full ${selected ? "bg-accent" : "bg-transparent"}`} />
+                                          <span className={`w-[3.5vw] shrink-0 text-[1.62vh] ${selected ? "text-accent" : "text-text-muted"}`}>{formatClock(timestamp)}</span>
+                                          <span className="min-w-0 flex-1 truncate font-serif text-[1.92vh]">{diary.title || "一次自醒"}</span>
+                                        </button>
+                                      )
+                                    })}
+                                    {day.entries.length > 3 ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => setExpandedDiaryEntryDates((current) => toggleExpanded(current, day.dateKey))}
+                                        className="flex h-[3.55vh] w-full items-center gap-[0.45vw] px-[1.15vw] text-left text-[1.62vh] text-text-muted outline-none transition-colors hover:bg-[#fff8ec] hover:text-accent focus-visible:bg-[#fff8ec] focus-visible:text-accent"
+                                        aria-expanded={allDayEntriesExpanded}
+                                      >
+                                        <span className="font-serif text-[1.84vh] tracking-[0.12em]">{allDayEntriesExpanded ? "收起" : "…"}</span>
+                                        <span>{allDayEntriesExpanded ? "仅显示最新 3 篇" : `展开其余 ${day.entries.length - 3} 篇`}</span>
+                                        <ChevronDown className={`ml-auto h-[1.5vh] w-[1.5vh] transition-transform ${allDayEntriesExpanded ? "rotate-180" : ""}`} />
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </div>
+                            )
+                          }) : null}
+                        </div>
+                      )
+                    }) : null}
+                  </div>
+                )
+              })}
+
+              {!loading && !error && hasMoreRuns ? (
+                <button
+                  type="button"
+                  onClick={() => void loadRuns(currentPage + 1, true)}
+                  disabled={loadingMore}
+                  className="mx-[3vw] mt-[1vh] flex h-[4.15vh] w-[calc(100%_-_6vw)] items-center justify-center gap-[0.55vw] border-y border-dashed border-[#ddd2c1] text-[1.62vh] text-text-muted transition-colors hover:text-accent disabled:cursor-wait disabled:opacity-60"
+                >
+                  <RefreshCw className={`h-[1.55vh] w-[1.55vh] ${loadingMore ? "animate-spin" : ""}`} />
+                  {loadingMore ? "正在加载" : "加载更多"}
+                </button>
+              ) : null}
             </div>
           </aside>
 
           <section
-            className="min-h-0 overflow-hidden rounded-[1.2vh] border border-[#eadfcf]/75 bg-[#fffdf8]/64 shadow-[0_1.2vh_3.5vh_rgba(48,36,24,0.08)] backdrop-blur-[2px]"
+            className="min-h-0 overflow-hidden bg-[#fbf8f0]"
             style={{
-              backgroundImage: `linear-gradient(rgba(255, 253, 248, 0.46), rgba(255, 253, 248, 0.46)), url(${diaryPaperTexture})`,
+              backgroundImage: `linear-gradient(rgba(255, 253, 248, 0.84), rgba(255, 253, 248, 0.84)), url(${journalWorkspaceBackground})`,
               backgroundPosition: "center",
-              backgroundSize: "cover",
+              backgroundSize: "145% auto",
             }}
           >
             {selectedRun && selectedDiary ? (
-              <div className="h-full min-h-0 overflow-y-scroll" style={{ scrollbarGutter: "stable" }}>
-                <div className="px-[1.2vw] py-[1.4vh] pr-[2.4vw]">
-                  <article
-                    className="relative mx-auto max-w-[58vw] overflow-hidden px-[3vw] py-[3.2vh]"
-                  >
-                    <div className="pointer-events-none absolute right-[2.4vw] top-[2.4vh] rotate-[-5deg] rounded-[999px] border border-emerald-200 bg-emerald-50/70 px-[0.9vw] py-[0.55vh] font-serif text-[1.45vh] text-emerald-700">
-                      完成
-                    </div>
-
-                    <div className="mb-[2.4vh] flex items-start gap-[1.2vw] border-b border-dashed border-[#ddd2c1] pb-[1.8vh] pr-[5.6vw]">
-                      <div className="flex h-[7.2vh] w-[5.6vh] shrink-0 flex-col items-center justify-center rounded-[0.9vh] border border-[#eadfcf]/85 bg-white/72 font-serif shadow-sm backdrop-blur-[1px]">
-                        <span className="text-[1.12vh] text-text-muted">{diaryDateStamp(selectedDiary.created_at ?? selectedRun.finished_at).month}</span>
-                        <span className="text-[2.55vh] leading-none text-text">{diaryDateStamp(selectedDiary.created_at ?? selectedRun.finished_at).day}</span>
-                      </div>
-                      <div className="min-w-0 pt-[0.15vh]">
-                        <div className="mb-[0.35vh] flex flex-wrap items-center gap-x-[0.7vw] gap-y-[0.35vh] text-[1.45vh] text-text-muted">
-                          <span className="inline-flex items-center gap-[0.35vw]">
-                            <CalendarDays className="h-[1.65vh] w-[1.65vh] text-accent" />
-                            {diaryDateStamp(selectedDiary.created_at ?? selectedRun.finished_at).title}
-                          </span>
-                          <span>{diaryDateStamp(selectedDiary.created_at ?? selectedRun.finished_at).weekday}</span>
-                        </div>
-                        <h2 className="font-serif text-[3.05vh] leading-tight text-text">{selectedDiary.title || "一次自醒"}</h2>
-                        <div className="mt-[0.7vh] flex flex-wrap items-center gap-x-[0.75vw] gap-y-[0.35vh] text-[1.48vh] text-text-muted">
-                          <span>{assistantName} 写于 {formatDateTime(selectedDiary.created_at ?? selectedRun.finished_at)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="border-l-[0.18vw] border-accent/35 pl-[1.35vw]">
-                      <div
-                        className="overflow-y-auto pr-[0.9vw]"
-                        style={{
-                          minHeight: "calc(2.12vh * 2.05 * 6)",
-                          maxHeight: "calc(2.12vh * 2.05 * 6)",
-                          scrollbarGutter: "stable",
-                        }}
-                      >
-                        <p className="whitespace-pre-wrap font-serif text-[2.12vh] leading-[2.05] text-text">
-                          {trimText(selectedDiary.content, "没有写入日记。")}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-[2.6vh] flex flex-wrap gap-[0.8vw] border-t border-dashed border-[#ddd2c1] pt-[1.7vh] text-[1.48vh]">
-                      <div className="rounded-[0.9vh] border border-[#eadfcf]/85 bg-white/62 px-[0.9vw] py-[0.75vh] shadow-sm backdrop-blur-[1px]">
-                        <span className="mr-[0.45vw] text-text-muted">状态</span>
-                        <span className="text-text">{trimText(selectedRun.mood, "平稳")}</span>
-                      </div>
-                      <div className="rounded-[0.9vh] border border-[#eadfcf]/85 bg-white/62 px-[0.9vw] py-[0.75vh] shadow-sm backdrop-blur-[1px]">
-                        <span className="mr-[0.45vw] text-text-muted">下次醒来</span>
-                        <span className="text-text">
-                          {selectedRun.next_wake_at ? formatDateTime(selectedRun.next_wake_at) : formatMinutes(selectedRun.next_wake_after_minutes)}
-                        </span>
-                      </div>
-                      <div className="rounded-[0.9vh] border border-[#eadfcf]/85 bg-white/62 px-[0.9vw] py-[0.75vh] shadow-sm backdrop-blur-[1px]">
-                        <span className="mr-[0.45vw] text-text-muted">安排</span>
-                        <span className="text-text">
-                          {actionLabels[selectedAction?.action_type || ""] || selectedAction?.action_type || "未记录"}
-                        </span>
-                      </div>
-                    </div>
-                  </article>
+              <article className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] px-[3.1vw] pb-[3.2vh] pt-[4.8vh]">
+                <div className="pointer-events-none absolute right-[3.4vw] top-[5.4vh] rounded-full bg-emerald-100/85 px-[1vw] py-[0.62vh] text-[1.55vh] text-emerald-600">
+                  {selectedStatus.label}
                 </div>
-              </div>
+
+                <header className="flex items-start gap-[1.8vw] border-b border-dashed border-[#d8cdbb] pb-[3.2vh] pr-[7vw]">
+                  <div className="relative flex h-[10.6vh] w-[4.1vw] shrink-0 flex-col items-center justify-center rounded-[0.85vh] border border-[#e4dbcd] bg-white/78 font-serif shadow-[0_0.42vh_0.75vh_rgba(63,51,38,0.12)]">
+                    <span className="text-[1.38vh] text-text-muted">{diaryDateStamp(selectedDiary.created_at ?? selectedRun.finished_at).month}</span>
+                    <span className="mt-[0.3vh] text-[3.2vh] leading-none text-text">{diaryDateStamp(selectedDiary.created_at ?? selectedRun.finished_at).day}</span>
+                  </div>
+                  <div className="min-w-0 pt-[1.25vh]">
+                    <h2 className="font-serif text-[clamp(24px,1.75vw,30px)] leading-[1.18] tracking-[-0.02em] text-[#211e1b]">{selectedDiary.title || "一次自醒"}</h2>
+                    <div className="mt-[1.2vh] text-[1.82vh] text-text-muted">{assistantName} 写于 {formatDateTime(selectedDiary.created_at ?? selectedRun.finished_at)}</div>
+                  </div>
+                </header>
+
+                <div
+                  className="min-h-0 overflow-y-auto border-b border-dashed border-[#d8cdbb] px-[1.85vw] py-[3.2vh]"
+                  style={{ scrollbarGutter: "stable" }}
+                >
+                  <p className="whitespace-pre-wrap font-serif text-[clamp(14px,0.88vw,16px)] leading-[2] tracking-[0.015em] text-[#302b27]">
+                    {trimText(selectedDiary.content, "没有写入日记。")}
+                  </p>
+                </div>
+
+                <footer className="flex flex-wrap items-center gap-[1.45vw] pt-[2.8vh] text-[1.52vh]">
+                  <div className="rounded-[0.55vh] border border-[#ded5c8] bg-white/38 px-[1.15vw] py-[0.92vh]">
+                    <span className="mr-[0.65vw] text-text-muted">状态</span>
+                    <span className="text-text">{selectedStatus.label}</span>
+                  </div>
+                  <div className="rounded-[0.55vh] border border-[#ded5c8] bg-white/38 px-[1.15vw] py-[0.92vh]">
+                    <span className="mr-[0.65vw] text-text-muted">下次醒来</span>
+                    <span className="text-text">{selectedRun.next_wake_at ? formatDateTime(selectedRun.next_wake_at) : formatMinutes(selectedRun.next_wake_after_minutes)}</span>
+                  </div>
+                  <div className="rounded-[0.55vh] border border-[#ded5c8] bg-white/38 px-[1.15vw] py-[0.92vh]">
+                    <span className="mr-[0.65vw] text-text-muted">安排</span>
+                    <span className="text-text">{actionLabels[selectedAction?.action_type || ""] || selectedAction?.action_type || "未记录"}</span>
+                  </div>
+                </footer>
+              </article>
             ) : (
               <div className="flex h-full flex-col items-center justify-center text-center text-text-muted">
                 <NotebookText className="mb-[1.2vh] h-[4.6vh] w-[4.6vh] text-accent/70" />
@@ -997,27 +914,5 @@ export function SelfAwakePage({ currentUser, assistant, toolStatus, onBack }: Se
         </main>
       )}
     </motion.div>
-  )
-}
-
-function DetailBlock({
-  icon: Icon,
-  title,
-  children,
-}: {
-  icon: typeof Sparkles
-  title: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="rounded-[1.1vh] border border-border bg-bg p-[1.35vh]">
-      <div className="mb-[1vh] flex items-center gap-[0.7vw]">
-        <span className="flex h-[3.2vh] w-[3.2vh] items-center justify-center rounded-[0.8vh] bg-card text-accent">
-          <Icon className="h-[1.8vh] w-[1.8vh]" />
-        </span>
-        <span className="font-serif text-[2.25vh] text-text">{title}</span>
-      </div>
-      <div className="text-[1.65vh]">{children}</div>
-    </div>
   )
 }
