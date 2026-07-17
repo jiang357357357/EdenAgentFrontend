@@ -332,7 +332,6 @@ export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageP
   const selectedSystemInput = asRecord(selectedActivity.system_input)
   const selectedSession = asRecord(selectedActivity.session)
   const selectedForeground = asRecord(selectedActivity.foreground_window)
-  const selectedTimestamp = selectedRun?.finished_at ?? selectedRun?.created_at ?? selectedRun?.started_at
   const selectedStatus = statusMeta[selectedRun?.status || ""] ?? { label: selectedRun?.status || "未知", tone: "muted" as const }
   const allDiaryEntries = useMemo(
     () =>
@@ -522,17 +521,6 @@ export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageP
 
       {activeView === "overview" ? (
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-[2.4vw] pb-[2.1vh] pt-[1.8vh]">
-          <div className="flex h-[5.1vh] shrink-0 items-center justify-between px-[0.6vw] font-serif text-[1.85vh] text-text-muted">
-            <div className="flex items-center gap-[0.65vw]">
-              <span>{formatDateTime(selectedTimestamp)}</span>
-              <span>·</span>
-              <span>{selectedRun ? eventLabels[selectedRun.event_type] || selectedRun.event_type : "等待自醒"}</span>
-              <span>·</span>
-              <span className={toneTextClass(selectedStatus.tone)}>{selectedStatus.label}</span>
-            </div>
-            <span>下次&nbsp; {selectedRun ? formatDateTime(selectedRun.next_wake_at) : "未安排"}</span>
-          </div>
-
           <div className="grid min-h-0 flex-1 grid-cols-[24.3vw_minmax(0,1fr)] gap-[1.25vw]">
             <aside className="flex min-h-0 flex-col overflow-hidden rounded-[0.8vh] border border-border/90 bg-card/94 shadow-[0_0.35vh_1.4vh_rgba(41,37,36,0.06)]">
               <div className="flex h-[6.2vh] shrink-0 items-center border-b border-border px-[1.35vw] font-serif text-[2.15vh] text-text">近期自醒</div>
@@ -624,16 +612,16 @@ export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageP
 
                   <aside className="min-h-0 overflow-y-auto border-l border-border px-[1.65vw] py-[2.8vh]" style={{ scrollbarGutter: "stable" }}>
                     <section>
-                      <h3 className="border-l-[0.22vw] border-accent pl-[0.75vw] font-serif text-[1.98vh] text-text">本轮判断</h3>
-                      <dl className="mt-[2vh] space-y-[1.35vh] text-[1.5vh] leading-relaxed">
+                      <h3 className="border-l-[0.22vw] border-accent pl-[0.75vw] font-serif text-[2.55vh] text-text">本轮判断</h3>
+                      <dl className="mt-[2vh] space-y-[1.45vh] text-[1.95vh] leading-relaxed">
                         <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">状态</dt><dd>{trimText(selectedRun.mood, "平稳")}</dd></div>
                         <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">当前想法</dt><dd>{trimText(selectedRun.current_desire, "没有留下明确想法。")}</dd></div>
                       </dl>
                     </section>
 
                     <section className="mt-[2.4vh] border-t border-border pt-[2.1vh]">
-                      <h3 className="border-l-[0.22vw] border-accent pl-[0.75vw] font-serif text-[1.98vh] text-text">观察事实</h3>
-                      <dl className="mt-[1.8vh] space-y-[0.72vh] text-[1.46vh] leading-relaxed">
+                      <h3 className="border-l-[0.22vw] border-accent pl-[0.75vw] font-serif text-[2.55vh] text-text">观察事实</h3>
+                      <dl className="mt-[1.8vh] space-y-[0.92vh] text-[1.9vh] leading-relaxed">
                         {[
                           ["触发", eventLabels[selectedRun.event_type] || selectedRun.event_type],
                           ["来源", selectedRun.event_source || selectedRun.source_service],
@@ -650,8 +638,8 @@ export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageP
                     </section>
 
                     <section className="mt-[2.4vh] border-t border-border pt-[2.1vh]">
-                      <h3 className="border-l-[0.22vw] border-accent pl-[0.75vw] font-serif text-[1.98vh] text-text">后续</h3>
-                      <dl className="mt-[1.8vh] space-y-[0.9vh] text-[1.46vh] leading-relaxed">
+                      <h3 className="border-l-[0.22vw] border-accent pl-[0.75vw] font-serif text-[2.55vh] text-text">后续</h3>
+                      <dl className="mt-[1.8vh] space-y-[1.1vh] text-[1.9vh] leading-relaxed">
                         <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">下次醒来</dt><dd>{formatDateTime(selectedRun.next_wake_at)}</dd></div>
                         <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">间隔估计</dt><dd>{formatMinutes(selectedRun.next_wake_after_minutes)}</dd></div>
                         <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">原因说明</dt><dd>{trimText(selectedRun.next_wake_reason, "没有记录原因。")}</dd></div>
@@ -666,7 +654,7 @@ export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageP
                       <button
                         type="button"
                         onClick={() => setRawDataExpanded((current) => !current)}
-                        className="flex items-center gap-[0.45vw] text-[1.45vh] text-text-muted transition-colors hover:text-accent"
+                        className="flex items-center gap-[0.45vw] text-[1.85vh] text-text-muted transition-colors hover:text-accent"
                       >
                         {rawDataExpanded ? "收起原始数据" : "查看原始数据"}
                         {rawDataExpanded ? <ChevronUp className="h-[1.55vh] w-[1.55vh]" /> : <ArrowRight className="h-[1.55vh] w-[1.55vh]" />}

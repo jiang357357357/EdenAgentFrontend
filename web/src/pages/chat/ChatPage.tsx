@@ -53,6 +53,7 @@ interface ChatPageProps {
   onPermissionModeChange: (mode: PermissionMode) => Promise<void>
   onPreviewImage: (src: string, alt?: string) => void
   onLogout: () => Promise<void> | void
+  onOpenSettings: () => void
   onOpenSelfAwake: () => void
   onOpenMemo: () => void
 }
@@ -82,6 +83,7 @@ export function ChatPage({
   onPermissionModeChange,
   onPreviewImage,
   onLogout,
+  onOpenSettings,
   onOpenSelfAwake,
   onOpenMemo,
 }: ChatPageProps) {
@@ -320,6 +322,10 @@ export function ChatPage({
             )}
             <ChatInput
               onSend={onSendMessage}
+              onNewSession={onNewSession}
+              onOpenSettings={onOpenSettings}
+              onOpenMemo={onOpenMemo}
+              onOpenSelfAwake={onOpenSelfAwake}
               disabled={isThinking}
               assistantName={assistantName}
               permissionMode={permissionMode}

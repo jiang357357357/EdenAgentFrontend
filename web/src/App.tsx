@@ -743,6 +743,10 @@ export default function App() {
                 onPermissionModeChange={updatePermissionMode}
                 onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
                 onLogout={handleLogout}
+                onOpenSettings={() => {
+                  setSidebarOpen(false)
+                  setActivePage("settings")
+                }}
                 onOpenSelfAwake={() => {
                   setSidebarOpen(false)
                   setActivePage("selfAwake")

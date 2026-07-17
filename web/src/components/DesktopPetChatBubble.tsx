@@ -5,7 +5,7 @@ import remarkGfm from "remark-gfm"
 import { resolveCoreAssetUrl } from "../lib/auth"
 import { RealtimeSTTService, type RealtimeSTTStatus } from "../lib/realtime-stt"
 import { updateDesktopActivityFacts, type PetTTSMode } from "../lib/desktop-window"
-import { textForTTS } from "../lib/tts-text"
+import { speechChunksForTTS, textForTTS } from "../lib/tts-text"
 import { synthesizeSpeechSegment } from "../lib/mon_agent_api"
 import { cn } from "../lib/utils"
 import type { MessageData, PendingPermission, PendingQuestion, PromptAttachment, ToolCall } from "../types"
@@ -22,6 +22,8 @@ interface PetDialogSegment {
 interface SpeechClip {
   status: "synthesizing" | "ready" | "error"
   source?: string
+  sources?: string[]
+  error?: string
 }
 
 interface DesktopPetChatBubbleProps {
@@ -206,7 +208,7 @@ export function DesktopPetChatBubble({
     if (clearClips) setSpeechClips({})
   }
 
-  const playSpeechAudio = (segmentID: string, source: string, generation: number) => {
+  const playSpeechAudioSource = (segmentID: string, source: string, generation: number) => {
     return new Promise<void>((resolve, reject) => {
       if (generation !== speechGenerationRef.current) {
         resolve()
@@ -220,7 +222,6 @@ export function DesktopPetChatBubble({
         if (finishAudioRef.current === finish) finishAudioRef.current = null
         if (audioRef.current === audio) audioRef.current = null
         if (audioSegmentIdRef.current === segmentID) audioSegmentIdRef.current = null
-        setActiveSpeechSegmentId((current) => current === segmentID ? null : current)
         setSpeechPaused(false)
         if (error) reject(error)
         else resolve()
@@ -228,47 +229,80 @@ export function DesktopPetChatBubble({
       audioRef.current = audio
       audioSegmentIdRef.current = segmentID
       finishAudioRef.current = () => finish()
-      setActiveSpeechSegmentId(segmentID)
-      setSpeechPaused(false)
       audio.addEventListener("ended", () => finish(), { once: true })
       audio.addEventListener("error", () => finish(new Error(`语音段 ${segmentID} 播放失败`)), { once: true })
       void audio.play().catch((error) => finish(error))
     })
   }
 
-  const enqueueSpeechSegment = (segmentID: string, messageID: string, text: string) => {
+  const playSpeechSources = async (
+    segmentID: string,
+    sources: string[],
+    generation: number,
+    playbackGeneration: number,
+  ) => {
+    if (generation !== speechGenerationRef.current || playbackGeneration !== playbackGenerationRef.current) return
+    setActiveSpeechSegmentId(segmentID)
+    setSpeechPaused(false)
+    try {
+      for (const source of sources) {
+        if (generation !== speechGenerationRef.current || playbackGeneration !== playbackGenerationRef.current) return
+        await playSpeechAudioSource(segmentID, source, generation)
+      }
+    } finally {
+      setActiveSpeechSegmentId((current) => current === segmentID ? null : current)
+      setSpeechPaused(false)
+    }
+  }
+
+  const enqueueSpeechSegment = (segmentID: string, messageID: string, rawText: string) => {
     if (!sessionId || !messageID || typeof ttsConfigId !== "number" || ttsMode === "none") {
       console.warn("[DesktopPet][TTS] 当前角色未关联可用的 TTS 配置")
       return
     }
+    const chunks = speechChunksForTTS(rawText, ttsMode)
+    if (!chunks.length) return
 
     const generation = speechGenerationRef.current
     const playbackGeneration = playbackGenerationRef.current
     setSpeechClips((current) => ({ ...current, [segmentID]: { status: "synthesizing" } }))
-    const synthesis = synthesizeSpeechSegment({
-      sessionId,
-      messageId: messageID,
-      segmentId: segmentID,
-      text,
-      configId: ttsConfigId,
-      mode: ttsMode,
-    })
-      .then((result) => {
-        if (!result.success) throw new Error(result.error_message || `语音段 ${segmentID} 合成失败`)
+    const synthesis = (async () => {
+      const sources: string[] = []
+      for (const [index, text] of chunks.entries()) {
+        const requestSegmentID = chunks.length === 1 ? segmentID : `${segmentID}:tts:${index}`
+        const result = await synthesizeSpeechSegment({
+          sessionId,
+          messageId: messageID,
+          segmentId: requestSegmentID,
+          text,
+          configId: ttsConfigId,
+          mode: ttsMode,
+        })
+        if (!result.success) throw new Error(result.error_message || `语音段 ${index + 1}/${chunks.length} 合成失败`)
         const source = result.audio_data
           ? `data:audio/wav;base64,${result.audio_data}`
           : resolveCoreAssetUrl(result.audio_url)
-        if (!source) throw new Error(`语音段 ${segmentID} 未返回音频`)
+        if (!source) throw new Error(`语音段 ${index + 1}/${chunks.length} 未返回音频`)
+        sources.push(source)
+      }
+      if (!sources.length) throw new Error(`语音段 ${segmentID} 未返回音频`)
+      return sources
+    })()
+      .then((sources) => {
         if (generation === speechGenerationRef.current) {
-          setSpeechClips((current) => ({ ...current, [segmentID]: { status: "ready", source } }))
+          setSpeechClips((current) => ({
+            ...current,
+            [segmentID]: { status: "ready", source: sources[0], sources },
+          }))
         }
-        return { source, error: null }
+        return { sources, error: null }
       })
       .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error)
         if (generation === speechGenerationRef.current) {
-          setSpeechClips((current) => ({ ...current, [segmentID]: { status: "error" } }))
+          setSpeechClips((current) => ({ ...current, [segmentID]: { status: "error", error: message } }))
         }
-        return { source: null, error }
+        return { sources: null, error }
       })
     const previous = speechQueueRef.current.catch(() => undefined)
     speechQueueRef.current = previous
@@ -277,8 +311,8 @@ export function DesktopPetChatBubble({
         if (generation !== speechGenerationRef.current) return
         if (playbackGeneration !== playbackGenerationRef.current) return
         if (outcome.error) throw outcome.error
-        if (!outcome.source) throw new Error(`语音段 ${segmentID} 未返回音频`)
-        await playSpeechAudio(segmentID, outcome.source, generation)
+        if (!outcome.sources) throw new Error(`语音段 ${segmentID} 未返回音频`)
+        await playSpeechSources(segmentID, outcome.sources, generation, playbackGeneration)
       })
       .catch((error) => {
         console.warn("[DesktopPet][TTS] 分段合成或播放失败", error)
@@ -287,7 +321,8 @@ export function DesktopPetChatBubble({
 
   const toggleSpeechClip = (segmentID: string) => {
     const clip = speechClips[segmentID]
-    if (clip?.status !== "ready" || !clip.source) return
+    const sources = clip?.sources ?? (clip?.source ? [clip.source] : [])
+    if (clip?.status !== "ready" || !sources.length) return
 
     if (audioSegmentIdRef.current === segmentID && audioRef.current) {
       if (audioRef.current.paused) {
@@ -305,7 +340,12 @@ export function DesktopPetChatBubble({
 
     stopSpeechPlayback(false)
     const generation = speechGenerationRef.current
-    speechQueueRef.current = playSpeechAudio(segmentID, clip.source, generation).catch((error) => {
+    speechQueueRef.current = playSpeechSources(
+      segmentID,
+      sources,
+      generation,
+      playbackGenerationRef.current,
+    ).catch((error) => {
       console.warn("[DesktopPet][TTS] 手动播放失败", error)
     })
   }
@@ -367,7 +407,7 @@ export function DesktopPetChatBubble({
         const text = textForTTS(segment.content, ttsMode)
         if (!text || synthesizedSegmentIdsRef.current.has(segment.id)) continue
         synthesizedSegmentIdsRef.current.add(segment.id)
-        enqueueSpeechSegment(segment.id, latestAssistantMessage.id, text)
+        enqueueSpeechSegment(segment.id, latestAssistantMessage.id, segment.content)
       }
     }
     if (!isThinking && runWasActive) speechRunActiveRef.current = false

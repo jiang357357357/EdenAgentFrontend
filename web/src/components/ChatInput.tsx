@@ -24,6 +24,15 @@ import {
   type RuntimeModelConfig,
   type RuntimeModelOption,
 } from "../lib/mon_agent_api"
+import {
+  availableSlashCommands,
+  filterSlashCommands,
+  findSlashCommand,
+  parseSlashCommand,
+  slashCommandQuery,
+  type SlashCommandDefinition,
+  type SlashCommandName,
+} from "../lib/slash-commands"
 import { cn } from "../lib/utils"
 import { MarkdownContent } from "./MarkdownContent"
 import { RealtimeSTTService, type RealtimeSTTStatus } from "../lib/realtime-stt"
@@ -63,6 +72,10 @@ interface ChatInputProps {
   onPermissionModeChange?: (mode: PermissionMode) => Promise<void>
   voiceInputEnabled?: boolean
   sttConfigId?: number | null
+  onNewSession?: () => void | Promise<void>
+  onOpenSettings?: () => void
+  onOpenMemo?: () => void
+  onOpenSelfAwake?: () => void
 }
 
 const permissionOptions: Array<{ mode: PermissionMode; label: string; description: string }> = [
@@ -162,6 +175,10 @@ export function ChatInput({
   onPermissionModeChange,
   voiceInputEnabled = false,
   sttConfigId,
+  onNewSession,
+  onOpenSettings,
+  onOpenMemo,
+  onOpenSelfAwake,
 }: ChatInputProps) {
   const [input, setInput] = useState("")
   const [attachments, setAttachments] = useState<PromptAttachment[]>([])
@@ -177,6 +194,10 @@ export function ChatInput({
   const [voiceLevel, setVoiceLevel] = useState(0)
   const [voiceError, setVoiceError] = useState("")
   const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0)
+  const [slashSelectedIndex, setSlashSelectedIndex] = useState(0)
+  const [slashCursor, setSlashCursor] = useState(0)
+  const [slashMenuDismissedFor, setSlashMenuDismissedFor] = useState<string | null>(null)
+  const [slashCommandError, setSlashCommandError] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragTimerRef = useRef<number | undefined>(undefined)
@@ -215,6 +236,24 @@ export function ChatInput({
     : currentModel
       ? `模型: ${currentModel.label} (${currentModel.providerName || currentModel.provider}/${currentModel.modelID})`
       : "模型"
+  const slashCommands = availableSlashCommands({
+    newSession: Boolean(onNewSession),
+    settings: Boolean(onOpenSettings),
+    memo: Boolean(onOpenMemo),
+    selfAwake: Boolean(onOpenSelfAwake),
+  })
+  const slashQuery = slashCommandQuery(input, slashCursor)
+  const filteredSlashCommands = slashQuery === null ? [] : filterSlashCommands(slashCommands, slashQuery)
+  const slashMenuOpen =
+    !voiceBusy &&
+    !isDialogMode &&
+    slashQuery !== null &&
+    filteredSlashCommands.length > 0 &&
+    slashMenuDismissedFor !== input
+
+  useEffect(() => {
+    setSlashSelectedIndex(0)
+  }, [slashQuery])
 
   const refreshModelConfig = async () => {
     setModelLoading(true)
@@ -308,15 +347,82 @@ export function ChatInput({
     return () => window.clearInterval(timer)
   }, [voiceStatus])
 
+  const openPermissionMenu = () => {
+    setPermissionMenuOpen(true)
+    setModelMenuOpen(false)
+  }
+
+  const openModelMenu = () => {
+    setModelMenuOpen(true)
+    setPermissionMenuOpen(false)
+    if (!modelConfig && !modelLoading) void refreshModelConfig()
+  }
+
+  const executeSlashCommand = (command: SlashCommandDefinition) => {
+    if (disabled) {
+      setSlashCommandError("智能体正在处理当前任务，请稍后再执行命令。")
+      setSlashMenuDismissedFor(input)
+      return
+    }
+    if (attachments.length > 0) {
+      setSlashCommandError("命令不能和附件一起提交。")
+      setSlashMenuDismissedFor(input)
+      return
+    }
+
+    setInput("")
+    setSlashCursor(0)
+    setAttachments([])
+    setSlashCommandError("")
+    setSlashMenuDismissedFor(null)
+
+    const actions: Record<SlashCommandName, () => void> = {
+      help: () => {
+        setInput("/")
+        setSlashCursor(1)
+        window.requestAnimationFrame(() => {
+          textareaRef.current?.focus()
+          textareaRef.current?.setSelectionRange(1, 1)
+        })
+      },
+      new: () => void onNewSession?.(),
+      model: openModelMenu,
+      permissions: openPermissionMenu,
+      settings: () => onOpenSettings?.(),
+      memo: () => onOpenMemo?.(),
+      "self-awake": () => onOpenSelfAwake?.(),
+    }
+    actions[command.name]()
+  }
+
   const handleSend = () => {
     if ((!input.trim() && attachments.length === 0) || disabled || voiceBusy) return
+
+    const parsedCommand = parseSlashCommand(input)
+    if (parsedCommand) {
+      if (!parsedCommand.name) return
+      const command = findSlashCommand(slashCommands, parsedCommand.name)
+      if (!command) {
+        setSlashCommandError(`未知命令 “/${parsedCommand.name}”。输入 / 查看可用命令。`)
+        return
+      }
+      if (parsedCommand.args) {
+        setSlashCommandError(`/${command.name} 暂不接受参数。`)
+        return
+      }
+      executeSlashCommand(command)
+      return
+    }
+
     onSend(input.trim(), attachments)
     void updateDesktopActivityFacts({
       surface: overlay ? "chat-overlay" : "main-chat",
       last_user_interaction_at: new Date().toISOString(),
     })
     setInput("")
+    setSlashCursor(0)
     setAttachments([])
+    setSlashCommandError("")
   }
 
   const finishVoiceInput = async () => {
@@ -419,6 +525,45 @@ export function ChatInput({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (slashMenuOpen) {
+      if (e.key === "ArrowUp" || (e.ctrlKey && e.key.toLowerCase() === "p")) {
+        e.preventDefault()
+        setSlashSelectedIndex((index) => (index - 1 + filteredSlashCommands.length) % filteredSlashCommands.length)
+        return
+      }
+      if (e.key === "ArrowDown" || (e.ctrlKey && e.key.toLowerCase() === "n")) {
+        e.preventDefault()
+        setSlashSelectedIndex((index) => (index + 1) % filteredSlashCommands.length)
+        return
+      }
+      if (e.key === "Escape") {
+        e.preventDefault()
+        setSlashMenuDismissedFor(input)
+        return
+      }
+      if (e.key === "Tab") {
+        e.preventDefault()
+        const command = filteredSlashCommands[slashSelectedIndex]
+        if (command) {
+          setInput(`/${command.name} `)
+          setSlashCursor(command.name.length + 2)
+          setSlashCommandError("")
+          window.requestAnimationFrame(() => {
+            const textarea = textareaRef.current
+            if (!textarea) return
+            textarea.focus()
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+          })
+        }
+        return
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault()
+        const command = filteredSlashCommands[slashSelectedIndex]
+        if (command) executeSlashCommand(command)
+        return
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -767,7 +912,17 @@ export function ChatInput({
             ref={textareaRef}
             value={input}
             readOnly={voiceBusy}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value)
+              setSlashCursor(e.target.selectionStart)
+              setSlashSelectedIndex(0)
+              setSlashCommandError("")
+              if (e.target.value.startsWith("/")) {
+                setPermissionMenuOpen(false)
+                setModelMenuOpen(false)
+              }
+            }}
+            onSelect={(e) => setSlashCursor(e.currentTarget.selectionStart)}
             onFocus={() => void updateDesktopActivityFacts({
               surface: overlay ? "chat-overlay" : "main-chat",
               chat_input_focused: true,
@@ -966,11 +1121,92 @@ export function ChatInput({
           </div>
           </div>
         )}
-        {!hideComposerFooter && permissionMenuOpen && (
+        <AnimatePresence>
+          {slashMenuOpen && (
+            <motion.div
+              key="slash-command-menu"
+              initial={{ opacity: 0, y: 8, scale: 0.985 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.99 }}
+              transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
+              role="listbox"
+              aria-label="斜杠命令"
+              className={cn(
+                "absolute inset-x-[2.2vh] z-40 overflow-y-auto rounded-[1.8vh] border p-[0.7vh] shadow-xl backdrop-blur-xl",
+                hideComposerFooter ? "bottom-[2.2vh] max-h-[calc(100%-4.4vh)]" : "bottom-[7.6vh] max-h-[42vh]",
+                overlay
+                  ? "border-white/12 bg-stone-950/92 text-stone-100"
+                  : "border-border bg-card/98 text-text",
+              )}
+            >
+              <div className={cn("px-[1.2vh] py-[0.8vh] text-[1.35vh]", overlay ? "text-stone-400" : "text-text-muted")}>命令</div>
+              {filteredSlashCommands.map((command, index) => {
+                const selected = index === slashSelectedIndex
+                return (
+                  <button
+                    key={command.name}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    onMouseEnter={() => setSlashSelectedIndex(index)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => executeSlashCommand(command)}
+                    className={cn(
+                      "flex w-full items-center gap-[1.4vh] rounded-[1.25vh] px-[1.2vh] py-[1.05vh] text-left transition-colors",
+                      selected
+                        ? overlay
+                          ? "bg-white/10 text-white"
+                          : "bg-[#fff7e8] text-text"
+                        : overlay
+                          ? "text-stone-300 hover:bg-white/8"
+                          : "text-text-muted hover:bg-bg",
+                    )}
+                  >
+                    <span className={cn(
+                      "flex h-[3.3vh] w-[3.3vh] flex-shrink-0 items-center justify-center rounded-[0.9vh] font-mono text-[1.8vh] font-semibold",
+                      selected ? "bg-accent/12 text-accent" : overlay ? "bg-white/6 text-stone-400" : "bg-bg text-text-muted",
+                    )}>/</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-mono text-[1.65vh] font-medium text-current">/{command.name}</span>
+                      <span className={cn("mt-[0.2vh] block truncate text-[1.35vh]", selected ? "opacity-70" : "opacity-80")}>{command.description}</span>
+                    </span>
+                    {selected && <span className="text-[1.2vh] opacity-55">Enter</span>}
+                  </button>
+                )
+              })}
+              <div className={cn(
+                "mt-[0.45vh] border-t px-[1.2vh] py-[0.8vh] text-[1.15vh]",
+                overlay ? "border-white/8 text-stone-500" : "border-border/70 text-text-lighter",
+              )}>
+                ↑↓ 选择 · Tab 补全 · Enter 执行 · Esc 关闭
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {slashCommandError && !slashMenuOpen && (
+            <motion.div
+              key="slash-command-error"
+              initial={{ opacity: 0, y: 3 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              role="alert"
+              className={cn(
+                "absolute left-[2.8vh] z-30 max-w-[calc(100%-5.6vh)] truncate text-[1.35vh]",
+                hideComposerFooter ? "bottom-[1.5vh]" : "bottom-[7.1vh]",
+                overlay ? "text-red-200" : "text-red-600",
+              )}
+            >
+              {slashCommandError}
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {permissionMenuOpen && (
           <div
             role="menu"
             className={cn(
-              "absolute left-[7.6vh] bottom-[7.3vh] z-30 w-[17.5rem] overflow-hidden rounded-lg border shadow-lg backdrop-blur-md",
+              "absolute z-30 w-[17.5rem] overflow-y-auto rounded-lg border shadow-lg backdrop-blur-md",
+              hideComposerFooter ? "bottom-[2.2vh] left-[2.2vh] max-h-[calc(100%-4.4vh)]" : "bottom-[7.3vh] left-[7.6vh]",
               overlay ? "border-white/12 bg-stone-950/88 text-stone-100" : "border-border bg-card text-text",
             )}
           >
@@ -1006,11 +1242,14 @@ export function ChatInput({
             })}
           </div>
         )}
-        {!hideComposerFooter && modelMenuOpen && (
+        {modelMenuOpen && (
           <div
             role="menu"
             className={cn(
-              "absolute right-[8.3vh] bottom-[7.3vh] z-30 max-h-[38vh] w-[20rem] max-w-[calc(100%-9rem)] overflow-y-auto rounded-lg border shadow-lg backdrop-blur-md",
+              "absolute z-30 w-[20rem] overflow-y-auto rounded-lg border shadow-lg backdrop-blur-md",
+              hideComposerFooter
+                ? "bottom-[2.2vh] right-[2.2vh] max-h-[calc(100%-4.4vh)] max-w-[calc(100%-4.4vh)]"
+                : "bottom-[7.3vh] right-[8.3vh] max-h-[38vh] max-w-[calc(100%-9rem)]",
               overlay ? "border-white/12 bg-stone-950/88 text-stone-100" : "border-border bg-card text-text",
             )}
           >

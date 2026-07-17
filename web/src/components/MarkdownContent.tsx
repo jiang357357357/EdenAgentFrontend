@@ -60,6 +60,11 @@ export function MarkdownContent({
           <th className="border-b border-border bg-bg/70 px-[1.1vh] py-[0.75vh] font-medium text-text">{children}</th>
         ),
         td: ({ children }) => <td className="border-t border-border px-[1.1vh] py-[0.75vh] align-top">{children}</td>,
+        pre: ({ children }) => (
+          <pre className="my-[1.6vh] max-w-full overflow-x-auto rounded-[1.1vh] !bg-slate-800 p-[1.5vh] font-mono text-[0.88em] leading-[1.55] !text-stone-100 [&>code]:rounded-none [&>code]:!bg-transparent [&>code]:p-0 [&>code]:text-inherit">
+            {children}
+          </pre>
+        ),
         code: ({ children, className }) => {
           const inline = !className
           return inline ? (

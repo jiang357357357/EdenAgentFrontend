@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react"
 import { resolveCoreAssetUrl } from "../lib/auth"
 import { updateDesktopActivityFacts, type PetTTSMode } from "../lib/desktop-window"
 import { synthesizeSpeechSegment } from "../lib/mon_agent_api"
-import { textForTTS } from "../lib/tts-text"
+import { speechChunksForTTS, textForTTS } from "../lib/tts-text"
 
 export interface SpeechClip {
   status: "synthesizing" | "ready" | "error"
   source?: string
+  sources?: string[]
+  error?: string
 }
 
 interface SpeechSegment {
@@ -50,7 +52,7 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
     if (clearClips) setClips({})
   }
 
-  const play = (segmentId: string, source: string, generation: number) => new Promise<void>((resolve, reject) => {
+  const playSource = (segmentId: string, source: string, generation: number) => new Promise<void>((resolve, reject) => {
     if (generation !== generationRef.current) {
       resolve()
       return
@@ -63,7 +65,6 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
       if (finishAudioRef.current === finish) finishAudioRef.current = null
       if (audioRef.current === audio) audioRef.current = null
       if (audioSegmentIdRef.current === segmentId) audioSegmentIdRef.current = null
-      setActiveSegmentId((current) => current === segmentId ? null : current)
       setPaused(false)
       if (error) reject(error)
       else resolve()
@@ -78,35 +79,69 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
     void audio.play().catch((error) => finish(error))
   })
 
+  const playSources = async (
+    segmentId: string,
+    sources: string[],
+    generation: number,
+    playbackGeneration: number,
+  ) => {
+    if (generation !== generationRef.current || playbackGeneration !== playbackGenerationRef.current) return
+    setActiveSegmentId(segmentId)
+    setPaused(false)
+    try {
+      for (const source of sources) {
+        if (generation !== generationRef.current || playbackGeneration !== playbackGenerationRef.current) return
+        await playSource(segmentId, source, generation)
+      }
+    } finally {
+      setActiveSegmentId((current) => current === segmentId ? null : current)
+      setPaused(false)
+    }
+  }
+
   const synthesize = (segmentId: string, messageId: string, rawText: string, autoPlay: boolean) => {
-    const text = textForTTS(rawText, mode)
-    if (!text || !sessionId || !messageId || typeof configId !== "number" || mode === "none") return
+    const chunks = speechChunksForTTS(rawText, mode)
+    if (!chunks.length || !sessionId || !messageId || typeof configId !== "number" || mode === "none") return
 
     const generation = generationRef.current
     const playbackGeneration = playbackGenerationRef.current
     setClips((current) => ({ ...current, [segmentId]: { status: "synthesizing" } }))
-    const synthesis = synthesizeSpeechSegment({
-      sessionId,
-      messageId,
-      segmentId,
-      text,
-      configId,
-      mode,
-    })
-      .then((result) => {
-        if (!result.success) throw new Error(result.error_message || `语音段 ${segmentId} 合成失败`)
+    const synthesis = (async () => {
+      const sources: string[] = []
+      for (const [index, text] of chunks.entries()) {
+        const requestSegmentId = chunks.length === 1 ? segmentId : `${segmentId}:tts:${index}`
+        const result = await synthesizeSpeechSegment({
+          sessionId,
+          messageId,
+          segmentId: requestSegmentId,
+          text,
+          configId,
+          mode,
+        })
+        if (!result.success) throw new Error(result.error_message || `语音段 ${index + 1}/${chunks.length} 合成失败`)
         const source = result.audio_data
           ? `data:audio/wav;base64,${result.audio_data}`
           : resolveCoreAssetUrl(result.audio_url)
-        if (!source) throw new Error(`语音段 ${segmentId} 未返回音频`)
+        if (!source) throw new Error(`语音段 ${index + 1}/${chunks.length} 未返回音频`)
+        sources.push(source)
+      }
+
+      if (!sources.length) throw new Error(`语音段 ${segmentId} 未返回音频`)
+      return sources
+    })()
+      .then((sources) => {
         if (generation === generationRef.current) {
-          setClips((current) => ({ ...current, [segmentId]: { status: "ready", source } }))
+          setClips((current) => ({
+            ...current,
+            [segmentId]: { status: "ready", source: sources[0], sources },
+          }))
         }
-        return source
+        return sources
       })
       .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error)
         if (generation === generationRef.current) {
-          setClips((current) => ({ ...current, [segmentId]: { status: "error" } }))
+          setClips((current) => ({ ...current, [segmentId]: { status: "error", error: message } }))
         }
         console.warn("[Chat][TTS] 合成失败", error)
         return null
@@ -116,9 +151,9 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
     queueRef.current = queueRef.current
       .catch(() => undefined)
       .then(async () => {
-        const source = await synthesis
-        if (!source || generation !== generationRef.current || playbackGeneration !== playbackGenerationRef.current) return
-        await play(segmentId, source, generation)
+        const sources = await synthesis
+        if (!sources || generation !== generationRef.current || playbackGeneration !== playbackGenerationRef.current) return
+        await playSources(segmentId, sources, generation, playbackGeneration)
       })
       .catch((error) => console.warn("[Chat][TTS] 播放失败", error))
     return synthesis
@@ -126,11 +161,17 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
 
   const toggle = (segmentId: string, rawText: string, messageId: string) => {
     const clip = clips[segmentId]
-    if (!clip?.source) {
-      void synthesize(segmentId, messageId, rawText, false)?.then((source) => {
-        if (!source) return
+    const sources = clip?.sources ?? (clip?.source ? [clip.source] : [])
+    if (!sources.length) {
+      void synthesize(segmentId, messageId, rawText, false)?.then((synthesizedSources) => {
+        if (!synthesizedSources) return
         stop(false)
-        void play(segmentId, source, generationRef.current).catch((error) => console.warn("[Chat][TTS] 播放失败", error))
+        void playSources(
+          segmentId,
+          synthesizedSources,
+          generationRef.current,
+          playbackGenerationRef.current,
+        ).catch((error) => console.warn("[Chat][TTS] 播放失败", error))
       })
       return
     }
@@ -145,7 +186,8 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
       return
     }
     stop(false)
-    void play(segmentId, clip.source, generationRef.current).catch((error) => console.warn("[Chat][TTS] 播放失败", error))
+    void playSources(segmentId, sources, generationRef.current, playbackGenerationRef.current)
+      .catch((error) => console.warn("[Chat][TTS] 播放失败", error))
   }
 
   useEffect(() => () => {
