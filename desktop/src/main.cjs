@@ -1383,6 +1383,16 @@ ipcMain.handle("mon-agent:invoke", async (_event, command, args = {}) => {
     }
     case "core_default_assistant":
       return coreRequest("/api/assistants/default/", { method: "GET", headers: authHeader(args.token) })
+    case "core_current_assistant":
+      return coreRequest("/api/assistants/current/", { method: "GET", headers: authHeader(args.token) })
+    case "core_list_assistants":
+      return coreRequest("/api/assistants/", { method: "GET", headers: authHeader(args.token) })
+    case "core_update_agent_settings":
+      return coreRequest("/api/agent/settings/my/", {
+        method: "PATCH",
+        headers: { ...authHeader(args.token), "content-type": "application/json" },
+        body: JSON.stringify(args.input ?? {}),
+      })
     case "core_user_profile":
       return coreRequest("/api/users/me/profile/", { method: "GET", headers: authHeader(args.token) })
     case "core_update_user_profile":

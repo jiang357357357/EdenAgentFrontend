@@ -1,4 +1,4 @@
-import { Lock, Menu, MessageSquare, NotebookPen, Sparkles, Unlock } from "lucide-react"
+import { Lock, Menu, MessageSquare, NotebookPen, Sparkles, Unlock, Users } from "lucide-react"
 import { motion } from "motion/react"
 import { useEffect, useMemo, useState } from "react"
 import { CharacterPanel } from "../../components/CharacterPanel"
@@ -14,6 +14,7 @@ import {
   type PetSettings,
 } from "../../lib/desktop-window"
 import { useTTSSpeech } from "../../hooks/useTTSSpeech"
+import { estimateConversationTokens } from "../../lib/token-usage"
 import { cn } from "../../lib/utils"
 import type { PendingPermission, PermissionMode, PromptAttachment, Session } from "../../types"
 
@@ -48,11 +49,13 @@ interface ChatPageProps {
   onSelectSession: (id: string) => void
   onNewSession: () => void
   onSendMessage: (content: string, attachments: PromptAttachment[]) => Promise<void>
+  onCompact: (instructions?: string) => Promise<void>
   onPermissionReply: (requestID: string, reply: "once" | "always" | "reject", message?: string) => Promise<void>
   permissionMode: PermissionMode
   onPermissionModeChange: (mode: PermissionMode) => Promise<void>
   onPreviewImage: (src: string, alt?: string) => void
   onLogout: () => Promise<void> | void
+  onOpenAssistantSwitcher: () => void
   onOpenSettings: () => void
   onOpenSelfAwake: () => void
   onOpenMemo: () => void
@@ -78,11 +81,13 @@ export function ChatPage({
   onSelectSession,
   onNewSession,
   onSendMessage,
+  onCompact,
   onPermissionReply,
   permissionMode,
   onPermissionModeChange,
   onPreviewImage,
   onLogout,
+  onOpenAssistantSwitcher,
   onOpenSettings,
   onOpenSelfAwake,
   onOpenMemo,
@@ -93,6 +98,7 @@ export function ChatPage({
   const assistantAvatarUrl = resolveCoreAssetUrl(assistant?.character?.avatar_url)
   const userAvatarUrl = resolveCoreAssetUrl(currentUser?.avatar_url)
   const messages = activeSession?.messages ?? []
+  const contextTokenEstimate = useMemo(() => estimateConversationTokens(messages), [messages])
   const lastUserMessageIndex = messages.reduce(
     (lastIndex, message, index) => (message.role === "user" ? index : lastIndex),
     -1,
@@ -190,6 +196,17 @@ export function ChatPage({
           <div className="flex items-center gap-[1vw]">
             <button
               type="button"
+              onClick={onOpenAssistantSwitcher}
+              className="group relative flex h-[5.4vh] w-[5.4vh] items-center justify-center text-text-muted outline-none transition-colors hover:text-accent focus-visible:text-accent"
+              aria-label="切换助手"
+            >
+              <Users className="h-[2.45vh] w-[2.45vh]" />
+              <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.7vh)] z-30 -translate-x-1/2 whitespace-nowrap rounded-[0.55vh] border border-border bg-card/96 px-[0.7vw] py-[0.45vh] text-[1.35vh] tracking-normal text-text opacity-0 shadow-md backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                切换助手
+              </span>
+            </button>
+            <button
+              type="button"
               onClick={onOpenSelfAwake}
               className="group relative flex h-[5.4vh] w-[5.4vh] items-center justify-center text-text-muted outline-none transition-colors hover:text-accent focus-visible:text-accent"
               aria-label="打开自醒"
@@ -234,7 +251,7 @@ export function ChatPage({
           ref={messagesScrollRef}
           className="min-h-0 flex-1 overflow-y-auto scroll-smooth"
         >
-          <div className="mx-auto w-[calc(100%_-_5vw)] max-w-[52vw] px-[1vw]">
+          <div className="mx-auto w-[95%] px-[1vw]">
             {connectionError ? (
               <div className="flex h-[61vh] flex-col items-center justify-center text-center">
                 <div className="mb-[2vh] rounded-full border border-border bg-card px-[2vw] py-[1.2vh] text-[1.8vh] uppercase tracking-[0.15em] text-accent shadow-sm">
@@ -312,7 +329,7 @@ export function ChatPage({
         </div>
 
         <div className="h-full min-h-0 overflow-visible px-[3vw]">
-          <div className="mx-auto w-[calc(100%_-_5vw)] max-w-[52vw]">
+          <div className="mx-auto w-[95%]">
             {activePendingPermissions.length > 0 && (
               <div className="mb-2 grid max-h-[24vh] gap-2 overflow-y-auto">
                 {activePendingPermissions.map((request) => (
@@ -332,6 +349,8 @@ export function ChatPage({
               onPermissionModeChange={onPermissionModeChange}
               voiceInputEnabled={petSettings.voiceInputEnabled}
               sttConfigId={assistant?.character?.stt_config_id}
+              contextTokenEstimate={contextTokenEstimate}
+              onCompact={activeSessionId ? onCompact : undefined}
             />
           </div>
         </div>

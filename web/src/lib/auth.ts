@@ -126,6 +126,10 @@ export interface CoreCharacter {
   id: number
   name: string
   description?: string | null
+  personality?: unknown
+  setting_summary?: unknown
+  ai_talk_entity_id?: number | null
+  ai_talk_entity_name?: string | null
   avatar_url?: string | null
   default_standing_image_url?: string | null
   visual_actions?: CoreCharacterVisualAction[]
@@ -454,6 +458,46 @@ export async function fetchDefaultAssistant(token: string) {
   }
 
   return request<CoreAssistant>("/api/assistants/default/", { method: "GET" }, token)
+}
+
+export async function fetchCurrentAssistant(token: string) {
+  if (isDesktopRuntime()) {
+    return invokeDesktop<CoreAssistant>("core_current_assistant", { token })
+  }
+
+  return request<CoreAssistant>("/api/assistants/current/", { method: "GET" }, token)
+}
+
+export async function fetchAssistants(token: string) {
+  const payload = isDesktopRuntime()
+    ? await invokeDesktop<CoreAssistant[] | { results?: CoreAssistant[] }>("core_list_assistants", { token })
+    : await request<CoreAssistant[] | { results?: CoreAssistant[] }>("/api/assistants/", { method: "GET" }, token)
+
+  return Array.isArray(payload) ? payload : Array.isArray(payload.results) ? payload.results : []
+}
+
+export async function setCurrentAssistant(token: string, assistantId: number) {
+  const input = {
+    current_assistant: assistantId,
+  }
+
+  if (isDesktopRuntime()) {
+    await invokeDesktop("core_update_agent_settings", {
+      token,
+      input,
+    })
+    return fetchCurrentAssistant(token)
+  }
+
+  await request(
+    "/api/agent/settings/my/",
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+    token,
+  )
+  return fetchCurrentAssistant(token)
 }
 
 export function resolveCoreAssetUrl(url?: string | null) {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
+  compactSession as compactSessionRaw,
   createSessionRaw,
   getPermissionMode,
   listPermissionsRaw,
@@ -280,6 +281,29 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     [createSession, isRuntimeReady, state.activeSessionId],
   );
 
+  const compactSession = useCallback(async (instructions?: string) => {
+    const sessionID = activeSessionIdRef.current;
+    if (!isRuntimeReady()) {
+      throw new Error('MonAgent runtime is not authenticated');
+    }
+    if (!sessionID) {
+      throw new Error('当前没有可压缩的会话。');
+    }
+    if (sendingSessionIdsRef.current.has(sessionID)) {
+      throw new Error('智能体正在处理当前任务，请稍后再压缩。');
+    }
+
+    sendingSessionIdsRef.current.add(sessionID);
+    dispatch(setConnectionError(undefined));
+    try {
+      await compactSessionRaw(sessionID, instructions);
+    } catch (error) {
+      sendingSessionIdsRef.current.delete(sessionID);
+      dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
+      throw error;
+    }
+  }, [isRuntimeReady]);
+
   const respondPermission = useCallback(async (requestID: string, reply: 'once' | 'always' | 'reject', message?: string) => {
     await replyPermission(requestID, reply, message);
   }, []);
@@ -311,6 +335,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     answerQuestion,
     connectionState: state.connectionState,
     connectionError: state.connectionError,
+    compactSession,
     createSession,
     dismissQuestion,
     isThinking,

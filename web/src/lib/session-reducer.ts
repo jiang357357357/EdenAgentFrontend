@@ -303,6 +303,8 @@ function mapPart(part: ApiPart): RuntimePart {
       auto: part.auto,
       overflow: part.overflow,
       tail_start_id: part.tail_start_id,
+      tokensBefore: part.tokensBefore,
+      tokensAfter: part.tokensAfter,
     }
     return compactionPart
   }
@@ -370,6 +372,9 @@ function applyMessageInfo(message: RuntimeMessage, info: ApiMessageInfo) {
   message.createdAt = info.time.created
   if (info.role === "assistant") {
     message.completedAt = info.time.completed
+    message.modelID = info.modelID
+    message.providerID = info.providerID
+    message.error = info.error || undefined
   }
   message.localOnly = false
 }
@@ -721,6 +726,7 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       session.messageOrder = [...session.messageOrder, message.id]
       session.updatedAt = message.createdAt
       session.status = "busy"
+      session.error = undefined
       next.connectionError = undefined
       reconcileOptimisticUsers(session)
       return next
@@ -748,6 +754,13 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       }
       if (isMessageUpdatedEvent(event)) {
         applyMessageUpdate(next, event.properties.sessionID, event.properties.info)
+        if (
+          event.properties.info.role === "assistant" &&
+          event.properties.info.time.completed &&
+          !event.properties.info.error
+        ) {
+          next.sessions[event.properties.sessionID].error = undefined
+        }
         return next
       }
       if (isMessagePartUpdatedEvent(event)) {
@@ -772,9 +785,6 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
         const session = ensureSession(next, event.properties.sessionID)
         const status = event.properties.status.type
         session.status = status === "busy" || status === "retry" ? status : "idle"
-        if (session.status === "idle") {
-          session.error = undefined
-        }
         return next
       }
       if (isSessionErrorEvent(event)) {

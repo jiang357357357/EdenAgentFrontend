@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useId } from "react"
 import {
   ArrowUp,
   Check,
   ChevronDown,
   ChevronLeft,
+  Circle,
   FileText,
   History,
   Keyboard,
@@ -37,6 +38,7 @@ import { cn } from "../lib/utils"
 import { MarkdownContent } from "./MarkdownContent"
 import { RealtimeSTTService, type RealtimeSTTStatus } from "../lib/realtime-stt"
 import { updateDesktopActivityFacts } from "../lib/desktop-window"
+import { DEFAULT_CONTEXT_WINDOW, estimateTextTokens, formatTokenCount } from "../lib/token-usage"
 import type { PermissionMode, PromptAttachment, ToolCall } from "../types"
 
 type DialogSegment = {
@@ -72,6 +74,8 @@ interface ChatInputProps {
   onPermissionModeChange?: (mode: PermissionMode) => Promise<void>
   voiceInputEnabled?: boolean
   sttConfigId?: number | null
+  contextTokenEstimate?: number
+  onCompact?: (instructions?: string) => void | Promise<void>
   onNewSession?: () => void | Promise<void>
   onOpenSettings?: () => void
   onOpenMemo?: () => void
@@ -82,6 +86,102 @@ const permissionOptions: Array<{ mode: PermissionMode; label: string; descriptio
   { mode: "full_access", label: "完全访问", description: "自动允许工具权限" },
   { mode: "ask", label: "询问授权", description: "写入、命令等操作前确认" },
 ]
+
+function SendButton({
+  canSend,
+  disabled,
+  dialogMode,
+  overlay,
+  onSend,
+}: {
+  canSend: boolean
+  disabled?: boolean
+  dialogMode: boolean
+  overlay: boolean
+  onSend: () => void
+}) {
+  const enabled = canSend && !disabled && !dialogMode
+
+  return (
+    <motion.button
+      type="button"
+      initial={false}
+      animate={{ scale: enabled ? 1 : 0.96, opacity: enabled ? 1 : 0.86 }}
+      onClick={onSend}
+      disabled={!enabled}
+      className={cn(
+        "flex h-[5.2vh] w-[5.2vh] flex-shrink-0 items-center justify-center rounded-full shadow-none transition-[background-color,color,opacity] disabled:cursor-not-allowed",
+        overlay
+          ? "bg-stone-300/70 text-stone-800 hover:bg-stone-200 disabled:bg-stone-300/50 disabled:text-stone-700/70"
+          : enabled
+            ? "bg-accent text-white hover:bg-[#c66d05]"
+            : "bg-stone-200/75 text-text-muted/60",
+      )}
+      aria-label="发送"
+      title="发送"
+    >
+      <ArrowUp className="h-[2.7vh] w-[2.7vh]" />
+    </motion.button>
+  )
+}
+
+function TokenMeter({
+  inputTokens,
+  contextTokens,
+  contextWindow,
+}: {
+  inputTokens: number
+  contextTokens: number
+  contextWindow: number
+}) {
+  const contextPercent = Math.min(100, (contextTokens / Math.max(1, contextWindow)) * 100)
+  const contextArcLength = Math.min(58, Math.max(0, contextPercent * 0.58))
+  const warning = contextPercent >= 85
+  const tooltipId = useId()
+
+  return (
+    <div className="group/token relative flex h-[4.7vh] w-[4.7vh] items-center justify-center">
+      <button
+        type="button"
+        className={cn(
+          "relative flex h-[4.7vh] w-[4.7vh] items-center justify-center rounded-full bg-card text-[1.65vh] font-medium tabular-nums outline-none transition-transform hover:scale-[1.04] focus-visible:scale-[1.04]",
+          warning ? "text-red-600" : "text-text-muted",
+        )}
+        aria-label={`本次输入约 ${inputTokens} tokens，会话上下文约 ${contextTokens}，可用上限 ${contextWindow}`}
+        aria-describedby={tooltipId}
+      >
+        <Circle className="absolute inset-0 h-full w-full text-border" strokeWidth={1.7} aria-hidden="true" />
+        <Circle
+          className={cn(
+            "absolute inset-[0.15vh] h-[calc(100%-0.3vh)] w-[calc(100%-0.3vh)] -rotate-90",
+            warning ? "text-red-500" : "text-accent",
+          )}
+          strokeWidth={2.15}
+          strokeDasharray={`${contextArcLength} 64`}
+          strokeLinecap="round"
+          aria-hidden="true"
+        />
+        <span className="relative z-10 max-w-[3.1vh] truncate">{formatTokenCount(inputTokens)}</span>
+      </button>
+
+      <div
+        id={tooltipId}
+        role="tooltip"
+        className="pointer-events-none invisible absolute bottom-[calc(100%+1.25vh)] right-0 z-50 w-[20.5vh] translate-y-[0.35vh] rounded-[1.05vh] border border-border bg-card/98 px-[1.6vh] py-[1.15vh] text-[1.45vh] text-text opacity-0 shadow-lg backdrop-blur-md transition-[opacity,transform,visibility] duration-150 group-hover/token:visible group-hover/token:translate-y-0 group-hover/token:opacity-100 group-focus-within/token:visible group-focus-within/token:translate-y-0 group-focus-within/token:opacity-100"
+      >
+        <span className="absolute bottom-[-0.45vh] right-[1.95vh] h-[0.8vh] w-[0.8vh] rotate-45 border-b border-r border-border bg-card" aria-hidden="true" />
+        <span className="grid grid-cols-[1fr_auto] gap-x-[1.3vh] gap-y-[0.65vh]">
+          <span className="text-text-muted">本次输入</span>
+          <strong className="font-medium tabular-nums">{formatTokenCount(inputTokens)}</strong>
+          <span className="text-text-muted">会话上下文</span>
+          <strong className="font-medium tabular-nums">{formatTokenCount(contextTokens)}</strong>
+          <span className="text-text-muted">可用上限</span>
+          <strong className="font-medium tabular-nums">{formatTokenCount(contextWindow)}</strong>
+        </span>
+      </div>
+    </div>
+  )
+}
 
 function VoiceLevelWaveform({ level, active }: { level: number; active: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -175,6 +275,8 @@ export function ChatInput({
   onPermissionModeChange,
   voiceInputEnabled = false,
   sttConfigId,
+  contextTokenEstimate = 0,
+  onCompact,
   onNewSession,
   onOpenSettings,
   onOpenMemo,
@@ -195,11 +297,14 @@ export function ChatInput({
   const [voiceError, setVoiceError] = useState("")
   const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0)
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0)
+  const [slashPointerActive, setSlashPointerActive] = useState(false)
   const [slashCursor, setSlashCursor] = useState(0)
   const [slashMenuDismissedFor, setSlashMenuDismissedFor] = useState<string | null>(null)
   const [slashCommandError, setSlashCommandError] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const slashMenuRef = useRef<HTMLDivElement>(null)
+  const slashOptionRefs = useRef<Array<HTMLButtonElement | null>>([])
   const dragTimerRef = useRef<number | undefined>(undefined)
   const previousSegmentCountRef = useRef(0)
   const voicePrefixRef = useRef("")
@@ -230,6 +335,9 @@ export function ChatInput({
   const canSend = Boolean(input.trim() || attachments.length > 0) && !voiceBusy
   const activePermission = permissionOptions.find((option) => option.mode === permissionMode) ?? permissionOptions[0]
   const currentModel = modelConfig?.current ?? modelConfig?.options.find((option) => option.selected) ?? null
+  const inputTokens = estimateTextTokens(input)
+  const contextWindow = currentModel?.contextWindow ?? DEFAULT_CONTEXT_WINDOW
+  const contextTokens = Math.min(contextWindow, contextTokenEstimate + inputTokens)
   const currentModelLabel = currentModel?.label || (modelLoading ? "..." : "模型")
   const modelButtonTitle = modelError
     ? `模型配置读取失败: ${modelError}`
@@ -237,6 +345,7 @@ export function ChatInput({
       ? `模型: ${currentModel.label} (${currentModel.providerName || currentModel.provider}/${currentModel.modelID})`
       : "模型"
   const slashCommands = availableSlashCommands({
+    compact: Boolean(onCompact),
     newSession: Boolean(onNewSession),
     settings: Boolean(onOpenSettings),
     memo: Boolean(onOpenMemo),
@@ -253,7 +362,31 @@ export function ChatInput({
 
   useEffect(() => {
     setSlashSelectedIndex(0)
+    setSlashPointerActive(false)
   }, [slashQuery])
+
+  useEffect(() => {
+    if (!slashMenuOpen) return
+    const menu = slashMenuRef.current
+    const option = slashOptionRefs.current[slashSelectedIndex]
+    if (!menu || !option) return
+
+    const frame = window.requestAnimationFrame(() => {
+      const optionTop = option.offsetTop
+      const optionBottom = optionTop + option.offsetHeight
+      const visibleTop = menu.scrollTop
+      const visibleBottom = visibleTop + menu.clientHeight
+      const edgePadding = 8
+
+      if (optionTop < visibleTop + edgePadding) {
+        menu.scrollTo({ top: Math.max(0, optionTop - edgePadding) })
+      } else if (optionBottom > visibleBottom - edgePadding) {
+        menu.scrollTo({ top: optionBottom - menu.clientHeight + edgePadding })
+      }
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [slashMenuOpen, slashSelectedIndex])
 
   const refreshModelConfig = async () => {
     setModelLoading(true)
@@ -358,7 +491,7 @@ export function ChatInput({
     if (!modelConfig && !modelLoading) void refreshModelConfig()
   }
 
-  const executeSlashCommand = (command: SlashCommandDefinition) => {
+  const executeSlashCommand = (command: SlashCommandDefinition, args = "") => {
     if (disabled) {
       setSlashCommandError("智能体正在处理当前任务，请稍后再执行命令。")
       setSlashMenuDismissedFor(input)
@@ -376,7 +509,7 @@ export function ChatInput({
     setSlashCommandError("")
     setSlashMenuDismissedFor(null)
 
-    const actions: Record<SlashCommandName, () => void> = {
+    const actions: Record<SlashCommandName, () => void | Promise<void>> = {
       help: () => {
         setInput("/")
         setSlashCursor(1)
@@ -385,6 +518,7 @@ export function ChatInput({
           textareaRef.current?.setSelectionRange(1, 1)
         })
       },
+      compact: () => onCompact?.(args),
       new: () => void onNewSession?.(),
       model: openModelMenu,
       permissions: openPermissionMenu,
@@ -392,7 +526,9 @@ export function ChatInput({
       memo: () => onOpenMemo?.(),
       "self-awake": () => onOpenSelfAwake?.(),
     }
-    actions[command.name]()
+    Promise.resolve(actions[command.name]()).catch((error) => {
+      setSlashCommandError(error instanceof Error ? error.message : String(error))
+    })
   }
 
   const handleSend = () => {
@@ -406,11 +542,11 @@ export function ChatInput({
         setSlashCommandError(`未知命令 “/${parsedCommand.name}”。输入 / 查看可用命令。`)
         return
       }
-      if (parsedCommand.args) {
+      if (parsedCommand.args && !command.acceptsArguments) {
         setSlashCommandError(`/${command.name} 暂不接受参数。`)
         return
       }
-      executeSlashCommand(command)
+      executeSlashCommand(command, parsedCommand.args)
       return
     }
 
@@ -528,11 +664,13 @@ export function ChatInput({
     if (slashMenuOpen) {
       if (e.key === "ArrowUp" || (e.ctrlKey && e.key.toLowerCase() === "p")) {
         e.preventDefault()
+        setSlashPointerActive(false)
         setSlashSelectedIndex((index) => (index - 1 + filteredSlashCommands.length) % filteredSlashCommands.length)
         return
       }
       if (e.key === "ArrowDown" || (e.ctrlKey && e.key.toLowerCase() === "n")) {
         e.preventDefault()
+        setSlashPointerActive(false)
         setSlashSelectedIndex((index) => (index + 1) % filteredSlashCommands.length)
         return
       }
@@ -543,6 +681,7 @@ export function ChatInput({
       }
       if (e.key === "Tab") {
         e.preventDefault()
+        setSlashPointerActive(false)
         const command = filteredSlashCommands[slashSelectedIndex]
         if (command) {
           setInput(`/${command.name} `)
@@ -559,6 +698,7 @@ export function ChatInput({
       }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault()
+        setSlashPointerActive(false)
         const command = filteredSlashCommands[slashSelectedIndex]
         if (command) executeSlashCommand(command)
         return
@@ -714,25 +854,96 @@ export function ChatInput({
         )}
       </AnimatePresence>
 
-      <div
-        style={overlay ? { backgroundColor: `rgba(28, 25, 23, ${Math.max(30, Math.min(100, overlayOpacity)) / 100})` } : undefined}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        className={cn(
-          "transition-colors",
-          overlay
-            ? cn(
-                "relative h-full overflow-hidden border bg-stone-950/30 shadow-none backdrop-blur-md focus-within:border-white/25",
-                standaloneOverlay ? "rounded-[10cqh]" : "rounded-[3.3vh]",
-                draggingFiles ? "border-orange-300/70 ring-2 ring-orange-300/30" : "border-white/12",
-              )
-            : cn(
-                "relative min-h-[16vh] overflow-visible rounded-[3.3vh] border bg-card/96 shadow-sm backdrop-blur-md focus-within:border-border",
-                draggingFiles ? "border-orange-300/70 ring-2 ring-orange-300/25" : "border-border",
-              ),
-        )}
-      >
+      <div className={cn("relative", overlay && "h-full")}>
+        <AnimatePresence>
+          {slashMenuOpen && (
+            <motion.div
+              key="slash-command-menu"
+              initial={{ opacity: 0, y: 8, scale: 0.985 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.99 }}
+              transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
+              role="listbox"
+              aria-label="斜杠命令"
+              ref={slashMenuRef}
+              onWheel={() => setSlashPointerActive(false)}
+              className={cn(
+                "absolute inset-x-[2.2vh] bottom-[calc(100%+0.8vh)] z-40 max-h-[42vh] overflow-y-auto rounded-[1.8vh] border p-[0.7vh] shadow-xl backdrop-blur-xl",
+                overlay
+                  ? "border-white/12 bg-stone-950/92 text-stone-100"
+                  : "border-border bg-card/98 text-text",
+              )}
+            >
+              <div className={cn("px-[1.2vh] py-[0.8vh] text-[1.35vh]", overlay ? "text-stone-400" : "text-text-muted")}>命令</div>
+              {filteredSlashCommands.map((command, index) => {
+                const selected = index === slashSelectedIndex
+                return (
+                  <button
+                    key={command.name}
+                    ref={(element) => {
+                      slashOptionRefs.current[index] = element
+                    }}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    onPointerMove={() => {
+                      setSlashPointerActive(true)
+                      setSlashSelectedIndex(index)
+                    }}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => executeSlashCommand(command)}
+                    className={cn(
+                      "flex w-full items-center gap-[1.4vh] rounded-[1.25vh] px-[1.2vh] py-[1.05vh] text-left transition-colors",
+                      selected
+                        ? overlay
+                          ? "bg-white/10 text-white"
+                          : "bg-[#fff7e8] text-text"
+                        : overlay
+                          ? cn("text-stone-300", slashPointerActive && "hover:bg-white/8")
+                          : cn("text-text-muted", slashPointerActive && "hover:bg-bg"),
+                    )}
+                  >
+                    <span className={cn(
+                      "flex h-[3.3vh] w-[3.3vh] flex-shrink-0 items-center justify-center rounded-[0.9vh] font-mono text-[1.8vh] font-semibold",
+                      selected ? "bg-accent/12 text-accent" : overlay ? "bg-white/6 text-stone-400" : "bg-bg text-text-muted",
+                    )}>/</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-mono text-[1.65vh] font-medium text-current">/{command.name}</span>
+                      <span className={cn("mt-[0.2vh] block truncate text-[1.35vh]", selected ? "opacity-70" : "opacity-80")}>{command.description}</span>
+                    </span>
+                    {selected && <span className="text-[1.2vh] opacity-55">Enter</span>}
+                  </button>
+                )
+              })}
+              <div className={cn(
+                "mt-[0.45vh] border-t px-[1.2vh] py-[0.8vh] text-[1.15vh]",
+                overlay ? "border-white/8 text-stone-500" : "border-border/70 text-text-lighter",
+              )}>
+                ↑↓ 选择 · Tab 补全 · Enter 执行 · Esc 关闭
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div
+          style={overlay ? { backgroundColor: `rgba(28, 25, 23, ${Math.max(30, Math.min(100, overlayOpacity)) / 100})` } : undefined}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={cn(
+            "transition-colors",
+            overlay
+              ? cn(
+                  "relative h-full overflow-hidden border bg-stone-950/30 shadow-none backdrop-blur-md focus-within:border-white/25",
+                  standaloneOverlay ? "rounded-[10cqh]" : "rounded-[3.3vh]",
+                  draggingFiles ? "border-orange-300/70 ring-2 ring-orange-300/30" : "border-white/12",
+                )
+              : cn(
+                  "relative min-h-[16vh] overflow-visible rounded-[3.3vh] border bg-card/96 shadow-sm backdrop-blur-md focus-within:border-border",
+                  draggingFiles ? "border-orange-300/70 ring-2 ring-orange-300/25" : "border-border",
+                ),
+          )}
+        >
         <input
           ref={fileInputRef}
           type="file"
@@ -810,6 +1021,7 @@ export function ChatInput({
                 {currentOutput.text && (
                   <MarkdownContent
                     content={currentOutput.text}
+                    separateActionLines
                     imageClassName="my-2 max-h-32 max-w-full rounded-lg border border-white/10 object-contain"
                     paragraphClassName="mb-3 last:mb-0"
                   />
@@ -916,6 +1128,7 @@ export function ChatInput({
               setInput(e.target.value)
               setSlashCursor(e.target.selectionStart)
               setSlashSelectedIndex(0)
+              setSlashPointerActive(false)
               setSlashCommandError("")
               if (e.target.value.startsWith("/")) {
                 setPermissionMenuOpen(false)
@@ -961,14 +1174,14 @@ export function ChatInput({
                     "absolute inset-0 box-border h-full max-h-none min-h-0 w-full overflow-hidden text-stone-100 placeholder:text-stone-400/55 [&::-webkit-scrollbar]:hidden",
                     standaloneOverlay ? "px-[8cqh] pb-[8cqh] pt-[8cqh]" : "px-[2.8vh] pt-[2.7vh]",
                   )
-                : "absolute inset-0 box-border h-full max-h-none min-h-0 w-full overflow-hidden px-[2.8vh] pt-[2.7vh] text-[2.2vh] text-text placeholder:text-text-muted/65 [&::-webkit-scrollbar]:hidden",
+                : "absolute inset-0 box-border h-full max-h-none min-h-0 w-full overflow-hidden pl-[2.8vh] pr-[10vh] pt-[2.7vh] text-[2.2vh] text-text placeholder:text-text-muted/65 [&::-webkit-scrollbar]:hidden",
               hideComposerFooter ? (standaloneOverlay ? "" : "pb-[2.7vh]") : "pb-[8.2vh]",
             )}
           />
         )}
 
         {!hideComposerFooter && !(!overlay && voiceBusy) && (
-          <div className={cn("absolute z-20 flex h-[5.4vh] items-center justify-between gap-[1.4vh]", overlay ? "inset-x-[2.4vh] bottom-[1.6vh]" : "inset-x-[2.4vh] bottom-[1.7vh]")}>
+          <div className={cn("absolute z-20 flex h-[5.4vh] items-center justify-between gap-[1.4vh]", overlay ? "inset-x-[2.4vh] bottom-[1.6vh]" : "bottom-[1.7vh] left-[2.4vh] right-[9.1vh]")}>
           <div className="flex min-w-0 items-center gap-[1.6vh]">
             <button
               type="button"
@@ -1098,91 +1311,18 @@ export function ChatInput({
                 </button>
               </>
             )}
-            <motion.button
-              type="button"
-              initial={false}
-              animate={{
-                scale: canSend ? 1 : 0.96,
-                opacity: canSend ? 1 : 0.86,
-              }}
-              onClick={handleSend}
-              disabled={disabled || !canSend || isDialogMode}
-              className={cn(
-                "flex h-[5.2vh] w-[5.2vh] flex-shrink-0 items-center justify-center rounded-full shadow-none transition-colors disabled:cursor-not-allowed",
-                overlay
-                  ? "bg-stone-300/70 text-stone-800 hover:bg-stone-200 disabled:bg-stone-300/50 disabled:text-stone-700/70"
-                  : "bg-stone-200 text-text-muted hover:bg-accent hover:text-white disabled:bg-stone-200/70 disabled:text-text-muted/60",
-              )}
-              aria-label="发送"
-              title="发送"
-            >
-              <ArrowUp className="h-[2.7vh] w-[2.7vh]" />
-            </motion.button>
+            {overlay ? (
+              <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay onSend={handleSend} />
+            ) : null}
           </div>
           </div>
         )}
-        <AnimatePresence>
-          {slashMenuOpen && (
-            <motion.div
-              key="slash-command-menu"
-              initial={{ opacity: 0, y: 8, scale: 0.985 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 6, scale: 0.99 }}
-              transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
-              role="listbox"
-              aria-label="斜杠命令"
-              className={cn(
-                "absolute inset-x-[2.2vh] z-40 overflow-y-auto rounded-[1.8vh] border p-[0.7vh] shadow-xl backdrop-blur-xl",
-                hideComposerFooter ? "bottom-[2.2vh] max-h-[calc(100%-4.4vh)]" : "bottom-[7.6vh] max-h-[42vh]",
-                overlay
-                  ? "border-white/12 bg-stone-950/92 text-stone-100"
-                  : "border-border bg-card/98 text-text",
-              )}
-            >
-              <div className={cn("px-[1.2vh] py-[0.8vh] text-[1.35vh]", overlay ? "text-stone-400" : "text-text-muted")}>命令</div>
-              {filteredSlashCommands.map((command, index) => {
-                const selected = index === slashSelectedIndex
-                return (
-                  <button
-                    key={command.name}
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    onMouseEnter={() => setSlashSelectedIndex(index)}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => executeSlashCommand(command)}
-                    className={cn(
-                      "flex w-full items-center gap-[1.4vh] rounded-[1.25vh] px-[1.2vh] py-[1.05vh] text-left transition-colors",
-                      selected
-                        ? overlay
-                          ? "bg-white/10 text-white"
-                          : "bg-[#fff7e8] text-text"
-                        : overlay
-                          ? "text-stone-300 hover:bg-white/8"
-                          : "text-text-muted hover:bg-bg",
-                    )}
-                  >
-                    <span className={cn(
-                      "flex h-[3.3vh] w-[3.3vh] flex-shrink-0 items-center justify-center rounded-[0.9vh] font-mono text-[1.8vh] font-semibold",
-                      selected ? "bg-accent/12 text-accent" : overlay ? "bg-white/6 text-stone-400" : "bg-bg text-text-muted",
-                    )}>/</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-mono text-[1.65vh] font-medium text-current">/{command.name}</span>
-                      <span className={cn("mt-[0.2vh] block truncate text-[1.35vh]", selected ? "opacity-70" : "opacity-80")}>{command.description}</span>
-                    </span>
-                    {selected && <span className="text-[1.2vh] opacity-55">Enter</span>}
-                  </button>
-                )
-              })}
-              <div className={cn(
-                "mt-[0.45vh] border-t px-[1.2vh] py-[0.8vh] text-[1.15vh]",
-                overlay ? "border-white/8 text-stone-500" : "border-border/70 text-text-lighter",
-              )}>
-                ↑↓ 选择 · Tab 补全 · Enter 执行 · Esc 关闭
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {!hideComposerFooter && !overlay && !voiceBusy ? (
+          <div className="absolute bottom-[1.5vh] right-[2.4vh] z-30 flex flex-col items-center gap-[0.9vh]">
+            <TokenMeter inputTokens={inputTokens} contextTokens={contextTokens} contextWindow={contextWindow} />
+            <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay={false} onSend={handleSend} />
+          </div>
+        ) : null}
         <AnimatePresence>
           {slashCommandError && !slashMenuOpen && (
             <motion.div
@@ -1304,6 +1444,7 @@ export function ChatInput({
             )}
           </div>
         )}
+        </div>
       </div>
     </div>
   )

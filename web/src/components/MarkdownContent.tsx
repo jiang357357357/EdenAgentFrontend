@@ -1,6 +1,7 @@
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { resolveMonAgentUrl } from "../lib/mon_agent_api"
+import { splitActionLines } from "../lib/message-actions"
 
 interface MarkdownContentProps {
   content: string
@@ -10,37 +11,12 @@ interface MarkdownContentProps {
   actionParagraphClassName?: string
 }
 
-function isActionDescription(text: string) {
-  return /^\s*(?:（[\s\S]*）|\([\s\S]*\))\s*$/.test(text)
-}
-
-function splitActionLines(content: string) {
-  const chunks: Array<{ action: boolean; content: string }> = []
-  let regularLines: string[] = []
-  const flushRegularLines = () => {
-    const value = regularLines.join("\n").trim()
-    if (value) chunks.push({ action: false, content: value })
-    regularLines = []
-  }
-
-  for (const line of content.split("\n")) {
-    if (isActionDescription(line)) {
-      flushRegularLines()
-      chunks.push({ action: true, content: line.trim() })
-    } else {
-      regularLines.push(line)
-    }
-  }
-  flushRegularLines()
-  return chunks
-}
-
 export function MarkdownContent({
   content,
   imageClassName = "my-2 max-w-full rounded-lg border border-border object-contain",
   paragraphClassName,
   separateActionLines = false,
-  actionParagraphClassName = "my-[1.2vh] italic text-text-muted",
+  actionParagraphClassName = "my-[1.2vh] italic text-accent/85",
 }: MarkdownContentProps) {
   const renderMarkdown = (value: string, key?: string) => (
     <ReactMarkdown
@@ -51,6 +27,7 @@ export function MarkdownContent({
           <img src={resolveMonAgentUrl(src)} alt={alt} className={imageClassName} draggable={false} />
         ),
         p: ({ children }) => <p className={paragraphClassName}>{children}</p>,
+        em: ({ children }) => <em className="italic text-accent/85">{children}</em>,
         table: ({ children }) => (
           <div className="my-[1.6vh] w-full overflow-x-auto rounded-[1.1vh] border border-border">
             <table className="m-0 w-full min-w-max border-collapse text-left text-[0.96em]">{children}</table>

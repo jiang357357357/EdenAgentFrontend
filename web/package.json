@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "npm run test:slash-commands",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test:message-actions": "node --experimental-strip-types --test tests/message-actions.test.mjs",
     "test:slash-commands": "node --experimental-strip-types --test tests/slash-commands.test.mjs",
     "typecheck": "tsc --noEmit",
     "build": "tsc && vite build",

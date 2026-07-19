@@ -20,6 +20,7 @@ export interface MetaPartCard {
   summary?: string
   detail?: string
   tone?: "default" | "muted" | "accent" | "warning"
+  contextTokensAfter?: number
 }
 
 export interface PermissionToolRef {
@@ -71,6 +72,14 @@ export interface MessageData {
   metaParts?: MetaPartCard[]
   images?: string[]
   isStreaming?: boolean
+  error?: MessageError
+}
+
+export interface MessageError {
+  title: string
+  message: string
+  detail?: string
+  model?: string
 }
 
 export type MessageSegment =
@@ -177,6 +186,8 @@ export interface RuntimeCompactionPart {
   auto: boolean
   overflow?: boolean
   tail_start_id?: string
+  tokensBefore?: number
+  tokensAfter?: number
 }
 
 export interface RuntimeSubtaskPart {
@@ -275,6 +286,18 @@ export interface RuntimeMessage {
   createdAt?: number
   completedAt?: number
   localOnly?: boolean
+  modelID?: string
+  providerID?: string
+  error?: {
+    name?: string
+    message?: string
+    data?: {
+      message?: string
+      code?: string
+      path?: string
+      status?: number
+    }
+  }
 }
 
 export interface RuntimeSession {

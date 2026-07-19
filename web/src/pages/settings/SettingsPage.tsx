@@ -65,6 +65,7 @@ interface SettingsPageProps {
   assistantError?: string
   activeCharacterAction?: ActiveCharacterAction
   onBack?: () => void
+  onOpenAssistantSwitcher?: () => void
 }
 
 interface ToggleRowProps {
@@ -343,11 +344,16 @@ function WindowControls() {
   )
 }
 
-export function SettingsPage({ assistant, assistantError, activeCharacterAction, onBack }: SettingsPageProps) {
+export function SettingsPage({
+  assistant,
+  assistantError,
+  activeCharacterAction,
+  onBack,
+  onOpenAssistantSwitcher,
+}: SettingsPageProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("pet")
   const [settings, setSettings] = useState<PetSettings>(DEFAULT_PET_SETTINGS)
   const [saveState, setSaveState] = useState<SaveState>("idle")
-  const [assistantNotice, setAssistantNotice] = useState("")
   const [desktopEnvironment, setDesktopEnvironment] = useState<DesktopEnvironmentPreview | null>(null)
   const [previewDragging, setPreviewDragging] = useState(false)
   const hydratedRef = useRef(false)
@@ -721,31 +727,24 @@ export function SettingsPage({ assistant, assistantError, activeCharacterAction,
                 <div className="flex items-center justify-between gap-4 py-5">
                   <div className="flex min-w-0 items-center gap-4">
                     <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-[#fff9f1]">
-                      <img src={avatarUrl} alt={characterName} className="h-full w-full origin-top scale-[2.2] object-contain object-top" />
+                      <img src={avatarUrl} alt={characterName} className="h-full w-full object-cover object-top" />
                     </div>
                     <div className="min-w-0">
-                      <div className="whitespace-nowrap text-sm text-text-muted">默认助手</div>
+                      <div className="whitespace-nowrap text-sm text-text-muted">当前助手</div>
                       <div className="mt-2 truncate text-lg font-semibold text-text">{displayName}</div>
-                      <div className="mt-1 truncate text-sm text-text-muted">当前默认助手</div>
+                      <div className="mt-1 truncate text-sm text-text-muted">聊天当前使用的助手</div>
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setAssistantNotice("请在 MonCore 助手管理中更换默认助手")}
+                    onClick={onOpenAssistantSwitcher}
+                    disabled={!onOpenAssistantSwitcher}
                     className="flex h-10 shrink-0 items-center gap-1 rounded-full border border-accent/45 px-3 text-sm text-accent transition-colors hover:bg-accent-dim focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent xl:px-4"
                   >
                     更换<span className="hidden xl:inline">助手</span>
                     <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
-                {assistantNotice ? (
-                  <div className="mb-3 flex items-center justify-between rounded-lg bg-[#fff5e9] px-3 py-2 text-xs text-accent">
-                    <span>{assistantNotice}</span>
-                    <button type="button" onClick={() => setAssistantNotice("")} aria-label="关闭提示">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : null}
 
                 <div className="border-t border-border">
                   <RangeControl

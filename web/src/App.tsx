@@ -4,6 +4,7 @@ import { AnimatePresence, LayoutGroup, motion } from "motion/react"
 import { QuestionDecisionOverlay } from "./components/QuestionDecisionOverlay"
 import { ChatPage } from "./pages/chat"
 import { CharacterPage } from "./pages/character"
+import { AssistantSwitcherPage } from "./pages/assistant-switcher"
 import { LoginPage } from "./pages/login"
 import { MemoPage } from "./pages/memo"
 import { SelfAwakePage } from "./pages/self-awake"
@@ -11,7 +12,7 @@ import { SettingsPage } from "./pages/settings"
 import { useSessionRuntime } from "./hooks/useSessionRuntime"
 import {
   clearAuth,
-  fetchDefaultAssistant,
+  fetchCurrentAssistant,
   getAuthMode,
   getErrorMessage,
   getStoredToken,
@@ -41,11 +42,11 @@ const screenTransition = {
   ease: [0.16, 1, 0.3, 1],
 } as const
 
-type AppPage = "chat" | "selfAwake" | "memo" | "settings" | "pet" | "pet-character" | "pet-bubble"
+type AppPage = "chat" | "selfAwake" | "memo" | "settings" | "assistant-switcher" | "pet" | "pet-character" | "pet-bubble"
 
 function initialPageFromLocation(): AppPage {
   const page = new URLSearchParams(window.location.search).get("page")
-  if (page === "settings" || page === "pet" || page === "pet-character" || page === "pet-bubble") return page
+  if (page === "settings" || page === "assistant-switcher" || page === "pet" || page === "pet-character" || page === "pet-bubble") return page
   return "chat"
 }
 
@@ -110,8 +111,8 @@ export default function App() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyView, setHistoryView] = useState<"messages" | "sessions">("messages")
   const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | undefined>()
-  const [defaultAssistant, setDefaultAssistant] = useState<CoreAssistant | null>(null)
-  const [defaultAssistantError, setDefaultAssistantError] = useState<string | undefined>()
+  const [currentAssistant, setCurrentAssistant] = useState<CoreAssistant | null>(null)
+  const [currentAssistantError, setCurrentAssistantError] = useState<string | undefined>()
   const [activeCharacterAction, setActiveCharacterAction] = useState<ActiveCharacterAction | undefined>()
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
   const [toolStatus, setToolStatus] = useState<ToolStatus | undefined>()
@@ -146,6 +147,7 @@ export default function App() {
     activeSession,
     activeSessionId,
     activeSessionError,
+    compactSession: compactRuntimeSession,
     connectionError,
     createSession: createRuntimeSession,
     dismissQuestion,
@@ -178,8 +180,8 @@ export default function App() {
     setActiveCharacterAction(undefined)
     setSidebarOpen(false)
     resetSessionRuntime()
-    setDefaultAssistant(null)
-    setDefaultAssistantError(undefined)
+    setCurrentAssistant(null)
+    setCurrentAssistantError(undefined)
     setActivePage("chat")
     setHistoryOpen(false)
     setHistoryView("messages")
@@ -226,7 +228,7 @@ export default function App() {
   // Auto-scroll to bottom when messages change
   const activeMessages = activeSession?.messages ?? []
   const messageScrollKey = activeMessages.map(messageScrollSignature).join("\n")
-  const assistantDisplayName = defaultAssistant?.name || defaultAssistant?.character?.name || "助手"
+  const assistantDisplayName = currentAssistant?.name || currentAssistant?.character?.name || "助手"
   const lastUserMessageIndex = activeMessages.reduce(
     (lastIndex, message, index) => (message.role === "user" ? index : lastIndex),
     -1,
@@ -426,40 +428,40 @@ export default function App() {
 
   useEffect(() => {
     if (authStatus !== "authenticated") {
-      setDefaultAssistant(null)
-      setDefaultAssistantError(undefined)
+      setCurrentAssistant(null)
+      setCurrentAssistantError(undefined)
       return
     }
 
     const token = getStoredToken()
     if (!token) {
-      setDefaultAssistant(null)
-      setDefaultAssistantError("未找到登录 token。")
+      setCurrentAssistant(null)
+      setCurrentAssistantError("未找到登录 token。")
       return
     }
 
     let cancelled = false
 
-    async function loadDefaultAssistant() {
+    async function loadCurrentAssistant() {
       try {
-        const assistant = await fetchDefaultAssistant(token)
+        const assistant = await fetchCurrentAssistant(token)
         if (cancelled) return
-        setDefaultAssistant(assistant)
-        setDefaultAssistantError(undefined)
+        setCurrentAssistant(assistant)
+        setCurrentAssistantError(undefined)
       } catch (error) {
         if (cancelled) return
         if (isAuthExpiredError(error)) {
           returnToLogin("登录已失效，请重新登录。")
           return
         }
-        const message = getErrorMessage(error, "未找到默认助手。")
-        console.warn("[Assistant] load default assistant failed", error)
-        setDefaultAssistant(null)
-        setDefaultAssistantError(message)
+        const message = getErrorMessage(error, "未找到当前助手或默认助手。")
+        console.warn("[Assistant] load current assistant failed", error)
+        setCurrentAssistant(null)
+        setCurrentAssistantError(message)
       }
     }
 
-    void loadDefaultAssistant()
+    void loadCurrentAssistant()
     return () => {
       cancelled = true
     }
@@ -564,7 +566,7 @@ export default function App() {
 
   useEffect(() => {
     setActiveCharacterAction(undefined)
-  }, [defaultAssistant?.character?.id])
+  }, [currentAssistant?.character?.id])
 
   useEffect(() => {
     if (authStatus !== "authenticated") return
@@ -592,8 +594,8 @@ export default function App() {
       setCurrentUser(response.user)
       setAuthStatus("authenticated")
       resetSessionRuntime()
-      setDefaultAssistant(null)
-      setDefaultAssistantError(undefined)
+      setCurrentAssistant(null)
+      setCurrentAssistantError(undefined)
     } catch (error) {
       setAuthStatus("unauthenticated")
       setAuthError(reportAuthError("login", error, "登录失败"))
@@ -632,6 +634,10 @@ export default function App() {
     } catch (error) {
       console.error("[Runtime] create session failed", error)
     }
+  }
+
+  const handleCompactSession = async (instructions?: string) => {
+    await compactRuntimeSession(instructions)
   }
 
   const handlePermissionReply = async (requestID: string, reply: "once" | "always" | "reject", message?: string) => {
@@ -690,32 +696,45 @@ export default function App() {
                 onSetHistoryView={setHistoryView}
                 onSelectSession={selectRuntimeSession}
                 onSendMessage={handleSendMessage}
+                onCompact={handleCompactSession}
                 onPermissionReply={handlePermissionReply}
                 permissionMode={permissionMode}
                 onPermissionModeChange={updatePermissionMode}
                 onQuestionReply={handleQuestionReply}
                 onQuestionReject={handleQuestionReject}
                 onStartWindowDrag={startDesktopWindowDrag}
-                assistant={defaultAssistant}
-                assistantError={defaultAssistantError}
+                assistant={currentAssistant}
+                assistantError={currentAssistantError}
                 activeCharacterAction={activeCharacterAction}
                 onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
               />
             ) : activePage === "selfAwake" ? (
               <SelfAwakePage
                 currentUser={currentUser}
-                assistant={defaultAssistant}
+                assistant={currentAssistant}
                 toolStatus={toolStatus}
                 onBack={() => setActivePage("chat")}
               />
             ) : activePage === "memo" ? (
               <MemoPage onBack={() => setActivePage("chat")} />
+            ) : activePage === "assistant-switcher" ? (
+              <AssistantSwitcherPage
+                currentAssistant={currentAssistant}
+                onAssistantChanged={(assistant) => {
+                  setCurrentAssistant(assistant)
+                  setCurrentAssistantError(undefined)
+                  setActiveCharacterAction(undefined)
+                }}
+                onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")}
+                onOpenSettings={() => setActivePage("settings")}
+              />
             ) : activePage === "settings" ? (
               <SettingsPage
-                assistant={defaultAssistant}
-                assistantError={defaultAssistantError}
+                assistant={currentAssistant}
+                assistantError={currentAssistantError}
                 activeCharacterAction={activeCharacterAction}
                 onBack={isSettingsWindow ? undefined : () => setActivePage("chat")}
+                onOpenAssistantSwitcher={() => setActivePage("assistant-switcher")}
               />
             ) : (
               <ChatPage
@@ -725,8 +744,8 @@ export default function App() {
                 sidebarOpen={sidebarOpen}
                 setSidebarOpen={setSidebarOpen}
                 currentUser={currentUser}
-                assistant={defaultAssistant}
-                assistantError={defaultAssistantError}
+                assistant={currentAssistant}
+                assistantError={currentAssistantError}
                 activeCharacterAction={activeCharacterAction}
                 isThinking={isThinking}
                 connectionError={connectionError}
@@ -738,11 +757,16 @@ export default function App() {
                 onSelectSession={selectRuntimeSession}
                 onNewSession={handleNewSession}
                 onSendMessage={handleSendMessage}
+                onCompact={handleCompactSession}
                 onPermissionReply={handlePermissionReply}
                 permissionMode={permissionMode}
                 onPermissionModeChange={updatePermissionMode}
                 onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
                 onLogout={handleLogout}
+                onOpenAssistantSwitcher={() => {
+                  setSidebarOpen(false)
+                  setActivePage("assistant-switcher")
+                }}
                 onOpenSettings={() => {
                   setSidebarOpen(false)
                   setActivePage("settings")

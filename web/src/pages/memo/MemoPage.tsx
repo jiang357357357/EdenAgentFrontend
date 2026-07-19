@@ -7,7 +7,6 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
-  ChevronRight,
   Clock3,
   ListChecks,
   NotebookPen,
@@ -506,23 +505,7 @@ export function MemoPage({ onBack }: MemoPageProps) {
 
       <main className="grid min-h-0 flex-1 grid-cols-[32.2vw_minmax(0,1fr)] gap-[1.1vw] overflow-hidden px-[2.15vw] py-[2vh]">
         <aside className="flex min-h-0 flex-col overflow-hidden">
-          <button
-            type="button"
-            onClick={() => nextMemo && setSelectedMemoId(nextMemo.id)}
-            disabled={!nextMemo}
-            className="flex h-[8.4vh] shrink-0 items-center gap-[1vw] rounded-[0.55vh] border border-amber-200/55 bg-[#fff7e8]/72 px-[1.25vw] text-left text-stone-700 shadow-[0_0.18vh_0.55vh_rgba(87,83,78,0.05)] outline-none transition-colors hover:border-amber-300/70 hover:bg-[#fff4dd] focus-visible:border-amber-400/70 disabled:cursor-default"
-          >
-            <Bell className="h-[2.45vh] w-[2.45vh] shrink-0 text-amber-700" />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[1.72vh]">
-                {nextMemo ? `下一次提醒 ${memoDateKey(memoTimestamp(nextMemo))} ${memoClock(memoTimestamp(nextMemo))}` : "暂无待提醒纸条"}
-              </span>
-              <span className="mt-[0.35vh] block truncate text-[1.48vh] text-stone-600">{nextMemo?.title || "新建一张提醒纸条"}</span>
-            </span>
-            <ChevronRight className="h-[1.9vh] w-[1.9vh] shrink-0 text-stone-500" />
-          </button>
-
-          <div className="relative mt-[1.15vh] shrink-0">
+          <div className="relative shrink-0">
             <Search className="absolute left-[1.15vw] top-1/2 h-[2.05vh] w-[2.05vh] -translate-y-1/2 text-stone-500" />
             <input
               value={query}

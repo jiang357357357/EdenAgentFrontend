@@ -10,6 +10,7 @@ import {
 } from "../src/lib/slash-commands.ts"
 
 const allCapabilities = {
+  compact: true,
   newSession: true,
   settings: true,
   memo: true,
@@ -18,6 +19,7 @@ const allCapabilities = {
 
 test("only exposes commands supported by the current surface", () => {
   const commands = availableSlashCommands({
+    compact: false,
     newSession: false,
     settings: false,
     memo: false,
@@ -50,4 +52,6 @@ test("resolves aliases to their canonical command", () => {
 
   assert.equal(findSlashCommand(commands, "permission")?.name, "permissions")
   assert.equal(findSlashCommand(commands, "awake")?.name, "self-awake")
+  assert.equal(findSlashCommand(commands, "compress")?.name, "compact")
+  assert.equal(findSlashCommand(commands, "compact")?.acceptsArguments, true)
 })

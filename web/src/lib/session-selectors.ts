@@ -23,7 +23,9 @@ import type {
   Session,
   ToolCall,
 } from "../types"
+import { isAssistantMessageStreaming, isRuntimeSessionRunning, runtimePartState } from "./session-stream-state"
 import { formatLocalTime } from "./time"
+import { presentRuntimeError } from "./runtime-error"
 
 function isRuntimeTextPart(part: RuntimePart): part is RuntimeTextPart {
   return part.type === "text" && "text" in part && typeof part.text === "string"
@@ -139,6 +141,7 @@ function mapMetaPart(part: RuntimePart): MetaPartCard | undefined {
         summary: compaction.overflow ? "Context overflow triggered summarization." : "Context was compacted.",
         detail: compaction.tail_start_id ? `tail start: ${compaction.tail_start_id}` : undefined,
         tone: "muted",
+        contextTokensAfter: compaction.tokensAfter,
       }
     }
     default:
@@ -213,7 +216,7 @@ function visibleMessages(session: RuntimeSession) {
     })
 }
 
-function mapMessage(message: RuntimeMessage): MessageData {
+function mapMessage(message: RuntimeMessage, sessionIsRunning: boolean): MessageData {
   const parts = partsInOrder(message)
   const textParts = parts.filter(isRuntimeTextPart)
   const reasoningParts = parts.filter(isRuntimeReasoningPart)
@@ -238,18 +241,20 @@ function mapMessage(message: RuntimeMessage): MessageData {
   const toolCalls = toolParts.map(mapTool)
   const metaParts = parts.map(mapMetaPart).filter((part): part is MetaPartCard => Boolean(part))
   const hasRunningTool = toolParts.some((part) => part.state.status === "pending" || part.state.status === "running")
-  const isStreaming =
-    message.role === "assistant" &&
-    (!message.completedAt ||
+  const isStreaming = isAssistantMessageStreaming(
+    sessionIsRunning,
+    message.role === "assistant",
+    !message.completedAt ||
       textParts.some((part) => !part.done) ||
       reasoningParts.some((part) => !part.done) ||
-      hasRunningTool)
+      hasRunningTool,
+  )
   const runtimeTraceState = runtimeTrace
-    ? runtimeTraceParts.some((part) => !part.done)
-      ? "streaming"
-      : "done"
+    ? runtimePartState(sessionIsRunning, runtimeTraceParts.some((part) => !part.done))
     : undefined
-  const thinkingState = thinking ? (modelReasoningParts.some((part) => !part.done) ? "streaming" : "done") : undefined
+  const thinkingState = thinking
+    ? runtimePartState(sessionIsRunning, modelReasoningParts.some((part) => !part.done))
+    : undefined
   const segments = parts
     .flatMap((part): MessageSegment[] => {
       if (isRuntimeTextPart(part)) {
@@ -259,7 +264,7 @@ function mapMessage(message: RuntimeMessage): MessageData {
                 id: part.id,
                 type: "text",
                 content: part.text,
-                state: part.done ? "done" : "streaming",
+                state: runtimePartState(sessionIsRunning, !part.done),
               },
             ]
           : []
@@ -271,7 +276,7 @@ function mapMessage(message: RuntimeMessage): MessageData {
             id: part.id,
             type: isRuntimeTracePart(part) ? "runtimeTrace" : "thinking",
             content: part.text,
-            state: part.done ? "done" : "streaming",
+            state: runtimePartState(sessionIsRunning, !part.done),
           },
         ]
       }
@@ -306,11 +311,15 @@ function mapMessage(message: RuntimeMessage): MessageData {
     metaParts: metaParts.length ? metaParts : undefined,
     images: images.length ? images : undefined,
     isStreaming,
+    error: message.error
+      ? presentRuntimeError(message.error, message.providerID, message.modelID)
+      : undefined,
   }
 }
 
 function mapSession(session: RuntimeSession): Session {
-  const messages = visibleMessages(session).map(mapMessage)
+  const sessionIsRunning = isRuntimeSessionRunning(session.status)
+  const messages = visibleMessages(session).map((message) => mapMessage(message, sessionIsRunning))
   return {
     id: session.id,
     title: session.title || "新会话",

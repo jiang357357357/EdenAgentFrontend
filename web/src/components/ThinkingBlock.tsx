@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { Activity, ChevronRight, Sparkles } from "lucide-react"
+import { Activity, AlertTriangle, ChevronRight, Sparkles } from "lucide-react"
 import { MarkdownContent } from "./MarkdownContent"
 import { useTypewriterText } from "../hooks/useTypewriterText"
 import { cn } from "../lib/utils"
@@ -12,6 +12,7 @@ interface ThinkingBlockProps {
   activeTitle?: string
   cacheKey?: string
   onTextReveal?: () => void
+  error?: string
 }
 
 export function ThinkingBlock({
@@ -21,19 +22,21 @@ export function ThinkingBlock({
   activeTitle,
   cacheKey,
   onTextReveal,
+  error,
 }: ThinkingBlockProps) {
   const [expanded, setExpanded] = useState(false)
   const isStreaming = state === "streaming"
   const isRuntime = title === "运行过程"
+  const isError = Boolean(error)
   const visibleContent = useTypewriterText({
     active: isStreaming,
     cacheKey: cacheKey ?? `${title}:${content.slice(0, 48)}`,
     target: content,
     onFrame: onTextReveal,
   })
-  const preview = visibleContent.replace(/\s+/g, " ").trim()
-  const displayTitle = isStreaming ? (activeTitle ?? title) : title
-  const TraceIcon = isRuntime ? Activity : Sparkles
+  const preview = error || visibleContent.replace(/\s+/g, " ").trim()
+  const displayTitle = isError ? "运行失败" : isStreaming ? (activeTitle ?? title) : title
+  const TraceIcon = isError ? AlertTriangle : isRuntime ? Activity : Sparkles
 
   return (
     <div className="my-[0.55vh] w-full min-w-0">
@@ -46,11 +49,11 @@ export function ThinkingBlock({
         <TraceIcon
           className={cn(
             "h-[1.65vh] w-[1.65vh] shrink-0",
-            isRuntime ? "text-sky-500" : "text-accent",
+            isError ? "text-red-500" : isRuntime ? "text-sky-500" : "text-accent",
             isStreaming && "animate-pulse",
           )}
         />
-        <span className={cn("shrink-0 whitespace-nowrap", isRuntime ? "text-sky-600" : "text-accent")}>
+        <span className={cn("shrink-0 whitespace-nowrap", isError ? "text-red-600" : isRuntime ? "text-sky-600" : "text-accent")}>
           {displayTitle}
         </span>
         {preview ? <span className="min-w-0 flex-1 truncate text-text-muted/70">{preview}</span> : null}
@@ -71,7 +74,11 @@ export function ThinkingBlock({
             <div
               className={cn(
                 "mt-[0.55vh] rounded-[1.1vh] border px-[1.35vh] py-[1.05vh]",
-                isRuntime ? "border-sky-200/60 bg-sky-50/45" : "border-orange-200/60 bg-orange-50/35",
+                isError
+                  ? "border-red-200/70 bg-red-50/55"
+                  : isRuntime
+                    ? "border-sky-200/60 bg-sky-50/45"
+                    : "border-orange-200/60 bg-orange-50/35",
               )}
             >
               <div className="prose max-w-none font-sans text-[1.48vh] leading-[1.58] text-text-muted">

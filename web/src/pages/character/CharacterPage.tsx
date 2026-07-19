@@ -62,6 +62,7 @@ interface CharacterPageProps {
   onSetHistoryView: (view: "messages" | "sessions") => void
   onSelectSession: (id: string) => void
   onSendMessage: (content: string, attachments: PromptAttachment[]) => Promise<void>
+  onCompact: (instructions?: string) => Promise<void>
   onPermissionReply: (requestID: string, reply: "once" | "always" | "reject", message?: string) => Promise<void>
   permissionMode: PermissionMode
   onPermissionModeChange: (mode: PermissionMode) => Promise<void>
@@ -90,6 +91,7 @@ export function CharacterPage({
   onSetHistoryView,
   onSelectSession,
   onSendMessage,
+  onCompact,
   onPermissionReply,
   permissionMode,
   onPermissionModeChange,
@@ -190,6 +192,7 @@ export function CharacterPage({
             )}
             <ChatInput
               onSend={onSendMessage}
+              onCompact={activeSession?.id ? onCompact : undefined}
               disabled={isThinking}
               overlay
               onHistory={() => {

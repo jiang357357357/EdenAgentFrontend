@@ -5,11 +5,12 @@ import { MetaPartCard } from "./MetaPartCard"
 import { cn } from "../lib/utils"
 import { resolveMonAgentUrl } from "../lib/mon_agent_api"
 import { MarkdownContent } from "./MarkdownContent"
-import { Code2, LoaderCircle, Pause, Play, User } from "lucide-react"
+import { AlertTriangle, Code2, LoaderCircle, Pause, Play, User } from "lucide-react"
 import { useTypewriterText } from "../hooks/useTypewriterText"
 import type { SpeechClip } from "../hooks/useTTSSpeech"
 import type { PetTTSMode } from "../lib/desktop-window"
 import { textForTTS } from "../lib/tts-text"
+import type { MessageError } from "../types"
 
 interface MessageBubbleProps {
   message: MessageData
@@ -81,7 +82,7 @@ function TextSegment({
               content={visibleContent}
               paragraphClassName="my-0"
               separateActionLines
-              actionParagraphClassName="my-0 italic text-text-muted"
+              actionParagraphClassName="my-0 italic text-accent/85"
             />
           </div>
           {canSpeak && clip?.status === "synthesizing" ? (
@@ -123,6 +124,35 @@ function RawOutput({ content }: { content: string }) {
   )
 }
 
+function MessageErrorCard({ error }: { error: MessageError }) {
+  return (
+    <div className="mx-[0.45vh] my-[0.7vh] w-[calc(100%-0.9vh)] rounded-[1.25vh] border border-red-200/80 bg-red-50/65 px-[1.45vh] py-[1.2vh] font-sans text-red-950">
+      <div className="flex items-start gap-[0.9vh]">
+        <AlertTriangle className="mt-[0.15vh] h-[1.8vh] w-[1.8vh] shrink-0 text-red-500" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-[1vh] gap-y-[0.45vh]">
+            <span className="text-[1.58vh] font-medium text-red-700">{error.title}</span>
+            {error.model ? (
+              <span className="rounded-full border border-red-200/80 bg-white/55 px-[0.75vh] py-[0.18vh] font-mono text-[1.15vh] text-red-500">
+                {error.model}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-[0.45vh] text-[1.4vh] leading-[1.55] text-red-800/85">{error.message}</p>
+          {error.detail ? (
+            <details className="mt-[0.7vh] text-[1.22vh] text-red-700/75">
+              <summary className="cursor-pointer select-none hover:text-red-700">查看技术详情</summary>
+              <pre className="mt-[0.55vh] max-h-[18vh] overflow-auto whitespace-pre-wrap break-words rounded-[0.75vh] border border-red-200/70 bg-white/50 px-[0.9vh] py-[0.7vh] font-mono text-[1.15vh] leading-[1.5] text-red-900/75">
+                {error.detail}
+              </pre>
+            </details>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function MessageBubble({
   message,
   userAvatarUrl,
@@ -143,18 +173,18 @@ export function MessageBubble({
   const renderedContent = message.content
 
   return (
-    <div className={cn("group flex w-full gap-[1.8vh] px-[1.6vh] py-[2.5vh] md:px-0", isUser ? "flex-row-reverse" : "flex-row")}>
+    <div className={cn("group flex w-full gap-[2.4vh] px-[1.6vh] py-[2.5vh] md:px-0", isUser ? "flex-row-reverse" : "flex-row")}>
       {/* Avatar */}
       <div
         className={cn(
-          "flex h-[3.8vh] w-[3.8vh] flex-shrink-0 items-center justify-center overflow-hidden rounded-[0.75vh] text-[1.62vh]",
+          "flex h-[5.8vh] w-[5.8vh] flex-shrink-0 items-center justify-center overflow-hidden rounded-[1.05vh] text-[2.2vh]",
           isUser ? "bg-card border border-accent text-accent" : "bg-card border border-border text-text font-serif",
         )}
       >
         {isUser && userAvatarUrl ? (
           <img src={userAvatarUrl} alt="用户头像" className="h-full w-full object-cover" draggable={false} />
         ) : isUser ? (
-          <User className="h-[1.95vh] w-[1.95vh]" />
+          <User className="h-[2.9vh] w-[2.9vh]" />
         ) : assistantAvatarUrl ? (
           <img src={assistantAvatarUrl} alt={assistantName} className="h-full w-full object-cover" draggable={false} />
         ) : (
@@ -163,12 +193,12 @@ export function MessageBubble({
       </div>
 
       {/* Message Content Container */}
-      <div className={cn("flex w-full max-w-[80%] min-w-0 flex-col gap-[0.35vh]", isUser ? "items-end" : "items-start")}>
+      <div className={cn("flex w-full max-w-[90%] min-w-0 flex-col gap-[0.35vh]", isUser ? "items-end" : "items-start")}>
         <div className="flex items-center gap-[0.8vh] px-[0.45vh]">
-          <span className="text-[1.24vh] uppercase tracking-[0.08em] text-text-muted">
+          <span className="text-[1.85vh] font-medium uppercase tracking-[0.05em] text-text-muted">
             {isUser ? "你" : assistantName}
           </span>
-          <span className="text-[1.24vh] text-text-muted/50">{message.timestamp}</span>
+          <span className="text-[1.45vh] text-text-muted/50">{message.timestamp}</span>
         </div>
 
         {/* Attachments (Images) */}
@@ -217,6 +247,7 @@ export function MessageBubble({
                     title="运行过程"
                     cacheKey={`${message.id}:${segment.id}`}
                     onTextReveal={onTextReveal}
+                    error={message.error?.message}
                   />
                 )
               }
@@ -264,6 +295,7 @@ export function MessageBubble({
             title="运行过程"
             cacheKey={`${message.id}:runtime`}
             onTextReveal={onTextReveal}
+            error={message.error?.message}
           />
         )}
 
@@ -311,6 +343,8 @@ export function MessageBubble({
             {!isUser && !message.isStreaming && <RawOutput content={renderedContent} />}
           </>
         )}
+
+        {!isUser && message.error ? <MessageErrorCard error={message.error} /> : null}
 
         {!isUser &&
           !message.content &&

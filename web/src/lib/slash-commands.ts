@@ -1,5 +1,6 @@
 export type SlashCommandName =
   | "help"
+  | "compact"
   | "new"
   | "model"
   | "permissions"
@@ -7,7 +8,7 @@ export type SlashCommandName =
   | "memo"
   | "self-awake"
 
-export type SlashCommandCapability = "always" | "new-session" | "settings" | "memo" | "self-awake"
+export type SlashCommandCapability = "always" | "compact" | "new-session" | "settings" | "memo" | "self-awake"
 
 export interface SlashCommandDefinition {
   name: SlashCommandName
@@ -15,9 +16,11 @@ export interface SlashCommandDefinition {
   aliases?: readonly string[]
   keywords?: readonly string[]
   capability: SlashCommandCapability
+  acceptsArguments?: boolean
 }
 
 export interface SlashCommandCapabilities {
+  compact: boolean
   newSession: boolean
   settings: boolean
   memo: boolean
@@ -30,6 +33,14 @@ export interface ParsedSlashCommand {
 }
 
 export const SLASH_COMMANDS: readonly SlashCommandDefinition[] = [
+  {
+    name: "compact",
+    description: "主动压缩当前会话，可追加摘要要求",
+    aliases: ["compress"],
+    keywords: ["压缩", "上下文", "摘要"],
+    capability: "compact",
+    acceptsArguments: true,
+  },
   {
     name: "model",
     description: "选择当前会话使用的模型",
@@ -82,6 +93,8 @@ export const SLASH_COMMANDS: readonly SlashCommandDefinition[] = [
 
 function hasCapability(command: SlashCommandDefinition, capabilities: SlashCommandCapabilities) {
   switch (command.capability) {
+    case "compact":
+      return capabilities.compact
     case "new-session":
       return capabilities.newSession
     case "settings":

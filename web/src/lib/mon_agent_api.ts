@@ -49,6 +49,7 @@ export type RuntimeModelOption = {
   modelID: string
   status: string
   isMultimodal: boolean
+  contextWindow?: number
   selected: boolean
 }
 
@@ -203,7 +204,7 @@ export type ApiMessageInfo =
           path?: string
           status?: number
         }
-      }
+      } | null
     }
 
 export type ApiTextPart = {
@@ -280,6 +281,8 @@ export type ApiCompactionPart = {
   auto: boolean
   overflow?: boolean
   tail_start_id?: string
+  tokensBefore?: number
+  tokensAfter?: number
 }
 
 export type ApiSubtaskPart = {
@@ -813,7 +816,7 @@ export async function createSession() {
 }
 
 export async function listMessagesRaw(sessionID: string) {
-  return request<ApiMessage[]>(`/session/${encodeURIComponent(sessionID)}/message?limit=100`)
+  return request<ApiMessage[]>(`/session/${encodeURIComponent(sessionID)}/message?limit=100&includeCompactions=1`)
 }
 
 export async function listMessages(sessionID: string) {
@@ -868,6 +871,13 @@ export async function sendPromptAsync(sessionID: string, content: string, attach
     body: JSON.stringify({
       parts: createPromptParts(content, attachments),
     }),
+  })
+}
+
+export async function compactSession(sessionID: string, instructions?: string) {
+  return request<{ accepted: boolean; sessionID: string }>(`/session/${encodeURIComponent(sessionID)}/compact`, {
+    method: "POST",
+    body: JSON.stringify({ instructions: instructions?.trim() || "" }),
   })
 }
 

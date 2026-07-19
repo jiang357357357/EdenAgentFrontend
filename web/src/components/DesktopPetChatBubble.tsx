@@ -7,6 +7,7 @@ import { RealtimeSTTService, type RealtimeSTTStatus } from "../lib/realtime-stt"
 import { updateDesktopActivityFacts, type PetTTSMode } from "../lib/desktop-window"
 import { speechChunksForTTS, textForTTS } from "../lib/tts-text"
 import { synthesizeSpeechSegment } from "../lib/mon_agent_api"
+import { splitActionLines } from "../lib/message-actions"
 import { cn } from "../lib/utils"
 import type { MessageData, PendingPermission, PendingQuestion, PromptAttachment, ToolCall } from "../types"
 
@@ -61,31 +62,6 @@ function toolStatus(status: ToolCall["status"]) {
   return status || "等待"
 }
 
-function isActionDescription(text: string) {
-  return /^\s*(?:（[\s\S]*）|\([\s\S]*\))\s*$/.test(text)
-}
-
-function splitPetMarkdownContent(content: string) {
-  const chunks: Array<{ action: boolean; content: string }> = []
-  let regularLines: string[] = []
-  const flushRegularLines = () => {
-    const value = regularLines.join("\n").trim()
-    if (value) chunks.push({ action: false, content: value })
-    regularLines = []
-  }
-
-  for (const line of content.split("\n")) {
-    if (isActionDescription(line)) {
-      flushRegularLines()
-      chunks.push({ action: true, content: line.trim() })
-    } else {
-      regularLines.push(line)
-    }
-  }
-  flushRegularLines()
-  return chunks
-}
-
 function PetMarkdownBlock({ content }: { content: string }) {
   return (
     <ReactMarkdown
@@ -94,7 +70,7 @@ function PetMarkdownBlock({ content }: { content: string }) {
       components={{
         p: ({ children }) => <p className="m-0 whitespace-pre-wrap leading-[1.4]">{children}</p>,
         strong: ({ children }) => <strong className="font-semibold text-stone-50">{children}</strong>,
-        em: ({ children }) => <em className="italic text-stone-300">{children}</em>,
+        em: ({ children }) => <em className="italic text-amber-300/85">{children}</em>,
         h1: ({ children }) => <h1 className="mb-[1.5cqh] mt-0 text-[1.18em] font-semibold text-stone-50">{children}</h1>,
         h2: ({ children }) => <h2 className="mb-[1.25cqh] mt-0 text-[1.1em] font-semibold text-stone-50">{children}</h2>,
         h3: ({ children }) => <h3 className="mb-[1cqh] mt-0 font-semibold text-stone-50">{children}</h3>,
@@ -118,11 +94,11 @@ function PetMarkdownBlock({ content }: { content: string }) {
 }
 
 function DesktopPetMarkdown({ content }: { content: string }) {
-  const chunks = splitPetMarkdownContent(content)
+  const chunks = splitActionLines(content)
   return (
     <div className="grid min-w-0 gap-[1.2cqh] [overflow-wrap:anywhere]">
       {chunks.map((chunk, index) => chunk.action ? (
-        <p key={`${index}-${chunk.content}`} className="m-0 whitespace-pre-wrap italic leading-[1.4] text-stone-400">
+        <p key={`${index}-${chunk.content}`} className="m-0 whitespace-pre-wrap italic leading-[1.4] text-amber-300/85">
           {chunk.content}
         </p>
       ) : (
