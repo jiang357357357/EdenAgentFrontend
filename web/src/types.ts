@@ -82,6 +82,19 @@ export interface MessageData {
     standingImageUrl?: string
     ttsConfigID?: number | null
     turnIndex?: number
+    beatIndex?: number
+  }
+  orchestration?: {
+    planID?: string
+    directorSource?: string
+    directorDiagnostic?: string | null
+    scene?: CompanionDirectorScene
+    execution?: CompanionDirectorExecution
+    beatIndex?: number
+    speechAct?: string
+    addressTo?: string
+    replyToBeat?: number | null
+    intent?: string
   }
 }
 
@@ -142,6 +155,47 @@ export interface Session {
   messages: MessageData[]
   mode?: "companion" | "solo"
   participants?: import("./lib/mon_agent_api").SessionParticipant[]
+  directorRun?: CompanionDirectorRun
+  directorRuns?: CompanionDirectorRun[]
+}
+
+export interface CompanionDirectorBeat {
+  assistantID: number | string
+  intent: string
+  speechAct: string
+  addressTo: string
+  replyToBeat?: number | null
+}
+
+export interface CompanionDirectorScene {
+  domain: "social" | "coding" | "game" | "daily" | "research" | "mixed" | "general"
+  interactionType: "conversation" | "task" | "mixed"
+  confidence: number
+  summary: string
+}
+
+export interface CompanionDirectorExecution {
+  mode: "solo" | "lead_support" | "ensemble"
+  leadAssistantID?: number | string | null
+  toolOwnerAssistantID?: number | string | null
+  observationStrategy: "none" | "on_demand" | "shared" | "independent"
+}
+
+export interface CompanionDirectorRun {
+  planID?: string
+  userMessageID?: string
+  source?: string
+  diagnostic?: string | null
+  scene?: CompanionDirectorScene
+  execution?: CompanionDirectorExecution
+  beats: CompanionDirectorBeat[]
+  status: "planning" | "planned" | "running" | "completed" | "failed"
+  activeBeatIndex?: number
+  completedBeatIndexes: number[]
+  participantCount?: number
+  error?: string | null
+  createdAt?: number
+  updatedAt?: number
 }
 
 export interface RuntimeTextPart {
@@ -300,7 +354,19 @@ export interface RuntimeMessage {
   localOnly?: boolean
   modelID?: string
   providerID?: string
-  speaker?: import("./lib/mon_agent_api").SessionParticipant & { turnIndex?: number }
+  speaker?: import("./lib/mon_agent_api").SessionParticipant & { turnIndex?: number; beatIndex?: number }
+  orchestration?: {
+    planID?: string
+    directorSource?: string
+    directorDiagnostic?: string | null
+    scene?: CompanionDirectorScene
+    execution?: CompanionDirectorExecution
+    beatIndex?: number
+    speechAct?: string
+    addressTo?: string
+    replyToBeat?: number | null
+    intent?: string
+  }
   error?: {
     name?: string
     message?: string
@@ -326,6 +392,8 @@ export interface RuntimeSession {
   mode?: "companion" | "solo"
   participants?: import("./lib/mon_agent_api").SessionParticipant[]
   directorPolicy?: Record<string, unknown>
+  directorRun?: CompanionDirectorRun
+  directorRuns?: CompanionDirectorRun[]
 }
 
 export interface RuntimeState {

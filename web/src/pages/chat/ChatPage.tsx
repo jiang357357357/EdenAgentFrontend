@@ -1,8 +1,9 @@
 import { Lock, Menu, MessageSquare, NotebookPen, Sparkles, Unlock, Users } from "lucide-react"
 import { motion } from "motion/react"
-import { useEffect, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useState } from "react"
 import { CharacterPanel } from "../../components/CharacterPanel"
 import { ChatInput } from "../../components/ChatInput"
+import { DirectorPlanCard } from "../../components/DirectorPlanCard"
 import { MessageBubble } from "../../components/MessageBubble"
 import { PermissionRequestCard } from "../../components/PermissionRequestCard"
 import { Sidebar } from "../../components/Sidebar"
@@ -14,6 +15,7 @@ import {
   type PetSettings,
 } from "../../lib/desktop-window"
 import { useTTSSpeech } from "../../hooks/useTTSSpeech"
+import { startCompanionDirectorRun } from "../../lib/companion-director-state"
 import { estimateConversationTokens } from "../../lib/token-usage"
 import { cn } from "../../lib/utils"
 import type { PendingPermission, PermissionMode, PromptAttachment, Session } from "../../types"
@@ -98,11 +100,24 @@ export function ChatPage({
   const assistantAvatarUrl = resolveCoreAssetUrl(assistant?.character?.avatar_url)
   const userAvatarUrl = resolveCoreAssetUrl(currentUser?.avatar_url)
   const messages = activeSession?.messages ?? []
-  const contextTokenEstimate = useMemo(() => estimateConversationTokens(messages), [messages])
+  const participantCount = activeSession?.participants?.length ?? 0
   const lastUserMessageIndex = messages.reduce(
     (lastIndex, message, index) => (message.role === "user" ? index : lastIndex),
     -1,
   )
+  const lastUserMessageID = messages[lastUserMessageIndex]?.id
+  const displayedDirectorRun = useMemo(
+    () => {
+      if (participantCount <= 1) return undefined
+      const persisted = activeSession?.directorRun
+      if (persisted && (!persisted.userMessageID || persisted.userMessageID === lastUserMessageID)) {
+        return persisted
+      }
+      return isThinking ? startCompanionDirectorRun(participantCount, lastUserMessageID) : undefined
+    },
+    [activeSession?.directorRun, isThinking, lastUserMessageID, participantCount],
+  )
+  const contextTokenEstimate = useMemo(() => estimateConversationTokens(messages), [messages])
   const activeReplyMessage = messages
     .slice(Math.max(lastUserMessageIndex + 1, 0))
     .reverse()
@@ -194,42 +209,59 @@ export function ChatPage({
             <span className="truncate">{activeSession?.title || "新会话"}</span>
           </div>
           <div className="flex items-center gap-[1vw]">
-            {activeSession?.participants?.length ? (
-              <button
-                type="button"
-                onClick={onOpenAssistantSwitcher}
-                className="flex h-[5.4vh] items-center rounded-full px-[0.45vw] outline-none transition-colors hover:bg-card focus-visible:ring-2 focus-visible:ring-accent/35"
-                aria-label={`管理 ${activeSession.participants.length} 位会话参与者`}
-                title={activeSession.participants.map((participant) => participant.assistantName).join("、")}
-              >
-                <span className="flex -space-x-[0.55vw]">
-                  {activeSession.participants.slice(0, 4).map((participant) => {
-                    const avatar = resolveCoreAssetUrl(participant.avatarUrl)
-                    const name = participant.assistantName || participant.characterName || "助手"
-                    return (
-                      <span
-                        key={String(participant.assistantID)}
-                        className="flex h-[3.7vh] w-[3.7vh] items-center justify-center overflow-hidden rounded-full border-2 border-bg bg-card font-serif text-[1.35vh] text-accent"
-                      >
-                        {avatar ? <img src={avatar} alt={name} className="h-full w-full object-cover object-top" /> : name.slice(0, 1)}
-                      </span>
-                    )
-                  })}
-                </span>
-                {activeSession.participants.length > 4 ? (
-                  <span className="ml-[0.45vw] text-[1.35vh] text-text-muted">+{activeSession.participants.length - 4}</span>
-                ) : null}
-              </button>
-            ) : null}
+            <div
+              className="group relative flex h-[5.4vh] w-[5.4vh] items-center justify-center outline-none"
+              tabIndex={0}
+              role="img"
+              aria-label={`当前助手：${assistantName}`}
+            >
+              <span className="flex h-[3.7vh] w-[3.7vh] items-center justify-center overflow-hidden rounded-full border border-border bg-card font-serif text-[1.35vh] text-accent shadow-sm">
+                {assistantAvatarUrl ? (
+                  <img src={assistantAvatarUrl} alt={assistantName} className="h-full w-full object-cover object-top" draggable={false} />
+                ) : (
+                  assistantInitial
+                )}
+              </span>
+              <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.7vh)] z-30 -translate-x-1/2 whitespace-nowrap rounded-[0.55vh] border border-border bg-card/96 px-[0.7vw] py-[0.45vh] text-[1.35vh] tracking-normal text-text opacity-0 shadow-md backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                当前助手 · {assistantName}
+              </span>
+            </div>
             <button
               type="button"
               onClick={onOpenAssistantSwitcher}
               className="group relative flex h-[5.4vh] w-[5.4vh] items-center justify-center text-text-muted outline-none transition-colors hover:text-accent focus-visible:text-accent"
-              aria-label="管理会话参与者"
+              aria-label={`管理会话参与者，当前 ${activeSession?.participants?.length ?? 0} 位`}
             >
               <Users className="h-[2.45vh] w-[2.45vh]" />
-              <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.7vh)] z-30 -translate-x-1/2 whitespace-nowrap rounded-[0.55vh] border border-border bg-card/96 px-[0.7vw] py-[0.45vh] text-[1.35vh] tracking-normal text-text opacity-0 shadow-md backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                会话参与者
+              <span className="pointer-events-none absolute right-0 top-[calc(100%+0.7vh)] z-30 w-[16vw] min-w-[220px] rounded-[0.8vh] border border-border bg-card/98 p-[1.1vh] text-left tracking-normal text-text opacity-0 shadow-lg backdrop-blur-md transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                <span className="flex items-center justify-between border-b border-border/70 px-[0.35vw] pb-[0.8vh]">
+                  <span className="text-[1.48vh] font-medium">在场助手</span>
+                  <span className="text-[1.25vh] text-text-muted">{activeSession?.participants?.length ?? 0} 位</span>
+                </span>
+                <span className="mt-[0.55vh] flex flex-col">
+                  {activeSession?.participants?.length ? activeSession.participants.map((participant) => {
+                    const avatar = resolveCoreAssetUrl(participant.avatarUrl)
+                    const name = participant.assistantName || participant.characterName || "助手"
+                    return (
+                      <span key={String(participant.assistantID)} className="flex items-center gap-[0.65vw] rounded-[0.55vh] px-[0.35vw] py-[0.55vh]">
+                        <span className="flex h-[3.1vh] w-[3.1vh] shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-bg font-serif text-[1.2vh] text-accent">
+                          {avatar ? <img src={avatar} alt="" className="h-full w-full object-cover object-top" /> : name.slice(0, 1)}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[1.42vh] font-medium">{name}</span>
+                          {participant.signature ? (
+                            <span className="mt-[0.1vh] block truncate text-[1.18vh] text-text-muted">{participant.signature}</span>
+                          ) : null}
+                        </span>
+                      </span>
+                    )
+                  }) : (
+                    <span className="px-[0.35vw] py-[1vh] text-[1.3vh] text-text-muted">尚未选择会话参与者</span>
+                  )}
+                </span>
+                <span className="mt-[0.45vh] block border-t border-border/70 px-[0.35vw] pt-[0.7vh] text-[1.18vh] text-text-muted">
+                  点击管理参与者
+                </span>
               </span>
             </button>
             <button
@@ -309,27 +341,44 @@ export function ChatPage({
               </div>
             ) : (
               <div className="min-h-full py-[4vh]">
-                {messages.map((msg) => (
-                  <MessageBubble
-                    key={msg.id}
-                    message={msg}
-                    userAvatarUrl={userAvatarUrl}
-                    assistantName={assistantName}
-                    assistantInitial={assistantInitial}
-                    assistantAvatarUrl={assistantAvatarUrl}
-                    onTextReveal={() => {
-                      if (autoScrollEnabled) messagesEndRef.current?.scrollIntoView({ block: "end" })
-                    }}
-                    ttsMode={petSettings.ttsMode}
-                    speechClips={speech.clips}
-                    activeSpeechSegmentId={speech.activeSegmentId}
-                    speechPaused={speech.paused}
-                    onToggleSpeech={speech.toggle}
-                    onPreviewImage={(src, alt) => onPreviewImage(src, alt ?? "图片预览")}
-                  />
-                ))}
-                {isThinking && !hasStreamingAssistantMessage && (
-                  <div className="flex w-full gap-[1.7vw] px-[1vw] py-[4vh] opacity-70 md:px-0">
+                {messages.map((msg, messageIndex) => {
+                  const messageDirectorRun =
+                    messageIndex === lastUserMessageIndex
+                      ? displayedDirectorRun
+                      : msg.role === "user"
+                        ? activeSession.directorRuns?.find((run) => run.userMessageID === msg.id)
+                        : undefined
+                  return (
+                  <Fragment key={msg.id}>
+                    <MessageBubble
+                      message={msg}
+                      userAvatarUrl={userAvatarUrl}
+                      assistantName={assistantName}
+                      assistantInitial={assistantInitial}
+                      assistantAvatarUrl={assistantAvatarUrl}
+                      onTextReveal={() => {
+                        if (autoScrollEnabled) messagesEndRef.current?.scrollIntoView({ block: "end" })
+                      }}
+                      ttsMode={petSettings.ttsMode}
+                      speechClips={speech.clips}
+                      activeSpeechSegmentId={speech.activeSegmentId}
+                      speechPaused={speech.paused}
+                      onToggleSpeech={speech.toggle}
+                      onPreviewImage={(src, alt) => onPreviewImage(src, alt ?? "图片预览")}
+                    />
+                    {messageDirectorRun ? (
+                      <DirectorPlanCard
+                        run={messageDirectorRun}
+                        participants={activeSession.participants ?? []}
+                      />
+                    ) : null}
+                  </Fragment>
+                  )
+                })}
+                {isThinking &&
+                  !hasStreamingAssistantMessage &&
+                  !displayedDirectorRun && (
+                    <div className="flex w-full gap-[1.7vw] px-[1vw] py-[4vh] opacity-70 md:px-0">
                     <div className="flex h-[5.9vh] w-[5.9vh] flex-shrink-0 items-center justify-center overflow-hidden rounded-[1vh] border border-accent bg-card text-[2vh] text-accent">
                       {assistantAvatarUrl ? (
                         <img

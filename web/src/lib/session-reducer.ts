@@ -27,6 +27,14 @@ import {
   isApiTextPart,
   isApiToolPart,
 } from "./mon_agent_api"
+import {
+  applyCompanionSpeakerEvent,
+  completeCompanionDirectorRun,
+  directorRunForLocalPrompt,
+  latestCompanionDirectorRun,
+  setCompanionDirectorPlan,
+  startCompanionDirectorRun,
+} from "./companion-director-state"
 import type {
   PendingPermission,
   PendingQuestion,
@@ -125,6 +133,11 @@ function replaceQuestions(state: RuntimeState, questions: PendingQuestion[]) {
 
 function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
   const existing = state.sessions[info.id]
+  const persistedDirectorRun = latestCompanionDirectorRun(info.directorRuns)
+  const restoredDirectorRun =
+    existing?.directorRun?.status === "planning"
+      ? existing.directorRun
+      : persistedDirectorRun ?? existing?.directorRun
   const session: RuntimeSession = existing
     ? {
         ...existing,
@@ -134,6 +147,8 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
         mode: info.mode ?? existing.mode,
         participants: info.participants ?? existing.participants,
         directorPolicy: info.directorPolicy ?? existing.directorPolicy,
+        directorRun: restoredDirectorRun,
+        directorRuns: info.directorRuns ?? existing.directorRuns,
       }
     : {
         id: info.id,
@@ -147,6 +162,8 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
         mode: info.mode,
         participants: info.participants ?? [],
         directorPolicy: info.directorPolicy,
+        directorRun: restoredDirectorRun,
+        directorRuns: info.directorRuns ?? [],
       }
   state.sessions[info.id] = session
   if (!state.sessionOrder.includes(info.id)) {
@@ -158,6 +175,15 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
     return rightTime - leftTime
   })
   return session
+}
+
+function upsertDirectorRun(session: RuntimeSession, run: import("../types").CompanionDirectorRun | undefined) {
+  if (!run?.planID) return
+  const runs = [...(session.directorRuns ?? [])]
+  const index = runs.findIndex((item) => item.planID === run.planID)
+  if (index === -1) runs.push(run)
+  else runs[index] = run
+  session.directorRuns = runs
 }
 
 function ensureSession(state: RuntimeState, sessionID: string): RuntimeSession {
@@ -381,6 +407,7 @@ function applyMessageInfo(message: RuntimeMessage, info: ApiMessageInfo) {
     message.modelID = info.modelID
     message.providerID = info.providerID
     message.speaker = info.speaker
+    message.orchestration = info.orchestration
     message.error = info.error || undefined
   }
   message.localOnly = false
@@ -584,6 +611,30 @@ function isSessionStatusEvent(event: ApiEvent): event is Extract<ApiEvent, { typ
   return event.type === "session.status" && !!event.properties && typeof event.properties.sessionID === "string"
 }
 
+function isCompanionDirectorStartedEvent(
+  event: ApiEvent,
+): event is Extract<ApiEvent, { type: "companion.director.started" }> {
+  return event.type === "companion.director.started" && typeof event.properties.sessionID === "string"
+}
+
+function isCompanionPlanEvent(event: ApiEvent): event is Extract<ApiEvent, { type: "companion.plan" }> {
+  return (
+    event.type === "companion.plan" &&
+    typeof event.properties.sessionID === "string" &&
+    Array.isArray(event.properties.beats)
+  )
+}
+
+function isCompanionSpeakerEvent(
+  event: ApiEvent,
+): event is Extract<ApiEvent, { type: "companion.speaker.started" | "companion.speaker.finished" }> {
+  return (
+    (event.type === "companion.speaker.started" || event.type === "companion.speaker.finished") &&
+    typeof event.properties.sessionID === "string" &&
+    typeof event.properties.beatIndex === "number"
+  )
+}
+
 function isSessionErrorEvent(event: ApiEvent): event is Extract<ApiEvent, { type: "session.error" }> {
   return event.type === "session.error" && !!event.properties && typeof event.properties.sessionID === "string"
 }
@@ -734,6 +785,8 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       session.updatedAt = message.createdAt
       session.status = "busy"
       session.error = undefined
+      const participantCount = session.participants?.length ?? 0
+      session.directorRun = directorRunForLocalPrompt(participantCount, message.id)
       next.connectionError = undefined
       reconcileOptimisticUsers(session)
       return next
@@ -788,10 +841,47 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
         }
         return next
       }
+      if (isCompanionDirectorStartedEvent(event)) {
+        const session = ensureSession(next, event.properties.sessionID)
+        session.directorRun = startCompanionDirectorRun(
+          event.properties.participantCount,
+          event.properties.userMessageID,
+        )
+        return next
+      }
+      if (isCompanionPlanEvent(event)) {
+        const session = ensureSession(next, event.properties.sessionID)
+        session.directorRun = setCompanionDirectorPlan({
+          planID: event.properties.planID,
+          userMessageID: event.properties.userMessageID,
+          source: event.properties.source,
+          diagnostic: event.properties.diagnostic,
+          scene: event.properties.scene,
+          execution: event.properties.execution,
+          beats: event.properties.beats,
+          participantCount: session.participants?.length,
+        })
+        upsertDirectorRun(session, session.directorRun)
+        return next
+      }
+      if (isCompanionSpeakerEvent(event)) {
+        const session = ensureSession(next, event.properties.sessionID)
+        session.directorRun = applyCompanionSpeakerEvent(session.directorRun, {
+          planID: event.properties.planID,
+          beatIndex: event.properties.beatIndex,
+          phase: event.type === "companion.speaker.started" ? "started" : "finished",
+        })
+        upsertDirectorRun(session, session.directorRun)
+        return next
+      }
       if (isSessionStatusEvent(event)) {
         const session = ensureSession(next, event.properties.sessionID)
         const status = event.properties.status.type
         session.status = status === "busy" || status === "retry" ? status : "idle"
+        if (session.status === "idle") {
+          session.directorRun = completeCompanionDirectorRun(session.directorRun)
+          upsertDirectorRun(session, session.directorRun)
+        }
         return next
       }
       if (isSessionErrorEvent(event)) {

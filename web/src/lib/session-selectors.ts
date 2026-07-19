@@ -1,4 +1,5 @@
 import type {
+  CompanionDirectorRun,
   MetaPartCard,
   MessageData,
   MessageSegment,
@@ -26,6 +27,7 @@ import type {
 import { isAssistantMessageStreaming, isRuntimeSessionRunning, runtimePartState } from "./session-stream-state"
 import { formatLocalTime } from "./time"
 import { presentRuntimeError } from "./runtime-error"
+import { stripAssistantSpeakerPrefix } from "./assistant-message-text"
 
 function isRuntimeTextPart(part: RuntimePart): part is RuntimeTextPart {
   return part.type === "text" && "text" in part && typeof part.text === "string"
@@ -218,7 +220,20 @@ function visibleMessages(session: RuntimeSession) {
 
 function mapMessage(message: RuntimeMessage, sessionIsRunning: boolean): MessageData {
   const parts = partsInOrder(message)
-  const textParts = parts.filter(isRuntimeTextPart)
+  const rawTextParts = parts.filter(isRuntimeTextPart)
+  let shouldStripSpeakerPrefix = message.role === "assistant"
+  const textParts = rawTextParts.map((part) => {
+    if (!shouldStripSpeakerPrefix || !part.text.trim()) return part
+    shouldStripSpeakerPrefix = false
+    return {
+      ...part,
+      text: stripAssistantSpeakerPrefix(part.text, [
+        message.speaker?.assistantName,
+        message.speaker?.characterName,
+        "助手",
+      ]),
+    }
+  })
   const reasoningParts = parts.filter(isRuntimeReasoningPart)
   const runtimeTraceParts = reasoningParts.filter(isRuntimeTracePart)
   const modelReasoningParts = reasoningParts.filter((part) => !isRuntimeTracePart(part))
@@ -315,12 +330,58 @@ function mapMessage(message: RuntimeMessage, sessionIsRunning: boolean): Message
       ? presentRuntimeError(message.error, message.providerID, message.modelID)
       : undefined,
     speaker: message.speaker,
+    orchestration: message.orchestration,
+  }
+}
+
+function directorRunFromMessages(session: RuntimeSession): CompanionDirectorRun | undefined {
+  const lastUserIndex = session.messageOrder.reduce(
+    (found, messageID, index) => (session.messages[messageID]?.role === "user" ? index : found),
+    -1,
+  )
+  const candidates = session.messageOrder
+    .slice(lastUserIndex + 1)
+    .map((messageID) => session.messages[messageID])
+    .filter((message): message is RuntimeMessage => Boolean(message?.speaker && message.orchestration?.planID))
+  const planID = candidates.at(-1)?.orchestration?.planID
+  if (!planID) return undefined
+  const planMessages = candidates
+    .filter((message) => message.orchestration?.planID === planID)
+    .sort(
+      (left, right) =>
+        (left.orchestration?.beatIndex ?? left.speaker?.beatIndex ?? 0) -
+        (right.orchestration?.beatIndex ?? right.speaker?.beatIndex ?? 0),
+    )
+  const beats = planMessages.map((message) => ({
+    assistantID: message.speaker!.assistantID,
+    intent: message.orchestration?.intent || "参与当前对话",
+    speechAct: message.orchestration?.speechAct || "respond",
+    addressTo: message.orchestration?.addressTo || "user",
+    replyToBeat: message.orchestration?.replyToBeat,
+  }))
+  return {
+    planID,
+    userMessageID: session.messageOrder[lastUserIndex],
+    source: planMessages[0]?.orchestration?.directorSource,
+    diagnostic: planMessages[0]?.orchestration?.directorDiagnostic,
+    scene: planMessages[0]?.orchestration?.scene,
+    execution: planMessages[0]?.orchestration?.execution,
+    beats,
+    status: "completed",
+    completedBeatIndexes: beats.map((_, index) => index),
+    participantCount: session.participants?.length,
   }
 }
 
 function mapSession(session: RuntimeSession): Session {
   const sessionIsRunning = isRuntimeSessionRunning(session.status)
   const messages = visibleMessages(session).map((message) => mapMessage(message, sessionIsRunning))
+  const inferredDirectorRun = directorRunFromMessages(session)
+  const directorRuns = session.directorRuns?.length
+    ? session.directorRuns
+    : inferredDirectorRun
+      ? [inferredDirectorRun]
+      : []
   return {
     id: session.id,
     title: session.title || "新会话",
@@ -328,6 +389,8 @@ function mapSession(session: RuntimeSession): Session {
     messages,
     mode: session.mode,
     participants: session.participants,
+    directorRun: session.directorRun ?? inferredDirectorRun,
+    directorRuns,
   }
 }
 

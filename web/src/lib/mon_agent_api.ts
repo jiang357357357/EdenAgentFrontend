@@ -1,4 +1,16 @@
-import type { MessageData, PendingPermission, PendingQuestion, PermissionMode, PromptAttachment, Session, ToolCall } from "../types"
+import type {
+  CompanionDirectorBeat,
+  CompanionDirectorExecution,
+  CompanionDirectorRun,
+  CompanionDirectorScene,
+  MessageData,
+  PendingPermission,
+  PendingQuestion,
+  PermissionMode,
+  PromptAttachment,
+  Session,
+  ToolCall,
+} from "../types"
 import { getStoredToken } from "./auth"
 import type { CoreCharacterVisualAction, CoreCharacterVisualActionGroup, CoreTTSSynthesisResponse } from "./auth"
 import { formatLocalTime } from "./time"
@@ -34,6 +46,7 @@ export type ApiSession = {
   directorPolicy?: Record<string, unknown>
   participants?: SessionParticipant[]
   participantAssistantIDs?: Array<number | string>
+  directorRuns?: CompanionDirectorRun[]
   time: {
     updated: number
     created: number
@@ -211,7 +224,19 @@ export type ApiMessageInfo =
       agent?: string
       modelID?: string
       providerID?: string
-      speaker?: SessionParticipant & { turnIndex?: number }
+      speaker?: SessionParticipant & { turnIndex?: number; beatIndex?: number }
+      orchestration?: {
+        planID?: string
+        directorSource?: string
+        directorDiagnostic?: string | null
+        scene?: CompanionDirectorScene
+        execution?: CompanionDirectorExecution
+        beatIndex?: number
+        speechAct?: string
+        addressTo?: string
+        replyToBeat?: number | null
+        intent?: string
+      }
       error?: {
         name?: string
         message?: string
@@ -422,6 +447,40 @@ export type SessionStatusEvent = {
   }
 }
 
+export type CompanionDirectorStartedEvent = {
+  type: "companion.director.started"
+  properties: {
+    sessionID: string
+    participantCount: number
+    userMessageID?: string
+  }
+}
+
+export type CompanionPlanEvent = {
+  type: "companion.plan"
+  properties: {
+    sessionID: string
+    planID: string
+    userMessageID: string
+    source: string
+    diagnostic?: string | null
+    scene?: CompanionDirectorScene
+    execution?: CompanionDirectorExecution
+    beats: CompanionDirectorBeat[]
+  }
+}
+
+export type CompanionSpeakerEvent = {
+  type: "companion.speaker.started" | "companion.speaker.finished"
+  properties: {
+    sessionID: string
+    planID: string
+    beatIndex: number
+    speaker: SessionParticipant & { turnIndex?: number; beatIndex?: number }
+    beat?: CompanionDirectorBeat
+  }
+}
+
 export type SessionErrorEvent = {
   type: "session.error"
   properties: {
@@ -573,6 +632,9 @@ export type CharacterActionChangedEvent = {
 export type ApiEvent =
   | SessionCreatedEvent
   | SessionStatusEvent
+  | CompanionDirectorStartedEvent
+  | CompanionPlanEvent
+  | CompanionSpeakerEvent
   | SessionErrorEvent
   | PermissionAskedEvent
   | PermissionRepliedEvent
