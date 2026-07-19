@@ -107,6 +107,9 @@ export default function App() {
   const isPetWindow = initialPage === "pet" || initialPage === "pet-character" || initialPage === "pet-bubble"
   const petSurface = initialPage === "pet-character" ? "character" : initialPage === "pet-bubble" ? "bubble" : "combined"
   const [activePage, setActivePage] = useState<AppPage>(() => initialPageFromLocation())
+  const [assistantSwitcherMode, setAssistantSwitcherMode] = useState<"current" | "participants">(
+    initialPage === "settings" ? "current" : "participants",
+  )
   const [modeContentVisible, setModeContentVisible] = useState(true)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyView, setHistoryView] = useState<"messages" | "sessions">("messages")
@@ -162,6 +165,7 @@ export default function App() {
     sendMessage: sendRuntimeMessage,
     sessions,
     updatePermissionMode,
+    updateSessionParticipants,
   } = useSessionRuntime(authStatus === "authenticated", { onEvent: handleRuntimeEvent })
 
   const reportAuthError = (stage: string, error: unknown, fallback: string) => {
@@ -238,7 +242,7 @@ export default function App() {
     .reverse()
     .find((message) => message.role === "assistant")
   const dialogSegments = activeMessages.flatMap((message) => {
-    const speaker = message.role === "user" ? "你" : assistantDisplayName
+    const speaker = message.role === "user" ? "你" : message.speaker?.assistantName || message.speaker?.characterName || assistantDisplayName
     const segments: Array<{
       speaker: string
       text?: string
@@ -720,6 +724,12 @@ export default function App() {
             ) : activePage === "assistant-switcher" ? (
               <AssistantSwitcherPage
                 currentAssistant={currentAssistant}
+                mode={assistantSwitcherMode}
+                sessionParticipantIDs={activeSession?.participants?.map((participant) => participant.assistantID)}
+                onParticipantsChanged={async (assistantIds) => {
+                  if (!activeSessionId) await createRuntimeSession()
+                  await updateSessionParticipants(assistantIds)
+                }}
                 onAssistantChanged={(assistant) => {
                   setCurrentAssistant(assistant)
                   setCurrentAssistantError(undefined)
@@ -734,7 +744,10 @@ export default function App() {
                 assistantError={currentAssistantError}
                 activeCharacterAction={activeCharacterAction}
                 onBack={isSettingsWindow ? undefined : () => setActivePage("chat")}
-                onOpenAssistantSwitcher={() => setActivePage("assistant-switcher")}
+                onOpenAssistantSwitcher={() => {
+                  setAssistantSwitcherMode("current")
+                  setActivePage("assistant-switcher")
+                }}
               />
             ) : (
               <ChatPage
@@ -765,6 +778,7 @@ export default function App() {
                 onLogout={handleLogout}
                 onOpenAssistantSwitcher={() => {
                   setSidebarOpen(false)
+                  setAssistantSwitcherMode("participants")
                   setActivePage("assistant-switcher")
                 }}
                 onOpenSettings={() => {

@@ -13,6 +13,7 @@ import {
   replyQuestion,
   sendPromptAsync,
   setPermissionMode as setPermissionModeRaw,
+  updateSessionParticipants as updateSessionParticipantsRaw,
   subscribeEvents,
 } from '../lib/mon_agent_api';
 import type { ApiEvent, PendingScreenCapture } from '../lib/mon_agent_api';
@@ -304,6 +305,14 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     }
   }, [isRuntimeReady]);
 
+  const updateSessionParticipants = useCallback(async (assistantIDs: Array<number | string>) => {
+    const sessionID = activeSessionIdRef.current;
+    if (!sessionID || !isRuntimeReady()) throw new Error('当前没有可更新的会话。');
+    const session = await updateSessionParticipantsRaw(sessionID, assistantIDs);
+    dispatch(hydrateSessionList([session]));
+    return session;
+  }, [isRuntimeReady]);
+
   const respondPermission = useCallback(async (requestID: string, reply: 'once' | 'always' | 'reject', message?: string) => {
     await replyPermission(requestID, reply, message);
   }, []);
@@ -348,5 +357,6 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     sendMessage,
     sessions,
     updatePermissionMode,
+    updateSessionParticipants,
   };
 }

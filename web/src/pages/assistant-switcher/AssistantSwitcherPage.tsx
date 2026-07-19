@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   Bot,
   BriefcaseBusiness,
+  Check,
   ChevronRight,
   FileText,
   Info,
@@ -41,6 +42,9 @@ interface AssistantSwitcherPageProps {
   onAssistantChanged: (assistant: CoreAssistant) => void
   onBack: () => void
   onOpenSettings: () => void
+  mode?: "current" | "participants"
+  sessionParticipantIDs?: Array<number | string>
+  onParticipantsChanged?: (assistantIds: number[]) => Promise<void> | void
 }
 
 function cleanText(value?: unknown): string {
@@ -149,11 +153,15 @@ function AssistantRow({
   selected,
   current,
   onSelect,
+  multi = false,
+  checked = false,
 }: {
   assistant: CoreAssistant
   selected: boolean
   current: boolean
   onSelect: () => void
+  multi?: boolean
+  checked?: boolean
 }) {
   return (
     <button
@@ -181,6 +189,14 @@ function AssistantRow({
           {assistantSignature(assistant)}
         </span>
       </span>
+      {multi ? (
+        <span className={cn(
+          "flex h-[2.7vh] w-[2.7vh] shrink-0 items-center justify-center rounded-full border",
+          checked ? "border-accent bg-accent text-white" : "border-[#d8d1c9] bg-white/70 text-transparent",
+        )}>
+          <Check className="h-[1.7vh] w-[1.7vh]" strokeWidth={2.3} />
+        </span>
+      ) : null}
     </button>
   )
 }
@@ -190,6 +206,9 @@ export function AssistantSwitcherPage({
   onAssistantChanged,
   onBack,
   onOpenSettings,
+  mode = "current",
+  sessionParticipantIDs = [],
+  onParticipantsChanged,
 }: AssistantSwitcherPageProps) {
   const [assistants, setAssistants] = useState<CoreAssistant[]>([])
   const [selectedId, setSelectedId] = useState<number | undefined>(currentAssistant?.id)
@@ -198,6 +217,9 @@ export function AssistantSwitcherPage({
   const [error, setError] = useState<string | undefined>()
   const [switchingId, setSwitchingId] = useState<number | undefined>()
   const [notice, setNotice] = useState<string | undefined>()
+  const [selectedIds, setSelectedIds] = useState<number[]>(() =>
+    sessionParticipantIDs.map(Number).filter(Number.isFinite),
+  )
 
   useEffect(() => {
     const token = getStoredToken()
@@ -218,6 +240,9 @@ export function AssistantSwitcherPage({
         const ordered = [...items].sort((left, right) => Number(right.id === currentId) - Number(left.id === currentId))
         setAssistants(ordered)
         setSelectedId((current) => current ?? currentId ?? ordered[0]?.id)
+        if (mode === "participants") {
+          setSelectedIds((current) => current.length ? current : currentId ? [currentId] : ordered[0]?.id ? [ordered[0].id] : [])
+        }
       } catch (loadError) {
         if (!cancelled) setError(getErrorMessage(loadError, "助手列表加载失败。"))
       } finally {
@@ -228,7 +253,13 @@ export function AssistantSwitcherPage({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [mode])
+
+  useEffect(() => {
+    if (mode !== "participants") return
+    const ids = sessionParticipantIDs.map(Number).filter(Number.isFinite)
+    if (ids.length) setSelectedIds(ids)
+  }, [mode, sessionParticipantIDs.join(",")])
 
   useEffect(() => {
     if (currentAssistant?.id) setSelectedId((current) => current ?? currentAssistant.id)
@@ -287,6 +318,20 @@ export function AssistantSwitcherPage({
     }
   }
 
+  async function handleSaveParticipants() {
+    if (!selectedIds.length || switchingId) return
+    setSwitchingId(selectedAssistant?.id ?? selectedIds[0])
+    setError(undefined)
+    try {
+      await onParticipantsChanged?.(selectedIds)
+      setNotice(`已保存 ${selectedIds.length} 位会话参与者。导演会按每轮内容决定由谁回复。`)
+    } catch (saveError) {
+      setError(getErrorMessage(saveError, "保存会话参与者失败。"))
+    } finally {
+      setSwitchingId(undefined)
+    }
+  }
+
   return (
     <motion.div
       key="assistant-switcher"
@@ -313,7 +358,9 @@ export function AssistantSwitcherPage({
             >
               <ArrowLeft className="h-[2.65vh] w-[2.65vh]" strokeWidth={1.8} />
             </button>
-            <h1 className="font-serif text-[3.05vh] font-medium tracking-[-0.02em]">切换助手</h1>
+            <h1 className="font-serif text-[3.05vh] font-medium tracking-[-0.02em]">
+              {mode === "participants" ? "会话参与者" : "切换助手"}
+            </h1>
           </div>
           <label className="mt-[2.2vh] flex h-[4.9vh] items-center gap-[0.7vw] rounded-[0.7vh] border border-[#ddd7d0] bg-white/75 px-[1vw] text-[#8d857e] transition-colors focus-within:border-accent/60 focus-within:bg-white focus-within:ring-2 focus-within:ring-accent/10">
             <Search className="h-[2vh] w-[2vh] shrink-0" strokeWidth={1.8} />
@@ -349,8 +396,17 @@ export function AssistantSwitcherPage({
                     assistant={assistant}
                     selected={assistant.id === selectedAssistant?.id}
                     current={assistant.id === currentAssistantId}
+                    multi={mode === "participants"}
+                    checked={selectedIds.includes(assistant.id)}
                     onSelect={() => {
                       setSelectedId(assistant.id)
+                      if (mode === "participants") {
+                        setSelectedIds((current) =>
+                          current.includes(assistant.id)
+                            ? current.length > 1 ? current.filter((id) => id !== assistant.id) : current
+                            : [...current, assistant.id],
+                        )
+                      }
                       setNotice(undefined)
                     }}
                   />
@@ -416,18 +472,22 @@ export function AssistantSwitcherPage({
               >
                 <Info className="mt-[0.15vh] h-[2.1vh] w-[2.1vh] shrink-0 text-[#83786d]" strokeWidth={1.7} />
                 <p>
-                  切换助手会改变当前对话的参与者，<br />由所选助手继续本次会话。
+                  {mode === "participants" ? (
+                    <>可同时选择多位助手。主参与者负责导演，<br />每轮只唤起适合发言的角色。</>
+                  ) : (
+                    <>切换助手会改变新会话的初始角色，<br />不会替代现有会话参与者。</>
+                  )}
                 </p>
               </div>
 
               <div className="mt-[5vh] flex items-center gap-[2vw]">
                 <button
                   type="button"
-                  onClick={handleSwitch}
-                  disabled={selectedIsCurrent || switchingId !== undefined}
+                  onClick={mode === "participants" ? handleSaveParticipants : handleSwitch}
+                  disabled={(mode === "current" ? selectedIsCurrent : !selectedIds.length) || switchingId !== undefined}
                   className={cn(
                     "flex h-[5.9vh] min-w-[11.8vw] items-center justify-center rounded-[0.62vh] px-[1.45vw] text-[1.78vh] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2",
-                    selectedIsCurrent
+                    mode === "current" && selectedIsCurrent
                       ? "cursor-default border border-[#e1dbd4] bg-[#f4f0eb] text-[#8b837c]"
                       : "bg-accent text-white shadow-[0_0.25vh_0.7vh_rgba(180,95,0,0.16)] hover:bg-[#c86e05] active:bg-[#b86204]",
                   )}
@@ -437,6 +497,8 @@ export function AssistantSwitcherPage({
                       <LoaderCircle className="mr-[0.55vw] h-[2vh] w-[2vh] animate-spin" />
                       正在切换…
                     </>
+                  ) : mode === "participants" ? (
+                    `保存 ${selectedIds.length} 位参与者`
                   ) : selectedIsCurrent ? (
                     "当前助手"
                   ) : (
@@ -454,7 +516,9 @@ export function AssistantSwitcherPage({
               </div>
               <div className="mt-[1.9vh] flex items-center gap-[0.55vw] text-[1.35vh] text-[#817970]">
                 <ShieldCheck className="h-[1.75vh] w-[1.75vh]" strokeWidth={1.7} />
-                当前会话将由{assistantName(selectedAssistant)}继续，不会清除历史消息
+                {mode === "participants"
+                  ? `已选择 ${selectedIds.length} 位助手；历史消息会保留各自说话人身份`
+                  : `新会话默认从${assistantName(selectedAssistant)}开始，不会清除历史消息`}
               </div>
 
               {notice ? (

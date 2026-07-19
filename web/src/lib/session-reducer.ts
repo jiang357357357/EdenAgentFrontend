@@ -131,6 +131,9 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
         title: info.title || existing.title || "新会话",
         createdAt: info.time.created,
         updatedAt: info.time.updated,
+        mode: info.mode ?? existing.mode,
+        participants: info.participants ?? existing.participants,
+        directorPolicy: info.directorPolicy ?? existing.directorPolicy,
       }
     : {
         id: info.id,
@@ -141,6 +144,9 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
         createdAt: info.time.created,
         updatedAt: info.time.updated,
         hydrated: false,
+        mode: info.mode,
+        participants: info.participants ?? [],
+        directorPolicy: info.directorPolicy,
       }
   state.sessions[info.id] = session
   if (!state.sessionOrder.includes(info.id)) {
@@ -374,6 +380,7 @@ function applyMessageInfo(message: RuntimeMessage, info: ApiMessageInfo) {
     message.completedAt = info.time.completed
     message.modelID = info.modelID
     message.providerID = info.providerID
+    message.speaker = info.speaker
     message.error = info.error || undefined
   }
   message.localOnly = false

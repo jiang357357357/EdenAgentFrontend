@@ -73,6 +73,16 @@ export interface MessageData {
   images?: string[]
   isStreaming?: boolean
   error?: MessageError
+  speaker?: {
+    assistantID: number | string
+    assistantName: string
+    characterID?: number | string | null
+    characterName?: string
+    avatarUrl?: string
+    standingImageUrl?: string
+    ttsConfigID?: number | null
+    turnIndex?: number
+  }
 }
 
 export interface MessageError {
@@ -130,6 +140,8 @@ export interface Session {
   title: string
   date: string
   messages: MessageData[]
+  mode?: "companion" | "solo"
+  participants?: import("./lib/mon_agent_api").SessionParticipant[]
 }
 
 export interface RuntimeTextPart {
@@ -288,6 +300,7 @@ export interface RuntimeMessage {
   localOnly?: boolean
   modelID?: string
   providerID?: string
+  speaker?: import("./lib/mon_agent_api").SessionParticipant & { turnIndex?: number }
   error?: {
     name?: string
     message?: string
@@ -310,6 +323,9 @@ export interface RuntimeSession {
   updatedAt?: number
   hydrated: boolean
   error?: string
+  mode?: "companion" | "solo"
+  participants?: import("./lib/mon_agent_api").SessionParticipant[]
+  directorPolicy?: Record<string, unknown>
 }
 
 export interface RuntimeState {

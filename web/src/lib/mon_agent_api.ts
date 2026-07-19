@@ -15,9 +15,25 @@ const baseUrl = env?.DEV
   ? "/api"
   : (env?.VITE_MON_AGENT_BASE_URL ?? "http://localhost:40092")
 
+export type SessionParticipant = {
+  assistantID: number | string
+  assistantName: string
+  characterID?: number | string | null
+  characterName?: string
+  signature?: string
+  avatarUrl?: string
+  standingImageUrl?: string
+  ttsConfigID?: number | null
+  position?: number
+}
+
 export type ApiSession = {
   id: string
   title: string
+  mode?: "companion" | "solo"
+  directorPolicy?: Record<string, unknown>
+  participants?: SessionParticipant[]
+  participantAssistantIDs?: Array<number | string>
   time: {
     updated: number
     created: number
@@ -195,6 +211,7 @@ export type ApiMessageInfo =
       agent?: string
       modelID?: string
       providerID?: string
+      speaker?: SessionParticipant & { turnIndex?: number }
       error?: {
         name?: string
         message?: string
@@ -807,6 +824,13 @@ export async function createSessionRaw() {
   return request<ApiSession>("/session", {
     method: "POST",
     body: JSON.stringify({ title: "" }),
+  })
+}
+
+export async function updateSessionParticipants(sessionID: string, assistantIDs: Array<number | string>) {
+  return request<ApiSession>(`/session/${encodeURIComponent(sessionID)}/participants`, {
+    method: "PUT",
+    body: JSON.stringify({ assistantIDs }),
   })
 }
 

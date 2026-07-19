@@ -314,6 +314,7 @@ function mapMessage(message: RuntimeMessage, sessionIsRunning: boolean): Message
     error: message.error
       ? presentRuntimeError(message.error, message.providerID, message.modelID)
       : undefined,
+    speaker: message.speaker,
   }
 }
 
@@ -325,6 +326,8 @@ function mapSession(session: RuntimeSession): Session {
     title: session.title || "新会话",
     date: timeLabel(session.updatedAt),
     messages,
+    mode: session.mode,
+    participants: session.participants,
   }
 }
 

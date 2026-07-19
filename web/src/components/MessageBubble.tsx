@@ -4,6 +4,7 @@ import { ThinkingBlock } from "./ThinkingBlock"
 import { MetaPartCard } from "./MetaPartCard"
 import { cn } from "../lib/utils"
 import { resolveMonAgentUrl } from "../lib/mon_agent_api"
+import { resolveCoreAssetUrl } from "../lib/auth"
 import { MarkdownContent } from "./MarkdownContent"
 import { AlertTriangle, Code2, LoaderCircle, Pause, Play, User } from "lucide-react"
 import { useTypewriterText } from "../hooks/useTypewriterText"
@@ -168,6 +169,11 @@ export function MessageBubble({
   onToggleSpeech,
 }: MessageBubbleProps) {
   const isUser = message.role === "user"
+  const messageAssistantName = message.speaker?.assistantName || message.speaker?.characterName || assistantName
+  const messageAssistantInitial = messageAssistantName.trim().slice(0, 1) || assistantInitial
+  const messageAssistantAvatarUrl = message.speaker?.avatarUrl
+    ? resolveCoreAssetUrl(message.speaker.avatarUrl)
+    : assistantAvatarUrl
   const orderedSegments = message.segments && message.segments.length > 0 ? message.segments : undefined
   const useOrderedAssistantSegments = !isUser && Boolean(orderedSegments)
   const renderedContent = message.content
@@ -185,10 +191,10 @@ export function MessageBubble({
           <img src={userAvatarUrl} alt="用户头像" className="h-full w-full object-cover" draggable={false} />
         ) : isUser ? (
           <User className="h-[2.9vh] w-[2.9vh]" />
-        ) : assistantAvatarUrl ? (
-          <img src={assistantAvatarUrl} alt={assistantName} className="h-full w-full object-cover" draggable={false} />
+        ) : messageAssistantAvatarUrl ? (
+          <img src={messageAssistantAvatarUrl} alt={messageAssistantName} className="h-full w-full object-cover" draggable={false} />
         ) : (
-          assistantInitial
+          messageAssistantInitial
         )}
       </div>
 
@@ -196,7 +202,7 @@ export function MessageBubble({
       <div className={cn("flex w-full max-w-[90%] min-w-0 flex-col gap-[0.35vh]", isUser ? "items-end" : "items-start")}>
         <div className="flex items-center gap-[0.8vh] px-[0.45vh]">
           <span className="text-[1.85vh] font-medium uppercase tracking-[0.05em] text-text-muted">
-            {isUser ? "你" : assistantName}
+            {isUser ? "你" : messageAssistantName}
           </span>
           <span className="text-[1.45vh] text-text-muted/50">{message.timestamp}</span>
         </div>
