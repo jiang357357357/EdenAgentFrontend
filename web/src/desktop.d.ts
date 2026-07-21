@@ -8,6 +8,15 @@ declare global {
       onPetSettings?(callback: (settings: Record<string, unknown>) => void): () => void
       onDesktopEnvironment?(callback: (environment: Record<string, unknown>) => void): () => void
       onOpenSettings?(callback: () => void): () => void
+      onAuthState?(callback: (state: {
+        type: "authenticated" | "unauthenticated"
+        token?: string
+        response?: {
+          valid: boolean
+          user: import("./lib/auth").AuthUser
+          token_info?: { expires_at?: string }
+        }
+      }) => void): () => void
       convertFileSrc?(filePath: string): string
     }
   }

@@ -1139,28 +1139,58 @@ export async function snoozeMemo(id: number, input: { until?: string | null; min
 }
 
 export async function subscribeEvents(handlers: SubscribeHandlers | ((event: ApiEvent) => void)) {
-  if (!getStoredToken()) {
+  const token = getStoredToken()
+  if (!token) {
     return () => {}
   }
   const normalized: SubscribeHandlers = typeof handlers === "function" ? { onEvent: handlers } : handlers
-  const source = new EventSource(`${baseUrl}/events`)
+  const controller = new AbortController()
 
-  source.onopen = () => {
-    normalized.onOpen?.()
-  }
-
-  source.onmessage = (message) => {
-    try {
-      const frame = JSON.parse(message.data) as GlobalEventFrame | ApiEvent
-      normalized.onEvent("payload" in frame ? frame.payload : frame)
-    } catch {
-      // Ignore malformed SSE frames.
+  const consume = async () => {
+    while (!controller.signal.aborted) {
+      try {
+        const response = await fetch(`${baseUrl}/events`, {
+          headers: {
+            Accept: "text/event-stream",
+            Authorization: `Token ${token}`,
+          },
+          signal: controller.signal,
+        })
+        if (!response.ok || !response.body) throw new Error(`Event stream rejected: ${response.status}`)
+        normalized.onOpen?.()
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let pending = ""
+        while (!controller.signal.aborted) {
+          const { done, value } = await reader.read()
+          pending += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n")
+          const frames = pending.split("\n\n")
+          pending = frames.pop() ?? ""
+          for (const rawFrame of frames) {
+            const data = rawFrame
+              .split("\n")
+              .filter((line) => line.startsWith("data:"))
+              .map((line) => line.slice(5).trimStart())
+              .join("\n")
+            if (!data) continue
+            try {
+              const frame = JSON.parse(data) as GlobalEventFrame | ApiEvent
+              normalized.onEvent("payload" in frame ? frame.payload : frame)
+            } catch {
+              // Ignore malformed SSE frames.
+            }
+          }
+          if (done) break
+        }
+        if (!controller.signal.aborted) throw new Error("Event stream disconnected")
+      } catch (error) {
+        if (controller.signal.aborted) return
+        normalized.onError?.(error instanceof Error ? error.message : "Event stream disconnected")
+        await new Promise((resolve) => window.setTimeout(resolve, 1_000))
+      }
     }
   }
+  void consume()
 
-  source.onerror = () => {
-    normalized.onError?.("Event stream disconnected")
-  }
-
-  return () => source.close()
+  return () => controller.abort()
 }

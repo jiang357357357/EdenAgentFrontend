@@ -23,6 +23,7 @@ import {
   isStoredTokenExpired,
   loginWithCore,
   logoutWithCore,
+  saveAuth,
   verifyTokenWithCore,
   type ActiveCharacterAction,
   type CoreAssistant,
@@ -324,15 +325,6 @@ export default function App() {
       const mode = getAuthMode()
       console.log("[bootstrapAuth] authMode:", mode)
 
-      if (mode === "production") {
-        console.log("[bootstrapAuth] production mode, clearing auth")
-        clearAuth()
-        setCurrentUser(null)
-        setAuthError(undefined)
-        setAuthStatus("unauthenticated")
-        return
-      }
-
       const token = getStoredToken()
       console.log("[bootstrapAuth] stored token:", token ? "exists" : "none")
 
@@ -354,6 +346,12 @@ export default function App() {
           if (cancelled) return
           setAuthError(reportAuthError("verify-token", error, "登录已失效。"))
         }
+      }
+
+      if (mode === "production") {
+        console.log("[bootstrapAuth] production mode without a reusable token")
+        if (!cancelled) setAuthStatus("unauthenticated")
+        return
       }
 
       console.log("[bootstrapAuth] trying dev account login...")
@@ -401,6 +399,26 @@ export default function App() {
     return () => {
       cancelled = true
     }
+  }, [])
+
+  useEffect(() => {
+    const unsubscribe = window.monAgentDesktop?.onAuthState?.((state) => {
+      if (state.type === "authenticated" && state.token && state.response?.user) {
+        saveAuth({
+          token: state.token,
+          user: state.response.user,
+          expiresAt: state.response.token_info?.expires_at,
+        })
+        setCurrentUser(state.response.user)
+        setAuthError(undefined)
+        setAuthStatus("authenticated")
+        return
+      }
+      clearAuth()
+      setCurrentUser(null)
+      setAuthStatus("unauthenticated")
+    })
+    return unsubscribe
   }, [])
 
   function scrollMessagesToBottom(behavior: ScrollBehavior = "smooth") {
@@ -668,6 +686,13 @@ export default function App() {
   }
 
   if (authStatus !== "authenticated") {
+    if (isSettingsWindow || isPetWindow) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-bg px-6 text-center text-text-muted">
+          请在 MonAgent 主窗口完成登录，此窗口会自动同步登录状态。
+        </div>
+      )
+    }
     return <LoginPage onLogin={handleLogin} isSubmitting={isAuthenticating} error={authError} />
   }
 

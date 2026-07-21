@@ -344,6 +344,8 @@ export function saveAuth(payload: { token: string; user: AuthUser; expiresAt?: s
   window.localStorage.setItem(USER_KEY, JSON.stringify(payload.user))
   if (payload.expiresAt) {
     window.localStorage.setItem(EXPIRES_KEY, payload.expiresAt)
+  } else {
+    window.localStorage.removeItem(EXPIRES_KEY)
   }
 }
 

@@ -62,6 +62,22 @@ let activityPresencePublishQueued = false
 let systemSuspended = false
 const rendererActivityFacts = new Map()
 const recentActivityEvents = []
+let authSession = null
+let authVerification = null
+const AUTH_VERIFICATION_TTL_MS = 30_000
+
+function broadcastAuthState(state) {
+  for (const targetWindow of BrowserWindow.getAllWindows()) {
+    if (!targetWindow.isDestroyed()) targetWindow.webContents.send("mon-agent-auth-state", state)
+  }
+}
+
+function setAuthSession(token, response) {
+  authSession = token && response?.valid !== false ? { token, response, verifiedAt: Date.now() } : null
+  broadcastAuthState(authSession
+    ? { type: "authenticated", token: authSession.token, response: authSession.response }
+    : { type: "unauthenticated" })
+}
 
 function isOutputPipeError(error) {
   return error?.code === "EPIPE" || error?.code === "ERR_STREAM_DESTROYED"
@@ -289,7 +305,9 @@ async function coreRequest(endpoint, init = {}) {
   )
 
   if (!response.ok) {
-    throw new Error(await parseCoreError(response))
+    const error = new Error(await parseCoreError(response))
+    error.status = response.status
+    throw error
   }
 
   return response.json()
@@ -297,6 +315,35 @@ async function coreRequest(endpoint, init = {}) {
 
 function authHeader(token) {
   return { Authorization: `Token ${token}` }
+}
+
+async function verifyCoreTokenOnce(token, clientId) {
+  const normalizedToken = String(token || "").trim()
+  if (!normalizedToken) return { valid: false }
+  if (authSession?.token === normalizedToken && Date.now() - authSession.verifiedAt < AUTH_VERIFICATION_TTL_MS) {
+    return authSession.response
+  }
+  if (authVerification?.token === normalizedToken) return authVerification.promise
+
+  const promise = coreRequest("/api/users/verify-token/", {
+    method: "GET",
+    headers: authHeader(normalizedToken),
+  }).then((response) => {
+    if (response?.valid) {
+      setAuthSession(normalizedToken, response)
+      startActivityPresence(normalizedToken, clientId)
+    } else {
+      setAuthSession(null, null)
+    }
+    return response
+  }).catch((error) => {
+    if (error?.status === 401 || error?.status === 403) setAuthSession(null, null)
+    throw error
+  }).finally(() => {
+    if (authVerification?.promise === promise) authVerification = null
+  })
+  authVerification = { token: normalizedToken, promise }
+  return promise
 }
 
 function recordActivityEvent(type, details = {}) {
@@ -1373,13 +1420,16 @@ ipcMain.handle("mon-agent:invoke", async (_event, command, args = {}) => {
         client_id: args.request?.clientId ?? args.request?.client_id ?? "",
         client_type: args.request?.clientType ?? args.request?.client_type ?? "",
       }))
+      setAuthSession(response?.token, {
+        valid: true,
+        user: response?.user,
+        token_info: { expires_at: response?.expires_at },
+      })
       startActivityPresence(response?.token, args.request?.clientId ?? args.request?.client_id ?? "")
       return response
     }
     case "core_verify_token": {
-      const response = await coreRequest("/api/users/verify-token/", { method: "GET", headers: authHeader(args.token) })
-      if (response?.valid) startActivityPresence(args.token, args.clientId ?? args.client_id ?? "")
-      return response
+      return verifyCoreTokenOnce(args.token, args.clientId ?? args.client_id ?? "")
     }
     case "core_default_assistant":
       return coreRequest("/api/assistants/default/", { method: "GET", headers: authHeader(args.token) })
@@ -1405,6 +1455,7 @@ ipcMain.handle("mon-agent:invoke", async (_event, command, args = {}) => {
       try {
         return await coreRequest("/api/users/logout/", { method: "POST", headers: authHeader(args.token) })
       } finally {
+        setAuthSession(null, null)
         stopActivityPresence()
       }
     }

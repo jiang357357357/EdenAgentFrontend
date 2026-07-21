@@ -30,5 +30,10 @@ contextBridge.exposeInMainWorld("monAgentDesktop", {
     ipcRenderer.on("mon-agent-open-settings", handler)
     return () => ipcRenderer.removeListener("mon-agent-open-settings", handler)
   },
+  onAuthState(callback) {
+    const handler = (_event, state) => callback(state)
+    ipcRenderer.on("mon-agent-auth-state", handler)
+    return () => ipcRenderer.removeListener("mon-agent-auth-state", handler)
+  },
   convertFileSrc,
 })
