@@ -9,6 +9,7 @@ export interface RealtimeSTTTranscript {
 }
 
 interface RealtimeSTTHandlers {
+  onAutoFinish?: (result: { text: string; autoSend: boolean }) => void
   onError?: (error: Error) => void
   onLevel?: (level: number) => void
   onStatus?: (status: RealtimeSTTStatus) => void
@@ -89,6 +90,8 @@ export class RealtimeSTTService {
   private socket?: WebSocket
   private source?: MediaStreamAudioSourceNode
   private status: RealtimeSTTStatus = "idle"
+  private autoFinishTimer?: number
+  private inputBehavior = { sessionEndSilenceMs: 3_000, autoFinish: true, autoSend: false }
 
   constructor(handlers: RealtimeSTTHandlers = {}) {
     this.handlers = handlers
@@ -138,6 +141,7 @@ export class RealtimeSTTService {
           try {
             const payload = JSON.parse(event.data) as Record<string, unknown>
             if (payload.type === "status" && payload.status === "started") {
+              this.applyInputBehavior(payload.input_behavior)
               settled = true
               window.clearTimeout(timer)
               resolve()
@@ -241,15 +245,24 @@ export class RealtimeSTTService {
       return
     }
 
+    if (payload.type === "status" && payload.status === "started") {
+      this.applyInputBehavior(payload.input_behavior)
+      return
+    }
+
     if (payload.type === "result") {
       const accumulated = typeof payload.accumulated === "string" ? payload.accumulated : ""
       const text = (accumulated || (typeof payload.text === "string" ? payload.text : "")).trim()
       if (!text) return
+      this.clearAutoFinishTimer()
       this.latestTranscript = text
       const isFinal = payload.is_interim !== true
       const sentenceEnd = payload.sentence_end === true
       this.handlers.onTranscript?.({ text, isFinal, sentenceEnd })
-      if (this.finishPending && isFinal && sentenceEnd) this.settleFinish(text)
+      if (isFinal && sentenceEnd) {
+        if (this.finishPending) this.settleFinish(text)
+        else this.scheduleAutoFinish()
+      }
       return
     }
 
@@ -287,6 +300,37 @@ export class RealtimeSTTService {
     this.finishPending = undefined
   }
 
+  private applyInputBehavior(raw: unknown) {
+    if (!raw || typeof raw !== "object") return
+    const behavior = raw as Record<string, unknown>
+    const duration = Number(behavior.session_end_silence_ms)
+    this.inputBehavior = {
+      sessionEndSilenceMs: Number.isFinite(duration) ? clamp(duration, 1_000, 15_000) : 3_000,
+      autoFinish: behavior.auto_finish !== false,
+      autoSend: behavior.auto_send === true,
+    }
+  }
+
+  private scheduleAutoFinish() {
+    if (!this.inputBehavior.autoFinish || this.status !== "recording") return
+    this.clearAutoFinishTimer()
+    this.autoFinishTimer = window.setTimeout(async () => {
+      this.autoFinishTimer = undefined
+      if (this.status !== "recording") return
+      try {
+        const text = await this.finish()
+        this.handlers.onAutoFinish?.({ text, autoSend: this.inputBehavior.autoSend })
+      } catch (error) {
+        this.handlers.onError?.(error instanceof Error ? error : new Error(String(error)))
+      }
+    }, this.inputBehavior.sessionEndSilenceMs)
+  }
+
+  private clearAutoFinishTimer() {
+    if (this.autoFinishTimer) window.clearTimeout(this.autoFinishTimer)
+    this.autoFinishTimer = undefined
+  }
+
   private stopAudioCapture() {
     this.processor?.disconnect()
     this.processor = undefined
@@ -302,6 +346,7 @@ export class RealtimeSTTService {
   }
 
   private async close(sendStop: boolean) {
+    this.clearAutoFinishTimer()
     this.stopAudioCapture()
     const socket = this.socket
     this.socket = undefined

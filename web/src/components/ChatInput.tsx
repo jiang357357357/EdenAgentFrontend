@@ -644,11 +644,21 @@ export function ChatInput({
       onStatus: setVoiceStatus,
       onLevel: setVoiceLevel,
       onTranscript: ({ text }) => setInput(`${voicePrefixRef.current}${text}`),
+      onAutoFinish: ({ text, autoSend }) => {
+        if (voiceServiceRef.current === service) voiceServiceRef.current = null
+        voiceStartedAtRef.current = null
+        const completedText = `${voicePrefixRef.current}${text}`.trim()
+        setInput(completedText)
+        if (autoSend && completedText) {
+          setInput("")
+          onSend(completedText, [])
+        }
+      },
       onError: (error) => setVoiceError(error.message),
     })
     voiceServiceRef.current = service
     try {
-      await service.start({ configId: sttConfigId, endSilenceMs: 1_200 })
+      await service.start({ configId: sttConfigId })
     } catch {
       voiceStartedAtRef.current = null
       if (voiceServiceRef.current === service) voiceServiceRef.current = null
