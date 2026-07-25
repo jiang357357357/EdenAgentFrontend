@@ -200,6 +200,10 @@ function getClientMetadata() {
   }
 }
 
+export function getClientId() {
+  return getClientMetadata().clientId
+}
+
 function parseExpiresAt(value: string | null) {
   if (!value) return undefined
   const normalized = value

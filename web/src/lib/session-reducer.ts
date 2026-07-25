@@ -35,6 +35,8 @@ import {
   setCompanionDirectorPlan,
   startCompanionDirectorRun,
 } from "./companion-director-state"
+import { upsertSubagentThread } from "./subagent-state"
+import { findOptimisticUserHandoff } from "./message-identity"
 import type {
   PendingPermission,
   PendingQuestion,
@@ -54,10 +56,17 @@ import type {
   RuntimeStepFinishPart,
   RuntimeStepStartPart,
   RuntimeSubtaskPart,
+  SubagentThread,
   RuntimeTextPart,
   RuntimeToolPart,
   RuntimeUnknownPart,
 } from "../types"
+import {
+  latestOrchestratorRun,
+  localOrchestratorRun,
+  reduceOrchestratorRun,
+  upsertOrchestratorRun,
+} from "./orchestrator-state"
 
 type RuntimeAction =
   | { type: "reset" }
@@ -134,10 +143,18 @@ function replaceQuestions(state: RuntimeState, questions: PendingQuestion[]) {
 function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
   const existing = state.sessions[info.id]
   const persistedDirectorRun = latestCompanionDirectorRun(info.directorRuns)
+  const persistedOrchestratorRun = latestOrchestratorRun(info.orchestratorRuns)
   const restoredDirectorRun =
     existing?.directorRun?.status === "planning"
       ? existing.directorRun
       : persistedDirectorRun ?? existing?.directorRun
+  const existingOrchestratorActive =
+    existing?.orchestratorRun?.status === "planning" || existing?.orchestratorRun?.status === "running"
+  const persistedMatchesActiveTurn = Boolean(
+    existingOrchestratorActive &&
+      persistedOrchestratorRun?.userMessageID &&
+      persistedOrchestratorRun.userMessageID === existing?.orchestratorRun?.userMessageID,
+  )
   const session: RuntimeSession = existing
     ? {
         ...existing,
@@ -149,6 +166,12 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
         directorPolicy: info.directorPolicy ?? existing.directorPolicy,
         directorRun: restoredDirectorRun,
         directorRuns: info.directorRuns ?? existing.directorRuns,
+        agentThreads: info.agentThreads ?? existing.agentThreads,
+        orchestratorRun:
+          existingOrchestratorActive && !persistedMatchesActiveTurn
+            ? existing.orchestratorRun
+            : persistedOrchestratorRun ?? existing.orchestratorRun,
+        orchestratorRuns: info.orchestratorRuns ?? existing.orchestratorRuns,
       }
     : {
         id: info.id,
@@ -164,6 +187,9 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
         directorPolicy: info.directorPolicy,
         directorRun: restoredDirectorRun,
         directorRuns: info.directorRuns ?? [],
+        agentThreads: info.agentThreads ?? [],
+        orchestratorRun: persistedOrchestratorRun,
+        orchestratorRuns: info.orchestratorRuns ?? [],
       }
   state.sessions[info.id] = session
   if (!state.sessionOrder.includes(info.id)) {
@@ -217,6 +243,7 @@ function ensureMessage(session: RuntimeSession, info: { id: string; role: Role; 
 
   const message: RuntimeMessage = {
     id: info.id,
+    renderKey: info.id,
     role: info.role,
     sessionID: info.sessionID,
     partOrder: [],
@@ -404,6 +431,7 @@ function applyMessageInfo(message: RuntimeMessage, info: ApiMessageInfo) {
   message.createdAt = info.time.created
   if (info.role === "assistant") {
     message.completedAt = info.time.completed
+    message.runID = info.runID
     message.modelID = info.modelID
     message.providerID = info.providerID
     message.speaker = info.speaker
@@ -512,6 +540,12 @@ function applyPartUpdate(state: RuntimeState, part: ApiPart) {
     role: session.messages[part.messageID]?.role ?? "assistant",
     sessionID: part.sessionID,
   })
+  if (message.role === "user" && message.optimisticPartIDs?.length) {
+    const optimisticPartIDs = new Set(message.optimisticPartIDs)
+    message.partOrder = message.partOrder.filter((partID) => !optimisticPartIDs.has(partID))
+    for (const partID of optimisticPartIDs) delete message.parts[partID]
+    message.optimisticPartIDs = undefined
+  }
   const mapped = mapPart(part)
   upsertPart(message, mapped)
   if ((isApiTextPart(part) || isApiReasoningPart(part)) && message.role === "user") {
@@ -611,6 +645,17 @@ function isSessionStatusEvent(event: ApiEvent): event is Extract<ApiEvent, { typ
   return event.type === "session.status" && !!event.properties && typeof event.properties.sessionID === "string"
 }
 
+function isOrchestratorEvent(
+  event: ApiEvent,
+): event is Extract<ApiEvent, { type: "orchestrator.started" | "orchestrator.activity" | "orchestrator.completed" | "orchestrator.failed" }> {
+  return (
+    event.type.startsWith("orchestrator.") &&
+    !!event.properties &&
+    "sessionID" in event.properties &&
+    typeof event.properties.sessionID === "string"
+  )
+}
+
 function isCompanionDirectorStartedEvent(
   event: ApiEvent,
 ): event is Extract<ApiEvent, { type: "companion.director.started" }> {
@@ -637,6 +682,19 @@ function isCompanionSpeakerEvent(
 
 function isSessionErrorEvent(event: ApiEvent): event is Extract<ApiEvent, { type: "session.error" }> {
   return event.type === "session.error" && !!event.properties && typeof event.properties.sessionID === "string"
+}
+
+function subagentFromEvent(event: ApiEvent): { sessionID: string; agent: SubagentThread } | undefined {
+  if (!event.type.startsWith("subagent.")) return undefined
+  const properties = event.properties as { sessionID?: unknown; agent?: unknown } | undefined
+  if (typeof properties?.sessionID !== "string" || !properties.agent || typeof properties.agent !== "object") {
+    return undefined
+  }
+  const agent = properties.agent as Partial<SubagentThread>
+  if (typeof agent.id !== "string" || typeof agent.agentPath !== "string" || typeof agent.status !== "string") {
+    return undefined
+  }
+  return { sessionID: properties.sessionID, agent: agent as SubagentThread }
 }
 
 function isPermissionAskedEvent(event: ApiEvent): event is Extract<ApiEvent, { type: "permission.asked" }> {
@@ -669,11 +727,21 @@ function isQuestionResolvedEvent(
 
 function applyMessageUpdate(state: RuntimeState, sessionID: string, info: ApiMessageInfo) {
   const session = ensureSession(state, sessionID)
+  const optimisticUser = info.role === "user"
+    ? findOptimisticUserHandoff(session.messageOrder, session.messages, info.time.created)
+    : undefined
   const message = ensureMessage(session, {
     id: info.id,
     role: info.role,
     sessionID,
   })
+  if (optimisticUser && optimisticUser.id !== message.id) {
+    message.renderKey = optimisticUser.renderKey ?? optimisticUser.id
+    message.partOrder = [...optimisticUser.partOrder]
+    message.parts = { ...optimisticUser.parts }
+    message.optimisticPartIDs = [...optimisticUser.partOrder]
+    removeMessage(session, optimisticUser.id)
+  }
   applyMessageInfo(message, info)
   reconcileOptimisticUsers(session)
 }
@@ -682,6 +750,7 @@ function createOptimisticUserMessage(sessionID: string, content: string, attachm
   const createdAt = optimisticTimestamp()
   const message: RuntimeMessage = {
     id: `local-user-${createdAt}`,
+    renderKey: `user-turn-${createdAt}`,
     sessionID,
     role: "user",
     createdAt,
@@ -785,6 +854,8 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       session.updatedAt = message.createdAt
       session.status = "busy"
       session.error = undefined
+      session.orchestratorRun = localOrchestratorRun(message.id)
+      session.orchestratorRuns = upsertOrchestratorRun(session.orchestratorRuns, session.orchestratorRun)
       const participantCount = session.participants?.length ?? 0
       session.directorRun = directorRunForLocalPrompt(participantCount, message.id)
       next.connectionError = undefined
@@ -808,6 +879,18 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
 
     case "event": {
       const event = action.event
+      if (isOrchestratorEvent(event)) {
+        const session = ensureSession(next, event.properties.sessionID)
+        session.orchestratorRun = reduceOrchestratorRun(session.orchestratorRun, event)
+        session.orchestratorRuns = upsertOrchestratorRun(session.orchestratorRuns, session.orchestratorRun)
+        return next
+      }
+      const subagentUpdate = subagentFromEvent(event)
+      if (subagentUpdate) {
+        const session = ensureSession(next, subagentUpdate.sessionID)
+        session.agentThreads = upsertSubagentThread(session.agentThreads, subagentUpdate.agent)
+        return next
+      }
       if (isSessionEvent(event)) {
         upsertSession(next, event.properties.info)
         return next
@@ -881,6 +964,18 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
         if (session.status === "idle") {
           session.directorRun = completeCompanionDirectorRun(session.directorRun)
           upsertDirectorRun(session, session.directorRun)
+          if (
+            session.orchestratorRun &&
+            (session.orchestratorRun.status === "planning" || session.orchestratorRun.status === "running")
+          ) {
+            session.orchestratorRun = {
+              ...session.orchestratorRun,
+              status: "completed",
+              phase: "会话已结束（未收到处理完成事件）",
+              updatedAt: Date.now(),
+            }
+            session.orchestratorRuns = upsertOrchestratorRun(session.orchestratorRuns, session.orchestratorRun)
+          }
         }
         return next
       }

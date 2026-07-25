@@ -26,6 +26,11 @@ export function MarkdownContent({
         img: ({ src = "", alt = "" }) => (
           <img src={resolveMonAgentUrl(src)} alt={alt} className={imageClassName} draggable={false} />
         ),
+        a: ({ children, href }) => (
+          <a href={href} target="_blank" rel="noopener noreferrer">
+            {children}
+          </a>
+        ),
         p: ({ children }) => <p className={paragraphClassName}>{children}</p>,
         em: ({ children }) => <em className="italic text-accent/85">{children}</em>,
         table: ({ children }) => (

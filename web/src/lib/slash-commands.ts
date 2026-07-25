@@ -7,8 +7,9 @@ export type SlashCommandName =
   | "settings"
   | "memo"
   | "self-awake"
+  | "skills"
 
-export type SlashCommandCapability = "always" | "compact" | "new-session" | "settings" | "memo" | "self-awake"
+export type SlashCommandCapability = "always" | "compact" | "new-session" | "settings" | "memo" | "self-awake" | "skills"
 
 export interface SlashCommandDefinition {
   name: SlashCommandName
@@ -25,6 +26,7 @@ export interface SlashCommandCapabilities {
   settings: boolean
   memo: boolean
   selfAwake: boolean
+  skills: boolean
 }
 
 export interface ParsedSlashCommand {
@@ -83,6 +85,13 @@ export const SLASH_COMMANDS: readonly SlashCommandDefinition[] = [
     capability: "self-awake",
   },
   {
+    name: "skills",
+    description: "打开技能管理与安装",
+    aliases: ["skill"],
+    keywords: ["技能", "安装"],
+    capability: "skills",
+  },
+  {
     name: "help",
     description: "查看所有可用命令",
     aliases: ["commands"],
@@ -103,6 +112,8 @@ function hasCapability(command: SlashCommandDefinition, capabilities: SlashComma
       return capabilities.memo
     case "self-awake":
       return capabilities.selfAwake
+    case "skills":
+      return capabilities.skills
     default:
       return true
   }

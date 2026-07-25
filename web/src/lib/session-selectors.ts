@@ -314,6 +314,8 @@ function mapMessage(message: RuntimeMessage, sessionIsRunning: boolean): Message
 
   return {
     id: message.id,
+    renderKey: message.renderKey ?? message.id,
+    runID: message.runID,
     role: message.role,
     content,
     timestamp: timeLabel(message.createdAt),
@@ -391,6 +393,9 @@ function mapSession(session: RuntimeSession): Session {
     participants: session.participants,
     directorRun: session.directorRun ?? inferredDirectorRun,
     directorRuns,
+    agentThreads: session.agentThreads,
+    orchestratorRun: session.orchestratorRun,
+    orchestratorRuns: session.orchestratorRuns,
   }
 }
 

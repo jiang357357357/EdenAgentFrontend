@@ -9,6 +9,7 @@ import { LoginPage } from "./pages/login"
 import { MemoPage } from "./pages/memo"
 import { SelfAwakePage } from "./pages/self-awake"
 import { SettingsPage } from "./pages/settings"
+import { SkillPage } from "./pages/skills"
 import { useSessionRuntime } from "./hooks/useSessionRuntime"
 import {
   clearAuth,
@@ -43,11 +44,11 @@ const screenTransition = {
   ease: [0.16, 1, 0.3, 1],
 } as const
 
-type AppPage = "chat" | "selfAwake" | "memo" | "settings" | "assistant-switcher" | "pet" | "pet-character" | "pet-bubble"
+type AppPage = "chat" | "selfAwake" | "memo" | "skills" | "settings" | "assistant-switcher" | "pet" | "pet-character" | "pet-bubble"
 
 function initialPageFromLocation(): AppPage {
   const page = new URLSearchParams(window.location.search).get("page")
-  if (page === "settings" || page === "assistant-switcher" || page === "pet" || page === "pet-character" || page === "pet-bubble") return page
+  if (page === "settings" || page === "skills" || page === "assistant-switcher" || page === "pet" || page === "pet-character" || page === "pet-bubble") return page
   return "chat"
 }
 
@@ -151,11 +152,15 @@ export default function App() {
     activeSession,
     activeSessionId,
     activeSessionError,
+    abortSession: abortRuntimeSession,
     compactSession: compactRuntimeSession,
     connectionError,
     createSession: createRuntimeSession,
     dismissQuestion,
+    followupSubagent,
+    getSubagentThreadDetails,
     isThinking,
+    interruptSubagent,
     pendingPermissions,
     pendingQuestions,
     permissionMode,
@@ -438,7 +443,10 @@ export default function App() {
 
   useEffect(() => {
     if (!autoScrollEnabled) return
-    scrollMessagesToBottom("smooth")
+    // Streaming updates arrive faster than a smooth scroll can finish. Starting a
+    // new animation for every delta makes the left identity column appear to move
+    // up and down, so live updates use one immediate bottom anchor instead.
+    scrollMessagesToBottom("auto")
   }, [messageScrollKey, autoScrollEnabled])
 
   useEffect(() => {
@@ -662,6 +670,14 @@ export default function App() {
     await compactRuntimeSession(instructions)
   }
 
+  const handleAbortSession = async () => {
+    try {
+      await abortRuntimeSession()
+    } catch (error) {
+      console.error("[Runtime] abort session failed", error)
+    }
+  }
+
   const handlePermissionReply = async (requestID: string, reply: "once" | "always" | "reject", message?: string) => {
     await respondPermission(requestID, reply, message)
   }
@@ -726,6 +742,7 @@ export default function App() {
                 onSelectSession={selectRuntimeSession}
                 onSendMessage={handleSendMessage}
                 onCompact={handleCompactSession}
+                onAbort={handleAbortSession}
                 onPermissionReply={handlePermissionReply}
                 permissionMode={permissionMode}
                 onPermissionModeChange={updatePermissionMode}
@@ -746,6 +763,8 @@ export default function App() {
               />
             ) : activePage === "memo" ? (
               <MemoPage onBack={() => setActivePage("chat")} />
+            ) : activePage === "skills" ? (
+              <SkillPage onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
             ) : activePage === "assistant-switcher" ? (
               <AssistantSwitcherPage
                 currentAssistant={currentAssistant}
@@ -773,6 +792,7 @@ export default function App() {
                   setAssistantSwitcherMode("current")
                   setActivePage("assistant-switcher")
                 }}
+                onOpenSkills={() => setActivePage("skills")}
               />
             ) : (
               <ChatPage
@@ -796,6 +816,10 @@ export default function App() {
                 onNewSession={handleNewSession}
                 onSendMessage={handleSendMessage}
                 onCompact={handleCompactSession}
+                onAbort={handleAbortSession}
+                onFollowupSubagent={followupSubagent}
+                onGetSubagentDetails={getSubagentThreadDetails}
+                onInterruptSubagent={interruptSubagent}
                 onPermissionReply={handlePermissionReply}
                 permissionMode={permissionMode}
                 onPermissionModeChange={updatePermissionMode}
@@ -817,6 +841,10 @@ export default function App() {
                 onOpenMemo={() => {
                   setSidebarOpen(false)
                   setActivePage("memo")
+                }}
+                onOpenSkills={() => {
+                  setSidebarOpen(false)
+                  setActivePage("skills")
                 }}
               />
             )}

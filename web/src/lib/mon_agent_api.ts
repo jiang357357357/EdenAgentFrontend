@@ -11,7 +11,7 @@ import type {
   Session,
   ToolCall,
 } from "../types"
-import { getStoredToken } from "./auth"
+import { getClientId, getStoredToken } from "./auth"
 import type { CoreCharacterVisualAction, CoreCharacterVisualActionGroup, CoreTTSSynthesisResponse } from "./auth"
 import { formatLocalTime } from "./time"
 
@@ -47,6 +47,9 @@ export type ApiSession = {
   participants?: SessionParticipant[]
   participantAssistantIDs?: Array<number | string>
   directorRuns?: CompanionDirectorRun[]
+  orchestratorRuns?: import("../types").OrchestratorRun[]
+  agentThreads?: import("../types").SubagentThread[]
+  agentMessages?: Array<Record<string, unknown>>
   time: {
     updated: number
     created: number
@@ -222,6 +225,7 @@ export type ApiMessageInfo =
         completed?: number
       }
       agent?: string
+      runID?: string
       modelID?: string
       providerID?: string
       speaker?: SessionParticipant & { turnIndex?: number; beatIndex?: number }
@@ -456,6 +460,23 @@ export type CompanionDirectorStartedEvent = {
   }
 }
 
+export type OrchestratorEvent = {
+  type: "orchestrator.started" | "orchestrator.activity" | "orchestrator.completed" | "orchestrator.failed"
+  properties: {
+    sessionID: string
+    orchestrationID: string
+    userMessageID?: string
+    eventType?: string
+    toolName?: string
+    attempt?: number
+    error?: string
+    brief?: {
+      summary?: string
+      diagnostic?: string | null
+    }
+  }
+}
+
 export type CompanionPlanEvent = {
   type: "companion.plan"
   properties: {
@@ -632,6 +653,7 @@ export type CharacterActionChangedEvent = {
 export type ApiEvent =
   | SessionCreatedEvent
   | SessionStatusEvent
+  | OrchestratorEvent
   | CompanionDirectorStartedEvent
   | CompanionPlanEvent
   | CompanionSpeakerEvent
@@ -765,6 +787,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: {
       ...(init?.body ? { "content-type": "application/json" } : {}),
       ...(token ? { Authorization: `Token ${token}` } : {}),
+      "X-MON-CLIENT-ID": getClientId(),
       ...init?.headers,
     },
   })
@@ -775,6 +798,85 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>
+}
+
+export type InstalledSkill = {
+  id: string
+  skillName: string
+  displayName: string
+  description: string
+  scope: "system" | "user" | "project"
+  sourceType: "builtin" | "local" | "git" | "archive" | "marketplace"
+  sourceUri?: string
+  sourceRef?: string
+  sourceSubpath?: string
+  version?: string
+  enabled: boolean
+  trustStatus: "trusted" | "blocked"
+  builtin: boolean
+  available: boolean
+  tools?: string[]
+  profiles?: string[]
+  installedAt?: string
+  updatedAt?: string
+}
+
+export type SkillPreview = {
+  previewID: string
+  skillName: string
+  displayName: string
+  description: string
+  version: string
+  scope: "user" | "project"
+  source: { type: "local" | "git"; uri: string; ref: string; subpath: string }
+  tools: string[]
+  profiles: string[]
+  modelInvocable: boolean
+  contentHash: string
+  fileCount: number
+  totalBytes: number
+  expiresAt: number
+  replaceInstallationID?: string | null
+}
+
+export async function listSkills() {
+  const payload = await request<{ skills: InstalledSkill[] }>("/skills")
+  return payload.skills
+}
+
+export function inspectSkill(input: {
+  sourceType: "local" | "git"
+  sourceUri: string
+  sourceRef?: string
+  sourceSubpath?: string
+  scope: "user" | "project"
+}) {
+  return request<SkillPreview>("/skills/inspect", { method: "POST", body: JSON.stringify(input) })
+}
+
+export function installSkill(previewID: string) {
+  return request<InstalledSkill>("/skills/install", {
+    method: "POST",
+    body: JSON.stringify({ previewID }),
+  })
+}
+
+export function inspectSkillUpdate(id: string) {
+  return request<SkillPreview>(`/skills/${encodeURIComponent(id)}/inspect-update`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
+}
+
+export function setSkillEnabled(id: string, enabled: boolean) {
+  return request<InstalledSkill>(`/skills/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
+  })
+}
+
+export function uninstallSkill(id: string) {
+  return request<{ deleted: boolean }>(`/skills/${encodeURIComponent(id)}`, { method: "DELETE" })
 }
 
 function timeLabel(value?: number) {
@@ -965,6 +1067,33 @@ export async function compactSession(sessionID: string, instructions?: string) {
     method: "POST",
     body: JSON.stringify({ instructions: instructions?.trim() || "" }),
   })
+}
+
+export async function abortSession(sessionID: string) {
+  return request<{ aborted: boolean; sessionID: string }>(`/session/${encodeURIComponent(sessionID)}/abort`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
+}
+
+export async function interruptSubagent(sessionID: string, target: string) {
+  return request<import("../types").SubagentThread>(
+    `/session/${encodeURIComponent(sessionID)}/agents/${encodeURIComponent(target)}/interrupt`,
+    { method: "POST", body: JSON.stringify({}) },
+  )
+}
+
+export async function getSubagentThreadDetails(sessionID: string, target: string, eventLimit = 500) {
+  return request<import("../types").SubagentThreadDetails>(
+    `/session/${encodeURIComponent(sessionID)}/agents/${encodeURIComponent(target)}?eventLimit=${eventLimit}`,
+  )
+}
+
+export async function followupSubagent(sessionID: string, target: string, message: string) {
+  return request<Record<string, unknown>>(
+    `/session/${encodeURIComponent(sessionID)}/agents/${encodeURIComponent(target)}/followup`,
+    { method: "POST", body: JSON.stringify({ message }) },
+  )
 }
 
 export async function listPermissionsRaw() {

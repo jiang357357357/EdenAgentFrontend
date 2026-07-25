@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
+  abortSession as abortSessionRaw,
   compactSession as compactSessionRaw,
   createSessionRaw,
   getPermissionMode,
+  getSubagentThreadDetails as getSubagentThreadDetailsRaw,
+  followupSubagent as followupSubagentRaw,
+  interruptSubagent as interruptSubagentRaw,
   listPermissionsRaw,
   listQuestionsRaw,
   listScreenCaptureRequests,
@@ -305,12 +309,48 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     }
   }, [isRuntimeReady]);
 
+  const abortSession = useCallback(async () => {
+    const sessionID = activeSessionIdRef.current;
+    if (!isRuntimeReady()) {
+      throw new Error('MonAgent runtime is not authenticated');
+    }
+    if (!sessionID) {
+      throw new Error('当前没有可中止的会话。');
+    }
+
+    dispatch(setConnectionError(undefined));
+    try {
+      return await abortSessionRaw(sessionID);
+    } catch (error) {
+      dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
+      throw error;
+    }
+  }, [isRuntimeReady]);
+
   const updateSessionParticipants = useCallback(async (assistantIDs: Array<number | string>) => {
     const sessionID = activeSessionIdRef.current;
     if (!sessionID || !isRuntimeReady()) throw new Error('当前没有可更新的会话。');
     const session = await updateSessionParticipantsRaw(sessionID, assistantIDs);
     dispatch(hydrateSessionList([session]));
     return session;
+  }, [isRuntimeReady]);
+
+  const interruptSubagent = useCallback(async (target: string) => {
+    const sessionID = activeSessionIdRef.current;
+    if (!sessionID || !isRuntimeReady()) throw new Error('当前没有可操作的会话。');
+    return interruptSubagentRaw(sessionID, target);
+  }, [isRuntimeReady]);
+
+  const getSubagentThreadDetails = useCallback(async (target: string) => {
+    const sessionID = activeSessionIdRef.current;
+    if (!sessionID || !isRuntimeReady()) throw new Error('当前没有可操作的会话。');
+    return getSubagentThreadDetailsRaw(sessionID, target);
+  }, [isRuntimeReady]);
+
+  const followupSubagent = useCallback(async (target: string, message: string) => {
+    const sessionID = activeSessionIdRef.current;
+    if (!sessionID || !isRuntimeReady()) throw new Error('当前没有可操作的会话。');
+    return followupSubagentRaw(sessionID, target, message);
   }, [isRuntimeReady]);
 
   const respondPermission = useCallback(async (requestID: string, reply: 'once' | 'always' | 'reject', message?: string) => {
@@ -341,13 +381,17 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     activeSession,
     activeSessionId: state.activeSessionId ?? '',
     activeSessionError,
+    abortSession,
     answerQuestion,
     connectionState: state.connectionState,
     connectionError: state.connectionError,
     compactSession,
     createSession,
     dismissQuestion,
+    followupSubagent,
+    getSubagentThreadDetails,
     isThinking,
+    interruptSubagent,
     pendingPermissions,
     pendingQuestions,
     permissionMode,

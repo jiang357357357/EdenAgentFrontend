@@ -114,6 +114,12 @@ export async function resizeDesktopWindow(mode: DesktopWindowMode) {
   }
 }
 
+export async function selectDesktopSkillDirectory() {
+  const bridge = getDesktopBridge()
+  if (!bridge) return null
+  return bridge.invoke<string | null>("select_skill_directory")
+}
+
 export async function setDesktopWindowAppearance(mode: DesktopWindowMode) {
   const bridge = getDesktopBridge();
   if (!bridge) return;

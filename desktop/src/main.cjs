@@ -1,9 +1,10 @@
-const { app, BrowserWindow, Menu, Tray, desktopCapturer, ipcMain, nativeImage, powerMonitor, protocol, screen, net, session } = require("electron")
+const { app, BrowserWindow, Menu, Tray, desktopCapturer, dialog, ipcMain, nativeImage, powerMonitor, protocol, screen, net, session, shell } = require("electron")
 const { execFile, spawn } = require("node:child_process")
 const fs = require("node:fs")
 const path = require("node:path")
 const { fileURLToPath, pathToFileURL } = require("node:url")
 const { promisify } = require("node:util")
+const { isInternalAppUrl, isSupportedExternalUrl } = require("./navigation-policy.cjs")
 
 const execFileAsync = promisify(execFile)
 
@@ -1029,7 +1030,44 @@ function resolveWebUrl(page) {
   return url.toString()
 }
 
+function navigationPolicyOptions() {
+  return {
+    isPackaged: app.isPackaged,
+    appEntryFile: path.join(frontendRoot, "web", "dist", "index.html"),
+    devOrigin: new URL(resolveWebUrl()).origin,
+  }
+}
+
+function openExternalNavigation(url) {
+  if (!isSupportedExternalUrl(url)) {
+    console.warn(`[MonAgent][Desktop] 已阻止不受支持的外部导航: ${url}`)
+    return
+  }
+  void shell.openExternal(url).catch((error) => {
+    console.warn(`[MonAgent][Desktop] 无法使用系统浏览器打开链接: ${url}`, error)
+  })
+}
+
+function attachNavigationPolicy(targetWindow) {
+  const contents = targetWindow.webContents
+  const isInternal = (url) => isInternalAppUrl(url, navigationPolicyOptions())
+
+  contents.setWindowOpenHandler(({ url }) => {
+    if (!isInternal(url)) openExternalNavigation(url)
+    return { action: "deny" }
+  })
+
+  const guardMainFrameNavigation = (event, url) => {
+    if (isInternal(url)) return
+    event.preventDefault()
+    openExternalNavigation(url)
+  }
+  contents.on("will-navigate", guardMainFrameNavigation)
+  contents.on("will-redirect", guardMainFrameNavigation)
+}
+
 function loadWebApp(targetWindow, page) {
+  attachNavigationPolicy(targetWindow)
   if (app.isPackaged) {
     const options = page ? { query: { page } } : undefined
     targetWindow.loadFile(path.join(frontendRoot, "web", "dist", "index.html"), options)
@@ -1495,6 +1533,14 @@ ipcMain.handle("mon-agent:invoke", async (_event, command, args = {}) => {
     }
     case "capture_screen":
       return captureDesktopScreen()
+    case "select_skill_directory": {
+      const targetWindow = BrowserWindow.fromWebContents(_event.sender) ?? mainWindow
+      const result = await dialog.showOpenDialog(targetWindow, {
+        title: "选择技能目录",
+        properties: ["openDirectory"],
+      })
+      return result.canceled ? null : result.filePaths[0] ?? null
+    }
     case "start_window_drag":
       return true
     case "close_current_window": {

@@ -42,6 +42,7 @@ interface DesktopPetChatBubbleProps {
   opacity: number
   fontScale: number
   onSend: (content: string, attachments: PromptAttachment[]) => Promise<void>
+  onAbort: () => Promise<void>
   onPermissionReply: (requestID: string, reply: "once" | "always" | "reject") => Promise<void>
   onQuestionReply: (requestID: string, answers: string[][]) => Promise<void>
   onQuestionReject: (requestID: string) => Promise<void>
@@ -125,6 +126,7 @@ export function DesktopPetChatBubble({
   opacity,
   fontScale,
   onSend,
+  onAbort,
   onPermissionReply,
   onQuestionReply,
   onQuestionReject,
@@ -710,13 +712,22 @@ export function DesktopPetChatBubble({
           </div>
           <button
             type="button"
-            onClick={() => void send()}
-            disabled={!canSend}
-            className="flex aspect-square h-full max-h-[12cqh] items-center justify-center rounded-full bg-orange-600 text-white transition-colors hover:bg-orange-500 disabled:bg-orange-600/60 disabled:text-white/75"
-            aria-label="发送"
-            title="发送"
+            onClick={() => void (isThinking ? onAbort() : send())}
+            disabled={!isThinking && !canSend}
+            className={cn(
+              "flex aspect-square h-full max-h-[12cqh] items-center justify-center rounded-full text-white transition-colors disabled:text-white/75",
+              isThinking
+                ? "bg-stone-600 hover:bg-stone-500"
+                : "bg-orange-600 hover:bg-orange-500 disabled:bg-orange-600/60",
+            )}
+            aria-label={isThinking ? "停止生成" : "发送"}
+            title={isThinking ? "停止生成" : "发送"}
           >
-            <ArrowUp className="h-[52%] w-[52%]" />
+            {isThinking ? (
+              <Square className="h-[34%] w-[34%] fill-current" />
+            ) : (
+              <ArrowUp className="h-[52%] w-[52%]" />
+            )}
           </button>
         </div>
       </section>

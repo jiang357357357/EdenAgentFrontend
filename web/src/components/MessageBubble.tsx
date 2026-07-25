@@ -1,4 +1,4 @@
-import type { MessageData, MessageSegment } from "../types"
+import type { MessageData, MessageSegment, OrchestratorRun } from "../types"
 import { ToolCard } from "./ToolCard"
 import { ThinkingBlock } from "./ThinkingBlock"
 import { MetaPartCard } from "./MetaPartCard"
@@ -12,6 +12,8 @@ import type { SpeechClip } from "../hooks/useTTSSpeech"
 import type { PetTTSMode } from "../lib/desktop-window"
 import { textForTTS } from "../lib/tts-text"
 import type { MessageError } from "../types"
+import { shouldShowOrganizingReply, type MessageGroupPosition } from "../lib/message-grouping"
+import { CharacterUnderstandingLine } from "./CharacterUnderstandingLine"
 
 interface MessageBubbleProps {
   message: MessageData
@@ -26,6 +28,9 @@ interface MessageBubbleProps {
   activeSpeechSegmentId?: string | null
   speechPaused?: boolean
   onToggleSpeech?: (segmentId: string, text: string, messageId: string) => void
+  groupPosition?: MessageGroupPosition
+  allowOrganizingReply?: boolean
+  understandingRun?: OrchestratorRun
 }
 
 interface TextSegmentProps {
@@ -167,6 +172,9 @@ export function MessageBubble({
   activeSpeechSegmentId,
   speechPaused = false,
   onToggleSpeech,
+  groupPosition = "single",
+  allowOrganizingReply = true,
+  understandingRun,
 }: MessageBubbleProps) {
   const isUser = message.role === "user"
   const messageAssistantName = message.speaker?.assistantName || message.speaker?.characterName || assistantName
@@ -177,35 +185,53 @@ export function MessageBubble({
   const orderedSegments = message.segments && message.segments.length > 0 ? message.segments : undefined
   const useOrderedAssistantSegments = !isUser && Boolean(orderedSegments)
   const renderedContent = message.content
+  const showsMessageHeader = groupPosition === "single" || groupPosition === "first"
 
   return (
-    <div className={cn("group flex w-full gap-[2.4vh] px-[1.6vh] py-[2.5vh] md:px-0", isUser ? "flex-row-reverse" : "flex-row")}>
+    <div
+      className={cn(
+        "group flex w-full gap-[2.4vh] px-[1.6vh] md:px-0",
+        groupPosition === "single" && "py-[2.5vh]",
+        groupPosition === "first" && "pb-[0.35vh] pt-[2.5vh]",
+        groupPosition === "middle" && "py-[0.35vh]",
+        groupPosition === "last" && "pb-[2.5vh] pt-[0.35vh]",
+        isUser ? "flex-row-reverse" : "flex-row",
+      )}
+    >
       {/* Avatar */}
-      <div
-        className={cn(
-          "flex h-[5.8vh] w-[5.8vh] flex-shrink-0 items-center justify-center overflow-hidden rounded-[1.05vh] text-[2.2vh]",
-          isUser ? "bg-card border border-accent text-accent" : "bg-card border border-border text-text font-serif",
-        )}
-      >
-        {isUser && userAvatarUrl ? (
-          <img src={userAvatarUrl} alt="用户头像" className="h-full w-full object-cover" draggable={false} />
-        ) : isUser ? (
-          <User className="h-[2.9vh] w-[2.9vh]" />
-        ) : messageAssistantAvatarUrl ? (
-          <img src={messageAssistantAvatarUrl} alt={messageAssistantName} className="h-full w-full object-cover" draggable={false} />
-        ) : (
-          messageAssistantInitial
-        )}
-      </div>
+      {showsMessageHeader ? (
+        <div
+          className={cn(
+            "flex h-[5.8vh] w-[5.8vh] flex-shrink-0 items-center justify-center overflow-hidden rounded-[1.05vh] text-[2.2vh]",
+            isUser ? "bg-card border border-accent text-accent" : "bg-card border border-border text-text font-serif",
+          )}
+        >
+          {isUser && userAvatarUrl ? (
+            <img src={userAvatarUrl} alt="用户头像" className="h-full w-full object-cover" draggable={false} />
+          ) : isUser ? (
+            <User className="h-[2.9vh] w-[2.9vh]" />
+          ) : messageAssistantAvatarUrl ? (
+            <img src={messageAssistantAvatarUrl} alt={messageAssistantName} className="h-full w-full object-cover" draggable={false} />
+          ) : (
+            messageAssistantInitial
+          )}
+        </div>
+      ) : (
+        <div className="h-[5.8vh] w-[5.8vh] flex-shrink-0" aria-hidden="true" />
+      )}
 
       {/* Message Content Container */}
       <div className={cn("flex w-full max-w-[90%] min-w-0 flex-col gap-[0.35vh]", isUser ? "items-end" : "items-start")}>
-        <div className="flex items-center gap-[0.8vh] px-[0.45vh]">
-          <span className="text-[1.85vh] font-medium uppercase tracking-[0.05em] text-text-muted">
-            {isUser ? "你" : messageAssistantName}
-          </span>
-          <span className="text-[1.45vh] text-text-muted/50">{message.timestamp}</span>
-        </div>
+        {showsMessageHeader ? (
+          <div className="flex items-center gap-[0.8vh] px-[0.45vh]">
+            <span className="text-[1.85vh] font-medium uppercase tracking-[0.05em] text-text-muted">
+              {isUser ? "你" : messageAssistantName}
+            </span>
+            <span className="text-[1.45vh] text-text-muted/50">{message.timestamp}</span>
+          </div>
+        ) : null}
+
+        {!isUser ? <CharacterUnderstandingLine run={understandingRun} /> : null}
 
         {/* Attachments (Images) */}
         {!useOrderedAssistantSegments && message.images && message.images.length > 0 && (
@@ -352,12 +378,9 @@ export function MessageBubble({
 
         {!isUser && message.error ? <MessageErrorCard error={message.error} /> : null}
 
-        {!isUser &&
-          !message.content &&
-          message.isStreaming &&
-          (!message.toolCalls || message.toolCalls.length === 0) && (
-            <div className="px-[0.45vh] text-[1.65vh] text-text-muted">正在组织回复...</div>
-          )}
+        {allowOrganizingReply && !understandingRun && shouldShowOrganizingReply(message) && (
+          <div className="px-[0.45vh] text-[1.65vh] text-text-muted">正在组织回复...</div>
+        )}
       </div>
     </div>
   )

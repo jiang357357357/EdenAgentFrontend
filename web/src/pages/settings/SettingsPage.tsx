@@ -12,6 +12,7 @@ import {
   Keyboard,
   LoaderCircle,
   Menu,
+  Package,
   Minus,
   RotateCcw,
   Settings,
@@ -66,6 +67,7 @@ interface SettingsPageProps {
   activeCharacterAction?: ActiveCharacterAction
   onBack?: () => void
   onOpenAssistantSwitcher?: () => void
+  onOpenSkills?: () => void
 }
 
 interface ToggleRowProps {
@@ -350,6 +352,7 @@ export function SettingsPage({
   activeCharacterAction,
   onBack,
   onOpenAssistantSwitcher,
+  onOpenSkills,
 }: SettingsPageProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("pet")
   const [settings, setSettings] = useState<PetSettings>(DEFAULT_PET_SETTINGS)
@@ -745,6 +748,20 @@ export function SettingsPage({
                     <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={onOpenSkills}
+                  disabled={!onOpenSkills}
+                  className="mb-5 flex w-full items-center gap-3 rounded-xl border border-border bg-[#fafaf9] px-4 py-3 text-left transition hover:border-accent/40 hover:bg-accent-dim disabled:opacity-50"
+                >
+                  <Package className="h-5 w-5 text-accent" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-text">技能管理</span>
+                    <span className="mt-0.5 block text-xs text-text-muted">安装、更新、启停按需能力</span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-text-muted" />
+                </button>
 
                 <div className="border-t border-border">
                   <RangeControl

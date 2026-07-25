@@ -76,10 +76,12 @@ interface ChatInputProps {
   sttConfigId?: number | null
   contextTokenEstimate?: number
   onCompact?: (instructions?: string) => void | Promise<void>
+  onAbort?: () => void | Promise<void>
   onNewSession?: () => void | Promise<void>
   onOpenSettings?: () => void
   onOpenMemo?: () => void
   onOpenSelfAwake?: () => void
+  onOpenSkills?: () => void
 }
 
 const permissionOptions: Array<{ mode: PermissionMode; label: string; description: string }> = [
@@ -121,6 +123,27 @@ function SendButton({
       title="发送"
     >
       <ArrowUp className="h-[2.7vh] w-[2.7vh]" />
+    </motion.button>
+  )
+}
+
+function StopButton({ overlay, onStop }: { overlay: boolean; onStop: () => void }) {
+  return (
+    <motion.button
+      type="button"
+      initial={{ scale: 0.96, opacity: 0.86 }}
+      animate={{ scale: 1, opacity: 1 }}
+      onClick={onStop}
+      className={cn(
+        "flex h-[5.2vh] w-[5.2vh] flex-shrink-0 items-center justify-center rounded-full transition-colors",
+        overlay
+          ? "bg-stone-200/80 text-stone-800 hover:bg-stone-100"
+          : "bg-stone-200/85 text-stone-700 hover:bg-stone-300/85",
+      )}
+      aria-label="停止生成"
+      title="停止生成"
+    >
+      <Square className="h-[1.85vh] w-[1.85vh] fill-current" />
     </motion.button>
   )
 }
@@ -277,10 +300,12 @@ export function ChatInput({
   sttConfigId,
   contextTokenEstimate = 0,
   onCompact,
+  onAbort,
   onNewSession,
   onOpenSettings,
   onOpenMemo,
   onOpenSelfAwake,
+  onOpenSkills,
 }: ChatInputProps) {
   const [input, setInput] = useState("")
   const [attachments, setAttachments] = useState<PromptAttachment[]>([])
@@ -350,6 +375,7 @@ export function ChatInput({
     settings: Boolean(onOpenSettings),
     memo: Boolean(onOpenMemo),
     selfAwake: Boolean(onOpenSelfAwake),
+    skills: Boolean(onOpenSkills),
   })
   const slashQuery = slashCommandQuery(input, slashCursor)
   const filteredSlashCommands = slashQuery === null ? [] : filterSlashCommands(slashCommands, slashQuery)
@@ -525,6 +551,7 @@ export function ChatInput({
       settings: () => onOpenSettings?.(),
       memo: () => onOpenMemo?.(),
       "self-awake": () => onOpenSelfAwake?.(),
+      skills: () => onOpenSkills?.(),
     }
     Promise.resolve(actions[command.name]()).catch((error) => {
       setSlashCommandError(error instanceof Error ? error.message : String(error))
@@ -537,6 +564,18 @@ export function ChatInput({
     const parsedCommand = parseSlashCommand(input)
     if (parsedCommand) {
       if (!parsedCommand.name) return
+      if (parsedCommand.name.startsWith("skill:")) {
+        onSend(input.trim(), attachments)
+        void updateDesktopActivityFacts({
+          surface: overlay ? "chat-overlay" : "main-chat",
+          last_user_interaction_at: new Date().toISOString(),
+        })
+        setInput("")
+        setSlashCursor(0)
+        setAttachments([])
+        setSlashCommandError("")
+        return
+      }
       const command = findSlashCommand(slashCommands, parsedCommand.name)
       if (!command) {
         setSlashCommandError(`未知命令 “/${parsedCommand.name}”。输入 / 查看可用命令。`)
@@ -1312,7 +1351,11 @@ export function ChatInput({
               </>
             )}
             {overlay ? (
-              <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay onSend={handleSend} />
+              disabled && onAbort ? (
+                <StopButton overlay onStop={() => void onAbort()} />
+              ) : (
+                <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay onSend={handleSend} />
+              )
             ) : null}
           </div>
           </div>
@@ -1320,7 +1363,11 @@ export function ChatInput({
         {!hideComposerFooter && !overlay && !voiceBusy ? (
           <div className="absolute bottom-[1.5vh] right-[2.4vh] z-30 flex flex-col items-center gap-[0.9vh]">
             <TokenMeter inputTokens={inputTokens} contextTokens={contextTokens} contextWindow={contextWindow} />
-            <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay={false} onSend={handleSend} />
+            {disabled && onAbort ? (
+              <StopButton overlay={false} onStop={() => void onAbort()} />
+            ) : (
+              <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay={false} onSend={handleSend} />
+            )}
           </div>
         ) : null}
         <AnimatePresence>

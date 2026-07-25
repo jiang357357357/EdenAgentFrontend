@@ -60,6 +60,8 @@ export interface PendingQuestion {
 
 export interface MessageData {
   id: string
+  renderKey?: string
+  runID?: string
   role: Role
   content: string
   timestamp: string
@@ -157,6 +159,83 @@ export interface Session {
   participants?: import("./lib/mon_agent_api").SessionParticipant[]
   directorRun?: CompanionDirectorRun
   directorRuns?: CompanionDirectorRun[]
+  agentThreads?: SubagentThread[]
+  orchestratorRun?: OrchestratorRun
+  orchestratorRuns?: OrchestratorRun[]
+}
+
+export interface OrchestratorRun {
+  orchestrationID: string
+  userMessageID?: string
+  status: "planning" | "running" | "completed" | "failed"
+  phase?: string
+  toolName?: string
+  summary?: string
+  error?: string
+  createdAt?: number
+  updatedAt?: number
+}
+
+export type SubagentStatus =
+  | "created"
+  | "queued"
+  | "running"
+  | "waiting"
+  | "completed"
+  | "failed"
+  | "interrupted"
+  | "cancelled"
+
+export interface SubagentResult {
+  content: string
+  summary?: string
+  artifacts?: Array<Record<string, unknown>>
+  changedFiles?: string[]
+  tests?: Array<Record<string, unknown>>
+  details?: Record<string, unknown>
+}
+
+export interface SubagentThread {
+  id: string
+  rootSessionID: string
+  parentID?: string | null
+  agentPath: string
+  taskName: string
+  role: string
+  status: SubagentStatus
+  depth: number
+  createdAt: number
+  updatedAt: number
+  startedAt?: number | null
+  completedAt?: number | null
+  error?: string | null
+  result?: SubagentResult | null
+  metadata?: Record<string, unknown>
+}
+
+export interface SubagentThreadDetails {
+  thread: SubagentThread
+  events: Array<Record<string, unknown>>
+  checkpoint?: {
+    updatedAt?: number
+    messageCount?: number
+    messages?: Array<Record<string, unknown>>
+    activeSkillIDs?: string[]
+    thinkingLevel?: string
+    toolPolicy?: Record<string, unknown>
+    budget?: {
+      maxTurns?: number
+      maxToolCalls?: number
+      timeoutSeconds?: number
+    }
+    budgetUsage?: {
+      turnCount?: number
+      toolCallCount?: number
+      elapsedMs?: number
+      exceededReason?: string | null
+    }
+    [key: string]: unknown
+  } | null
 }
 
 export interface CompanionDirectorBeat {
@@ -345,13 +424,16 @@ export type RuntimePart =
 
 export interface RuntimeMessage {
   id: string
+  renderKey?: string
   sessionID: string
+  runID?: string
   role: Role
   partOrder: string[]
   parts: Record<string, RuntimePart>
   createdAt?: number
   completedAt?: number
   localOnly?: boolean
+  optimisticPartIDs?: string[]
   modelID?: string
   providerID?: string
   speaker?: import("./lib/mon_agent_api").SessionParticipant & { turnIndex?: number; beatIndex?: number }
@@ -394,6 +476,9 @@ export interface RuntimeSession {
   directorPolicy?: Record<string, unknown>
   directorRun?: CompanionDirectorRun
   directorRuns?: CompanionDirectorRun[]
+  agentThreads?: SubagentThread[]
+  orchestratorRun?: OrchestratorRun
+  orchestratorRuns?: OrchestratorRun[]
 }
 
 export interface RuntimeState {

@@ -63,6 +63,7 @@ interface CharacterPageProps {
   onSelectSession: (id: string) => void
   onSendMessage: (content: string, attachments: PromptAttachment[]) => Promise<void>
   onCompact: (instructions?: string) => Promise<void>
+  onAbort: () => Promise<void>
   onPermissionReply: (requestID: string, reply: "once" | "always" | "reject", message?: string) => Promise<void>
   permissionMode: PermissionMode
   onPermissionModeChange: (mode: PermissionMode) => Promise<void>
@@ -92,6 +93,7 @@ export function CharacterPage({
   onSelectSession,
   onSendMessage,
   onCompact,
+  onAbort,
   onPermissionReply,
   permissionMode,
   onPermissionModeChange,
@@ -169,6 +171,7 @@ export function CharacterPage({
               opacity={petSettings.inputOpacity}
               fontScale={petSettings.inputFontScale}
               onSend={onSendMessage}
+              onAbort={onAbort}
               onPermissionReply={onPermissionReply}
               onQuestionReply={onQuestionReply}
               onQuestionReject={onQuestionReject}
@@ -193,6 +196,7 @@ export function CharacterPage({
             <ChatInput
               onSend={onSendMessage}
               onCompact={activeSession?.id ? onCompact : undefined}
+              onAbort={activeSession?.id ? onAbort : undefined}
               disabled={isThinking}
               overlay
               onHistory={() => {

@@ -7,6 +7,7 @@ import { DirectorPlanCard } from "../../components/DirectorPlanCard"
 import { MessageBubble } from "../../components/MessageBubble"
 import { PermissionRequestCard } from "../../components/PermissionRequestCard"
 import { Sidebar } from "../../components/Sidebar"
+import { SubagentActivityCard } from "../../components/SubagentActivityCard"
 import { resolveCoreAssetUrl, type ActiveCharacterAction, type AuthUser, type CoreAssistant } from "../../lib/auth"
 import {
   DEFAULT_PET_SETTINGS,
@@ -17,8 +18,21 @@ import {
 import { useTTSSpeech } from "../../hooks/useTTSSpeech"
 import { startCompanionDirectorRun } from "../../lib/companion-director-state"
 import { estimateConversationTokens } from "../../lib/token-usage"
+import {
+  messageGroupPosition,
+  messageRenderKey,
+  shouldShowAssistantThinkingFallback,
+} from "../../lib/message-grouping"
 import { cn } from "../../lib/utils"
-import type { PendingPermission, PermissionMode, PromptAttachment, Session } from "../../types"
+import type {
+  OrchestratorRun,
+  MessageData,
+  PendingPermission,
+  PermissionMode,
+  PromptAttachment,
+  Session,
+  SubagentThreadDetails,
+} from "../../types"
 
 const fullScreenMotion = {
   initial: { opacity: 0, x: -18, filter: "blur(3px)" },
@@ -52,6 +66,10 @@ interface ChatPageProps {
   onNewSession: () => void
   onSendMessage: (content: string, attachments: PromptAttachment[]) => Promise<void>
   onCompact: (instructions?: string) => Promise<void>
+  onAbort: () => Promise<void>
+  onFollowupSubagent: (target: string, message: string) => Promise<unknown>
+  onGetSubagentDetails: (target: string) => Promise<SubagentThreadDetails>
+  onInterruptSubagent: (target: string) => Promise<unknown>
   onPermissionReply: (requestID: string, reply: "once" | "always" | "reject", message?: string) => Promise<void>
   permissionMode: PermissionMode
   onPermissionModeChange: (mode: PermissionMode) => Promise<void>
@@ -61,6 +79,7 @@ interface ChatPageProps {
   onOpenSettings: () => void
   onOpenSelfAwake: () => void
   onOpenMemo: () => void
+  onOpenSkills: () => void
 }
 
 export function ChatPage({
@@ -84,6 +103,10 @@ export function ChatPage({
   onNewSession,
   onSendMessage,
   onCompact,
+  onAbort,
+  onFollowupSubagent,
+  onGetSubagentDetails,
+  onInterruptSubagent,
   onPermissionReply,
   permissionMode,
   onPermissionModeChange,
@@ -93,6 +116,7 @@ export function ChatPage({
   onOpenSettings,
   onOpenSelfAwake,
   onOpenMemo,
+  onOpenSkills,
 }: ChatPageProps) {
   const [petSettings, setPetSettings] = useState<PetSettings>(DEFAULT_PET_SETTINGS)
   const assistantName = assistant?.name || assistant?.character?.name || "助手"
@@ -145,6 +169,76 @@ export function ChatPage({
   const hasStreamingAssistantMessage = messages.some(
     (message) => message.role === "assistant" && Boolean(message.isStreaming),
   )
+  const hasAssistantReplyAfterLastUser = messages
+    .slice(Math.max(lastUserMessageIndex + 1, 0))
+    .some((message) => message.role === "assistant")
+  const latestStreamingAssistantIndex = messages.reduce(
+    (latestIndex, message, index) =>
+      message.role === "assistant" && message.isStreaming ? index : latestIndex,
+    -1,
+  )
+  const orchestratorActive = ["planning", "running"].includes(activeSession?.orchestratorRun?.status ?? "")
+  const understandingRunsByMessageIndex = useMemo(() => {
+    const runsByUserMessageID = new Map<string, OrchestratorRun>()
+    const candidates = [
+      ...(activeSession?.orchestratorRuns ?? []),
+      ...(activeSession?.orchestratorRun ? [activeSession.orchestratorRun] : []),
+    ]
+    for (const run of candidates) {
+      if (!run.userMessageID) continue
+      const existing = runsByUserMessageID.get(run.userMessageID)
+      if (!existing || (run.updatedAt ?? 0) >= (existing.updatedAt ?? 0)) {
+        runsByUserMessageID.set(run.userMessageID, run)
+      }
+    }
+
+    const result = new Map<number, OrchestratorRun>()
+    let currentUserMessageID: string | undefined
+    let assignedForCurrentUser = false
+    messages.forEach((message, index) => {
+      if (message.role === "user") {
+        currentUserMessageID = message.id
+        assignedForCurrentUser = false
+        return
+      }
+      if (assignedForCurrentUser || !currentUserMessageID) return
+      const run = runsByUserMessageID.get(currentUserMessageID)
+      if (run) result.set(index, run)
+      assignedForCurrentUser = true
+    })
+    return result
+  }, [activeSession?.orchestratorRun, activeSession?.orchestratorRuns, messages])
+  const currentUnderstandingRun = activeSession?.orchestratorRun
+  const currentUnderstandingMessageIndex = currentUnderstandingRun?.userMessageID
+    ? [...understandingRunsByMessageIndex.entries()].find(
+        ([, run]) => run.userMessageID === currentUnderstandingRun.userMessageID,
+      )?.[0] ?? -1
+    : -1
+  const showUnderstandingPlaceholder = Boolean(
+    currentUnderstandingRun &&
+      currentUnderstandingMessageIndex < 0 &&
+      (isThinking || currentUnderstandingRun.status === "planning" || currentUnderstandingRun.status === "running" || currentUnderstandingRun.status === "failed"),
+  )
+  const understandingPlaceholderMessage = useMemo<MessageData | undefined>(() => {
+    if (!showUnderstandingPlaceholder || !currentUnderstandingRun?.userMessageID) return undefined
+    return {
+      id: `understanding-shell:${currentUnderstandingRun.userMessageID}`,
+      role: "assistant",
+      content: "",
+      timestamp: "",
+      isStreaming: true,
+    }
+  }, [currentUnderstandingRun?.userMessageID, showUnderstandingPlaceholder])
+  const renderedMessages = useMemo(
+    () => understandingPlaceholderMessage ? [...messages, understandingPlaceholderMessage] : messages,
+    [messages, understandingPlaceholderMessage],
+  )
+  const showAssistantThinkingFallback = !showUnderstandingPlaceholder && !orchestratorActive && shouldShowAssistantThinkingFallback({
+    isThinking,
+    hasStreamingAssistantMessage,
+    hasAssistantReplyAfterLastUser,
+    hasDirectorRun: Boolean(displayedDirectorRun),
+  })
   const toggleAutoScroll = () => {
     onAutoScrollChange(!autoScrollEnabled)
   }
@@ -239,7 +333,7 @@ export function ChatPage({
                   <span className="text-[1.25vh] text-text-muted">{activeSession?.participants?.length ?? 0} 位</span>
                 </span>
                 <span className="mt-[0.55vh] flex flex-col">
-                  {activeSession?.participants?.length ? activeSession.participants.map((participant) => {
+                  {activeSession?.participants?.length ? activeSession?.participants.map((participant) => {
                     const avatar = resolveCoreAssetUrl(participant.avatarUrl)
                     const name = participant.assistantName || participant.characterName || "助手"
                     return (
@@ -341,24 +435,29 @@ export function ChatPage({
               </div>
             ) : (
               <div className="min-h-full py-[4vh]">
-                {messages.map((msg, messageIndex) => {
+                {renderedMessages.map((msg, messageIndex) => {
+                  const isUnderstandingPlaceholder = msg.id === understandingPlaceholderMessage?.id
                   const messageDirectorRun =
                     messageIndex === lastUserMessageIndex
                       ? displayedDirectorRun
                       : msg.role === "user"
-                        ? activeSession.directorRuns?.find((run) => run.userMessageID === msg.id)
+                        ? activeSession?.directorRuns?.find((run) => run.userMessageID === msg.id)
                         : undefined
                   return (
-                  <Fragment key={msg.id}>
+                  <Fragment key={`${activeSessionId}:${messageRenderKey(renderedMessages, messageIndex)}`}>
                     <MessageBubble
                       message={msg}
+                      groupPosition={messageGroupPosition(renderedMessages, messageIndex)}
+                      allowOrganizingReply={!isUnderstandingPlaceholder && messageIndex === latestStreamingAssistantIndex}
+                      understandingRun={
+                        isUnderstandingPlaceholder
+                          ? currentUnderstandingRun
+                          : understandingRunsByMessageIndex.get(messageIndex)
+                      }
                       userAvatarUrl={userAvatarUrl}
                       assistantName={assistantName}
                       assistantInitial={assistantInitial}
                       assistantAvatarUrl={assistantAvatarUrl}
-                      onTextReveal={() => {
-                        if (autoScrollEnabled) messagesEndRef.current?.scrollIntoView({ block: "end" })
-                      }}
                       ttsMode={petSettings.ttsMode}
                       speechClips={speech.clips}
                       activeSpeechSegmentId={speech.activeSegmentId}
@@ -369,15 +468,19 @@ export function ChatPage({
                     {messageDirectorRun ? (
                       <DirectorPlanCard
                         run={messageDirectorRun}
-                        participants={activeSession.participants ?? []}
+                        participants={activeSession?.participants ?? []}
                       />
                     ) : null}
                   </Fragment>
                   )
                 })}
-                {isThinking &&
-                  !hasStreamingAssistantMessage &&
-                  !displayedDirectorRun && (
+                <SubagentActivityCard
+                  threads={activeSession?.agentThreads ?? []}
+                  onFollowup={onFollowupSubagent}
+                  onInspect={onGetSubagentDetails}
+                  onInterrupt={onInterruptSubagent}
+                />
+                {showAssistantThinkingFallback && (
                     <div className="flex w-full gap-[1.7vw] px-[1vw] py-[4vh] opacity-70 md:px-0">
                     <div className="flex h-[5.9vh] w-[5.9vh] flex-shrink-0 items-center justify-center overflow-hidden rounded-[1vh] border border-accent bg-card text-[2vh] text-accent">
                       {assistantAvatarUrl ? (
@@ -418,6 +521,7 @@ export function ChatPage({
               onNewSession={onNewSession}
               onOpenSettings={onOpenSettings}
               onOpenMemo={onOpenMemo}
+              onOpenSkills={onOpenSkills}
               onOpenSelfAwake={onOpenSelfAwake}
               disabled={isThinking}
               assistantName={assistantName}
@@ -427,6 +531,7 @@ export function ChatPage({
               sttConfigId={assistant?.character?.stt_config_id}
               contextTokenEstimate={contextTokenEstimate}
               onCompact={activeSessionId ? onCompact : undefined}
+              onAbort={activeSessionId ? onAbort : undefined}
             />
           </div>
         </div>
