@@ -57,6 +57,7 @@ import type {
   RuntimeStepStartPart,
   RuntimeSubtaskPart,
   SubagentThread,
+  CoordinationBatch,
   RuntimeTextPart,
   RuntimeToolPart,
   RuntimeUnknownPart,
@@ -159,6 +160,7 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
     ? {
         ...existing,
         title: info.title || existing.title || "新会话",
+        contextTokens: info.contextTokens ?? existing.contextTokens,
         createdAt: info.time.created,
         updatedAt: info.time.updated,
         mode: info.mode ?? existing.mode,
@@ -176,6 +178,7 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
     : {
         id: info.id,
         title: info.title || "新会话",
+        contextTokens: info.contextTokens,
         status: "idle",
         messageOrder: [],
         messages: {},
@@ -428,6 +431,7 @@ function mapPart(part: ApiPart): RuntimePart {
 
 function applyMessageInfo(message: RuntimeMessage, info: ApiMessageInfo) {
   message.role = info.role
+  message.kind = "kind" in info ? info.kind : undefined
   message.createdAt = info.time.created
   if (info.role === "assistant") {
     message.completedAt = info.time.completed
@@ -437,6 +441,8 @@ function applyMessageInfo(message: RuntimeMessage, info: ApiMessageInfo) {
     message.speaker = info.speaker
     message.orchestration = info.orchestration
     message.error = info.error || undefined
+    message.completionState = info.completionState
+    message.coordinationBatchID = info.coordinationBatchID
   }
   message.localOnly = false
 }
@@ -697,6 +703,41 @@ function subagentFromEvent(event: ApiEvent): { sessionID: string; agent: Subagen
   return { sessionID: properties.sessionID, agent: agent as SubagentThread }
 }
 
+function coordinationBatchFromEvent(
+  event: ApiEvent,
+): { sessionID: string; batch: CoordinationBatch } | undefined {
+  if (!event.type.startsWith("subagent.batch.")) return undefined
+  const properties = event.properties as Record<string, unknown> | undefined
+  if (typeof properties?.sessionID !== "string" || typeof properties.batchID !== "string") return undefined
+  const status = typeof properties.status === "string" ? properties.status : "collecting"
+  if (!["collecting", "ready", "aggregating", "aggregation_failed", "completed", "cancelled"].includes(status)) {
+    return undefined
+  }
+  return {
+    sessionID: properties.sessionID,
+    batch: {
+      batchID: properties.batchID,
+      status: status as CoordinationBatch["status"],
+      requiredTotal: Number(properties.requiredTotal ?? 0),
+      requiredTerminal: Number(properties.requiredTerminal ?? 0),
+      optionalTotal: Number(properties.optionalTotal ?? 0),
+      objectiveEpoch: Number(properties.objectiveEpoch ?? 0),
+      updatedAt: typeof properties.updatedAt === "number" ? properties.updatedAt : undefined,
+    },
+  }
+}
+
+function upsertCoordinationBatch(
+  current: CoordinationBatch[] | undefined,
+  batch: CoordinationBatch,
+): CoordinationBatch[] {
+  const batches = [...(current ?? [])]
+  const index = batches.findIndex((item) => item.batchID === batch.batchID)
+  if (index >= 0) batches[index] = { ...batches[index], ...batch }
+  else batches.push(batch)
+  return batches.sort((left, right) => (left.updatedAt ?? 0) - (right.updatedAt ?? 0))
+}
+
 function isPermissionAskedEvent(event: ApiEvent): event is Extract<ApiEvent, { type: "permission.asked" }> {
   return event.type === "permission.asked" && !!event.properties && typeof event.properties.sessionID === "string"
 }
@@ -883,6 +924,15 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
         const session = ensureSession(next, event.properties.sessionID)
         session.orchestratorRun = reduceOrchestratorRun(session.orchestratorRun, event)
         session.orchestratorRuns = upsertOrchestratorRun(session.orchestratorRuns, session.orchestratorRun)
+        return next
+      }
+      const batchUpdate = coordinationBatchFromEvent(event)
+      if (batchUpdate) {
+        const session = ensureSession(next, batchUpdate.sessionID)
+        session.coordinationBatches = upsertCoordinationBatch(
+          session.coordinationBatches,
+          batchUpdate.batch,
+        )
         return next
       }
       const subagentUpdate = subagentFromEvent(event)

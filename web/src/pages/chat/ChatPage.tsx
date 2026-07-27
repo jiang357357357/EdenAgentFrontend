@@ -1,13 +1,13 @@
-import { Lock, Menu, MessageSquare, NotebookPen, Sparkles, Unlock, Users } from "lucide-react"
+import { Lock, Menu, MessageSquare, NotebookPen, Plus, Sparkles, Unlock, Users } from "lucide-react"
 import { motion } from "motion/react"
 import { Fragment, useEffect, useMemo, useState } from "react"
+import { createPortal } from "react-dom"
 import { CharacterPanel } from "../../components/CharacterPanel"
 import { ChatInput } from "../../components/ChatInput"
 import { DirectorPlanCard } from "../../components/DirectorPlanCard"
 import { MessageBubble } from "../../components/MessageBubble"
 import { PermissionRequestCard } from "../../components/PermissionRequestCard"
 import { Sidebar } from "../../components/Sidebar"
-import { SubagentActivityCard } from "../../components/SubagentActivityCard"
 import { resolveCoreAssetUrl, type ActiveCharacterAction, type AuthUser, type CoreAssistant } from "../../lib/auth"
 import {
   DEFAULT_PET_SETTINGS,
@@ -21,12 +21,9 @@ import { estimateConversationTokens } from "../../lib/token-usage"
 import {
   messageGroupPosition,
   messageRenderKey,
-  shouldShowAssistantThinkingFallback,
 } from "../../lib/message-grouping"
 import { cn } from "../../lib/utils"
 import type {
-  OrchestratorRun,
-  MessageData,
   PendingPermission,
   PermissionMode,
   PromptAttachment,
@@ -118,12 +115,36 @@ export function ChatPage({
   onOpenMemo,
   onOpenSkills,
 }: ChatPageProps) {
+  const [slashCommandNotices, setSlashCommandNotices] = useState<Array<{ id: number; sessionID?: string; command: string; afterMessageID?: string }>>([])
+  const taskRunning = Boolean(
+    isThinking
+    || activeSession?.coordinationBatches?.some((batch) => ["collecting", "ready", "aggregating"].includes(batch.status))
+    || activeSession?.agentThreads?.some((thread) => ["created", "queued", "running", "waiting"].includes(thread.status)),
+  )
   const [petSettings, setPetSettings] = useState<PetSettings>(DEFAULT_PET_SETTINGS)
   const assistantName = assistant?.name || assistant?.character?.name || "助手"
   const assistantInitial = assistantName.trim().slice(0, 1) || "助"
   const assistantAvatarUrl = resolveCoreAssetUrl(assistant?.character?.avatar_url)
   const userAvatarUrl = resolveCoreAssetUrl(currentUser?.avatar_url)
   const messages = activeSession?.messages ?? []
+
+  useEffect(() => {
+    const handleSlashCommand = (event: Event) => {
+      const command = String((event as CustomEvent<{ command?: string }>).detail?.command ?? "").trim()
+      if (!command) return
+      // /compact is persisted by the server so it remains ordered across refreshes
+      // and can be tied to the runtime message created by that request.
+      if (command === "/compact" || command.startsWith("/compact ")) return
+      setSlashCommandNotices((current) => [
+        ...current.slice(-19),
+        { id: Date.now(), sessionID: activeSessionId, command, afterMessageID: messages.at(-1)?.id },
+      ])
+    }
+    window.addEventListener("monagent:slash-command-executed", handleSlashCommand)
+    return () => window.removeEventListener("monagent:slash-command-executed", handleSlashCommand)
+  }, [activeSessionId, messages])
+
+  const activeSlashCommandNotices = slashCommandNotices.filter((item) => item.sessionID === activeSessionId)
   const participantCount = activeSession?.participants?.length ?? 0
   const lastUserMessageIndex = messages.reduce(
     (lastIndex, message, index) => (message.role === "user" ? index : lastIndex),
@@ -141,7 +162,8 @@ export function ChatPage({
     },
     [activeSession?.directorRun, isThinking, lastUserMessageID, participantCount],
   )
-  const contextTokenEstimate = useMemo(() => estimateConversationTokens(messages), [messages])
+  const visibleTokenEstimate = useMemo(() => estimateConversationTokens(messages), [messages])
+  const contextTokenEstimate = activeSession?.contextTokens ?? visibleTokenEstimate
   const activeReplyMessage = messages
     .slice(Math.max(lastUserMessageIndex + 1, 0))
     .reverse()
@@ -166,79 +188,12 @@ export function ChatPage({
     isThinking,
     segments: speechSegments,
   })
-  const hasStreamingAssistantMessage = messages.some(
-    (message) => message.role === "assistant" && Boolean(message.isStreaming),
-  )
-  const hasAssistantReplyAfterLastUser = messages
-    .slice(Math.max(lastUserMessageIndex + 1, 0))
-    .some((message) => message.role === "assistant")
   const latestStreamingAssistantIndex = messages.reduce(
     (latestIndex, message, index) =>
       message.role === "assistant" && message.isStreaming ? index : latestIndex,
     -1,
   )
-  const orchestratorActive = ["planning", "running"].includes(activeSession?.orchestratorRun?.status ?? "")
-  const understandingRunsByMessageIndex = useMemo(() => {
-    const runsByUserMessageID = new Map<string, OrchestratorRun>()
-    const candidates = [
-      ...(activeSession?.orchestratorRuns ?? []),
-      ...(activeSession?.orchestratorRun ? [activeSession.orchestratorRun] : []),
-    ]
-    for (const run of candidates) {
-      if (!run.userMessageID) continue
-      const existing = runsByUserMessageID.get(run.userMessageID)
-      if (!existing || (run.updatedAt ?? 0) >= (existing.updatedAt ?? 0)) {
-        runsByUserMessageID.set(run.userMessageID, run)
-      }
-    }
-
-    const result = new Map<number, OrchestratorRun>()
-    let currentUserMessageID: string | undefined
-    let assignedForCurrentUser = false
-    messages.forEach((message, index) => {
-      if (message.role === "user") {
-        currentUserMessageID = message.id
-        assignedForCurrentUser = false
-        return
-      }
-      if (assignedForCurrentUser || !currentUserMessageID) return
-      const run = runsByUserMessageID.get(currentUserMessageID)
-      if (run) result.set(index, run)
-      assignedForCurrentUser = true
-    })
-    return result
-  }, [activeSession?.orchestratorRun, activeSession?.orchestratorRuns, messages])
-  const currentUnderstandingRun = activeSession?.orchestratorRun
-  const currentUnderstandingMessageIndex = currentUnderstandingRun?.userMessageID
-    ? [...understandingRunsByMessageIndex.entries()].find(
-        ([, run]) => run.userMessageID === currentUnderstandingRun.userMessageID,
-      )?.[0] ?? -1
-    : -1
-  const showUnderstandingPlaceholder = Boolean(
-    currentUnderstandingRun &&
-      currentUnderstandingMessageIndex < 0 &&
-      (isThinking || currentUnderstandingRun.status === "planning" || currentUnderstandingRun.status === "running" || currentUnderstandingRun.status === "failed"),
-  )
-  const understandingPlaceholderMessage = useMemo<MessageData | undefined>(() => {
-    if (!showUnderstandingPlaceholder || !currentUnderstandingRun?.userMessageID) return undefined
-    return {
-      id: `understanding-shell:${currentUnderstandingRun.userMessageID}`,
-      role: "assistant",
-      content: "",
-      timestamp: "",
-      isStreaming: true,
-    }
-  }, [currentUnderstandingRun?.userMessageID, showUnderstandingPlaceholder])
-  const renderedMessages = useMemo(
-    () => understandingPlaceholderMessage ? [...messages, understandingPlaceholderMessage] : messages,
-    [messages, understandingPlaceholderMessage],
-  )
-  const showAssistantThinkingFallback = !showUnderstandingPlaceholder && !orchestratorActive && shouldShowAssistantThinkingFallback({
-    isThinking,
-    hasStreamingAssistantMessage,
-    hasAssistantReplyAfterLastUser,
-    hasDirectorRun: Boolean(displayedDirectorRun),
-  })
+  const renderedMessages = messages
   const toggleAutoScroll = () => {
     onAutoScrollChange(!autoScrollEnabled)
   }
@@ -275,7 +230,6 @@ export function ChatPage({
           onSelectSession(id)
           setSidebarOpen(false)
         }}
-        onNew={onNewSession}
         isOpen={sidebarOpen}
         setIsOpen={setSidebarOpen}
         currentUser={currentUser}
@@ -396,6 +350,17 @@ export function ChatPage({
                 {autoScrollEnabled ? "自动滚动" : "自动滚动已关闭"}
               </span>
             </button>
+            <button
+              type="button"
+              onClick={onNewSession}
+              className="group relative flex h-[5.4vh] w-[5.4vh] items-center justify-center rounded-[1vh] text-accent outline-none transition-colors hover:bg-card focus-visible:bg-card"
+              aria-label="新会话"
+            >
+              <Plus className="h-[2.65vh] w-[2.65vh]" />
+              <span className="pointer-events-none absolute right-0 top-[calc(100%+0.7vh)] z-30 whitespace-nowrap rounded-[0.55vh] border border-border bg-card/96 px-[0.7vw] py-[0.45vh] text-[1.35vh] tracking-normal text-text opacity-0 shadow-md backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                新会话
+              </span>
+            </button>
           </div>
         </header>
 
@@ -436,7 +401,6 @@ export function ChatPage({
             ) : (
               <div className="min-h-full py-[4vh]">
                 {renderedMessages.map((msg, messageIndex) => {
-                  const isUnderstandingPlaceholder = msg.id === understandingPlaceholderMessage?.id
                   const messageDirectorRun =
                     messageIndex === lastUserMessageIndex
                       ? displayedDirectorRun
@@ -445,15 +409,17 @@ export function ChatPage({
                         : undefined
                   return (
                   <Fragment key={`${activeSessionId}:${messageRenderKey(renderedMessages, messageIndex)}`}>
+                    {msg.kind === "slash-command" ? (
+                      <div className="my-4 flex items-center gap-3 px-[8vw] text-center text-xs text-text-muted" role="status">
+                        <span className="h-px flex-1 bg-border" />
+                        <span className="shrink-0">已执行 <span className="font-mono text-text">{msg.content}</span></span>
+                        <span className="h-px flex-1 bg-border" />
+                      </div>
+                    ) : (
                     <MessageBubble
                       message={msg}
                       groupPosition={messageGroupPosition(renderedMessages, messageIndex)}
-                      allowOrganizingReply={!isUnderstandingPlaceholder && messageIndex === latestStreamingAssistantIndex}
-                      understandingRun={
-                        isUnderstandingPlaceholder
-                          ? currentUnderstandingRun
-                          : understandingRunsByMessageIndex.get(messageIndex)
-                      }
+                      allowOrganizingReply={messageIndex === latestStreamingAssistantIndex}
                       userAvatarUrl={userAvatarUrl}
                       assistantName={assistantName}
                       assistantInitial={assistantInitial}
@@ -464,58 +430,44 @@ export function ChatPage({
                       speechPaused={speech.paused}
                       onToggleSpeech={speech.toggle}
                       onPreviewImage={(src, alt) => onPreviewImage(src, alt ?? "图片预览")}
+                      subagentThreads={activeSession?.agentThreads ?? []}
+                      coordinationBatches={activeSession?.coordinationBatches ?? []}
+                      onFollowupSubagent={onFollowupSubagent}
+                      onInspectSubagent={onGetSubagentDetails}
+                      onInterruptSubagent={onInterruptSubagent}
                     />
+                    )}
                     {messageDirectorRun ? (
                       <DirectorPlanCard
                         run={messageDirectorRun}
                         participants={activeSession?.participants ?? []}
                       />
                     ) : null}
+                    {activeSlashCommandNotices.filter((notice) => notice.afterMessageID === msg.id).map((notice) => (
+                      <div key={notice.id} className="my-4 flex items-center gap-3 px-[8vw] text-center text-xs text-text-muted" role="status">
+                        <span className="h-px flex-1 bg-border" />
+                        <span className="shrink-0">已执行 <span className="font-mono text-text">{notice.command}</span></span>
+                        <span className="h-px flex-1 bg-border" />
+                      </div>
+                    ))}
                   </Fragment>
                   )
                 })}
-                <SubagentActivityCard
-                  threads={activeSession?.agentThreads ?? []}
-                  onFollowup={onFollowupSubagent}
-                  onInspect={onGetSubagentDetails}
-                  onInterrupt={onInterruptSubagent}
-                />
-                {showAssistantThinkingFallback && (
-                    <div className="flex w-full gap-[1.7vw] px-[1vw] py-[4vh] opacity-70 md:px-0">
-                    <div className="flex h-[5.9vh] w-[5.9vh] flex-shrink-0 items-center justify-center overflow-hidden rounded-[1vh] border border-accent bg-card text-[2vh] text-accent">
-                      {assistantAvatarUrl ? (
-                        <img
-                          src={assistantAvatarUrl}
-                          alt={assistantName}
-                          className="h-full w-full object-cover"
-                          draggable={false}
-                        />
-                      ) : (
-                        assistantInitial
-                      )}
-                    </div>
-                    <div className="flex items-center">
-                      <span className="animate-pulse font-serif text-[2.2vh] text-text-muted">
-                        {assistant?.name || assistant?.character?.name || "助手"}正在思考...
-                      </span>
-                    </div>
+                {activeSlashCommandNotices.filter((notice) => !notice.afterMessageID).map((notice) => (
+                  <div key={notice.id} className="my-4 flex items-center gap-3 px-[8vw] text-center text-xs text-text-muted" role="status">
+                    <span className="h-px flex-1 bg-border" />
+                    <span className="shrink-0">已执行 <span className="font-mono text-text">{notice.command}</span></span>
+                    <span className="h-px flex-1 bg-border" />
                   </div>
-                )}
+                ))}
                 <div ref={messagesEndRef} className="h-[7vh]" />
               </div>
             )}
           </div>
         </div>
 
-        <div className="h-full min-h-0 overflow-visible px-[3vw]">
+        <div className="shrink-0 overflow-visible px-[3vw]">
           <div className="mx-auto w-[95%]">
-            {activePendingPermissions.length > 0 && (
-              <div className="mb-2 grid max-h-[24vh] gap-2 overflow-y-auto">
-                {activePendingPermissions.map((request) => (
-                  <PermissionRequestCard key={request.id} request={request} onReply={onPermissionReply} />
-                ))}
-              </div>
-            )}
             <ChatInput
               onSend={onSendMessage}
               onNewSession={onNewSession}
@@ -523,7 +475,7 @@ export function ChatPage({
               onOpenMemo={onOpenMemo}
               onOpenSkills={onOpenSkills}
               onOpenSelfAwake={onOpenSelfAwake}
-              disabled={isThinking}
+              disabled={taskRunning}
               assistantName={assistantName}
               permissionMode={permissionMode}
               onPermissionModeChange={onPermissionModeChange}
@@ -536,6 +488,19 @@ export function ChatPage({
           </div>
         </div>
       </main>
+
+      {activePendingPermissions.length > 0 && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 p-4 backdrop-blur-[2px]">
+              <div className="grid max-h-[80vh] w-full max-w-2xl gap-3 overflow-y-auto">
+                {activePendingPermissions.map((request) => (
+                  <PermissionRequestCard key={request.id} request={request} onReply={onPermissionReply} tone="overlay" />
+                ))}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       <CharacterPanel assistant={assistant} assistantError={assistantError} activeAction={activeCharacterAction} />
     </motion.div>

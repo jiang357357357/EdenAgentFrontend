@@ -42,6 +42,7 @@ export type SessionParticipant = {
 export type ApiSession = {
   id: string
   title: string
+  contextTokens?: number
   mode?: "companion" | "solo"
   directorPolicy?: Record<string, unknown>
   participants?: SessionParticipant[]
@@ -220,6 +221,7 @@ export type ApiMessageInfo =
   | {
       id: string
       role: "assistant"
+      kind?: string
       time: {
         created: number
         completed?: number
@@ -228,6 +230,8 @@ export type ApiMessageInfo =
       runID?: string
       modelID?: string
       providerID?: string
+      completionState?: "provisional" | "final"
+      coordinationBatchID?: string | null
       speaker?: SessionParticipant & { turnIndex?: number; beatIndex?: number }
       orchestration?: {
         planID?: string
@@ -567,6 +571,7 @@ export interface PendingScreenCapture {
   sessionID?: string
   toolCallID?: string
   display?: "cursor" | "primary" | string
+  source?: "auto" | "desktop" | "game"
 }
 
 export type ScreenCaptureRequestedEvent = {
@@ -934,6 +939,7 @@ export function mapSession(info: ApiSession, messages: MessageData[] = []): Sess
   return {
     id: info.id,
     title: info.title || "新会话",
+    contextTokens: info.contextTokens,
     date: timeLabel(info.time.updated),
     messages,
   }
@@ -1145,6 +1151,7 @@ export async function replyScreenCapture(
     height: number
     displayId: string
     sourceName?: string
+    source?: "desktop" | "game"
   },
   error?: string,
 ) {

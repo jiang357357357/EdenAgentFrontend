@@ -60,6 +60,7 @@ export interface PendingQuestion {
 
 export interface MessageData {
   id: string
+  kind?: string
   renderKey?: string
   runID?: string
   role: Role
@@ -75,6 +76,8 @@ export interface MessageData {
   images?: string[]
   isStreaming?: boolean
   error?: MessageError
+  completionState?: "provisional" | "final"
+  coordinationBatchID?: string | null
   speaker?: {
     assistantID: number | string
     assistantName: string
@@ -153,6 +156,7 @@ export interface PromptAttachment {
 export interface Session {
   id: string
   title: string
+  contextTokens?: number
   date: string
   messages: MessageData[]
   mode?: "companion" | "solo"
@@ -160,6 +164,7 @@ export interface Session {
   directorRun?: CompanionDirectorRun
   directorRuns?: CompanionDirectorRun[]
   agentThreads?: SubagentThread[]
+  coordinationBatches?: CoordinationBatch[]
   orchestratorRun?: OrchestratorRun
   orchestratorRuns?: OrchestratorRun[]
 }
@@ -236,6 +241,24 @@ export interface SubagentThreadDetails {
     }
     [key: string]: unknown
   } | null
+}
+
+export type CoordinationBatchStatus =
+  | "collecting"
+  | "ready"
+  | "aggregating"
+  | "aggregation_failed"
+  | "completed"
+  | "cancelled"
+
+export interface CoordinationBatch {
+  batchID: string
+  status: CoordinationBatchStatus
+  requiredTotal: number
+  requiredTerminal: number
+  optionalTotal: number
+  objectiveEpoch: number
+  updatedAt?: number
 }
 
 export interface CompanionDirectorBeat {
@@ -424,6 +447,7 @@ export type RuntimePart =
 
 export interface RuntimeMessage {
   id: string
+  kind?: string
   renderKey?: string
   sessionID: string
   runID?: string
@@ -436,6 +460,8 @@ export interface RuntimeMessage {
   optimisticPartIDs?: string[]
   modelID?: string
   providerID?: string
+  completionState?: "provisional" | "final"
+  coordinationBatchID?: string | null
   speaker?: import("./lib/mon_agent_api").SessionParticipant & { turnIndex?: number; beatIndex?: number }
   orchestration?: {
     planID?: string
@@ -464,6 +490,7 @@ export interface RuntimeMessage {
 export interface RuntimeSession {
   id: string
   title: string
+  contextTokens?: number
   status: SessionStatus
   messageOrder: string[]
   messages: Record<string, RuntimeMessage>
@@ -477,6 +504,7 @@ export interface RuntimeSession {
   directorRun?: CompanionDirectorRun
   directorRuns?: CompanionDirectorRun[]
   agentThreads?: SubagentThread[]
+  coordinationBatches?: CoordinationBatch[]
   orchestratorRun?: OrchestratorRun
   orchestratorRuns?: OrchestratorRun[]
 }

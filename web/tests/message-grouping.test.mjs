@@ -5,7 +5,6 @@ import {
   messageGroupPosition,
   messageRenderKey,
   messagesShareAssistantGroup,
-  shouldShowAssistantThinkingFallback,
   shouldShowOrganizingReply,
 } from "../src/lib/message-grouping.ts"
 
@@ -101,36 +100,4 @@ test("only a genuinely empty streaming message needs the organizing placeholder"
   )
   assert.equal(shouldShowOrganizingReply({ ...empty, thinking: "正在分析" }), false)
   assert.equal(shouldShowOrganizingReply({ ...empty, toolCalls: [{ id: "tool" }] }), false)
-})
-
-test("does not flash a thinking avatar between message completion and session idle", () => {
-  assert.equal(
-    shouldShowAssistantThinkingFallback({
-      isThinking: true,
-      hasStreamingAssistantMessage: false,
-      hasAssistantReplyAfterLastUser: false,
-      hasDirectorRun: false,
-    }),
-    true,
-  )
-
-  assert.equal(
-    shouldShowAssistantThinkingFallback({
-      isThinking: true,
-      hasStreamingAssistantMessage: false,
-      hasAssistantReplyAfterLastUser: true,
-      hasDirectorRun: false,
-    }),
-    false,
-  )
-
-  assert.equal(
-    shouldShowAssistantThinkingFallback({
-      isThinking: false,
-      hasStreamingAssistantMessage: false,
-      hasAssistantReplyAfterLastUser: true,
-      hasDirectorRun: false,
-    }),
-    false,
-  )
 })

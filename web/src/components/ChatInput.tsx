@@ -553,9 +553,13 @@ export function ChatInput({
       "self-awake": () => onOpenSelfAwake?.(),
       skills: () => onOpenSkills?.(),
     }
-    Promise.resolve(actions[command.name]()).catch((error) => {
-      setSlashCommandError(error instanceof Error ? error.message : String(error))
-    })
+    window.dispatchEvent(new CustomEvent("monagent:slash-command-executed", {
+      detail: { command: `/${command.name}${args ? ` ${args}` : ""}` },
+    }))
+    Promise.resolve(actions[command.name]())
+      .catch((error) => {
+        setSlashCommandError(error instanceof Error ? error.message : String(error))
+      })
   }
 
   const handleSend = () => {

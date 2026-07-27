@@ -314,6 +314,7 @@ function mapMessage(message: RuntimeMessage, sessionIsRunning: boolean): Message
 
   return {
     id: message.id,
+    kind: message.kind,
     renderKey: message.renderKey ?? message.id,
     runID: message.runID,
     role: message.role,
@@ -331,6 +332,8 @@ function mapMessage(message: RuntimeMessage, sessionIsRunning: boolean): Message
     error: message.error
       ? presentRuntimeError(message.error, message.providerID, message.modelID)
       : undefined,
+    completionState: message.completionState,
+    coordinationBatchID: message.coordinationBatchID,
     speaker: message.speaker,
     orchestration: message.orchestration,
   }
@@ -387,6 +390,7 @@ function mapSession(session: RuntimeSession): Session {
   return {
     id: session.id,
     title: session.title || "新会话",
+    contextTokens: session.contextTokens,
     date: timeLabel(session.updatedAt),
     messages,
     mode: session.mode,
@@ -394,6 +398,7 @@ function mapSession(session: RuntimeSession): Session {
     directorRun: session.directorRun ?? inferredDirectorRun,
     directorRuns,
     agentThreads: session.agentThreads,
+    coordinationBatches: session.coordinationBatches,
     orchestratorRun: session.orchestratorRun,
     orchestratorRuns: session.orchestratorRuns,
   }

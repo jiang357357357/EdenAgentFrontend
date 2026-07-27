@@ -8,7 +8,8 @@ async function captureAndReply(request: PendingScreenCapture) {
   handledRequests.add(request.id);
   let replied = false;
   try {
-    const capture = await captureDesktopScreen();
+    const requestedSource = request.source === 'desktop' || request.source === 'game' ? request.source : 'auto';
+    const capture = await captureDesktopScreen(requestedSource);
     replied = await replyScreenCapture(request.id, capture);
   } catch (error) {
     replied = await replyScreenCapture(

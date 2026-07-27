@@ -780,7 +780,6 @@ export default function App() {
                   setActiveCharacterAction(undefined)
                 }}
                 onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")}
-                onOpenSettings={() => setActivePage("settings")}
               />
             ) : activePage === "settings" ? (
               <SettingsPage

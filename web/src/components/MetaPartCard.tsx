@@ -36,7 +36,7 @@ function toneClass(tone: MetaPartCardData['tone']) {
 }
 
 export function MetaPartCard({ part }: MetaPartCardProps) {
-  const [expanded, setExpanded] = useState(part.tone === 'warning' || part.type === 'subtask');
+  const [expanded, setExpanded] = useState(part.tone === 'warning');
 
   return (
     <div className="my-2 max-w-2xl overflow-hidden rounded-xl border border-border bg-card shadow-sm">

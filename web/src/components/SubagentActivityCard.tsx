@@ -1,6 +1,9 @@
-import { Bot, Check, ChevronDown, ChevronUp, Circle, LoaderCircle, OctagonX } from "lucide-react"
-import { useMemo, useState } from "react"
-import type { SubagentStatus, SubagentThread, SubagentThreadDetails } from "../types"
+import { Bot, Check, ChevronDown, Circle, LoaderCircle, OctagonX, Wrench } from "lucide-react"
+import { AnimatePresence, motion } from "motion/react"
+import { useEffect, useMemo, useState } from "react"
+import type { CoordinationBatch, SubagentStatus, SubagentThread, SubagentThreadDetails } from "../types"
+import { cn } from "../lib/utils"
+import { ThinkingBlock } from "./ThinkingBlock"
 
 const statusText: Record<SubagentStatus, string> = {
   created: "已创建",
@@ -27,16 +30,58 @@ function metadataText(thread: SubagentThread, key: string) {
   return typeof value === "string" && value.trim() ? value : undefined
 }
 
+type ChildTimelineItem =
+  | { id: string; type: "thinking"; content: string }
+  | { id: string; type: "tool"; name: string; status: "running" | "completed" | "error" }
+
+function childTimeline(events: Array<Record<string, unknown>>): ChildTimelineItem[] {
+  const toolEnds = new Map<string, Record<string, unknown>>()
+  for (const event of events) {
+    if (event.type === "tool_execution_end" && typeof event.toolCallId === "string") {
+      toolEnds.set(event.toolCallId, event)
+    }
+  }
+  const timeline: ChildTimelineItem[] = []
+  for (const [index, event] of events.entries()) {
+    if (event.type === "message_end") {
+      const message = event.message as Record<string, unknown> | undefined
+      if (message?.role !== "assistant" || !Array.isArray(message.content)) continue
+      for (const [contentIndex, part] of message.content.entries()) {
+        if (!part || typeof part !== "object") continue
+        const record = part as Record<string, unknown>
+        if (record.type === "thinking" && typeof record.thinking === "string" && record.thinking.trim()) {
+          timeline.push({ id: `thinking-${index}-${contentIndex}`, type: "thinking", content: record.thinking })
+        }
+      }
+    }
+    if (event.type === "tool_execution_start") {
+      const callID = typeof event.toolCallId === "string" ? event.toolCallId : `tool-${index}`
+      const end = toolEnds.get(callID)
+      timeline.push({
+        id: callID,
+        type: "tool",
+        name: typeof event.toolName === "string" ? event.toolName : "tool",
+        status: end ? (end.isError === true ? "error" : "completed") : "running",
+      })
+    }
+  }
+  return timeline.slice(-16)
+}
+
 export function SubagentActivityCard({
   threads,
+  batches = [],
   onFollowup,
   onInspect,
   onInterrupt,
+  embedded = false,
 }: {
   threads: SubagentThread[]
+  batches?: CoordinationBatch[]
   onFollowup?: (target: string, message: string) => Promise<unknown>
   onInspect?: (target: string) => Promise<SubagentThreadDetails>
   onInterrupt?: (target: string) => Promise<unknown>
+  embedded?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const [interrupting, setInterrupting] = useState<string>()
@@ -52,13 +97,57 @@ export function SubagentActivityCard({
     () => [...threads].sort((left, right) => left.createdAt - right.createdAt),
     [threads],
   )
+  useEffect(() => {
+    if (!embedded || !onInspect || !ordered[0]) return
+    let active = true
+    let loading = false
+    const target = ordered[0].agentPath
+    const load = async () => {
+      if (loading) return
+      loading = true
+      try {
+        const value = await onInspect(target)
+        if (active) setDetails(value)
+      } catch (error) {
+        if (active) setDetailError(error instanceof Error ? error.message : "读取子智能体详情失败。")
+      } finally {
+        loading = false
+        if (active) setInspecting(undefined)
+      }
+    }
+    setInspecting(target)
+    void load()
+    const isActive = ["created", "queued", "running", "waiting"].includes(ordered[0].status)
+    const timer = isActive ? window.setInterval(() => { void load() }, 2_000) : undefined
+    return () => {
+      active = false
+      if (timer !== undefined) window.clearInterval(timer)
+    }
+  }, [embedded, onInspect, ordered[0]?.agentPath, ordered[0]?.status, ordered[0]?.updatedAt])
   if (!ordered.length) return null
   const running = ordered.filter((item) => ["created", "queued", "running", "waiting"].includes(item.status)).length
   const failed = ordered.filter((item) => item.status === "failed").length
   const completed = ordered.filter((item) => item.status === "completed").length
+  const activeBatch = [...batches]
+    .reverse()
+    .find((item) => !["completed", "cancelled"].includes(item.status))
+  const activeBatchThreads = activeBatch
+    ? ordered.filter((item) => item.metadata?.coordinationBatchID === activeBatch.batchID)
+    : []
+  const requiredBatchThreads = activeBatchThreads.filter((item) => item.metadata?.requiredForFinal === true)
+  const requiredTotal = Math.max(activeBatch?.requiredTotal ?? 0, requiredBatchThreads.length)
+  const requiredTerminal = Math.max(
+    activeBatch?.requiredTerminal ?? 0,
+    requiredBatchThreads.filter((item) => ["completed", "failed", "interrupted", "cancelled"].includes(item.status)).length,
+  )
 
   return (
-    <section className="mx-auto my-[2.2vh] w-[86%] overflow-hidden rounded-[1.4vh] border border-border bg-card/95 shadow-sm">
+    <section className={cn(
+      "overflow-hidden border-border bg-card/95",
+      embedded
+        ? "border-t bg-violet-50/10"
+        : "mx-auto my-[2.2vh] w-[86%] rounded-[1.4vh] border shadow-sm",
+    )}>
       <button
         type="button"
         className="flex w-full items-center gap-[0.9vw] px-[1.2vw] py-[1.35vh] text-left"
@@ -68,16 +157,35 @@ export function SubagentActivityCard({
         <span className="flex h-[3.2vh] w-[3.2vh] items-center justify-center rounded-full bg-accent/10 text-accent">
           <Bot className="h-[1.8vh] w-[1.8vh]" />
         </span>
-        <span className="font-serif text-[1.85vh] text-text">后台子智能体</span>
+        <span className={cn("text-text", embedded ? "text-[1.42vh] font-medium" : "font-serif text-[1.85vh]")}>子智能体</span>
         <span className="text-[1.55vh] text-text-muted">
           {running ? `${running} 个运行中` : `${completed} 个已完成`}{failed ? ` · ${failed} 个失败` : ""}
         </span>
+        {activeBatch ? (
+          <span className="rounded-full bg-amber-100 px-[0.55vw] py-[0.15vh] text-[1.3vh] text-amber-700">
+            {activeBatch.status === "aggregating"
+                ? "正在整合"
+              : activeBatch.status === "aggregation_failed"
+                ? "整合失败"
+                : requiredTotal > 0
+                  ? `必要结果 ${requiredTerminal}/${requiredTotal}`
+                  : "正在登记任务"}
+          </span>
+        ) : null}
         <span className="ml-auto text-text-muted">
-          {expanded ? <ChevronUp className="h-[1.8vh] w-[1.8vh]" /> : <ChevronDown className="h-[1.8vh] w-[1.8vh]" />}
+          <ChevronDown className={cn("h-[1.8vh] w-[1.8vh] transition-transform duration-200", expanded && "rotate-180")} />
         </span>
       </button>
-      {expanded ? (
-        <div className="border-t border-border px-[1.2vw] py-[0.8vh]">
+      <AnimatePresence initial={false}>
+        {expanded ? (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-border px-[1.2vw] py-[0.8vh]">
           {ordered.map((thread) => (
             <div key={thread.id} className="flex gap-[0.8vw] border-b border-border/60 py-[1.15vh] last:border-b-0">
               <span className="pt-[0.35vh]"><StatusIcon status={thread.status} /></span>
@@ -90,8 +198,13 @@ export function SubagentActivityCard({
                       {metadataText(thread, "sandboxMode")}
                     </span>
                   ) : null}
+                  {thread.metadata?.requiredForFinal === true ? (
+                    <span className="rounded-full bg-amber-100 px-[0.45vw] py-[0.1vh] text-[1.25vh] text-amber-700">
+                      最终回复所需
+                    </span>
+                  ) : null}
                   <span className="ml-auto text-[1.45vh] text-text-muted">{statusText[thread.status]}</span>
-                  {onInspect ? (
+                  {onInspect && !embedded ? (
                     <button
                       type="button"
                       className="rounded-md border border-border px-[0.55vw] py-[0.2vh] text-[1.35vh] text-text-muted hover:border-accent/50 hover:text-accent disabled:cursor-wait disabled:opacity-50"
@@ -226,11 +339,22 @@ export function SubagentActivityCard({
                       </p>
                     ) : null}
                     {details.events.length ? (
-                      <div className="mt-[0.65vh] space-y-[0.3vh] font-mono text-[1.25vh] text-text-muted">
-                        {details.events.slice(-8).map((item, index) => (
-                          <div key={String(item.sequenceID ?? index)} className="flex gap-[0.7vw]">
-                            <span className="w-[5.5vw] shrink-0 truncate">{String(item.type ?? "event")}</span>
-                            <span className="truncate">{String(item.toolName ?? item.status ?? item.reason ?? "")}</span>
+                      <div className="mt-[0.65vh] space-y-[0.35vh]">
+                        {childTimeline(details.events).map((item) => item.type === "thinking" ? (
+                          <ThinkingBlock
+                            key={item.id}
+                            content={item.content}
+                            state="done"
+                            cacheKey={`${thread.id}:${item.id}`}
+                          />
+                        ) : (
+                          <div key={item.id} className="flex items-center gap-[0.8vh] rounded-[0.85vh] border border-border bg-card px-[1vh] py-[0.7vh] text-[1.28vh]">
+                            <Wrench className={cn("h-[1.5vh] w-[1.5vh] text-violet-500", item.status === "running" && "animate-pulse")} />
+                            <span className="text-violet-600">工具:</span>
+                            <span className="font-medium text-violet-700">{item.name}</span>
+                            <span className={cn("ml-auto", item.status === "error" ? "text-red-500" : "text-text-muted")}>
+                              {item.status === "running" ? "运行中" : item.status === "error" ? "失败" : "完成"}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -243,8 +367,10 @@ export function SubagentActivityCard({
           {detailError ? <p className="py-[0.7vh] text-[1.4vh] text-red-600">{detailError}</p> : null}
           {followupError ? <p className="py-[0.7vh] text-[1.4vh] text-red-600">{followupError}</p> : null}
           {interruptError ? <p className="py-[0.7vh] text-[1.4vh] text-red-600">{interruptError}</p> : null}
-        </div>
-      ) : null}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </section>
   )
 }

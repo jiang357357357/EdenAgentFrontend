@@ -1,4 +1,4 @@
-import { Plus, Menu, LogOut } from 'lucide-react';
+import { Menu, LogOut } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Session } from '../types';
 import type { AuthUser } from '../lib/auth';
@@ -7,7 +7,6 @@ interface SidebarProps {
   sessions: Session[];
   activeId: string;
   onSelect: (id: string) => void;
-  onNew: () => void;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   currentUser?: AuthUser | null;
@@ -18,7 +17,6 @@ export function Sidebar({
   sessions, 
   activeId, 
   onSelect, 
-  onNew, 
   isOpen, 
   setIsOpen,
   currentUser,
@@ -48,14 +46,6 @@ export function Sidebar({
                 MonAgent
             </div>
           <div className="flex items-center gap-[0.45vw]">
-            <button
-              onClick={onNew}
-              className="rounded-[0.9vh] p-[1.25vh] text-accent transition-colors hover:bg-card"
-              aria-label="新会话"
-              title="新会话"
-            >
-              <Plus className="h-[3vh] w-[3vh]" />
-            </button>
             <button
               onClick={() => setIsOpen(false)}
               className="rounded-[0.9vh] p-[1.25vh] text-text-muted transition-colors hover:bg-card"

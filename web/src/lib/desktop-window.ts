@@ -64,7 +64,10 @@ export interface DesktopScreenCapture {
   height: number;
   displayId: string;
   sourceName?: string;
+  source: 'desktop' | 'game';
 }
+
+export type DesktopScreenCaptureSource = 'auto' | 'desktop' | 'game';
 
 export interface DesktopActivityFacts {
   surface?: string;
@@ -242,10 +245,10 @@ export async function getDesktopEnvironmentPreview() {
   }
 }
 
-export async function captureDesktopScreen() {
+export async function captureDesktopScreen(source: DesktopScreenCaptureSource = 'auto') {
   const bridge = getDesktopBridge();
   if (!bridge) throw new Error('当前不是 MonAgent 桌面客户端，无法截取屏幕');
-  return await bridge.invoke<DesktopScreenCapture>('capture_screen');
+  return await bridge.invoke<DesktopScreenCapture>('capture_screen', { source });
 }
 
 export async function updateDesktopActivityFacts(facts: DesktopActivityFacts) {

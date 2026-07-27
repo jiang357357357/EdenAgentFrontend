@@ -40,20 +40,6 @@ export function shouldShowOrganizingReply(message: MessageData) {
   return true
 }
 
-export function shouldShowAssistantThinkingFallback(input: {
-  isThinking: boolean
-  hasStreamingAssistantMessage: boolean
-  hasAssistantReplyAfterLastUser: boolean
-  hasDirectorRun: boolean
-}) {
-  return (
-    input.isThinking &&
-    !input.hasStreamingAssistantMessage &&
-    !input.hasAssistantReplyAfterLastUser &&
-    !input.hasDirectorRun
-  )
-}
-
 export function messageGroupPosition(messages: MessageData[], index: number): MessageGroupPosition {
   const message = messages[index]
   if (!message || message.role !== "assistant") return "single"

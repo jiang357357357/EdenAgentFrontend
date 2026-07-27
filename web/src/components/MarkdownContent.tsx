@@ -33,6 +33,12 @@ export function MarkdownContent({
         ),
         p: ({ children }) => <p className={paragraphClassName}>{children}</p>,
         em: ({ children }) => <em className="italic text-accent/85">{children}</em>,
+        hr: () => (
+          <hr
+            className="my-[2.6vh] h-[3px] border-0 bg-gradient-to-r from-black/20 via-black/65 to-black/20"
+            style={{ clipPath: "polygon(0 38%, 38% 30%, 50% 0, 62% 30%, 100% 38%, 100% 62%, 62% 70%, 50% 100%, 38% 70%, 0 62%)" }}
+          />
+        ),
         table: ({ children }) => (
           <div className="my-[1.6vh] w-full overflow-x-auto rounded-[1.1vh] border border-border">
             <table className="m-0 w-full min-w-max border-collapse text-left text-[0.96em]">{children}</table>

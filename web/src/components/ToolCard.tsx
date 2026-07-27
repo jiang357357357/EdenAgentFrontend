@@ -1,11 +1,41 @@
 import { useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { AlertCircle, ChevronRight, Wrench } from "lucide-react"
-import type { ToolCall } from "../types"
+import type { CoordinationBatch, SubagentThread, SubagentThreadDetails, ToolCall } from "../types"
 import { cn } from "../lib/utils"
+import { SubagentActivityCard } from "./SubagentActivityCard"
 
 interface ToolCardProps {
   tool: ToolCall
+  subagentThreads?: SubagentThread[]
+  coordinationBatches?: CoordinationBatch[]
+  onFollowupSubagent?: (target: string, message: string) => Promise<unknown>
+  onInspectSubagent?: (target: string) => Promise<SubagentThreadDetails>
+  onInterruptSubagent?: (target: string) => Promise<unknown>
+}
+
+function jsonRecord(value?: string): Record<string, unknown> | undefined {
+  if (!value) return undefined
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function subagentsForTool(tool: ToolCall, threads: SubagentThread[]) {
+  if (tool.name !== "spawn_agent") return []
+  const input = jsonRecord(tool.input)
+  const output = jsonRecord(tool.output)
+  const agentID = typeof output?.id === "string" ? output.id : undefined
+  const agentPath = typeof output?.agentPath === "string" ? output.agentPath : undefined
+  const taskName = typeof input?.task_name === "string" ? input.task_name : undefined
+  return threads.filter((thread) =>
+    (agentID && thread.id === agentID)
+    || (agentPath && thread.agentPath === agentPath)
+    || (taskName && thread.taskName === taskName),
+  )
 }
 
 function statusLabel(status: ToolCall["status"]) {
@@ -14,9 +44,23 @@ function statusLabel(status: ToolCall["status"]) {
   return "完成"
 }
 
-export function ToolCard({ tool }: ToolCardProps) {
+export function ToolCard({
+  tool,
+  subagentThreads = [],
+  coordinationBatches = [],
+  onFollowupSubagent,
+  onInspectSubagent,
+  onInterruptSubagent,
+}: ToolCardProps) {
   const [expanded, setExpanded] = useState(false)
   const preview = tool.input.replace(/\s+/g, " ").trim()
+  const linkedSubagents = subagentsForTool(tool, subagentThreads)
+  const linkedBatchIDs = new Set(
+    linkedSubagents
+      .map((thread) => thread.metadata?.coordinationBatchID)
+      .filter((value): value is string => typeof value === "string"),
+  )
+  const linkedBatches = coordinationBatches.filter((batch) => linkedBatchIDs.has(batch.batchID))
 
   return (
     <div className="my-[0.65vh] w-full min-w-0 overflow-hidden rounded-[1.1vh] border border-border bg-card shadow-sm">
@@ -83,6 +127,16 @@ export function ToolCard({ tool }: ToolCardProps) {
           </motion.div>
         ) : null}
       </AnimatePresence>
+      {linkedSubagents.length ? (
+        <SubagentActivityCard
+          threads={linkedSubagents}
+          batches={linkedBatches}
+          onFollowup={onFollowupSubagent}
+          onInspect={onInspectSubagent}
+          onInterrupt={onInterruptSubagent}
+          embedded
+        />
+      ) : null}
     </div>
   )
 }

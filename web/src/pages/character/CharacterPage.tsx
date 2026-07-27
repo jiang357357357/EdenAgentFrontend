@@ -178,7 +178,8 @@ export function CharacterPage({
             />
           ) : <>
             {(activePendingPermissions.length > 0 || activePendingQuestions.length > 0) && (
-              <div className="mb-3 grid gap-3">
+              <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]">
+                <div className="grid max-h-[80vh] w-full max-w-2xl gap-3 overflow-y-auto">
                 {activePendingPermissions.map((request) => (
                   <PermissionRequestCard key={request.id} request={request} onReply={onPermissionReply} tone="overlay" />
                 ))}
@@ -191,6 +192,7 @@ export function CharacterPage({
                     tone="overlay"
                   />
                 ))}
+                </div>
               </div>
             )}
             <ChatInput

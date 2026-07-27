@@ -1,4 +1,4 @@
-import type { MessageData, MessageSegment, OrchestratorRun } from "../types"
+import type { CoordinationBatch, MessageData, MessageSegment, SubagentThread, SubagentThreadDetails } from "../types"
 import { ToolCard } from "./ToolCard"
 import { ThinkingBlock } from "./ThinkingBlock"
 import { MetaPartCard } from "./MetaPartCard"
@@ -13,7 +13,6 @@ import type { PetTTSMode } from "../lib/desktop-window"
 import { textForTTS } from "../lib/tts-text"
 import type { MessageError } from "../types"
 import { shouldShowOrganizingReply, type MessageGroupPosition } from "../lib/message-grouping"
-import { CharacterUnderstandingLine } from "./CharacterUnderstandingLine"
 
 interface MessageBubbleProps {
   message: MessageData
@@ -30,7 +29,11 @@ interface MessageBubbleProps {
   onToggleSpeech?: (segmentId: string, text: string, messageId: string) => void
   groupPosition?: MessageGroupPosition
   allowOrganizingReply?: boolean
-  understandingRun?: OrchestratorRun
+  subagentThreads?: SubagentThread[]
+  coordinationBatches?: CoordinationBatch[]
+  onFollowupSubagent?: (target: string, message: string) => Promise<unknown>
+  onInspectSubagent?: (target: string) => Promise<SubagentThreadDetails>
+  onInterruptSubagent?: (target: string) => Promise<unknown>
 }
 
 interface TextSegmentProps {
@@ -174,7 +177,11 @@ export function MessageBubble({
   onToggleSpeech,
   groupPosition = "single",
   allowOrganizingReply = true,
-  understandingRun,
+  subagentThreads,
+  coordinationBatches,
+  onFollowupSubagent,
+  onInspectSubagent,
+  onInterruptSubagent,
 }: MessageBubbleProps) {
   const isUser = message.role === "user"
   const messageAssistantName = message.speaker?.assistantName || message.speaker?.characterName || assistantName
@@ -228,10 +235,13 @@ export function MessageBubble({
               {isUser ? "你" : messageAssistantName}
             </span>
             <span className="text-[1.45vh] text-text-muted/50">{message.timestamp}</span>
+            {!isUser && message.completionState === "provisional" ? (
+              <span className="rounded-full bg-amber-100 px-[0.55vh] py-[0.1vh] text-[1.25vh] font-medium text-amber-700">
+                阶段性回复 · 后台处理中
+              </span>
+            ) : null}
           </div>
         ) : null}
-
-        {!isUser ? <CharacterUnderstandingLine run={understandingRun} /> : null}
 
         {/* Attachments (Images) */}
         {!useOrderedAssistantSegments && message.images && message.images.length > 0 && (
@@ -295,7 +305,15 @@ export function MessageBubble({
                 )
               }
               if (segment.type === "tool") {
-                return <ToolCard key={segment.id} tool={segment.tool} />
+                return <ToolCard
+                  key={segment.id}
+                  tool={segment.tool}
+                  subagentThreads={subagentThreads}
+                  coordinationBatches={coordinationBatches}
+                  onFollowupSubagent={onFollowupSubagent}
+                  onInspectSubagent={onInspectSubagent}
+                  onInterruptSubagent={onInterruptSubagent}
+                />
               }
               if (segment.type === "meta") {
                 return <MetaPartCard key={segment.id} part={segment.part} />
@@ -345,7 +363,15 @@ export function MessageBubble({
         {!useOrderedAssistantSegments &&
           !isUser &&
           message.toolCalls &&
-          message.toolCalls.map((tool) => <ToolCard key={tool.id} tool={tool} />)}
+          message.toolCalls.map((tool) => <ToolCard
+            key={tool.id}
+            tool={tool}
+            subagentThreads={subagentThreads}
+            coordinationBatches={coordinationBatches}
+            onFollowupSubagent={onFollowupSubagent}
+            onInspectSubagent={onInspectSubagent}
+            onInterruptSubagent={onInterruptSubagent}
+          />)}
 
         {!useOrderedAssistantSegments &&
           !isUser &&
@@ -378,7 +404,7 @@ export function MessageBubble({
 
         {!isUser && message.error ? <MessageErrorCard error={message.error} /> : null}
 
-        {allowOrganizingReply && !understandingRun && shouldShowOrganizingReply(message) && (
+        {allowOrganizingReply && shouldShowOrganizingReply(message) && (
           <div className="px-[0.45vh] text-[1.65vh] text-text-muted">正在组织回复...</div>
         )}
       </div>
