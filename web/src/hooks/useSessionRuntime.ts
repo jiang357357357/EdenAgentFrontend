@@ -45,7 +45,7 @@ interface UseSessionRuntimeOptions {
 
 export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOptions = {}) {
   const [state, dispatch] = useReducer(runtimeReducer, initialRuntimeState);
-  const [permissionMode, setPermissionModeState] = useState<PermissionMode>('full_access');
+  const [permissionMode, setPermissionModeState] = useState<PermissionMode>('restricted');
   const activeSessionIdRef = useRef<string | undefined>(state.activeSessionId);
   const hasOpenedStreamRef = useRef(false);
   const eventErrorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -209,7 +209,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         }
         if (event.type === 'permission.mode') {
           const nextPermissionMode = event.properties.mode;
-          if (nextPermissionMode === 'ask' || nextPermissionMode === 'full_access') {
+          if (nextPermissionMode === 'restricted' || nextPermissionMode === 'full_access' || nextPermissionMode === 'takeover') {
             setPermissionModeState(nextPermissionMode);
           }
         }

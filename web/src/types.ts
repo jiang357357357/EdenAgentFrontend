@@ -1,7 +1,7 @@
 export type Role = "user" | "assistant"
 export type SessionStatus = "idle" | "busy" | "retry"
 export type ConnectionState = "connecting" | "connected" | "disconnected"
-export type PermissionMode = "ask" | "full_access"
+export type PermissionMode = "restricted" | "full_access" | "takeover"
 
 export interface ToolCall {
   id: string

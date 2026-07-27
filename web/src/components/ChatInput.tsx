@@ -85,8 +85,9 @@ interface ChatInputProps {
 }
 
 const permissionOptions: Array<{ mode: PermissionMode; label: string; description: string }> = [
-  { mode: "full_access", label: "完全访问", description: "自动允许工具权限" },
-  { mode: "ask", label: "询问授权", description: "写入、命令等操作前确认" },
+  { mode: "restricted", label: "受限", description: "写入、命令等操作前确认" },
+  { mode: "full_access", label: "完全访问", description: "自动允许工具，命令执行前确认" },
+  { mode: "takeover", label: "全面接管", description: "自动允许工具及工作区外写入" },
 ]
 
 function SendButton({
@@ -294,7 +295,7 @@ export function ChatInput({
   overlayHeight,
   overlayFontScale = 100,
   standaloneOverlay = false,
-  permissionMode = "full_access",
+  permissionMode = "restricted",
   onPermissionModeChange,
   voiceInputEnabled = false,
   sttConfigId,
