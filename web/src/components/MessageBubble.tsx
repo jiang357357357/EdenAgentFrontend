@@ -331,6 +331,20 @@ export function MessageBubble({
                   />
                 )
               }
+              if (segment.type === "sticker") {
+                const src = resolveMonAgentUrl(segment.url)
+                return (
+                  <img
+                    key={segment.id}
+                    src={src}
+                    alt={segment.alt || segment.name}
+                    title={segment.name}
+                    onClick={() => onPreviewImage?.(src, segment.alt || segment.name)}
+                    className="mb-[0.85vh] h-auto max-h-[22vh] w-auto max-w-[22vh] cursor-pointer object-contain drop-shadow-sm transition-transform hover:scale-[1.02]"
+                    draggable={false}
+                  />
+                )
+              }
               return null
             })
           : null}

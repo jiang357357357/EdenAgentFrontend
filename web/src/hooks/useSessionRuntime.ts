@@ -28,12 +28,14 @@ import {
   hydratePendingQuestions,
   hydrateSessionList,
   hydrateSessionMessages,
+  prependSessionMessages,
   initialRuntimeState,
   resetRuntime,
   runtimeReducer,
   setActiveSession,
   setConnectionState,
   setConnectionError,
+  setLoadingOlderMessages,
 } from '../lib/session-reducer';
 import { selectActiveSession, selectPendingPermissions, selectPendingQuestions, selectSessions, selectSessionStatus } from '../lib/session-selectors';
 import type { PermissionMode, PromptAttachment } from '../types';
@@ -50,6 +52,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const hasOpenedStreamRef = useRef(false);
   const eventErrorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const sendingSessionIdsRef = useRef(new Set<string>());
+  const hydratingSessionIdsRef = useRef(new Set<string>());
   const onEventRef = useRef(options.onEvent);
 
   const isRuntimeReady = useCallback(() => enabled && Boolean(getStoredToken()), [enabled]);
@@ -87,8 +90,8 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
   const refreshSessionMessages = useCallback(async (sessionID?: string) => {
     if (!sessionID || !isRuntimeReady()) return;
-    const messages = await listMessagesRaw(sessionID);
-    dispatch(hydrateSessionMessages(sessionID, messages));
+    const page = await listMessagesRaw(sessionID);
+    dispatch(hydrateSessionMessages(sessionID, page));
   }, [isRuntimeReady]);
 
   const refreshBlockers = useCallback(async () => {
@@ -130,23 +133,29 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     };
   }, [isRuntimeReady, refreshBlockers, refreshSessionMessages, refreshSessions]);
 
+  const activeSessionHydrated = state.activeSessionId
+    ? Boolean(state.sessions[state.activeSessionId]?.hydrated)
+    : false;
+
   useEffect(() => {
     if (!isRuntimeReady()) return;
     const sessionID = state.activeSessionId;
     if (!sessionID) return;
-    const session = state.sessions[sessionID];
-    if (session?.hydrated) return;
+    if (activeSessionHydrated || hydratingSessionIdsRef.current.has(sessionID)) return;
 
     let cancelled = false;
+    hydratingSessionIdsRef.current.add(sessionID);
 
     async function hydrate() {
       try {
-        const messages = await listMessagesRaw(sessionID);
+        const page = await listMessagesRaw(sessionID);
         if (cancelled) return;
-        dispatch(hydrateSessionMessages(sessionID, messages));
+        dispatch(hydrateSessionMessages(sessionID, page));
       } catch (error) {
         if (cancelled) return;
         dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
+      } finally {
+        hydratingSessionIdsRef.current.delete(sessionID);
       }
     }
 
@@ -154,7 +163,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     return () => {
       cancelled = true;
     };
-  }, [isRuntimeReady, state.activeSessionId, state.sessions]);
+  }, [activeSessionHydrated, isRuntimeReady, state.activeSessionId]);
 
   useEffect(() => {
     if (!isRuntimeReady()) return;
@@ -362,6 +371,21 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     setPermissionModeState(response.mode);
   }, []);
 
+  const loadOlderMessages = useCallback(async () => {
+    const sessionID = activeSessionIdRef.current;
+    if (!sessionID || !isRuntimeReady()) return;
+    const session = state.sessions[sessionID];
+    if (!session?.hasMoreMessages || !session.messageCursor || session.loadingOlderMessages) return;
+    dispatch(setLoadingOlderMessages(sessionID, true));
+    try {
+      const page = await listMessagesRaw(sessionID, session.messageCursor);
+      dispatch(prependSessionMessages(sessionID, page));
+    } catch (error) {
+      dispatch(setLoadingOlderMessages(sessionID, false));
+      throw error;
+    }
+  }, [isRuntimeReady, state.sessions]);
+
   const answerQuestion = useCallback(async (requestID: string, answers: string[][]) => {
     await replyQuestion(requestID, answers);
   }, []);
@@ -401,6 +425,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     sendMessage,
     sessions,
     updatePermissionMode,
+    loadOlderMessages,
     updateSessionParticipants,
   };
 }

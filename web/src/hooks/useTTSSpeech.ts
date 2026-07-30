@@ -28,6 +28,7 @@ interface UseTTSSpeechOptions {
 export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }: UseTTSSpeechOptions) {
   const [clips, setClips] = useState<Record<string, SpeechClip>>({})
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null)
+  const [autoPlaybackPending, setAutoPlaybackPending] = useState(isThinking)
   const [paused, setPaused] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const audioSegmentIdRef = useRef<string | null>(null)
@@ -206,19 +207,41 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
     if (mode === "none") {
       stop(true, true)
       runActiveRef.current = isThinking
+      setAutoPlaybackPending(isThinking)
       return
     }
     const runWasActive = runActiveRef.current
-    if (isThinking) runActiveRef.current = true
+    if (isThinking) {
+      runActiveRef.current = true
+      setAutoPlaybackPending(true)
+    }
+    const queued: Array<Promise<unknown>> = []
     if (isThinking || runWasActive) {
       for (const segment of segments) {
         if (synthesizedIdsRef.current.has(segment.id) || !textForTTS(segment.text, mode)) continue
         synthesizedIdsRef.current.add(segment.id)
-        void synthesize(segment.id, segment.messageId, segment.text, true)
+        const result = synthesize(segment.id, segment.messageId, segment.text, true)
+        if (result) queued.push(result)
       }
     }
-    if (!isThinking && runWasActive) runActiveRef.current = false
+    if (!isThinking && runWasActive) {
+      runActiveRef.current = false
+      const generation = generationRef.current
+      void Promise.allSettled(queued).then(async () => {
+        await queueRef.current.catch(() => undefined)
+        if (generation === generationRef.current) setAutoPlaybackPending(false)
+      })
+    } else if (!isThinking && !runWasActive) {
+      setAutoPlaybackPending(false)
+    }
   }, [configId, isThinking, mode, segments, sessionId])
 
-  return { clips, activeSegmentId, paused, toggle, stop }
+  return {
+    clips,
+    activeSegmentId,
+    paused,
+    toggle,
+    stop,
+    autoPlaybackPending: autoPlaybackPending || (Boolean(activeSegmentId) && !paused),
+  }
 }

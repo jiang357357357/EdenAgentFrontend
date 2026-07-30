@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useId } from "react"
 import {
   ArrowUp,
-  Check,
   ChevronDown,
   ChevronLeft,
   Circle,
@@ -12,6 +11,8 @@ import {
   Mic,
   MessageSquare,
   Move,
+  Pause,
+  Play,
   Plus,
   ShieldAlert,
   Square,
@@ -74,6 +75,7 @@ interface ChatInputProps {
   onPermissionModeChange?: (mode: PermissionMode) => Promise<void>
   voiceInputEnabled?: boolean
   sttConfigId?: number | null
+  halfDuplexOutputActive?: boolean
   contextTokenEstimate?: number
   onCompact?: (instructions?: string) => void | Promise<void>
   onAbort?: () => void | Promise<void>
@@ -299,6 +301,7 @@ export function ChatInput({
   onPermissionModeChange,
   voiceInputEnabled = false,
   sttConfigId,
+  halfDuplexOutputActive = false,
   contextTokenEstimate = 0,
   onCompact,
   onAbort,
@@ -313,6 +316,7 @@ export function ChatInput({
   const [draggingFiles, setDraggingFiles] = useState(false)
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false)
   const [permissionSubmitting, setPermissionSubmitting] = useState<PermissionMode | null>(null)
+  const [permissionError, setPermissionError] = useState("")
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
   const [modelConfig, setModelConfig] = useState<RuntimeModelConfig | null>(null)
   const [modelLoading, setModelLoading] = useState(false)
@@ -322,6 +326,9 @@ export function ChatInput({
   const [voiceLevel, setVoiceLevel] = useState(0)
   const [voiceError, setVoiceError] = useState("")
   const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0)
+  const [halfDuplexActive, setHalfDuplexActive] = useState(false)
+  const [halfDuplexPaused, setHalfDuplexPaused] = useState(false)
+  const [halfDuplexWaiting, setHalfDuplexWaiting] = useState(false)
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0)
   const [slashPointerActive, setSlashPointerActive] = useState(false)
   const [slashCursor, setSlashCursor] = useState(0)
@@ -337,6 +344,8 @@ export function ChatInput({
   const voiceOriginalInputRef = useRef("")
   const voiceStartedAtRef = useRef<number | null>(null)
   const voiceServiceRef = useRef<RealtimeSTTService | null>(null)
+  const halfDuplexActiveRef = useRef(false)
+  const halfDuplexResponseObservedRef = useRef(false)
   const outputToolsKey = outputTools.map((tool) => `${tool.id}:${tool.status}:${tool.duration ?? ""}`).join("|")
   const fallbackOutputSegments: DialogSegment[] = [
     ...(outputThinking ? [{ speaker: assistantName, thinking: outputThinking }] : []),
@@ -358,6 +367,7 @@ export function ChatInput({
   const currentOutput = outputSegments[Math.min(outputIndex, Math.max(outputSegments.length - 1, 0))]
   const overlayFontRatio = Math.max(70, Math.min(140, overlayFontScale)) / 100
   const voiceBusy = voiceStatus !== "idle"
+  const voicePanelVisible = !overlay && (halfDuplexActive || voiceBusy)
   const canSend = Boolean(input.trim() || attachments.length > 0) && !voiceBusy
   const activePermission = permissionOptions.find((option) => option.mode === permissionMode) ?? permissionOptions[0]
   const currentModel = modelConfig?.current ?? modelConfig?.options.find((option) => option.selected) ?? null
@@ -490,6 +500,9 @@ export function ChatInput({
 
   useEffect(() => {
     if (voiceInputEnabled) return
+    halfDuplexActiveRef.current = false
+    setHalfDuplexActive(false)
+    setHalfDuplexWaiting(false)
     void voiceServiceRef.current?.cancel()
     voiceServiceRef.current = null
     setVoiceError("")
@@ -605,9 +618,15 @@ export function ChatInput({
     setSlashCommandError("")
   }
 
-  const finishVoiceInput = async () => {
+  const finishVoiceInput = async (keepHalfDuplex = false) => {
     const service = voiceServiceRef.current
     if (!service) return
+    if (!keepHalfDuplex) {
+      halfDuplexActiveRef.current = false
+      setHalfDuplexActive(false)
+      setHalfDuplexPaused(false)
+      setHalfDuplexWaiting(false)
+    }
     try {
       await service.finish()
     } catch (error) {
@@ -619,6 +638,10 @@ export function ChatInput({
   }
 
   const cancelVoiceInput = async () => {
+    halfDuplexActiveRef.current = false
+    setHalfDuplexActive(false)
+    setHalfDuplexPaused(false)
+    setHalfDuplexWaiting(false)
     const service = voiceServiceRef.current
     voiceServiceRef.current = null
     voiceStartedAtRef.current = null
@@ -628,14 +651,35 @@ export function ChatInput({
     await service?.cancel()
   }
 
-  const toggleVoiceInput = async () => {
-    if (!voiceInputEnabled || disabled || voiceStatus === "connecting" || voiceStatus === "transcribing") return
-    if (voiceStatus === "recording") {
-      await finishVoiceInput()
-      return
+  const pauseVoiceSession = async () => {
+    setHalfDuplexPaused(true)
+    const service = voiceServiceRef.current
+    voiceServiceRef.current = null
+    voiceStartedAtRef.current = null
+    setVoiceElapsedSeconds(0)
+    await service?.cancel()
+  }
+
+  const resumeVoiceSession = async () => {
+    setHalfDuplexPaused(false)
+    if (!halfDuplexOutputActive && !disabled && voiceStatus === "idle" && !voiceServiceRef.current) {
+      await startVoiceInput()
     }
+  }
+
+  const startVoiceInput = async () => {
+    if (
+      !voiceInputEnabled
+      || disabled
+      || halfDuplexOutputActive
+      || voiceStatus !== "idle"
+      || voiceServiceRef.current
+    ) return
     if (typeof sttConfigId !== "number") {
       setVoiceError("当前角色尚未关联语音识别服务")
+      halfDuplexActiveRef.current = false
+      setHalfDuplexActive(false)
+      setHalfDuplexPaused(false)
       return
     }
     setVoiceError("")
@@ -654,12 +698,20 @@ export function ChatInput({
         voiceStartedAtRef.current = null
         const completedText = `${voicePrefixRef.current}${text}`.trim()
         setInput(completedText)
-        if (autoSend && completedText) {
+        if ((autoSend || halfDuplexActiveRef.current) && completedText) {
+          halfDuplexResponseObservedRef.current = false
+          setHalfDuplexWaiting(true)
           setInput("")
           onSend(completedText, [])
         }
       },
-      onError: (error) => setVoiceError(error.message),
+      onError: (error) => {
+        halfDuplexActiveRef.current = false
+        setHalfDuplexActive(false)
+        setHalfDuplexPaused(false)
+        setHalfDuplexWaiting(false)
+        setVoiceError(error.message)
+      },
     })
     voiceServiceRef.current = service
     try {
@@ -670,6 +722,41 @@ export function ChatInput({
     }
   }
 
+  const toggleVoiceInput = async () => {
+    if (!voiceInputEnabled || disabled || voiceStatus === "connecting" || voiceStatus === "transcribing") return
+    if (voiceStatus === "recording") {
+      await finishVoiceInput()
+      return
+    }
+    halfDuplexActiveRef.current = true
+    setHalfDuplexActive(true)
+    setHalfDuplexPaused(false)
+    await startVoiceInput()
+  }
+
+  useEffect(() => {
+    if (!halfDuplexActive || halfDuplexPaused) return
+    if (halfDuplexOutputActive || disabled) {
+      halfDuplexResponseObservedRef.current = true
+      const service = voiceServiceRef.current
+      if (service) {
+        voiceServiceRef.current = null
+        voiceStartedAtRef.current = null
+        void service.cancel()
+      }
+      return
+    }
+    if (halfDuplexWaiting) {
+      if (!halfDuplexResponseObservedRef.current) return
+      setHalfDuplexWaiting(false)
+      halfDuplexResponseObservedRef.current = false
+      return
+    }
+    if (voiceStatus === "idle" && !voiceServiceRef.current) {
+      void startVoiceInput()
+    }
+  }, [disabled, halfDuplexActive, halfDuplexOutputActive, halfDuplexPaused, halfDuplexWaiting, sttConfigId, voiceStatus])
+
   const voiceElapsedLabel = `${String(Math.floor(voiceElapsedSeconds / 60)).padStart(2, "0")}:${String(voiceElapsedSeconds % 60).padStart(2, "0")}`
 
   const selectPermissionMode = async (mode: PermissionMode) => {
@@ -678,9 +765,12 @@ export function ChatInput({
       return
     }
     setPermissionSubmitting(mode)
+    setPermissionError("")
     try {
       await onPermissionModeChange(mode)
       setPermissionMenuOpen(false)
+    } catch (error) {
+      setPermissionError(error instanceof Error ? error.message : "权限模式切换失败，请稍后重试。")
     } finally {
       setPermissionSubmitting(null)
     }
@@ -786,11 +876,53 @@ export function ChatInput({
     for (const file of Array.from(files)) addFileAttachment(file)
   }
 
+  const addLocalImagePath = (rawPath: string) => {
+    const value = rawPath.trim()
+    const fileUrl = value.startsWith("file://")
+      ? value
+      : value.startsWith("/")
+        ? `file://${encodeURI(value)}`
+        : `file:///${encodeURI(value.replace(/\\/g, "/"))}`
+    const pathname = value.startsWith("file://")
+      ? decodeURIComponent(new URL(value).pathname)
+      : value
+    const filename = pathname.split(/[\\/]/).filter(Boolean).pop() || `image-${attachments.length + 1}`
+    const extension = filename.split(".").pop()?.toLowerCase() || ""
+    const mimeByExtension: Record<string, string> = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      webp: "image/webp",
+      bmp: "image/bmp",
+      avif: "image/avif",
+    }
+    const mime = mimeByExtension[extension]
+    if (!mime) return false
+    setAttachments((prev) => prev.some((item) => item.url === fileUrl)
+      ? prev
+      : [...prev, { url: fileUrl, filename, mime }])
+    return true
+  }
+
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items
+    let addedFile = false
     for (const item of items) {
       const file = item.getAsFile()
-      if (file) addFileAttachment(file)
+      if (file) {
+        addFileAttachment(file)
+        addedFile = true
+      }
+    }
+    if (addedFile) return
+    const pastedText = e.clipboardData.getData("text/plain").trim()
+    if (/^(?:file:\/\/\/|\/|[A-Za-z]:[\\/]).+\.(?:png|jpe?g|gif|webp|bmp|avif)(?:[?#].*)?$/i.test(pastedText)) {
+      try {
+        if (addLocalImagePath(pastedText)) e.preventDefault()
+      } catch {
+        // Invalid file URL remains ordinary pasted text.
+      }
     }
   }
 
@@ -884,12 +1016,17 @@ export function ChatInput({
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
-            className="flex gap-2 mb-2 px-2 overflow-x-auto"
+            className={cn(
+              "absolute z-30 flex max-w-[calc(100%-4vh)] gap-2 overflow-x-auto rounded-[1.6vh] border p-[0.8vh] shadow-lg backdrop-blur-md",
+              overlay
+                ? "left-[2vh] top-[1.5vh] border-white/12 bg-stone-950/70"
+                : "bottom-[calc(100%-1.2vh)] left-[2vh] border-border/80 bg-card/95",
+            )}
           >
             {attachments.map((attachment, idx) => (
               <div key={`${attachment.filename ?? "attachment"}-${idx}`} className="relative group flex-shrink-0">
                 {attachment.mime.startsWith("image/") ? (
-                  <img src={attachment.url} alt={attachment.filename ?? "附件预览"} className="h-[10vh] w-[10vh] rounded-[1.4vh] border border-border object-cover" />
+                  <img src={resolveMonAgentUrl(attachment.url)} alt={attachment.filename ?? "附件预览"} className="h-[10vh] w-[10vh] rounded-[1.4vh] border border-border object-cover" />
                 ) : (
                   <div className="flex h-[10vh] w-[24vw] items-center gap-[1vw] rounded-[1.4vh] border border-border bg-card px-[1.8vw] text-[1.8vh] text-text">
                     <FileText className="h-[2.6vh] w-[2.6vh] flex-shrink-0 text-text-muted" />
@@ -1104,18 +1241,28 @@ export function ChatInput({
               <span className="text-stone-300">{assistantName}正在回复…</span>
             )}
           </div>
-        ) : voiceBusy && !overlay ? (
+        ) : voicePanelVisible ? (
           <div
             className="absolute inset-0 grid h-full w-full grid-cols-[26%_1fr_23%] items-center"
             aria-live="polite"
-            aria-label={voiceStatus === "recording" ? `正在转写，已录音 ${voiceElapsedLabel}` : "正在完成转写"}
+            aria-label={
+              halfDuplexPaused
+                ? "语音对话已暂停"
+                : halfDuplexOutputActive || halfDuplexWaiting
+                  ? "正在等待助手回复"
+                  : voiceStatus === "recording"
+                    ? `正在转写，已录音 ${voiceElapsedLabel}`
+                    : "正在连接语音服务"
+            }
           >
             <div className="flex h-[58%] items-center justify-center gap-[1.5vh] border-r border-border/75 px-[8%]">
               <span
                 className="flex h-[6.2vh] w-[6.2vh] flex-shrink-0 items-center justify-center rounded-full bg-accent text-white shadow-[0_0_0_0.9vh_rgba(217,119,6,0.10)] transition-transform"
                 style={{ transform: `scale(${1 + voiceLevel * 0.1})` }}
               >
-                {voiceStatus === "recording" ? (
+                {halfDuplexPaused ? (
+                  <Pause className="h-[3vh] w-[3vh]" />
+                ) : voiceStatus === "recording" ? (
                   <Mic className="h-[3vh] w-[3vh]" />
                 ) : (
                   <LoaderCircle className="h-[3vh] w-[3vh] animate-spin" />
@@ -1124,7 +1271,13 @@ export function ChatInput({
               <span className="min-w-0">
                 <span className="flex items-center gap-[0.8vh] whitespace-nowrap text-[1.9vh] text-text-muted">
                   <span className="h-[0.8vh] w-[0.8vh] rounded-full bg-accent" />
-                  {voiceStatus === "recording" ? "正在转写" : "正在完成"}
+                  {halfDuplexPaused
+                    ? "已暂停"
+                    : halfDuplexOutputActive || halfDuplexWaiting
+                      ? "等待回复"
+                      : voiceStatus === "recording"
+                        ? "正在聆听"
+                        : "正在连接"}
                 </span>
                 <span className="mt-[0.4vh] block text-[1.8vh] tabular-nums text-text-muted/80">{voiceElapsedLabel}</span>
               </span>
@@ -1132,10 +1285,18 @@ export function ChatInput({
 
             <div className="flex h-[66%] min-w-0 flex-col justify-center px-[5%]">
               <div className="line-clamp-2 min-h-[5.8vh] text-[2.25vh] leading-[1.55] text-text">
-                {input || (voiceStatus === "connecting" ? "正在连接语音服务…" : "请开始说话，识别结果会实时显示在这里")}
+                {input || (
+                  halfDuplexPaused
+                    ? "语音对话已暂停，点击继续后恢复聆听"
+                    : halfDuplexOutputActive || halfDuplexWaiting
+                      ? `已发送，正在等待${assistantName}回复…`
+                      : voiceStatus === "connecting"
+                        ? "正在连接语音服务…"
+                        : "请开始说话，识别结果会实时显示在这里"
+                )}
               </div>
               <div className="mt-[1.2vh] flex h-[2.6vh] w-full items-center overflow-hidden">
-                <VoiceLevelWaveform level={voiceLevel} active={voiceStatus === "recording"} />
+                <VoiceLevelWaveform level={voiceLevel} active={!halfDuplexPaused && voiceStatus === "recording"} />
               </div>
               {voiceError ? <div className="mt-[0.6vh] truncate text-[1.45vh] text-red-500">{voiceError}</div> : null}
             </div>
@@ -1143,33 +1304,31 @@ export function ChatInput({
             <div className="flex h-[58%] items-center justify-evenly border-l border-border/75 px-[5%]">
               <button
                 type="button"
+                onClick={() => void (halfDuplexPaused ? resumeVoiceSession() : pauseVoiceSession())}
+                className="group flex min-w-[42%] flex-col items-center gap-[0.7vh] text-accent transition-colors hover:opacity-80 disabled:cursor-wait disabled:opacity-50"
+                disabled={!halfDuplexPaused && voiceStatus === "transcribing"}
+                aria-label={halfDuplexPaused ? "继续语音对话" : "暂停语音对话"}
+                title={halfDuplexPaused ? "继续语音对话" : "暂停语音对话"}
+              >
+                <span className="flex h-[5.3vh] w-[5.3vh] items-center justify-center rounded-full bg-accent text-white">
+                  {halfDuplexPaused
+                    ? <Play className="h-[2.7vh] w-[2.7vh] fill-current" />
+                    : <Pause className="h-[2.7vh] w-[2.7vh] fill-current" />}
+                </span>
+                <span className="text-[1.55vh]">{halfDuplexPaused ? "继续" : "暂停"}</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => void cancelVoiceInput()}
                 className="group flex min-w-[42%] flex-col items-center gap-[0.7vh] text-text-muted transition-colors hover:text-text disabled:cursor-wait disabled:opacity-50"
                 disabled={voiceStatus === "transcribing"}
-                aria-label="取消录音"
-                title="取消录音"
+                aria-label="结束语音对话"
+                title="结束语音对话"
               >
                 <span className="flex h-[5.3vh] w-[5.3vh] items-center justify-center rounded-full bg-bg transition-colors group-hover:bg-stone-200">
                   <X className="h-[2.7vh] w-[2.7vh]" />
                 </span>
-                <span className="text-[1.55vh]">取消</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => void finishVoiceInput()}
-                className="group flex min-w-[42%] flex-col items-center gap-[0.7vh] text-accent transition-colors disabled:cursor-wait disabled:opacity-60"
-                disabled={voiceStatus !== "recording"}
-                aria-label="完成转写"
-                title="完成转写"
-              >
-                <span className="flex h-[5.3vh] w-[5.3vh] items-center justify-center rounded-full bg-accent text-white transition-opacity group-hover:opacity-85">
-                  {voiceStatus === "transcribing" ? (
-                    <LoaderCircle className="h-[2.7vh] w-[2.7vh] animate-spin" />
-                  ) : (
-                    <Check className="h-[2.9vh] w-[2.9vh] stroke-[2.5]" />
-                  )}
-                </span>
-                <span className="text-[1.55vh]">完成</span>
+                <span className="text-[1.55vh]">结束语音</span>
               </button>
             </div>
           </div>
@@ -1234,7 +1393,7 @@ export function ChatInput({
           />
         )}
 
-        {!hideComposerFooter && !(!overlay && voiceBusy) && (
+        {!hideComposerFooter && !voicePanelVisible && (
           <div className={cn("absolute z-20 flex h-[5.4vh] items-center justify-between gap-[1.4vh]", overlay ? "inset-x-[2.4vh] bottom-[1.6vh]" : "bottom-[1.7vh] left-[2.4vh] right-[9.1vh]")}>
           <div className="flex min-w-0 items-center gap-[1.6vh]">
             <button
@@ -1386,6 +1545,22 @@ export function ChatInput({
           </div>
         ) : null}
         <AnimatePresence>
+          {permissionError && !permissionMenuOpen && (
+            <motion.div
+              key="permission-mode-error"
+              initial={{ opacity: 0, y: 3 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              role="alert"
+              className={cn(
+                "absolute left-[2.8vh] z-30 max-w-[calc(100%-5.6vh)] truncate text-[1.35vh]",
+                hideComposerFooter ? "bottom-[1.5vh]" : "bottom-[7.1vh]",
+                overlay ? "text-red-200" : "text-red-600",
+              )}
+            >
+              {permissionError}
+            </motion.div>
+          )}
           {slashCommandError && !slashMenuOpen && (
             <motion.div
               key="slash-command-error"

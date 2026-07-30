@@ -145,6 +145,13 @@ export type MessageSegment =
       url: string
       filename?: string
     }
+  | {
+      id: string
+      type: "sticker"
+      url: string
+      name: string
+      alt?: string
+    }
 
 export interface PromptAttachment {
   url: string
@@ -159,6 +166,8 @@ export interface Session {
   contextTokens?: number
   date: string
   messages: MessageData[]
+  hasMoreMessages?: boolean
+  loadingOlderMessages?: boolean
   mode?: "companion" | "solo"
   participants?: import("./lib/mon_agent_api").SessionParticipant[]
   directorRun?: CompanionDirectorRun
@@ -324,6 +333,17 @@ export interface RuntimeFilePart {
   filename?: string
 }
 
+export interface RuntimeStickerPart {
+  id: string
+  type: "sticker"
+  stickerID: number
+  characterID: number
+  name: string
+  url: string
+  mime?: string
+  alt?: string
+}
+
 export interface RuntimeSnapshotPart {
   id: string
   type: "snapshot"
@@ -434,6 +454,7 @@ export type RuntimePart =
   | RuntimeTextPart
   | RuntimeReasoningPart
   | RuntimeFilePart
+  | RuntimeStickerPart
   | RuntimeSnapshotPart
   | RuntimePatchPart
   | RuntimeAgentPart
@@ -497,6 +518,9 @@ export interface RuntimeSession {
   createdAt?: number
   updatedAt?: number
   hydrated: boolean
+  hasMoreMessages: boolean
+  messageCursor?: string
+  loadingOlderMessages: boolean
   error?: string
   mode?: "companion" | "solo"
   participants?: import("./lib/mon_agent_api").SessionParticipant[]
