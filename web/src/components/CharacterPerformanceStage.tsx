@@ -229,11 +229,12 @@ function EffectIcon({ effect }: { effect?: string }) {
 interface CharacterPerformanceStageProps {
   activeAction?: ActiveCharacterAction
   className: string
+  contentClassName?: string
   effectClassName?: string
   children: ReactNode
 }
 
-export function CharacterPerformanceStage({ activeAction, className, effectClassName, children }: CharacterPerformanceStageProps) {
+export function CharacterPerformanceStage({ activeAction, className, contentClassName, effectClassName, children }: CharacterPerformanceStageProps) {
   const effect = activeAction?.effect && activeAction.effect !== "none" ? activeAction.effect : undefined
   const effectKey = `${activeAction?.performanceID ?? activeAction?.time ?? ""}:${effect ?? "none"}`
   const controls = useAnimationControls()
@@ -280,7 +281,7 @@ export function CharacterPerformanceStage({ activeAction, className, effectClass
       animate={controls}
       transition={performanceTransition}
     >
-      <div className="relative h-full w-fit">
+      <div className={cn("relative h-full w-fit", contentClassName)}>
         {children}
         <AnimatePresence>
           {visibleEffect && visibleEffectAnimation ? (

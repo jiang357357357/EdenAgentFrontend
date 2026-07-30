@@ -5,7 +5,7 @@ import { resolveCoreAssetUrl, type ActiveCharacterAction, type CoreAssistant } f
 import type { PetSettings } from "../lib/desktop-window"
 import { cn } from "../lib/utils"
 import { CharacterPerformanceStage } from "./CharacterPerformanceStage"
-import { CharacterStandeeImage } from "./CharacterStandeeImage"
+import { CharacterVisualRenderer } from "./CharacterVisualRenderer"
 
 const stageTransition = {
   duration: 0.28,
@@ -44,9 +44,9 @@ export function DesktopPetStage({
     activeCharacterAction?.action?.static_image_url ||
     activeCharacterAction?.action?.dynamic_preview_url ||
     activeCharacterAction?.action?.dynamic_frames?.[0]?.file_url
-  const activeActionLabel =
-    activeCharacterAction?.action?.name || activeCharacterAction?.action?.action_label || activeCharacterAction?.action?.intent
   const characterImage = resolveCoreAssetUrl(activeActionImage || character?.default_standing_image_url || character?.avatar_url)
+  const hasSpine = character?.visual_preference === "spine" && Boolean(character.spine_asset)
+  const hasVisual = Boolean(character && (hasSpine || characterImage))
   const characterOnly = surface === "character"
   const bubbleOnly = surface === "bubble"
   const inputEnabled = settings.showInput && !characterOnly
@@ -107,9 +107,13 @@ export function DesktopPetStage({
       {!bubbleOnly ? <section
         className={cn(
           "absolute inset-x-0 flex items-end justify-center text-center",
-          !preview && settings.characterDraggable ? "pointer-events-auto" : "pointer-events-none",
+          !preview && (hasSpine || settings.characterDraggable) ? "pointer-events-auto" : "pointer-events-none",
         )}
-        style={{ top: `${characterTop}%`, height: `${characterHeight}%` }}
+        style={{
+          top: `${characterTop}%`,
+          height: `${characterHeight}%`,
+          ...(hasSpine && !preview ? noDragStyle : {}),
+        }}
       >
         <motion.div
           initial={{ opacity: 0, y: 18 }}
@@ -118,16 +122,18 @@ export function DesktopPetStage({
           transition={{ ...stageTransition, delay: 0.08 }}
           className={cn("relative h-full w-full overflow-hidden shadow-none", petBackgroundClass)}
         >
-          {characterImage ? (
+          {hasVisual && character ? (
             <CharacterPerformanceStage
               activeAction={activeCharacterAction}
               className="absolute inset-x-0 bottom-0 flex h-full justify-center"
+              contentClassName={hasSpine ? "w-full" : undefined}
               effectClassName="h-[9.375%] aspect-square"
             >
-              <CharacterStandeeImage
-                src={characterImage}
-                alt={activeActionLabel ? `${displayName} - ${activeActionLabel}` : displayName}
-                imageClassName="h-full w-auto max-w-none object-contain object-bottom shadow-none drop-shadow-none"
+              <CharacterVisualRenderer
+                character={character}
+                activeAction={activeCharacterAction}
+                displayName={displayName}
+                className="relative h-full w-full"
               />
             </CharacterPerformanceStage>
           ) : (

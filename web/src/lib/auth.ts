@@ -82,9 +82,51 @@ export interface CoreCharacterVisualAction {
     id?: number
     file_url?: string | null
   }>
+  spine_animation?: string
+  spine_track?: number
+  spine_loop?: boolean
+  spine_mix_ms?: number
+  spine_sync_animations?: CoreSpineSyncAnimation[]
+  spine_reset_to_idle?: boolean
+  spine?: CoreSpineAction | null
+  has_spine?: boolean
   priority?: number
   action_key?: string
   action_label?: string
+  enabled?: boolean
+}
+
+export interface CoreSpineSyncAnimation {
+  animation: string
+  track?: number
+  loop?: boolean
+}
+
+export interface CoreSpineAction {
+  animation: string
+  track?: number
+  loop?: boolean
+  mix_ms?: number
+  sync?: CoreSpineSyncAnimation[]
+  reset_to_idle?: boolean
+}
+
+export interface CoreCharacterSpineAsset {
+  id?: number
+  character_id?: number
+  skeleton_url: string
+  atlas_url: string
+  textures: Array<{
+    id?: number
+    page_name: string
+    file_url: string
+  }>
+  runtime_version?: string
+  default_skin?: string
+  idle_animation?: string
+  scale?: number
+  offset_x?: number
+  offset_y?: number
   enabled?: boolean
 }
 
@@ -134,7 +176,9 @@ export interface CoreCharacter {
   default_standing_image_url?: string | null
   visual_actions?: CoreCharacterVisualAction[]
   visual_action_groups?: CoreCharacterVisualActionGroup[]
-  visual_preference?: "static" | "dynamic" | string | null
+  spine_asset?: CoreCharacterSpineAsset | null
+  visual_preference?: "static" | "dynamic" | "spine" | string | null
+  default_visual_action_id?: number | null
   tts_config_id?: number | null
   tts_config_name?: string | null
   stt_config_id?: number | null

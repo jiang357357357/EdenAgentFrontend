@@ -379,7 +379,12 @@ export function SettingsPage({
   const avatarUrl =
     resolveCoreAssetUrl(assistant?.character?.avatar_url || assistant?.character?.default_standing_image_url) || "/favicon-256.png"
   const supportsDynamicStandee = Boolean(assistant?.character?.visual_actions?.some((action) => action.dynamic_preview_url))
-  const visualPreference = assistant?.character?.visual_preference === "dynamic" ? "dynamic" : "static"
+  const supportsSpineStandee = Boolean(assistant?.character?.spine_asset)
+  const visualPreference = assistant?.character?.visual_preference === "dynamic"
+    ? "dynamic"
+    : assistant?.character?.visual_preference === "spine"
+      ? "spine"
+      : "static"
   const {
     alwaysOnTop,
     transparentWindow,
@@ -777,7 +782,7 @@ export function SettingsPage({
 
                 <div className="border-t border-border px-2 py-5">
                   <h3 className="mb-3 text-[clamp(0.8125rem,1.45cqh,0.9375rem)] font-medium text-text">立绘模式</h3>
-                  <div role="radiogroup" aria-label="立绘模式" className="grid grid-cols-2 gap-[3%]">
+                  <div role="radiogroup" aria-label="立绘模式" className="grid grid-cols-3 gap-[3%]">
                     <RadioRow
                       label="静态立绘"
                       checked={visualPreference === "static"}
@@ -787,6 +792,12 @@ export function SettingsPage({
                       label="动态立绘"
                       checked={visualPreference === "dynamic"}
                       disabled={!supportsDynamicStandee}
+                      onChange={() => undefined}
+                    />
+                    <RadioRow
+                      label="Spine"
+                      checked={visualPreference === "spine"}
+                      disabled={!supportsSpineStandee}
                       onChange={() => undefined}
                     />
                   </div>

@@ -1,7 +1,7 @@
 import { Bot, ImageOff } from 'lucide-react';
 import { resolveCoreAssetUrl, type ActiveCharacterAction, type CoreAssistant } from '../lib/auth';
 import { CharacterPerformanceStage } from './CharacterPerformanceStage';
-import { CharacterStandeeImage } from './CharacterStandeeImage';
+import { CharacterVisualRenderer } from './CharacterVisualRenderer';
 
 interface CharacterPanelProps {
   assistant?: CoreAssistant | null;
@@ -17,21 +17,24 @@ export function CharacterPanel({ assistant, assistantError, activeAction }: Char
     activeAction?.action?.static_image_url ||
     activeAction?.action?.dynamic_preview_url ||
     activeAction?.action?.dynamic_frames?.[0]?.file_url;
-  const activeActionLabel = activeAction?.action?.name || activeAction?.action?.action_label || activeAction?.action?.intent;
   const image = resolveCoreAssetUrl(activeActionImage || character?.default_standing_image_url || character?.avatar_url);
+  const hasSpine = character?.visual_preference === 'spine' && Boolean(character.spine_asset);
+  const hasVisual = Boolean(character && (hasSpine || image));
 
   return (
     <aside className="flex h-[100vh] w-[34vw] flex-none items-end justify-center overflow-hidden border-l border-border bg-bg">
       <div className="relative h-full w-full overflow-hidden">
-        {image ? (
+        {hasVisual && character ? (
           <CharacterPerformanceStage
             activeAction={activeAction}
             className="absolute inset-x-0 bottom-0 flex h-[96vh] justify-center"
+            contentClassName={hasSpine ? "w-full" : undefined}
           >
-            <CharacterStandeeImage
-              src={image}
-              alt={activeActionLabel ? `${displayName} - ${activeActionLabel}` : displayName}
-              imageClassName="h-full w-auto max-w-none object-contain object-bottom"
+            <CharacterVisualRenderer
+              character={character}
+              activeAction={activeAction}
+              displayName={displayName}
+              className="relative h-full w-full"
             />
           </CharacterPerformanceStage>
         ) : (
