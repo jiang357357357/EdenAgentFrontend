@@ -137,6 +137,9 @@ export function DesktopPetChatBubble({
   const [voiceStatus, setVoiceStatus] = useState<RealtimeSTTStatus>("idle")
   const [voiceLevel, setVoiceLevel] = useState(0)
   const [voiceError, setVoiceError] = useState("")
+  const [halfDuplexActive, setHalfDuplexActive] = useState(false)
+  const [halfDuplexWaiting, setHalfDuplexWaiting] = useState(false)
+  const [speechOutputPending, setSpeechOutputPending] = useState(isThinking)
   const [speechClips, setSpeechClips] = useState<Record<string, SpeechClip>>({})
   const [activeSpeechSegmentId, setActiveSpeechSegmentId] = useState<string | null>(null)
   const [speechPaused, setSpeechPaused] = useState(false)
@@ -151,6 +154,8 @@ export function DesktopPetChatBubble({
   const synthesizedSegmentIdsRef = useRef<Set<string>>(new Set())
   const voicePrefixRef = useRef("")
   const voiceServiceRef = useRef<RealtimeSTTService | null>(null)
+  const halfDuplexActiveRef = useRef(false)
+  const halfDuplexResponseObservedRef = useRef(false)
   const visibleSegments = useMemo(
     () => dialogSegments.filter((segment) => Boolean(segmentText(segment))),
     [dialogSegments],
@@ -365,6 +370,9 @@ export function DesktopPetChatBubble({
 
   useEffect(() => {
     if (voiceInputEnabled) return
+    halfDuplexActiveRef.current = false
+    setHalfDuplexActive(false)
+    setHalfDuplexWaiting(false)
     void voiceServiceRef.current?.cancel()
     voiceServiceRef.current = null
     setVoiceError("")
@@ -374,10 +382,14 @@ export function DesktopPetChatBubble({
     if (ttsMode === "none") {
       stopSpeechPlayback(true, true)
       speechRunActiveRef.current = isThinking
+      setSpeechOutputPending(isThinking)
       return
     }
     const runWasActive = speechRunActiveRef.current
-    if (isThinking) speechRunActiveRef.current = true
+    if (isThinking) {
+      speechRunActiveRef.current = true
+      setSpeechOutputPending(true)
+    }
     const maySpeakCurrentRun = isThinking || runWasActive
     if (maySpeakCurrentRun) {
       for (const segment of latestAssistantMessage?.segments ?? []) {
@@ -388,7 +400,15 @@ export function DesktopPetChatBubble({
         enqueueSpeechSegment(segment.id, latestAssistantMessage.id, segment.content)
       }
     }
-    if (!isThinking && runWasActive) speechRunActiveRef.current = false
+    if (!isThinking && runWasActive) {
+      speechRunActiveRef.current = false
+      const generation = speechGenerationRef.current
+      void speechQueueRef.current.finally(() => {
+        if (generation === speechGenerationRef.current) setSpeechOutputPending(false)
+      })
+    } else if (!isThinking && !runWasActive) {
+      setSpeechOutputPending(false)
+    }
   }, [isThinking, latestAssistantMessage, sessionId, ttsConfigId, ttsMode])
 
   const send = async () => {
@@ -402,24 +422,18 @@ export function DesktopPetChatBubble({
     await onSend(content, [])
   }
 
-  const toggleVoiceInput = async () => {
-    if (!voiceInputEnabled || isThinking || voiceStatus === "connecting" || voiceStatus === "transcribing") return
-
-    if (voiceStatus === "recording") {
-      const service = voiceServiceRef.current
-      if (!service) return
-      try {
-        await service.finish()
-      } catch (error) {
-        setVoiceError(error instanceof Error ? error.message : "语音转写失败")
-      } finally {
-        if (voiceServiceRef.current === service) voiceServiceRef.current = null
-      }
-      return
-    }
-
+  const startVoiceInput = async () => {
+    if (
+      !voiceInputEnabled
+      || isThinking
+      || speechOutputPending
+      || voiceStatus !== "idle"
+      || voiceServiceRef.current
+    ) return
     if (typeof sttConfigId !== "number") {
       setVoiceError("当前角色尚未关联语音识别服务")
+      halfDuplexActiveRef.current = false
+      setHalfDuplexActive(false)
       return
     }
 
@@ -434,12 +448,19 @@ export function DesktopPetChatBubble({
         if (voiceServiceRef.current === service) voiceServiceRef.current = null
         const completedText = `${voicePrefixRef.current}${text}`.trim()
         setInput(completedText)
-        if (autoSend && completedText) {
+        if ((autoSend || halfDuplexActiveRef.current) && completedText) {
+          halfDuplexResponseObservedRef.current = false
+          setHalfDuplexWaiting(true)
           setInput("")
           void onSend(completedText, [])
         }
       },
-      onError: (error) => setVoiceError(error.message),
+      onError: (error) => {
+        halfDuplexActiveRef.current = false
+        setHalfDuplexActive(false)
+        setHalfDuplexWaiting(false)
+        setVoiceError(error.message)
+      },
     })
     voiceServiceRef.current = service
     try {
@@ -448,6 +469,49 @@ export function DesktopPetChatBubble({
       if (voiceServiceRef.current === service) voiceServiceRef.current = null
     }
   }
+
+  const toggleVoiceInput = async () => {
+    if (!voiceInputEnabled || isThinking || voiceStatus === "connecting" || voiceStatus === "transcribing") return
+    if (voiceStatus === "recording") {
+      halfDuplexActiveRef.current = false
+      setHalfDuplexActive(false)
+      setHalfDuplexWaiting(false)
+      const service = voiceServiceRef.current
+      if (!service) return
+      try {
+        await service.finish()
+      } catch (error) {
+        setVoiceError(error instanceof Error ? error.message : "语音转写失败")
+      } finally {
+        if (voiceServiceRef.current === service) voiceServiceRef.current = null
+      }
+      return
+    }
+    halfDuplexActiveRef.current = true
+    setHalfDuplexActive(true)
+    await startVoiceInput()
+  }
+
+  useEffect(() => {
+    if (!halfDuplexActive) return
+    const outputActive = isThinking || speechOutputPending
+    if (outputActive) {
+      halfDuplexResponseObservedRef.current = true
+      const service = voiceServiceRef.current
+      if (service) {
+        voiceServiceRef.current = null
+        void service.cancel()
+      }
+      return
+    }
+    if (halfDuplexWaiting) {
+      if (!halfDuplexResponseObservedRef.current) return
+      setHalfDuplexWaiting(false)
+      halfDuplexResponseObservedRef.current = false
+      return
+    }
+    if (voiceStatus === "idle" && !voiceServiceRef.current) void startVoiceInput()
+  }, [halfDuplexActive, halfDuplexWaiting, isThinking, speechOutputPending, sttConfigId, voiceStatus])
 
   const replyPermission = async (reply: "once" | "reject") => {
     if (!permission || submitting) return

@@ -122,6 +122,7 @@ export default function App() {
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
   const [toolStatus, setToolStatus] = useState<ToolStatus | undefined>()
   const messagesScrollRef = useRef<HTMLDivElement>(null)
+  const historyPrependInProgressRef = useRef(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const authProbeInFlightRef = useRef(false)
   const modeResizeTimerRef = useRef<number | undefined>(undefined)
@@ -161,6 +162,7 @@ export default function App() {
     getSubagentThreadDetails,
     isThinking,
     interruptSubagent,
+    loadOlderMessages,
     pendingPermissions,
     pendingQuestions,
     permissionMode,
@@ -430,6 +432,24 @@ export default function App() {
     messagesEndRef.current?.scrollIntoView({ behavior, block: "end" })
   }
 
+  async function handleLoadOlderMessages() {
+    const element = messagesScrollRef.current
+    if (!element || historyPrependInProgressRef.current) return
+    const previousHeight = element.scrollHeight
+    const previousTop = element.scrollTop
+    historyPrependInProgressRef.current = true
+    try {
+      await loadOlderMessages()
+      window.requestAnimationFrame(() => {
+        const current = messagesScrollRef.current
+        if (current) current.scrollTop = previousTop + (current.scrollHeight - previousHeight)
+        historyPrependInProgressRef.current = false
+      })
+    } catch {
+      historyPrependInProgressRef.current = false
+    }
+  }
+
   function handleAutoScrollChange(enabled: boolean) {
     setAutoScrollEnabled(enabled)
     if (enabled) {
@@ -442,7 +462,7 @@ export default function App() {
   }, [activeSessionId])
 
   useEffect(() => {
-    if (!autoScrollEnabled) return
+    if (!autoScrollEnabled || historyPrependInProgressRef.current) return
     // Streaming updates arrive faster than a smooth scroll can finish. Starting a
     // new animation for every delta makes the left identity column appear to move
     // up and down, so live updates use one immediate bottom anchor instead.
@@ -811,6 +831,7 @@ export default function App() {
                 messagesEndRef={messagesEndRef}
                 autoScrollEnabled={autoScrollEnabled}
                 onAutoScrollChange={handleAutoScrollChange}
+                onLoadOlderMessages={handleLoadOlderMessages}
                 onSelectSession={selectRuntimeSession}
                 onNewSession={handleNewSession}
                 onSendMessage={handleSendMessage}

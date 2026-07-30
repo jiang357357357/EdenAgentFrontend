@@ -293,6 +293,19 @@ export type ApiFilePart = {
   filename?: string
 }
 
+export type ApiStickerPart = {
+  id: string
+  messageID: string
+  sessionID: string
+  type: "sticker"
+  stickerID: number
+  characterID: number
+  name: string
+  url: string
+  mime?: string
+  alt?: string
+}
+
 export type ApiSnapshotPart = {
   id: string
   messageID: string
@@ -420,6 +433,7 @@ export type ApiPart =
   | ApiTextPart
   | ApiReasoningPart
   | ApiFilePart
+  | ApiStickerPart
   | ApiSnapshotPart
   | ApiPatchPart
   | ApiAgentPart
@@ -710,6 +724,14 @@ export function isApiFilePart(part: ApiPart): part is ApiFilePart {
     part.type === "file" &&
     typeof (part as { mime?: unknown; url?: unknown }).mime === "string" &&
     typeof (part as { url?: unknown }).url === "string"
+  )
+}
+
+export function isApiStickerPart(part: ApiPart): part is ApiStickerPart {
+  return (
+    part.type === "sticker" &&
+    typeof (part as { url?: unknown }).url === "string" &&
+    typeof (part as { name?: unknown }).name === "string"
   )
 }
 
@@ -1009,13 +1031,21 @@ export async function createSession() {
   return mapSession(session)
 }
 
-export async function listMessagesRaw(sessionID: string) {
-  return request<ApiMessage[]>(`/session/${encodeURIComponent(sessionID)}/message?limit=100&includeCompactions=1`)
+export interface MessagePage {
+  items: ApiMessage[]
+  hasMore: boolean
+  nextCursor?: string | null
+}
+
+export async function listMessagesRaw(sessionID: string, before?: string, limit = 50) {
+  const search = new URLSearchParams({ limit: String(limit), includeCompactions: "1" })
+  if (before) search.set("before", before)
+  return request<MessagePage>(`/session/${encodeURIComponent(sessionID)}/message?${search.toString()}`)
 }
 
 export async function listMessages(sessionID: string) {
-  const messages = await listMessagesRaw(sessionID)
-  return messages.map(mapMessage)
+  const page = await listMessagesRaw(sessionID)
+  return page.items.map(mapMessage)
 }
 
 function normalizeAttachment(attachment: PromptAttachment | string, index: number): PromptAttachment {

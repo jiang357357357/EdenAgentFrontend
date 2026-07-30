@@ -15,6 +15,7 @@ import type {
   RuntimeRetryPart,
   RuntimeSession,
   RuntimeSnapshotPart,
+  RuntimeStickerPart,
   RuntimeState,
   RuntimeStepFinishPart,
   RuntimeStepStartPart,
@@ -43,6 +44,10 @@ function isRuntimeTracePart(part: RuntimeReasoningPart) {
 
 function isRuntimeFilePart(part: RuntimePart): part is RuntimeFilePart {
   return part.type === "file" && "mime" in part && typeof part.mime === "string" && "url" in part
+}
+
+function isRuntimeStickerPart(part: RuntimePart): part is RuntimeStickerPart {
+  return part.type === "sticker" && "url" in part && typeof part.url === "string"
 }
 
 function isRuntimeToolPart(part: RuntimePart): part is RuntimeToolPart {
@@ -301,12 +306,16 @@ function mapMessage(message: RuntimeMessage, sessionIsRunning: boolean): Message
       if (isRuntimeFilePart(part) && part.mime.startsWith("image/")) {
         return [{ id: part.id, type: "image", url: part.url, filename: part.filename }]
       }
+      if (isRuntimeStickerPart(part)) {
+        return [{ id: part.id, type: "sticker", url: part.url, name: part.name, alt: part.alt }]
+      }
       const metaPart = mapMetaPart(part)
       return metaPart ? [{ id: part.id, type: "meta", part: metaPart }] : []
     })
     .filter((segment) => {
       if (message.role !== "assistant") return true
       if (segment.type === "image") return true
+      if (segment.type === "sticker") return true
       if (segment.type === "text") return Boolean(segment.content.trim())
       if (segment.type === "runtimeTrace" || segment.type === "thinking") return Boolean(segment.content.trim())
       return true
@@ -393,6 +402,8 @@ function mapSession(session: RuntimeSession): Session {
     contextTokens: session.contextTokens,
     date: timeLabel(session.updatedAt),
     messages,
+    hasMoreMessages: session.hasMoreMessages,
+    loadingOlderMessages: session.loadingOlderMessages,
     mode: session.mode,
     participants: session.participants,
     directorRun: session.directorRun ?? inferredDirectorRun,

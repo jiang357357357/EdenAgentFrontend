@@ -59,6 +59,7 @@ interface ChatPageProps {
   messagesEndRef: React.RefObject<HTMLDivElement | null>
   autoScrollEnabled: boolean
   onAutoScrollChange: (enabled: boolean) => void
+  onLoadOlderMessages: () => Promise<void>
   onSelectSession: (id: string) => void
   onNewSession: () => void
   onSendMessage: (content: string, attachments: PromptAttachment[]) => Promise<void>
@@ -96,6 +97,7 @@ export function ChatPage({
   messagesEndRef,
   autoScrollEnabled,
   onAutoScrollChange,
+  onLoadOlderMessages,
   onSelectSession,
   onNewSession,
   onSendMessage,
@@ -367,6 +369,11 @@ export function ChatPage({
         <div
           key={activeSessionId || "no-session"}
           ref={messagesScrollRef}
+          onScroll={(event) => {
+            if (event.currentTarget.scrollTop <= 96 && activeSession?.hasMoreMessages && !activeSession.loadingOlderMessages) {
+              void onLoadOlderMessages()
+            }
+          }}
           className="min-h-0 flex-1 overflow-y-auto scroll-smooth"
         >
           <div className="mx-auto w-[95%] px-[1vw]">
@@ -400,6 +407,11 @@ export function ChatPage({
               </div>
             ) : (
               <div className="min-h-full py-[4vh]">
+                {(activeSession?.hasMoreMessages || activeSession?.loadingOlderMessages) && (
+                  <div className="flex h-[4.5vh] items-center justify-center text-[1.45vh] text-text-muted" role="status">
+                    {activeSession.loadingOlderMessages ? "正在加载更早消息…" : "向上滚动加载更早消息"}
+                  </div>
+                )}
                 {renderedMessages.map((msg, messageIndex) => {
                   const messageDirectorRun =
                     messageIndex === lastUserMessageIndex
@@ -481,6 +493,7 @@ export function ChatPage({
               onPermissionModeChange={onPermissionModeChange}
               voiceInputEnabled={petSettings.voiceInputEnabled}
               sttConfigId={assistant?.character?.stt_config_id}
+              halfDuplexOutputActive={taskRunning || speech.autoPlaybackPending}
               contextTokenEstimate={contextTokenEstimate}
               onCompact={activeSessionId ? onCompact : undefined}
               onAbort={activeSessionId ? onAbort : undefined}

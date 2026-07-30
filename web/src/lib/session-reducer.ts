@@ -9,6 +9,7 @@ import type {
   ApiRetryPart,
   ApiSession,
   ApiSnapshotPart,
+  ApiStickerPart,
   ApiStepFinishPart,
   ApiStepStartPart,
   ApiSubtaskPart,
@@ -21,6 +22,7 @@ import {
   isApiReasoningPart,
   isApiRetryPart,
   isApiSnapshotPart,
+  isApiStickerPart,
   isApiStepFinishPart,
   isApiStepStartPart,
   isApiSubtaskPart,
@@ -52,6 +54,7 @@ import type {
   RuntimeRetryPart,
   RuntimeSession,
   RuntimeSnapshotPart,
+  RuntimeStickerPart,
   RuntimeState,
   RuntimeStepFinishPart,
   RuntimeStepStartPart,
@@ -72,7 +75,9 @@ import {
 type RuntimeAction =
   | { type: "reset" }
   | { type: "hydrateSessions"; sessions: ApiSession[] }
-  | { type: "hydrateMessages"; sessionID: string; messages: ApiMessage[] }
+  | { type: "hydrateMessages"; sessionID: string; messages: ApiMessage[]; hasMore: boolean; nextCursor?: string | null }
+  | { type: "prependMessages"; sessionID: string; messages: ApiMessage[]; hasMore: boolean; nextCursor?: string | null }
+  | { type: "loadingOlderMessages"; sessionID: string; loading: boolean }
   | { type: "hydratePermissions"; permissions: PendingPermission[] }
   | { type: "hydrateQuestions"; questions: PendingQuestion[] }
   | { type: "setActiveSession"; sessionID?: string }
@@ -185,6 +190,8 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
         createdAt: info.time.created,
         updatedAt: info.time.updated,
         hydrated: false,
+        hasMoreMessages: false,
+        loadingOlderMessages: false,
         mode: info.mode,
         participants: info.participants ?? [],
         directorPolicy: info.directorPolicy,
@@ -225,6 +232,8 @@ function ensureSession(state: RuntimeState, sessionID: string): RuntimeSession {
     messageOrder: [],
     messages: {},
     hydrated: false,
+    hasMoreMessages: false,
+    loadingOlderMessages: false,
   }
   state.sessions[sessionID] = session
   state.sessionOrder.push(sessionID)
@@ -331,6 +340,19 @@ function mapPart(part: ApiPart): RuntimePart {
       filename: part.filename,
     }
     return filePart
+  }
+  if (isApiStickerPart(part)) {
+    const stickerPart: RuntimeStickerPart = {
+      id: part.id,
+      type: "sticker",
+      stickerID: part.stickerID,
+      characterID: part.characterID,
+      name: part.name,
+      url: part.url,
+      mime: part.mime,
+      alt: part.alt,
+    }
+    return stickerPart
   }
   if (isApiSnapshotPart(part)) {
     const snapshotPart: RuntimeSnapshotPart = {
@@ -462,6 +484,21 @@ function replaceSessionMessages(session: RuntimeSession, messages: ApiMessage[])
     }
   }
   session.hydrated = true
+}
+
+function prependMessagesToSession(session: RuntimeSession, messages: ApiMessage[]) {
+  const previousOrder = [...session.messageOrder]
+  for (const item of messages) {
+    const message = ensureMessage(session, {
+      id: item.info.id,
+      role: item.info.role,
+      sessionID: session.id,
+    })
+    applyMessageInfo(message, item.info)
+    for (const part of item.parts) upsertPart(message, mapPart(part))
+  }
+  const olderIDs = messages.map((item) => item.info.id)
+  session.messageOrder = [...olderIDs, ...previousOrder.filter((id) => !olderIDs.includes(id))]
 }
 
 function userMessageSignature(message: RuntimeMessage) {
@@ -867,11 +904,28 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
     case "hydrateMessages": {
       const session = ensureSession(next, action.sessionID)
       replaceSessionMessages(session, action.messages)
+      session.hasMoreMessages = action.hasMore
+      session.messageCursor = action.nextCursor ?? undefined
       session.updatedAt = Math.max(
         session.updatedAt ?? 0,
         ...action.messages.map((message) => message.info.time.created),
       )
       next.connectionError = undefined
+      return next
+    }
+
+    case "prependMessages": {
+      const session = ensureSession(next, action.sessionID)
+      prependMessagesToSession(session, action.messages)
+      session.hasMoreMessages = action.hasMore
+      session.messageCursor = action.nextCursor ?? undefined
+      session.loadingOlderMessages = false
+      return next
+    }
+
+    case "loadingOlderMessages": {
+      const session = ensureSession(next, action.sessionID)
+      session.loadingOlderMessages = action.loading
       return next
     }
 
@@ -1059,8 +1113,16 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
   }
 }
 
-export function hydrateSessionMessages(sessionID: string, messages: ApiMessage[]): RuntimeAction {
-  return { type: "hydrateMessages", sessionID, messages }
+export function hydrateSessionMessages(sessionID: string, page: import("./mon_agent_api").MessagePage): RuntimeAction {
+  return { type: "hydrateMessages", sessionID, messages: page.items, hasMore: page.hasMore, nextCursor: page.nextCursor }
+}
+
+export function prependSessionMessages(sessionID: string, page: import("./mon_agent_api").MessagePage): RuntimeAction {
+  return { type: "prependMessages", sessionID, messages: page.items, hasMore: page.hasMore, nextCursor: page.nextCursor }
+}
+
+export function setLoadingOlderMessages(sessionID: string, loading: boolean): RuntimeAction {
+  return { type: "loadingOlderMessages", sessionID, loading }
 }
 
 export function hydrateSessionList(sessions: ApiSession[]): RuntimeAction {
