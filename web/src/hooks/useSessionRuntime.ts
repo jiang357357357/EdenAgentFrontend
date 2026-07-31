@@ -8,6 +8,7 @@ import {
   followupSubagent as followupSubagentRaw,
   interruptSubagent as interruptSubagentRaw,
   listPermissionsRaw,
+  listCameraCaptureRequests,
   listQuestionsRaw,
   listScreenCaptureRequests,
   listMessagesRaw,
@@ -20,7 +21,7 @@ import {
   updateSessionParticipants as updateSessionParticipantsRaw,
   subscribeEvents,
 } from '../lib/mon_agent_api';
-import type { ApiEvent, PendingScreenCapture } from '../lib/mon_agent_api';
+import type { ApiEvent, PendingCameraCapture, PendingScreenCapture } from '../lib/mon_agent_api';
 import { getStoredToken } from '../lib/auth';
 import {
   applyRuntimeEvent,
@@ -40,6 +41,7 @@ import {
 import { selectActiveSession, selectPendingPermissions, selectPendingQuestions, selectSessions, selectSessionStatus } from '../lib/session-selectors';
 import type { PermissionMode, PromptAttachment } from '../types';
 import { handleScreenCaptureRequest } from '../lib/screen-capture';
+import { handleCameraCaptureRequest } from '../lib/camera-capture';
 
 interface UseSessionRuntimeOptions {
   onEvent?: (event: ApiEvent) => void;
@@ -96,16 +98,18 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
   const refreshBlockers = useCallback(async () => {
     if (!isRuntimeReady()) return;
-    const [permissions, questions, permissionModeResponse, screenCaptureRequests] = await Promise.all([
+    const [permissions, questions, permissionModeResponse, screenCaptureRequests, cameraCaptureRequests] = await Promise.all([
       listPermissionsRaw(),
       listQuestionsRaw(),
       getPermissionMode(),
       listScreenCaptureRequests(),
+      listCameraCaptureRequests(),
     ]);
     dispatch(hydratePendingPermissions(permissions));
     dispatch(hydratePendingQuestions(questions));
     setPermissionModeState(permissionModeResponse.mode);
     for (const request of screenCaptureRequests) void handleScreenCaptureRequest(request);
+    for (const request of cameraCaptureRequests) void handleCameraCaptureRequest(request);
   }, [isRuntimeReady]);
 
   useEffect(() => {
@@ -214,6 +218,12 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
           const request = event.properties as Partial<PendingScreenCapture> | undefined;
           if (request && typeof request.id === 'string') {
             void handleScreenCaptureRequest(request as PendingScreenCapture);
+          }
+        }
+        if (event.type === 'camera_capture.requested') {
+          const request = event.properties as Partial<PendingCameraCapture> | undefined;
+          if (request && typeof request.id === 'string') {
+            void handleCameraCaptureRequest(request as PendingCameraCapture);
           }
         }
         if (event.type === 'permission.mode') {

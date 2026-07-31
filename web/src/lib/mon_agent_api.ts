@@ -588,9 +588,31 @@ export interface PendingScreenCapture {
   source?: "auto" | "desktop" | "game"
 }
 
+export interface PendingCameraCapture {
+  id: string
+  sessionID?: string
+  toolCallID?: string
+  facingMode?: "user" | "environment" | string
+}
+
 export type ScreenCaptureRequestedEvent = {
   type: "screen_capture.requested"
   properties: PendingScreenCapture
+}
+
+export type CameraCaptureRequestedEvent = {
+  type: "camera_capture.requested"
+  properties: PendingCameraCapture
+}
+
+export type CameraCaptureRepliedEvent = {
+  type: "camera_capture.replied"
+  properties: {
+    sessionID?: string
+    requestID: string
+    success: boolean
+    error?: string | null
+  }
 }
 
 export type ScreenCaptureRepliedEvent = {
@@ -685,6 +707,8 @@ export type ApiEvent =
   | QuestionRejectedEvent
   | ScreenCaptureRequestedEvent
   | ScreenCaptureRepliedEvent
+  | CameraCaptureRequestedEvent
+  | CameraCaptureRepliedEvent
   | MessageUpdatedEvent
   | MessagePartUpdatedEvent
   | MessagePartDeltaEvent
@@ -1186,6 +1210,28 @@ export async function replyScreenCapture(
   error?: string,
 ) {
   return request<boolean>(`/screen-capture/${encodeURIComponent(requestID)}/reply`, {
+    method: "POST",
+    body: JSON.stringify({ result, error }),
+  })
+}
+
+export async function listCameraCaptureRequests() {
+  return request<PendingCameraCapture[]>("/camera-capture")
+}
+
+export async function replyCameraCapture(
+  requestID: string,
+  result?: {
+    dataUrl: string
+    mime: string
+    width: number
+    height: number
+    deviceLabel?: string
+    facingMode?: "user" | "environment" | string
+  },
+  error?: string,
+) {
+  return request<boolean>(`/camera-capture/${encodeURIComponent(requestID)}/reply`, {
     method: "POST",
     body: JSON.stringify({ result, error }),
   })

@@ -5,6 +5,7 @@ const path = require("node:path")
 const { fileURLToPath, pathToFileURL } = require("node:url")
 const { promisify } = require("node:util")
 const { isInternalAppUrl, isSupportedExternalUrl } = require("./navigation-policy.cjs")
+const { shouldAllowMediaPermission } = require("./media-permission-policy.cjs")
 
 const execFileAsync = promisify(execFile)
 
@@ -1384,32 +1385,32 @@ function registerFileProtocol() {
 }
 
 function registerPermissions() {
-  const isVoiceInputContents = (webContents) => {
-    if (!webContents) return false
+  const mediaAccessForContents = (webContents) => {
+    if (!webContents) return { allowAudio: false, allowVideo: false }
     const owner = BrowserWindow.fromWebContents(webContents)
     const isMainWindow = Boolean(mainWindow && !mainWindow.isDestroyed() && owner === mainWindow)
     const isPetBubbleWindow = Boolean(petBubbleWindow && !petBubbleWindow.isDestroyed() && owner === petBubbleWindow)
-    return isMainWindow || isPetBubbleWindow
+    return {
+      allowAudio: isMainWindow || isPetBubbleWindow,
+      // Camera capture is handled only by the primary chat surface.
+      allowVideo: isMainWindow,
+    }
   }
 
   session.defaultSession.setPermissionCheckHandler((webContents, permission, _origin, details) => {
-    if (permission === "geolocation") return true
-    if (permission !== "media" || !isVoiceInputContents(webContents)) return false
-    return details.mediaType === "audio"
+    return shouldAllowMediaPermission({
+      permission,
+      mediaType: details.mediaType,
+      ...mediaAccessForContents(webContents),
+    })
   })
 
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
-    if (permission === "geolocation") {
-      callback(true)
-      return
-    }
-    const mediaTypes = Array.isArray(details.mediaTypes) ? details.mediaTypes : []
-    callback(
-      permission === "media" &&
-      isVoiceInputContents(webContents) &&
-      mediaTypes.includes("audio") &&
-      !mediaTypes.includes("video"),
-    )
+    callback(shouldAllowMediaPermission({
+      permission,
+      mediaTypes: details.mediaTypes,
+      ...mediaAccessForContents(webContents),
+    }))
   })
 }
 
