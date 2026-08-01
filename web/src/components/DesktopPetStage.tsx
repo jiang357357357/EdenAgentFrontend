@@ -1,8 +1,13 @@
 import { MessageCircle, X } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
-import type { CSSProperties, ReactNode } from "react"
+import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
 import { resolveCoreAssetUrl, type ActiveCharacterAction, type CoreAssistant } from "../lib/auth"
-import type { PetSettings } from "../lib/desktop-window"
+import {
+  beginDesktopPetGroupDrag,
+  endDesktopPetGroupDrag,
+  updateDesktopPetGroupDrag,
+  type PetSettings,
+} from "../lib/desktop-window"
 import { cn } from "../lib/utils"
 import { CharacterPerformanceStage } from "./CharacterPerformanceStage"
 import { CharacterVisualRenderer } from "./CharacterVisualRenderer"
@@ -17,8 +22,9 @@ interface DesktopPetStageProps {
   assistantError?: string
   activeCharacterAction?: ActiveCharacterAction
   settings: PetSettings
-  surface?: "combined" | "character" | "bubble"
+  surface?: "combined" | "character" | "bubble" | "icon"
   inputCollapsed: boolean
+  inputTransitioning?: boolean
   onInputCollapsedChange?: (collapsed: boolean) => void
   inputContent?: ReactNode
   preview?: boolean
@@ -32,11 +38,23 @@ export function DesktopPetStage({
   settings,
   surface = "combined",
   inputCollapsed,
+  inputTransitioning = false,
   onInputCollapsedChange,
   inputContent,
   preview = false,
   className,
 }: DesktopPetStageProps) {
+  const petIconDragRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    lastX: number
+    lastY: number
+    dragging: boolean
+  } | null>(null)
+  const suppressIconClickUntilRef = useRef(0)
+  const pendingDragPointRef = useRef<{ x: number; y: number } | null>(null)
+  const dragFrameRef = useRef<number | null>(null)
   const character = assistant?.character
   const displayName = assistant?.name || character?.name || "默认助手"
   const activeActionImage =
@@ -48,7 +66,7 @@ export function DesktopPetStage({
   const hasSpine = character?.visual_preference === "spine" && Boolean(character.spine_asset)
   const hasVisual = Boolean(character && (hasSpine || characterImage))
   const characterOnly = surface === "character"
-  const bubbleOnly = surface === "bubble"
+  const bubbleOnly = surface === "bubble" || surface === "icon"
   const inputEnabled = settings.showInput && !characterOnly
   const inputVisible = inputEnabled && !inputCollapsed
   const inputWidth = Math.max(10, Math.min(100, settings.inputWidth))
@@ -62,11 +80,67 @@ export function DesktopPetStage({
     !preview && !bubbleOnly && settings.characterDraggable ? ({ WebkitAppRegion: "drag" } as CSSProperties) : undefined
   const noDragStyle = { WebkitAppRegion: "no-drag" } as CSSProperties
 
+  const flushPetIconDrag = () => {
+    dragFrameRef.current = null
+    const point = pendingDragPointRef.current
+    pendingDragPointRef.current = null
+    if (point) void updateDesktopPetGroupDrag(point.x, point.y)
+  }
+
+  const handlePetIconPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!bubbleOnly || !inputCollapsed || preview || event.button !== 0) return
+    petIconDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.screenX,
+      startY: event.screenY,
+      lastX: event.screenX,
+      lastY: event.screenY,
+      dragging: false,
+    }
+    void beginDesktopPetGroupDrag(event.screenX, event.screenY)
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    } catch {
+      // Pointer capture is optional in some Electron window-manager combinations.
+    }
+  }
+
+  const handlePetIconPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = petIconDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    drag.lastX = event.screenX
+    drag.lastY = event.screenY
+    if (!drag.dragging && Math.hypot(event.screenX - drag.startX, event.screenY - drag.startY) >= 5) {
+      drag.dragging = true
+    }
+    if (!drag.dragging) return
+    event.preventDefault()
+    pendingDragPointRef.current = { x: event.screenX, y: event.screenY }
+    if (dragFrameRef.current === null) dragFrameRef.current = requestAnimationFrame(flushPetIconDrag)
+  }
+
+  const finishPetIconDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = petIconDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    petIconDragRef.current = null
+    if (dragFrameRef.current !== null) cancelAnimationFrame(dragFrameRef.current)
+    dragFrameRef.current = null
+    pendingDragPointRef.current = null
+    if (drag.dragging) suppressIconClickUntilRef.current = performance.now() + 250
+    void endDesktopPetGroupDrag(event.screenX, event.screenY)
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    } catch {
+      // The window manager may already have released capture.
+    }
+  }
+
   return (
     <main
       className={cn(
         "relative h-full w-full select-none overflow-hidden font-sans text-text [container-type:size]",
         petBackgroundClass,
+        bubbleOnly && inputTransitioning && "opacity-0",
         className,
       )}
       style={windowDragStyle}
@@ -82,17 +156,27 @@ export function DesktopPetStage({
       {inputEnabled ? (
         <button
           type="button"
-          onClick={() => onInputCollapsedChange?.(!inputCollapsed)}
-          disabled={!onInputCollapsedChange}
+          onClick={(event) => {
+            if (performance.now() <= suppressIconClickUntilRef.current) {
+              event.preventDefault()
+              return
+            }
+            onInputCollapsedChange?.(!inputCollapsed)
+          }}
+          onPointerDown={handlePetIconPointerDown}
+          onPointerMove={handlePetIconPointerMove}
+          onPointerUp={finishPetIconDrag}
+          onPointerCancel={finishPetIconDrag}
+          disabled={!onInputCollapsedChange || inputTransitioning}
           className={cn(
             "absolute z-30 flex items-center justify-center rounded-full border border-white/25 bg-stone-950/70 text-stone-100 shadow-sm backdrop-blur-md transition-colors hover:bg-stone-900/85 disabled:pointer-events-none",
             bubbleOnly
               ? inputCollapsed
-                ? "inset-0 h-full w-full"
+                ? "inset-0 h-full w-full cursor-move"
                 : "right-[3cqh] top-[3cqh] h-[9cqh] w-[9cqh] border-transparent bg-transparent text-stone-300 hover:bg-white/10 hover:text-white"
               : "left-[1.4cqh] h-[4.4cqh] w-[4.4cqh]",
           )}
-          style={bubbleOnly ? noDragStyle : { ...noDragStyle, top: `${characterTop + 3}%` }}
+          style={bubbleOnly ? { ...noDragStyle, touchAction: inputCollapsed ? "none" : undefined } : { ...noDragStyle, top: `${characterTop + 3}%` }}
           aria-label={inputCollapsed ? "展开聊天框" : "收起聊天框"}
           title={inputCollapsed ? "展开聊天框" : "收起聊天框"}
         >
@@ -152,22 +236,38 @@ export function DesktopPetStage({
         </motion.div>
       </section> : null}
 
-      <AnimatePresence>
-        {inputVisible && inputContent ? (
+      {bubbleOnly ? (
+        inputVisible && inputContent ? (
           <motion.div
             initial={{ opacity: 0, y: -18, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -12, scale: 1 }}
             transition={{ ...stageTransition, delay: 0.14 }}
-            className={bubbleOnly ? "absolute inset-0 z-20" : "absolute inset-x-0 top-[4%] z-20 px-[4%]"}
+            className="absolute inset-0 z-20"
             style={noDragStyle}
           >
-            <div className="mx-auto h-full w-full" style={{ maxWidth: bubbleOnly ? "100%" : `${inputWidth}%` }}>
+            <div className="mx-auto h-full w-full">
               {inputContent}
             </div>
           </motion.div>
-        ) : null}
-      </AnimatePresence>
+        ) : null
+      ) : (
+        <AnimatePresence>
+          {inputVisible && inputContent ? (
+            <motion.div
+              initial={{ opacity: 0, y: -18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -12, scale: 1 }}
+              transition={{ ...stageTransition, delay: 0.14 }}
+              className="absolute inset-x-0 top-[4%] z-20 px-[4%]"
+              style={noDragStyle}
+            >
+              <div className="mx-auto h-full w-full" style={{ maxWidth: `${inputWidth}%` }}>
+                {inputContent}
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      )}
     </main>
   )
 }

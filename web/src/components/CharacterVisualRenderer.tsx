@@ -12,9 +12,16 @@ interface CharacterVisualRendererProps {
   activeAction?: ActiveCharacterAction
   displayName: string
   className?: string
+  onReady?: () => void
 }
 
-export function CharacterVisualRenderer({ character, activeAction, displayName, className }: CharacterVisualRendererProps) {
+export function CharacterVisualRenderer({
+  character,
+  activeAction,
+  displayName,
+  className,
+  onReady,
+}: CharacterVisualRendererProps) {
   const activeActionImage =
     activeAction?.imageUrl ||
     activeAction?.action?.static_image_url ||
@@ -34,12 +41,13 @@ export function CharacterVisualRenderer({ character, activeAction, displayName, 
     if (failedSpineKey && failedSpineKey !== spineKey) setFailedSpineKey("")
   }, [failedSpineKey, spineKey])
 
-  const fallback = fallbackImage ? (
+  const renderFallback = () => fallbackImage ? (
     <CharacterStandeeImage
       src={fallbackImage}
       alt={activeActionLabel ? `${displayName} - ${activeActionLabel}` : displayName}
       className={className}
       imageClassName="h-full w-auto max-w-none object-contain object-bottom"
+      onReady={onReady}
     />
   ) : (
     <div className="flex h-full w-full items-center justify-center px-[3vw] text-center text-[1.35vh] text-text-muted">
@@ -47,14 +55,15 @@ export function CharacterVisualRenderer({ character, activeAction, displayName, 
     </div>
   )
 
-  if (!spineAsset || failedSpineKey === spineKey) return fallback
+  if (!spineAsset || failedSpineKey === spineKey) return renderFallback()
 
   return (
-    <Suspense fallback={fallback}>
+    <Suspense fallback={null}>
       <LazySpineCharacterCanvas
         asset={spineAsset}
         activeAction={activeAction}
         className={className ?? "relative h-full w-full"}
+        onReady={onReady}
         onError={(error) => {
           console.error("Spine character renderer failed", error)
           setFailedSpineKey(spineKey)

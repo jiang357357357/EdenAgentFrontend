@@ -28,6 +28,13 @@
     background: transparent;
   }
 
+  html.pet-bubble-surface,
+  html.pet-bubble-surface body,
+  html.pet-bubble-surface #root,
+  html.pet-bubble-surface #root > * {
+    background-color: transparent !important;
+  }
+
   .desktop-drag-region {
     -webkit-app-region: drag;
   }

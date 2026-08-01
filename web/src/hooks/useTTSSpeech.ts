@@ -1,8 +1,21 @@
 import { useEffect, useRef, useState } from "react"
 import { resolveCoreAssetUrl } from "../lib/auth"
-import { updateDesktopActivityFacts, type PetTTSMode } from "../lib/desktop-window"
+import {
+  claimDesktopSpeechPlayback,
+  listenDesktopSpeechPlaybackControl,
+  releaseDesktopSpeechPlayback,
+  updateDesktopActivityFacts,
+  type DesktopSpeechIntent,
+  type PetTTSMode,
+} from "../lib/desktop-window"
 import { synthesizeSpeechSegment } from "../lib/mon_agent_api"
-import { speechChunksForTTS, textForTTS } from "../lib/tts-text"
+import { SpeechOutputGate } from "../lib/speech-output-gate"
+import {
+  consumeSpeechStream,
+  speechChunksForTTS,
+  textForTTS,
+  type SpeechStreamCursor,
+} from "../lib/tts-text"
 
 export interface SpeechClip {
   status: "synthesizing" | "ready" | "error"
@@ -15,6 +28,16 @@ interface SpeechSegment {
   id: string
   messageId: string
   text: string
+  state?: "streaming" | "done"
+}
+
+interface StreamingSpeechState {
+  cursor?: SpeechStreamCursor
+  nextChunkIndex: number
+  pending: number
+  sources: Map<number, string>
+  complete: boolean
+  error?: string
 }
 
 interface UseTTSSpeechOptions {
@@ -35,18 +58,33 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
   const finishAudioRef = useRef<(() => void) | null>(null)
   const generationRef = useRef(0)
   const playbackGenerationRef = useRef(0)
+  const synthesisQueueRef = useRef<Promise<void>>(Promise.resolve())
   const queueRef = useRef<Promise<void>>(Promise.resolve())
   const runActiveRef = useRef(isThinking)
-  const synthesizedIdsRef = useRef<Set<string>>(new Set())
+  const streamStatesRef = useRef<Map<string, StreamingSpeechState>>(new Map())
+  const speechLeaseRef = useRef<string | null>(null)
+  const synthesisContextRef = useRef(`${sessionId ?? ""}:${mode}`)
+  const outputGateRef = useRef<SpeechOutputGate | null>(null)
+  if (!outputGateRef.current) {
+    outputGateRef.current = new SpeechOutputGate(isThinking, setAutoPlaybackPending)
+  }
 
   const stop = (cancelSynthesis = false, clearClips = false) => {
+    outputGateRef.current?.reset(false)
     playbackGenerationRef.current += 1
-    if (cancelSynthesis) generationRef.current += 1
+    if (cancelSynthesis) {
+      generationRef.current += 1
+      streamStatesRef.current.clear()
+    }
     audioRef.current?.pause()
     audioRef.current = null
     audioSegmentIdRef.current = null
     finishAudioRef.current?.()
     finishAudioRef.current = null
+    const leaseId = speechLeaseRef.current
+    speechLeaseRef.current = null
+    void releaseDesktopSpeechPlayback(leaseId)
+    synthesisQueueRef.current = Promise.resolve()
     queueRef.current = Promise.resolve()
     setActiveSegmentId(null)
     setPaused(false)
@@ -85,8 +123,16 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
     sources: string[],
     generation: number,
     playbackGeneration: number,
+    intent: DesktopSpeechIntent,
   ) => {
     if (generation !== generationRef.current || playbackGeneration !== playbackGenerationRef.current) return
+    const claim = await claimDesktopSpeechPlayback("main-chat", segmentId, intent)
+    if (!claim.granted || !claim.leaseId) return
+    if (generation !== generationRef.current || playbackGeneration !== playbackGenerationRef.current) {
+      void releaseDesktopSpeechPlayback(claim.leaseId)
+      return
+    }
+    speechLeaseRef.current = claim.leaseId
     setActiveSegmentId(segmentId)
     setPaused(false)
     try {
@@ -95,6 +141,8 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
         await playSource(segmentId, source, generation)
       }
     } finally {
+      if (speechLeaseRef.current === claim.leaseId) speechLeaseRef.current = null
+      void releaseDesktopSpeechPlayback(claim.leaseId)
       setActiveSegmentId((current) => current === segmentId ? null : current)
       setPaused(false)
     }
@@ -154,10 +202,81 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
       .then(async () => {
         const sources = await synthesis
         if (!sources || generation !== generationRef.current || playbackGeneration !== playbackGenerationRef.current) return
-        await playSources(segmentId, sources, generation, playbackGeneration)
+        await playSources(segmentId, sources, generation, playbackGeneration, "auto")
       })
       .catch((error) => console.warn("[Chat][TTS] 播放失败", error))
     return synthesis
+  }
+
+  const updateStreamingClip = (segmentId: string, state: StreamingSpeechState) => {
+    const sources = [...state.sources.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([, source]) => source)
+    const settled = state.complete && state.pending === 0
+    setClips((current) => ({
+      ...current,
+      [segmentId]: state.error && settled
+        ? { status: "error", source: sources[0], sources, error: state.error }
+        : settled
+          ? { status: "ready", source: sources[0], sources }
+          : { status: "synthesizing", source: sources[0], sources },
+    }))
+  }
+
+  const enqueueStreamingChunk = (
+    segmentId: string,
+    messageId: string,
+    text: string,
+    chunkIndex: number,
+    state: StreamingSpeechState,
+  ) => {
+    if (!sessionId || !messageId || typeof configId !== "number" || mode === "none") return
+    const generation = generationRef.current
+    const playbackGeneration = playbackGenerationRef.current
+    state.pending += 1
+    updateStreamingClip(segmentId, state)
+
+    const request = synthesisQueueRef.current
+      .catch(() => undefined)
+      .then(() => synthesizeSpeechSegment({
+        sessionId,
+        messageId,
+        segmentId: `${segmentId}:tts:${chunkIndex}`,
+        text,
+        configId,
+        mode,
+      }))
+    synthesisQueueRef.current = request.then(() => undefined, () => undefined)
+    const synthesis = request
+      .then((result) => {
+        if (!result.success) throw new Error(result.error_message || `语音句子 ${chunkIndex + 1} 合成失败`)
+        const source = result.audio_data
+          ? `data:audio/wav;base64,${result.audio_data}`
+          : resolveCoreAssetUrl(result.audio_url)
+        if (!source) throw new Error(`语音句子 ${chunkIndex + 1} 未返回音频`)
+        if (generation === generationRef.current) state.sources.set(chunkIndex, source)
+        return source
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        if (generation === generationRef.current) state.error = message
+        console.warn("[Chat][TTS] 流式句子合成失败", error)
+        return null
+      })
+      .finally(() => {
+        if (generation !== generationRef.current) return
+        state.pending = Math.max(0, state.pending - 1)
+        updateStreamingClip(segmentId, state)
+      })
+
+    queueRef.current = queueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const source = await synthesis
+        if (!source || generation !== generationRef.current || playbackGeneration !== playbackGenerationRef.current) return
+        await playSources(segmentId, [source], generation, playbackGeneration, "auto")
+      })
+      .catch((error) => console.warn("[Chat][TTS] 流式句子播放失败", error))
   }
 
   const toggle = (segmentId: string, rawText: string, messageId: string) => {
@@ -172,6 +291,7 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
           synthesizedSources,
           generationRef.current,
           playbackGenerationRef.current,
+          "manual",
         ).catch((error) => console.warn("[Chat][TTS] 播放失败", error))
       })
       return
@@ -187,9 +307,24 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
       return
     }
     stop(false)
-    void playSources(segmentId, sources, generationRef.current, playbackGenerationRef.current)
+    void playSources(segmentId, sources, generationRef.current, playbackGenerationRef.current, "manual")
       .catch((error) => console.warn("[Chat][TTS] 播放失败", error))
   }
+
+  useEffect(() => {
+    let disposed = false
+    let unsubscribe: (() => void) | undefined
+    void listenDesktopSpeechPlaybackControl((control) => {
+      if (control.type === "stop" && speechLeaseRef.current === control.leaseId) stop(false)
+    }).then((listener) => {
+      if (disposed) listener?.()
+      else unsubscribe = listener
+    })
+    return () => {
+      disposed = true
+      unsubscribe?.()
+    }
+  }, [])
 
   useEffect(() => () => {
     stop(true)
@@ -204,35 +339,61 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
   }, [activeSegmentId, paused])
 
   useEffect(() => {
+    const context = `${sessionId ?? ""}:${mode}`
+    if (synthesisContextRef.current === context) return
+    synthesisContextRef.current = context
+    stop(true, true)
+    runActiveRef.current = isThinking
+    outputGateRef.current?.reset(isThinking)
+  }, [isThinking, mode, sessionId])
+
+  useEffect(() => {
     if (mode === "none") {
       stop(true, true)
       runActiveRef.current = isThinking
-      setAutoPlaybackPending(isThinking)
+      outputGateRef.current?.reset(isThinking)
+      return
+    }
+    if (!sessionId || typeof configId !== "number") {
+      runActiveRef.current = isThinking
+      outputGateRef.current?.reset(isThinking)
       return
     }
     const runWasActive = runActiveRef.current
     if (isThinking) {
       runActiveRef.current = true
-      setAutoPlaybackPending(true)
+      outputGateRef.current?.begin()
     }
-    const queued: Array<Promise<unknown>> = []
     if (isThinking || runWasActive) {
       for (const segment of segments) {
-        if (synthesizedIdsRef.current.has(segment.id) || !textForTTS(segment.text, mode)) continue
-        synthesizedIdsRef.current.add(segment.id)
-        const result = synthesize(segment.id, segment.messageId, segment.text, true)
-        if (result) queued.push(result)
+        if (!textForTTS(segment.text, mode)) continue
+        let state = streamStatesRef.current.get(segment.id)
+        if (!state) {
+          state = {
+            nextChunkIndex: 0,
+            pending: 0,
+            sources: new Map(),
+            complete: false,
+          }
+          streamStatesRef.current.set(segment.id, state)
+        }
+        const flush = segment.state !== "streaming" || (!isThinking && runWasActive)
+        const update = consumeSpeechStream(segment.text, mode, state.cursor, flush)
+        state.cursor = update.cursor
+        for (const text of update.chunks) {
+          const chunkIndex = state.nextChunkIndex
+          state.nextChunkIndex += 1
+          enqueueStreamingChunk(segment.id, segment.messageId, text, chunkIndex, state)
+        }
+        if (flush) {
+          state.complete = true
+          updateStreamingClip(segment.id, state)
+        }
       }
     }
     if (!isThinking && runWasActive) {
       runActiveRef.current = false
-      const generation = generationRef.current
-      void Promise.allSettled(queued).then(async () => {
-        await queueRef.current.catch(() => undefined)
-        if (generation === generationRef.current) setAutoPlaybackPending(false)
-      })
-    } else if (!isThinking && !runWasActive) {
-      setAutoPlaybackPending(false)
+      outputGateRef.current?.holdUntil(queueRef.current)
     }
   }, [configId, isThinking, mode, segments, sessionId])
 
@@ -242,6 +403,6 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
     paused,
     toggle,
     stop,
-    autoPlaybackPending: autoPlaybackPending || (Boolean(activeSegmentId) && !paused),
+    autoPlaybackPending: autoPlaybackPending || Boolean(activeSegmentId),
   }
 }

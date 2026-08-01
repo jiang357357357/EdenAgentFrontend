@@ -2,6 +2,16 @@ import type { PetTTSMode } from "./desktop-window"
 
 const MAX_SPEECH_CHARS = 180
 
+export interface SpeechStreamCursor {
+  speakableText: string
+  consumed: number
+}
+
+export interface SpeechStreamUpdate {
+  chunks: string[]
+  cursor: SpeechStreamCursor
+}
+
 function isMarkdownTableRow(line: string) {
   const value = line.trim()
   if (!value || !value.includes("|")) return false
@@ -105,6 +115,76 @@ function splitLongSentence(sentence: string) {
   }
   if (remaining) chunks.push(remaining)
   return chunks
+}
+
+function streamingBoundaryEnd(text: string, start: number) {
+  for (let index = start; index < text.length; index += 1) {
+    const character = text[index]
+    const isNewline = character === "\n"
+    const isTerminal = /[。！？!?；;]/.test(character)
+    const isEnglishPeriod = character === "." && (index === text.length - 1 || /\s/.test(text[index + 1]))
+    if (!isNewline && !isTerminal && !isEnglishPeriod) continue
+
+    let end = index + 1
+    while (end < text.length && /[。！？!?；;.\"'”’）)\]]/.test(text[end])) end += 1
+    while (end < text.length && /[ \t]/.test(text[end])) end += 1
+    return end
+  }
+  return -1
+}
+
+function streamingLengthBoundary(text: string, start: number) {
+  if (text.length - start < MAX_SPEECH_CHARS) return -1
+  const window = text.slice(start, start + MAX_SPEECH_CHARS + 1)
+  const candidates = [...window.matchAll(/[，、,:：]/g)]
+  const splitAt = [...candidates].reverse().find((match) => (match.index ?? 0) >= 60)?.index
+  return start + (splitAt === undefined ? MAX_SPEECH_CHARS : splitAt + 1)
+}
+
+/**
+ * Consumes only complete, newly available speech units from incrementally growing text.
+ * The unfinished tail stays behind the cursor until punctuation arrives or `flush` is true.
+ */
+export function consumeSpeechStream(
+  text: string,
+  mode: PetTTSMode,
+  previous: SpeechStreamCursor | undefined,
+  flush = false,
+): SpeechStreamUpdate {
+  const speakableText = extractSpeakableText(text, mode)
+  const previousConsumed = previous?.consumed ?? 0
+  const prefixStillMatches = previousConsumed === 0
+    || speakableText.slice(0, previousConsumed) === previous?.speakableText.slice(0, previousConsumed)
+  const start = prefixStillMatches ? Math.min(previousConsumed, speakableText.length) : 0
+  const chunks: string[] = []
+  let consumed = start
+
+  while (consumed < speakableText.length) {
+    while (consumed < speakableText.length && /[\s\"'”’）)\]]/.test(speakableText[consumed])) consumed += 1
+    if (consumed >= speakableText.length) break
+    const sentenceEnd = streamingBoundaryEnd(speakableText, consumed)
+    const lengthEnd = streamingLengthBoundary(speakableText, consumed)
+    let end = -1
+    if (sentenceEnd >= 0 && lengthEnd >= 0) end = Math.min(sentenceEnd, lengthEnd)
+    else end = Math.max(sentenceEnd, lengthEnd)
+    if (end < 0) break
+
+    const chunk = speakableText.slice(consumed, end).trim()
+    consumed = end
+    while (consumed < speakableText.length && /\s/.test(speakableText[consumed])) consumed += 1
+    if (chunk) chunks.push(chunk)
+  }
+
+  if (flush && consumed < speakableText.length) {
+    const remainder = speakableText.slice(consumed).trim()
+    if (remainder) chunks.push(...splitLongSentence(remainder))
+    consumed = speakableText.length
+  }
+
+  return {
+    chunks,
+    cursor: { speakableText, consumed },
+  }
 }
 
 export function speechChunksForTTS(text: string, mode: PetTTSMode) {

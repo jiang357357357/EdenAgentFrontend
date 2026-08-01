@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { cn } from "../lib/utils"
 
 interface RenderedImage {
@@ -11,6 +11,7 @@ interface CharacterStandeeImageProps {
   alt: string
   className?: string
   imageClassName?: string
+  onReady?: () => void
 }
 
 export function CharacterStandeeImage({
@@ -18,8 +19,13 @@ export function CharacterStandeeImage({
   alt,
   className,
   imageClassName,
+  onReady,
 }: CharacterStandeeImageProps) {
   const [rendered, setRendered] = useState<RenderedImage>({ src, alt })
+  const readySrcRef = useRef("")
+  const onReadyRef = useRef(onReady)
+
+  onReadyRef.current = onReady
 
   useEffect(() => {
     if (!src) return
@@ -54,6 +60,20 @@ export function CharacterStandeeImage({
     }
   }, [alt, rendered.alt, rendered.src, src])
 
+  const handleRenderedImageLoad = (image: HTMLImageElement, source: string) => {
+    const notifyReady = () => {
+      if (readySrcRef.current === source) return
+      readySrcRef.current = source
+      onReadyRef.current?.()
+    }
+
+    if (typeof image.decode === "function") {
+      void image.decode().then(notifyReady).catch(notifyReady)
+      return
+    }
+    notifyReady()
+  }
+
   return (
     <img
       src={rendered.src}
@@ -61,6 +81,7 @@ export function CharacterStandeeImage({
       className={cn("h-full w-auto max-w-none object-contain object-bottom", className, imageClassName)}
       draggable={false}
       decoding="async"
+      onLoad={(event) => handleRenderedImageLoad(event.currentTarget, rendered.src)}
     />
   )
 }

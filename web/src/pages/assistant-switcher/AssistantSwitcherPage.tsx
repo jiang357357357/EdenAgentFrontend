@@ -14,6 +14,7 @@ import {
 import { motion } from "motion/react"
 import { useEffect, useMemo, useState } from "react"
 import paperTexture from "../../assets/assistant-switcher-paper.png"
+import { CharacterVisualRenderer } from "../../components/CharacterVisualRenderer"
 import {
   fetchAssistants,
   getErrorMessage,
@@ -122,6 +123,40 @@ function standeeUrl(assistant: CoreAssistant) {
   )
 }
 
+type AssistantCharacter = NonNullable<CoreAssistant["character"]>
+
+interface AssistantVisualPreview {
+  assistant: CoreAssistant
+  character?: AssistantCharacter
+  hasVisual: boolean
+  key: string
+}
+
+type VisualTransitionPhase = "idle" | "leaving" | "entering"
+
+function assistantVisualPreview(assistant: CoreAssistant): AssistantVisualPreview {
+  const character = assistant.character
+  const staticUrl = standeeUrl(assistant)
+  const spineAsset = character?.spine_asset
+  const hasSpine = Boolean(
+    character?.visual_preference === "spine" &&
+    spineAsset &&
+    spineAsset.enabled !== false,
+  )
+  const sourceKey = hasSpine
+    ? `spine:${spineAsset?.id ?? "asset"}:${spineAsset?.skeleton_url}:${spineAsset?.atlas_url}`
+    : staticUrl
+      ? `static:${staticUrl}`
+      : "none"
+
+  return {
+    assistant,
+    character,
+    hasVisual: Boolean(character && (hasSpine || staticUrl)),
+    key: `${assistant.id}:${sourceKey}`,
+  }
+}
+
 function modelLabel(assistant: CoreAssistant) {
   return cleanText(assistant.character?.ai_talk_entity_name) || "跟随角色配置"
 }
@@ -213,6 +248,10 @@ export function AssistantSwitcherPage({
   const [error, setError] = useState<string | undefined>()
   const [switchingId, setSwitchingId] = useState<number | undefined>()
   const [notice, setNotice] = useState<string | undefined>()
+  const [displayedVisualKey, setDisplayedVisualKey] = useState<string>()
+  const [transitionTargetKey, setTransitionTargetKey] = useState<string>()
+  const [visualTransitionPhase, setVisualTransitionPhase] = useState<VisualTransitionPhase>("idle")
+  const [readyVisualKeys, setReadyVisualKeys] = useState<Set<string>>(() => new Set())
   const [selectedIds, setSelectedIds] = useState<number[]>(() =>
     sessionParticipantIDs.map(Number).filter(Number.isFinite),
   )
@@ -283,10 +322,87 @@ export function AssistantSwitcherPage({
     assistants[0]
   const currentAssistantId = currentAssistant?.id ?? assistants.find((assistant) => assistant.is_default)?.id
   const selectedIsCurrent = Boolean(selectedAssistant && currentAssistantId === selectedAssistant.id)
-  const selectedStandeeUrl = selectedAssistant ? standeeUrl(selectedAssistant) : undefined
+  const selectedPreview = selectedAssistant ? assistantVisualPreview(selectedAssistant) : undefined
+  const selectedVisualLoaded = Boolean(
+    selectedPreview &&
+    (!selectedPreview.hasVisual || readyVisualKeys.has(selectedPreview.key)),
+  )
+  const selectedVisualReady = Boolean(
+    selectedPreview &&
+    displayedVisualKey === selectedPreview.key &&
+    visualTransitionPhase === "idle",
+  )
+  const previews = assistants.map(assistantVisualPreview)
+  const displayedPreview = previews.find((preview) => preview.key === displayedVisualKey)
+  const transitionTargetPreview = previews.find((preview) => preview.key === transitionTargetKey)
+  const visualPreviews: AssistantVisualPreview[] = []
+  for (const preview of [displayedPreview, transitionTargetPreview, selectedPreview]) {
+    if (!preview?.hasVisual || visualPreviews.some((item) => item.key === preview.key)) continue
+    visualPreviews.push(preview)
+  }
+
+  useEffect(() => {
+    if (
+      !selectedPreview ||
+      !selectedVisualLoaded ||
+      visualTransitionPhase !== "idle" ||
+      displayedVisualKey === selectedPreview.key
+    ) return
+
+    setTransitionTargetKey(selectedPreview.key)
+    if (displayedVisualKey) {
+      setVisualTransitionPhase("leaving")
+    } else {
+      setDisplayedVisualKey(selectedPreview.key)
+      setVisualTransitionPhase("entering")
+    }
+  }, [
+    displayedVisualKey,
+    selectedPreview?.key,
+    selectedVisualLoaded,
+    visualTransitionPhase,
+  ])
+
+  useEffect(() => {
+    if (
+      visualTransitionPhase !== "leaving" ||
+      !transitionTargetKey ||
+      transitionTargetKey === selectedPreview?.key
+    ) return
+
+    setTransitionTargetKey(undefined)
+    setVisualTransitionPhase("idle")
+  }, [selectedPreview?.key, transitionTargetKey, visualTransitionPhase])
+
+  useEffect(() => {
+    if (visualTransitionPhase !== "leaving" || !transitionTargetKey) return
+    const timer = window.setTimeout(() => {
+      setDisplayedVisualKey(transitionTargetKey)
+      setVisualTransitionPhase("entering")
+    }, transition.duration * 1000)
+    return () => window.clearTimeout(timer)
+  }, [transitionTargetKey, visualTransitionPhase])
+
+  useEffect(() => {
+    if (visualTransitionPhase !== "entering") return
+    const timer = window.setTimeout(() => {
+      setTransitionTargetKey(undefined)
+      setVisualTransitionPhase("idle")
+    }, transition.duration * 1000)
+    return () => window.clearTimeout(timer)
+  }, [visualTransitionPhase])
+
+  function handleVisualReady(visualKey: string) {
+    setReadyVisualKeys((current) => {
+      if (current.has(visualKey)) return current
+      const next = new Set(current)
+      next.add(visualKey)
+      return next
+    })
+  }
 
   async function handleSwitch() {
-    if (!selectedAssistant || selectedIsCurrent || switchingId) return
+    if (!selectedAssistant || selectedIsCurrent || !selectedVisualReady || switchingId) return
     const token = getStoredToken()
     if (!token) {
       setError("登录状态已失效，请重新登录。")
@@ -419,10 +535,13 @@ export function AssistantSwitcherPage({
             <button
               type="button"
               onClick={mode === "participants" ? handleSaveParticipants : handleSwitch}
-              disabled={(mode === "current" ? selectedIsCurrent : !selectedIds.length) || switchingId !== undefined}
+              disabled={
+                (mode === "current" ? selectedIsCurrent || !selectedVisualReady : !selectedIds.length) ||
+                switchingId !== undefined
+              }
               className={cn(
                 "flex h-[4.8vh] min-w-[10.5vw] items-center justify-center rounded-[0.62vh] px-[1.35vw] text-[1.62vh] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2",
-                mode === "current" && selectedIsCurrent
+                mode === "current" && (selectedIsCurrent || !selectedVisualReady)
                   ? "cursor-default border border-[#e1dbd4] bg-[#f4f0eb] text-[#8b837c]"
                   : "bg-accent text-white shadow-[0_0.25vh_0.7vh_rgba(180,95,0,0.16)] hover:bg-[#c86e05] active:bg-[#b86204]",
               )}
@@ -434,6 +553,11 @@ export function AssistantSwitcherPage({
                 </>
               ) : mode === "participants" ? (
                 `保存 ${selectedIds.length} 位参与者`
+              ) : !selectedVisualReady ? (
+                <>
+                  <LoaderCircle className="mr-[0.55vw] h-[2vh] w-[2vh] animate-spin" />
+                  正在准备…
+                </>
               ) : selectedIsCurrent ? (
                 "当前助手"
               ) : (
@@ -518,23 +642,48 @@ export function AssistantSwitcherPage({
             </section>
 
             <figure className="pointer-events-none absolute bottom-[8.2vh] right-[6vw] top-[10.8vh] flex w-[24vw] items-end justify-center">
-              {selectedStandeeUrl ? (
-                <motion.img
-                  key={`${selectedAssistant.id}:${selectedStandeeUrl}`}
-                  initial={{ opacity: 0, y: 14, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
+              {visualPreviews.map((preview) => {
+                const isDisplayed = preview.key === displayedVisualKey
+                const isLeaving = isDisplayed && visualTransitionPhase === "leaving"
+                const isVisible = isDisplayed && !isLeaving
+                return preview.character ? (
+                  <motion.div
+                    key={preview.key}
+                    initial={{ opacity: 0, y: 14, scale: 0.98 }}
+                    animate={{
+                      opacity: isVisible ? 1 : 0,
+                      y: isVisible ? 0 : 14,
+                      scale: isVisible ? 1 : 0.98,
+                    }}
+                    transition={transition}
+                    aria-hidden={!isVisible}
+                    className="absolute inset-0 h-full w-full drop-shadow-[0_1.2vh_1.2vh_rgba(73,58,45,0.08)]"
+                    style={{ zIndex: isDisplayed ? 2 : 0 }}
+                  >
+                    <CharacterVisualRenderer
+                      character={preview.character}
+                      displayName={assistantName(preview.assistant)}
+                      className="relative h-full w-full"
+                      onReady={() => handleVisualReady(preview.key)}
+                    />
+                  </motion.div>
+                ) : null
+              })}
+              {displayedPreview && !displayedPreview.hasVisual ? (
+                <motion.div
+                  key={displayedPreview.key}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: visualTransitionPhase === "leaving" ? 0 : 1 }}
                   transition={transition}
-                  src={selectedStandeeUrl}
-                  alt={`${assistantName(selectedAssistant)}立绘`}
-                  className="h-full max-w-full object-contain object-bottom drop-shadow-[0_1.2vh_1.2vh_rgba(73,58,45,0.08)]"
-                  draggable={false}
-                />
-              ) : (
-                <div className="mb-[15vh] flex flex-col items-center gap-[1.3vh] text-[#938a82]">
+                  className="mb-[15vh] flex flex-col items-center gap-[1.3vh] text-[#938a82]"
+                >
                   <Bot className="h-[7vh] w-[7vh]" strokeWidth={1.3} />
                   <span className="text-[1.5vh]">尚未配置角色立绘</span>
-                </div>
-              )}
+                </motion.div>
+              ) : null}
+              {!displayedVisualKey && selectedPreview?.hasVisual ? (
+                <LoaderCircle className="mb-[18vh] h-[3vh] w-[3vh] animate-spin text-accent" />
+              ) : null}
             </figure>
           </div>
         ) : (

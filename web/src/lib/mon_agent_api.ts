@@ -14,6 +14,7 @@ import type {
 import { getClientId, getStoredToken } from "./auth"
 import type { CoreCharacterVisualAction, CoreCharacterVisualActionGroup, CoreTTSSynthesisResponse } from "./auth"
 import { formatLocalTime } from "./time"
+import { parseMessagePage } from "./message-page"
 
 const env = (
   import.meta as unknown as {
@@ -1064,7 +1065,8 @@ export interface MessagePage {
 export async function listMessagesRaw(sessionID: string, before?: string, limit = 50) {
   const search = new URLSearchParams({ limit: String(limit), includeCompactions: "1" })
   if (before) search.set("before", before)
-  return request<MessagePage>(`/session/${encodeURIComponent(sessionID)}/message?${search.toString()}`)
+  const payload = await request<unknown>(`/session/${encodeURIComponent(sessionID)}/message?${search.toString()}`)
+  return parseMessagePage<ApiMessage>(payload)
 }
 
 export async function listMessages(sessionID: string) {

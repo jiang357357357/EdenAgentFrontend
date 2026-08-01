@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { X } from "lucide-react"
 import { AnimatePresence, LayoutGroup, motion } from "motion/react"
 import { QuestionDecisionOverlay } from "./components/QuestionDecisionOverlay"
+import { PetSurfaceErrorBoundary } from "./components/PetSurfaceErrorBoundary"
 import { ChatPage } from "./pages/chat"
 import { CharacterPage } from "./pages/character"
 import { AssistantSwitcherPage } from "./pages/assistant-switcher"
@@ -44,11 +45,11 @@ const screenTransition = {
   ease: [0.16, 1, 0.3, 1],
 } as const
 
-type AppPage = "chat" | "selfAwake" | "memo" | "skills" | "settings" | "assistant-switcher" | "pet" | "pet-character" | "pet-bubble"
+type AppPage = "chat" | "selfAwake" | "memo" | "skills" | "settings" | "assistant-switcher" | "pet" | "pet-character" | "pet-bubble" | "pet-icon"
 
 function initialPageFromLocation(): AppPage {
   const page = new URLSearchParams(window.location.search).get("page")
-  if (page === "settings" || page === "skills" || page === "assistant-switcher" || page === "pet" || page === "pet-character" || page === "pet-bubble") return page
+  if (page === "settings" || page === "skills" || page === "assistant-switcher" || page === "pet" || page === "pet-character" || page === "pet-bubble" || page === "pet-icon") return page
   return "chat"
 }
 
@@ -106,8 +107,14 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const initialPage = initialPageFromLocation()
   const isSettingsWindow = initialPage === "settings"
-  const isPetWindow = initialPage === "pet" || initialPage === "pet-character" || initialPage === "pet-bubble"
-  const petSurface = initialPage === "pet-character" ? "character" : initialPage === "pet-bubble" ? "bubble" : "combined"
+  const isPetWindow = initialPage === "pet" || initialPage === "pet-character" || initialPage === "pet-bubble" || initialPage === "pet-icon"
+  const petSurface = initialPage === "pet-character"
+    ? "character"
+    : initialPage === "pet-bubble"
+      ? "bubble"
+      : initialPage === "pet-icon"
+        ? "icon"
+        : "combined"
   const [activePage, setActivePage] = useState<AppPage>(() => initialPageFromLocation())
   const [assistantSwitcherMode, setAssistantSwitcherMode] = useState<"current" | "participants">(
     initialPage === "settings" ? "current" : "participants",
@@ -255,6 +262,7 @@ export default function App() {
       speaker: string
       text?: string
       speechSegmentId?: string
+      speechMessageId?: string
       images?: string[]
       runtimeTrace?: string
       thinking?: string
@@ -268,6 +276,7 @@ export default function App() {
             speaker,
             text: segment.content,
             speechSegmentId: segment.id,
+            speechMessageId: message.id,
           })
         } else if (segment.type === "image") {
           segments.push({ speaker, images: [segment.url] })
@@ -313,7 +322,12 @@ export default function App() {
     }
 
     if (message.content) {
-      segments.push({ speaker, text: message.content, speechSegmentId: `${message.id}:content` })
+      segments.push({
+        speaker,
+        text: message.content,
+        speechSegmentId: `${message.id}:content`,
+        speechMessageId: message.id,
+      })
     }
 
     return segments
@@ -745,35 +759,37 @@ export default function App() {
         <LayoutGroup id="mon-agent-mode-switch">
           <AnimatePresence mode="wait" initial={false}>
             {isPetWindow || activePage === "pet" ? (
-              <CharacterPage
-                surface={petSurface}
-                isThinking={isThinking}
-                activeSession={activeSession}
-                activeReplyMessage={activeReplyMessage}
-                activePendingPermissions={activePendingPermissions}
-                activePendingQuestions={activePendingQuestions}
-                historyOpen={historyOpen}
-                historyView={historyView}
-                sessions={sessions}
-                activeSessionId={activeSessionId}
-                dialogSegments={dialogSegments}
-                onSetHistoryOpen={setHistoryOpen}
-                onSetHistoryView={setHistoryView}
-                onSelectSession={selectRuntimeSession}
-                onSendMessage={handleSendMessage}
-                onCompact={handleCompactSession}
-                onAbort={handleAbortSession}
-                onPermissionReply={handlePermissionReply}
-                permissionMode={permissionMode}
-                onPermissionModeChange={updatePermissionMode}
-                onQuestionReply={handleQuestionReply}
-                onQuestionReject={handleQuestionReject}
-                onStartWindowDrag={startDesktopWindowDrag}
-                assistant={currentAssistant}
-                assistantError={currentAssistantError}
-                activeCharacterAction={activeCharacterAction}
-                onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
-              />
+              <PetSurfaceErrorBoundary surface={petSurface}>
+                <CharacterPage
+                  surface={petSurface}
+                  isThinking={isThinking}
+                  activeSession={activeSession}
+                  activeReplyMessage={activeReplyMessage}
+                  activePendingPermissions={activePendingPermissions}
+                  activePendingQuestions={activePendingQuestions}
+                  historyOpen={historyOpen}
+                  historyView={historyView}
+                  sessions={sessions}
+                  activeSessionId={activeSessionId}
+                  dialogSegments={dialogSegments}
+                  onSetHistoryOpen={setHistoryOpen}
+                  onSetHistoryView={setHistoryView}
+                  onSelectSession={selectRuntimeSession}
+                  onSendMessage={handleSendMessage}
+                  onCompact={handleCompactSession}
+                  onAbort={handleAbortSession}
+                  onPermissionReply={handlePermissionReply}
+                  permissionMode={permissionMode}
+                  onPermissionModeChange={updatePermissionMode}
+                  onQuestionReply={handleQuestionReply}
+                  onQuestionReject={handleQuestionReject}
+                  onStartWindowDrag={startDesktopWindowDrag}
+                  assistant={currentAssistant}
+                  assistantError={currentAssistantError}
+                  activeCharacterAction={activeCharacterAction}
+                  onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
+                />
+              </PetSurfaceErrorBoundary>
             ) : activePage === "selfAwake" ? (
               <SelfAwakePage
                 currentUser={currentUser}
