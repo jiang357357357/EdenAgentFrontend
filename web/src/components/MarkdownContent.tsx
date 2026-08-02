@@ -16,7 +16,7 @@ export function MarkdownContent({
   imageClassName = "my-2 max-w-full rounded-lg border border-border object-contain",
   paragraphClassName,
   separateActionLines = false,
-  actionParagraphClassName = "my-[1.2vh] italic text-accent/85",
+  actionParagraphClassName = "my-[1.2vh] italic text-text/60",
 }: MarkdownContentProps) {
   const renderMarkdown = (value: string, key?: string) => (
     <ReactMarkdown

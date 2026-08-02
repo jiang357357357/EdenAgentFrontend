@@ -4,8 +4,8 @@ import test from "node:test"
 import { parseActionDescription, splitActionLines } from "../src/lib/message-actions.ts"
 
 test("recognizes standalone half-width and full-width parenthesized actions", () => {
-  assert.equal(parseActionDescription("(凑近屏幕)"), "(凑近屏幕)")
-  assert.equal(parseActionDescription("（歪头）"), "（歪头）")
+  assert.equal(parseActionDescription("(凑近屏幕)"), "凑近屏幕")
+  assert.equal(parseActionDescription("（歪头）"), "歪头")
 })
 
 test("recognizes and unwraps standalone Markdown emphasis actions", () => {
@@ -23,5 +23,18 @@ test("splits action lines from surrounding Markdown", () => {
     { action: false, content: "第一段" },
     { action: true, content: "凑近屏幕" },
     { action: false, content: "第二段" },
+  ])
+})
+
+test("splits a trailing parenthesized action from dialogue", () => {
+  assert.deepEqual(splitActionLines("不过……这次可不许把我晾在后台了，哼！（叉腰）"), [
+    { action: false, content: "不过……这次可不许把我晾在后台了，哼！" },
+    { action: true, content: "叉腰" },
+  ])
+})
+
+test("keeps ordinary inline parenthetical explanations in dialogue", () => {
+  assert.deepEqual(splitActionLines("这是版本说明（仅供参考）"), [
+    { action: false, content: "这是版本说明（仅供参考）" },
   ])
 })

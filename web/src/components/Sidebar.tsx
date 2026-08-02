@@ -1,4 +1,4 @@
-import { Menu, LogOut } from 'lucide-react';
+import { Menu, LogOut, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Session } from '../types';
 import type { AuthUser } from '../lib/auth';
@@ -7,6 +7,7 @@ interface SidebarProps {
   sessions: Session[];
   activeId: string;
   onSelect: (id: string) => void;
+  onDelete: (id: string) => Promise<void> | void;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   currentUser?: AuthUser | null;
@@ -16,7 +17,8 @@ interface SidebarProps {
 export function Sidebar({ 
   sessions, 
   activeId, 
-  onSelect, 
+  onSelect,
+  onDelete,
   isOpen, 
   setIsOpen,
   currentUser,
@@ -63,17 +65,30 @@ export function Sidebar({
               <span className="mb-[2vh] block text-[1.55vh] uppercase tracking-[0.2em] text-text-muted">会话记录</span>
               <ul className="space-y-[0.8vh]">
                 {sessions.map(session => (
-                    <li key={session.id}>
+                    <li key={session.id} className="group relative focus-within:z-10">
                         <button
                           onClick={() => onSelect(session.id)}
                           className={cn(
-                              "flex w-full items-center gap-[1vw] truncate rounded-[0.8vh] px-[1vw] py-[1.8vh] text-left text-[2.25vh] transition-colors",
+                              "flex w-full items-center gap-[1vw] truncate rounded-[0.8vh] py-[1.8vh] pl-[1vw] pr-[4vw] text-left text-[2.25vh] transition-colors",
                               activeId === session.id 
                                 ? "bg-card text-text border border-transparent border-l-accent" 
                                 : "text-text-muted hover:bg-card hover:text-text border border-transparent border-l-transparent"
                           )}
                         >
                             <span className="truncate">{session.title}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            if (!window.confirm(`永久删除会话“${session.title}”？删除后无法恢复。`)) return
+                            void onDelete(session.id)
+                          }}
+                          className="absolute right-[0.65vw] top-1/2 flex h-[3.6vh] w-[3.6vh] -translate-y-1/2 items-center justify-center rounded-[0.55vh] text-text-muted opacity-0 transition hover:bg-red-500/10 hover:text-red-500 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50 group-hover:opacity-100 group-focus-within:opacity-100"
+                          aria-label={`永久删除会话：${session.title}`}
+                          title="永久删除会话"
+                        >
+                          <Trash2 className="h-[2.1vh] w-[2.1vh]" />
                         </button>
                     </li>
                 ))}

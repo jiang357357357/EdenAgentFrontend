@@ -61,6 +61,7 @@ interface ChatPageProps {
   onAutoScrollChange: (enabled: boolean) => void
   onLoadOlderMessages: () => Promise<void>
   onSelectSession: (id: string) => void
+  onDeleteSession: (id: string) => Promise<void>
   onNewSession: () => void
   onSendMessage: (content: string, attachments: PromptAttachment[]) => Promise<void>
   onCompact: (instructions?: string) => Promise<void>
@@ -74,6 +75,7 @@ interface ChatPageProps {
   onPreviewImage: (src: string, alt?: string) => void
   onLogout: () => Promise<void> | void
   onOpenAssistantSwitcher: () => void
+  onOpenSessionAssistantSwitcher: () => void
   onOpenSettings: () => void
   onOpenSelfAwake: () => void
   onOpenMemo: () => void
@@ -99,6 +101,7 @@ export function ChatPage({
   onAutoScrollChange,
   onLoadOlderMessages,
   onSelectSession,
+  onDeleteSession,
   onNewSession,
   onSendMessage,
   onCompact,
@@ -112,6 +115,7 @@ export function ChatPage({
   onPreviewImage,
   onLogout,
   onOpenAssistantSwitcher,
+  onOpenSessionAssistantSwitcher,
   onOpenSettings,
   onOpenSelfAwake,
   onOpenMemo,
@@ -232,6 +236,7 @@ export function ChatPage({
           onSelectSession(id)
           setSidebarOpen(false)
         }}
+        onDelete={onDeleteSession}
         isOpen={sidebarOpen}
         setIsOpen={setSidebarOpen}
         currentUser={currentUser}
@@ -259,11 +264,11 @@ export function ChatPage({
             <span className="truncate">{activeSession?.title || "新会话"}</span>
           </div>
           <div className="flex items-center gap-[1vw]">
-            <div
+            <button
+              type="button"
+              onClick={onOpenSessionAssistantSwitcher}
               className="group relative flex h-[5.4vh] w-[5.4vh] items-center justify-center outline-none"
-              tabIndex={0}
-              role="img"
-              aria-label={`当前助手：${assistantName}`}
+              aria-label={`切换本会话助手，当前：${assistantName}`}
             >
               <span className="flex h-[3.7vh] w-[3.7vh] items-center justify-center overflow-hidden rounded-full border border-border bg-card font-serif text-[1.35vh] text-accent shadow-sm">
                 {assistantAvatarUrl ? (
@@ -275,7 +280,7 @@ export function ChatPage({
               <span className="pointer-events-none absolute left-1/2 top-[calc(100%+0.7vh)] z-30 -translate-x-1/2 whitespace-nowrap rounded-[0.55vh] border border-border bg-card/96 px-[0.7vw] py-[0.45vh] text-[1.35vh] tracking-normal text-text opacity-0 shadow-md backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                 当前助手 · {assistantName}
               </span>
-            </div>
+            </button>
             <button
               type="button"
               onClick={onOpenAssistantSwitcher}

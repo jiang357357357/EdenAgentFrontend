@@ -13,6 +13,7 @@ import { SkillPage } from "./pages/skills"
 import { useSessionRuntime } from "./hooks/useSessionRuntime"
 import {
   clearAuth,
+  fetchAssistants,
   fetchCurrentAssistant,
   getAuthMode,
   getErrorMessage,
@@ -109,14 +110,15 @@ export default function App() {
   const isPetWindow = initialPage === "pet" || initialPage === "pet-character" || initialPage === "pet-bubble"
   const petSurface = initialPage === "pet-character" ? "character" : initialPage === "pet-bubble" ? "bubble" : "combined"
   const [activePage, setActivePage] = useState<AppPage>(() => initialPageFromLocation())
-  const [assistantSwitcherMode, setAssistantSwitcherMode] = useState<"current" | "participants">(
-    initialPage === "settings" ? "current" : "participants",
+  const [assistantSwitcherMode, setAssistantSwitcherMode] = useState<"default" | "session" | "participants">(
+    initialPage === "settings" ? "default" : "participants",
   )
   const [modeContentVisible, setModeContentVisible] = useState(true)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyView, setHistoryView] = useState<"messages" | "sessions">("messages")
   const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | undefined>()
   const [currentAssistant, setCurrentAssistant] = useState<CoreAssistant | null>(null)
+  const [availableAssistants, setAvailableAssistants] = useState<CoreAssistant[]>([])
   const [currentAssistantError, setCurrentAssistantError] = useState<string | undefined>()
   const [activeCharacterAction, setActiveCharacterAction] = useState<ActiveCharacterAction | undefined>()
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
@@ -157,6 +159,8 @@ export default function App() {
     compactSession: compactRuntimeSession,
     connectionError,
     createSession: createRuntimeSession,
+    deleteSession: deleteRuntimeSession,
+    draftParticipantIDs,
     dismissQuestion,
     followupSubagent,
     getSubagentThreadDetails,
@@ -193,6 +197,7 @@ export default function App() {
     setSidebarOpen(false)
     resetSessionRuntime()
     setCurrentAssistant(null)
+    setAvailableAssistants([])
     setCurrentAssistantError(undefined)
     setActivePage("chat")
     setHistoryOpen(false)
@@ -494,9 +499,13 @@ export default function App() {
 
     async function loadCurrentAssistant() {
       try {
-        const assistant = await fetchCurrentAssistant(token)
+        const [assistant, assistants] = await Promise.all([
+          fetchCurrentAssistant(token),
+          fetchAssistants(token),
+        ])
         if (cancelled) return
         setCurrentAssistant(assistant)
+        setAvailableAssistants(assistants)
         setCurrentAssistantError(undefined)
       } catch (error) {
         if (cancelled) return
@@ -507,6 +516,7 @@ export default function App() {
         const message = getErrorMessage(error, "未找到当前助手或默认助手。")
         console.warn("[Assistant] load current assistant failed", error)
         setCurrentAssistant(null)
+        setAvailableAssistants([])
         setCurrentAssistantError(message)
       }
     }
@@ -686,6 +696,20 @@ export default function App() {
     }
   }
 
+  const handleDeleteSession = async (sessionID: string) => {
+    try {
+      await deleteRuntimeSession(sessionID)
+    } catch (error) {
+      console.error("[Runtime] delete session failed", error)
+      window.alert(getErrorMessage(error, "删除会话失败。"))
+    }
+  }
+
+  const conversationAssistantID = draftParticipantIDs[0] ?? activeSession?.participants?.[0]?.assistantID
+  const conversationAssistant =
+    availableAssistants.find((assistant) => String(assistant.id) === String(conversationAssistantID)) ??
+    currentAssistant
+
   const handleCompactSession = async (instructions?: string) => {
     await compactRuntimeSession(instructions)
   }
@@ -787,11 +811,13 @@ export default function App() {
               <SkillPage onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
             ) : activePage === "assistant-switcher" ? (
               <AssistantSwitcherPage
-                currentAssistant={currentAssistant}
+                currentAssistant={assistantSwitcherMode === "default" ? currentAssistant : conversationAssistant}
                 mode={assistantSwitcherMode}
-                sessionParticipantIDs={activeSession?.participants?.map((participant) => participant.assistantID)}
+                sessionParticipantIDs={
+                  activeSession?.participants?.map((participant) => participant.assistantID) ??
+                  (draftParticipantIDs.length ? draftParticipantIDs : currentAssistant?.id ? [currentAssistant.id] : [])
+                }
                 onParticipantsChanged={async (assistantIds) => {
-                  if (!activeSessionId) await createRuntimeSession()
                   await updateSessionParticipants(assistantIds)
                 }}
                 onAssistantChanged={(assistant) => {
@@ -808,7 +834,7 @@ export default function App() {
                 activeCharacterAction={activeCharacterAction}
                 onBack={isSettingsWindow ? undefined : () => setActivePage("chat")}
                 onOpenAssistantSwitcher={() => {
-                  setAssistantSwitcherMode("current")
+                  setAssistantSwitcherMode("default")
                   setActivePage("assistant-switcher")
                 }}
                 onOpenSkills={() => setActivePage("skills")}
@@ -821,7 +847,7 @@ export default function App() {
                 sidebarOpen={sidebarOpen}
                 setSidebarOpen={setSidebarOpen}
                 currentUser={currentUser}
-                assistant={currentAssistant}
+                assistant={conversationAssistant}
                 assistantError={currentAssistantError}
                 activeCharacterAction={activeCharacterAction}
                 isThinking={isThinking}
@@ -833,6 +859,7 @@ export default function App() {
                 onAutoScrollChange={handleAutoScrollChange}
                 onLoadOlderMessages={handleLoadOlderMessages}
                 onSelectSession={selectRuntimeSession}
+                onDeleteSession={handleDeleteSession}
                 onNewSession={handleNewSession}
                 onSendMessage={handleSendMessage}
                 onCompact={handleCompactSession}
@@ -848,6 +875,11 @@ export default function App() {
                 onOpenAssistantSwitcher={() => {
                   setSidebarOpen(false)
                   setAssistantSwitcherMode("participants")
+                  setActivePage("assistant-switcher")
+                }}
+                onOpenSessionAssistantSwitcher={() => {
+                  setSidebarOpen(false)
+                  setAssistantSwitcherMode("session")
                   setActivePage("assistant-switcher")
                 }}
                 onOpenSettings={() => {

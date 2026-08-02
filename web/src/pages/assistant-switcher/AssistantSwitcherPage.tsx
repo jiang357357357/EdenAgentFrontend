@@ -39,7 +39,7 @@ interface AssistantSwitcherPageProps {
   currentAssistant?: CoreAssistant | null
   onAssistantChanged: (assistant: CoreAssistant) => void
   onBack: () => void
-  mode?: "current" | "participants"
+  mode?: "default" | "session" | "participants"
   sessionParticipantIDs?: Array<number | string>
   onParticipantsChanged?: (assistantIds: number[]) => Promise<void> | void
 }
@@ -202,7 +202,7 @@ export function AssistantSwitcherPage({
   currentAssistant,
   onAssistantChanged,
   onBack,
-  mode = "current",
+  mode = "default",
   sessionParticipantIDs = [],
   onParticipantsChanged,
 }: AssistantSwitcherPageProps) {
@@ -306,7 +306,7 @@ export function AssistantSwitcherPage({
         items.map((item) => (item.id === nextAssistant.id ? nextAssistant : item)),
       )
       onAssistantChanged(nextAssistant)
-      setNotice(`已切换到${assistantName(nextAssistant)}，当前会话历史保持不变。`)
+      setNotice(`已将${assistantName(nextAssistant)}设为默认助手，仅影响之后创建的新会话。`)
     } catch (switchError) {
       setError(getErrorMessage(switchError, "切换助手失败。"))
     } finally {
@@ -323,6 +323,21 @@ export function AssistantSwitcherPage({
       setNotice(`已保存 ${selectedIds.length} 位会话参与者。导演会按每轮内容决定由谁回复。`)
     } catch (saveError) {
       setError(getErrorMessage(saveError, "保存会话参与者失败。"))
+    } finally {
+      setSwitchingId(undefined)
+    }
+  }
+
+  async function handleSessionSwitch() {
+    if (!selectedAssistant || selectedIsCurrent || switchingId) return
+    setSwitchingId(selectedAssistant.id)
+    setError(undefined)
+    try {
+      await onParticipantsChanged?.([selectedAssistant.id])
+      setSelectedIds([selectedAssistant.id])
+      setNotice(`已将本会话切换到${assistantName(selectedAssistant)}，聊天历史保持不变。`)
+    } catch (switchError) {
+      setError(getErrorMessage(switchError, "切换本会话助手失败。"))
     } finally {
       setSwitchingId(undefined)
     }
@@ -418,11 +433,11 @@ export function AssistantSwitcherPage({
           {selectedAssistant ? (
             <button
               type="button"
-              onClick={mode === "participants" ? handleSaveParticipants : handleSwitch}
-              disabled={(mode === "current" ? selectedIsCurrent : !selectedIds.length) || switchingId !== undefined}
+              onClick={mode === "participants" ? handleSaveParticipants : mode === "session" ? handleSessionSwitch : handleSwitch}
+              disabled={(mode !== "participants" ? selectedIsCurrent : !selectedIds.length) || switchingId !== undefined}
               className={cn(
                 "flex h-[4.8vh] min-w-[10.5vw] items-center justify-center rounded-[0.62vh] px-[1.35vw] text-[1.62vh] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2",
-                mode === "current" && selectedIsCurrent
+                mode !== "participants" && selectedIsCurrent
                   ? "cursor-default border border-[#e1dbd4] bg-[#f4f0eb] text-[#8b837c]"
                   : "bg-accent text-white shadow-[0_0.25vh_0.7vh_rgba(180,95,0,0.16)] hover:bg-[#c86e05] active:bg-[#b86204]",
               )}
@@ -435,9 +450,9 @@ export function AssistantSwitcherPage({
               ) : mode === "participants" ? (
                 `保存 ${selectedIds.length} 位参与者`
               ) : selectedIsCurrent ? (
-                "当前助手"
+                mode === "default" ? "默认助手" : "本会话助手"
               ) : (
-                `切换到${assistantName(selectedAssistant)}`
+                mode === "default" ? `设为默认 · ${assistantName(selectedAssistant)}` : `切换本会话 · ${assistantName(selectedAssistant)}`
               )}
             </button>
           ) : null}

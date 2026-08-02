@@ -99,7 +99,7 @@ function DesktopPetMarkdown({ content }: { content: string }) {
   return (
     <div className="grid min-w-0 gap-[1.2cqh] [overflow-wrap:anywhere]">
       {chunks.map((chunk, index) => chunk.action ? (
-        <p key={`${index}-${chunk.content}`} className="m-0 whitespace-pre-wrap italic leading-[1.4] text-amber-300/85">
+        <p key={`${index}-${chunk.content}`} className="m-0 whitespace-pre-wrap italic leading-[1.4] text-stone-400">
           {chunk.content}
         </p>
       ) : (

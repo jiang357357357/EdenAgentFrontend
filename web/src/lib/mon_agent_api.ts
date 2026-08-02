@@ -1036,10 +1036,19 @@ export async function listSessions() {
   return sessions.map((session) => mapSession(session))
 }
 
-export async function createSessionRaw() {
+export async function createSessionRaw(
+  assistantIDs: Array<number | string> = [],
+  initialPrompt?: { content: string; attachments: Array<PromptAttachment | string> },
+) {
   return request<ApiSession>("/session", {
     method: "POST",
-    body: JSON.stringify({ title: "" }),
+    body: JSON.stringify({
+      title: "",
+      assistantIDs,
+      ...(initialPrompt
+        ? { parts: createPromptParts(initialPrompt.content, initialPrompt.attachments) }
+        : {}),
+    }),
   })
 }
 
@@ -1047,6 +1056,12 @@ export async function updateSessionParticipants(sessionID: string, assistantIDs:
   return request<ApiSession>(`/session/${encodeURIComponent(sessionID)}/participants`, {
     method: "PUT",
     body: JSON.stringify({ assistantIDs }),
+  })
+}
+
+export async function deleteSession(sessionID: string) {
+  return request<{ deleted: boolean; sessionID: string }>(`/session/${encodeURIComponent(sessionID)}`, {
+    method: "DELETE",
   })
 }
 

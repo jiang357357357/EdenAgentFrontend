@@ -71,6 +71,7 @@ import {
   reduceOrchestratorRun,
   upsertOrchestratorRun,
 } from "./orchestrator-state"
+import { removeSessionState } from "./session-delete-state"
 
 type RuntimeAction =
   | { type: "reset" }
@@ -81,6 +82,7 @@ type RuntimeAction =
   | { type: "hydratePermissions"; permissions: PendingPermission[] }
   | { type: "hydrateQuestions"; questions: PendingQuestion[] }
   | { type: "setActiveSession"; sessionID?: string }
+  | { type: "removeSession"; sessionID: string }
   | { type: "localUserMessage"; sessionID: string; content: string; attachments: PromptAttachment[] }
   | { type: "event"; event: ApiEvent }
   | { type: "connectionState"; state: RuntimeState["connectionState"] }
@@ -941,6 +943,11 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       next.activeSessionId = action.sessionID
       return next
 
+    case "removeSession": {
+      removeSessionState(next, action.sessionID)
+      return next
+    }
+
     case "localUserMessage": {
       const session = ensureSession(next, action.sessionID)
       const message = createOptimisticUserMessage(action.sessionID, action.content, action.attachments)
@@ -974,6 +981,10 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
 
     case "event": {
       const event = action.event
+      if (event.type === "session.deleted" && typeof event.properties?.sessionID === "string") {
+        removeSessionState(next, event.properties.sessionID)
+        return next
+      }
       if (isOrchestratorEvent(event)) {
         const session = ensureSession(next, event.properties.sessionID)
         session.orchestratorRun = reduceOrchestratorRun(session.orchestratorRun, event)
@@ -1139,6 +1150,10 @@ export function hydratePendingQuestions(questions: PendingQuestion[]): RuntimeAc
 
 export function setActiveSession(sessionID?: string): RuntimeAction {
   return { type: "setActiveSession", sessionID }
+}
+
+export function removeSession(sessionID: string): RuntimeAction {
+  return { type: "removeSession", sessionID }
 }
 
 export function pushLocalUserMessage(

@@ -3,6 +3,7 @@ import {
   abortSession as abortSessionRaw,
   compactSession as compactSessionRaw,
   createSessionRaw,
+  deleteSession as deleteSessionRaw,
   getPermissionMode,
   getSubagentThreadDetails as getSubagentThreadDetailsRaw,
   followupSubagent as followupSubagentRaw,
@@ -32,6 +33,7 @@ import {
   prependSessionMessages,
   initialRuntimeState,
   resetRuntime,
+  removeSession,
   runtimeReducer,
   setActiveSession,
   setConnectionState,
@@ -50,6 +52,7 @@ interface UseSessionRuntimeOptions {
 export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOptions = {}) {
   const [state, dispatch] = useReducer(runtimeReducer, initialRuntimeState);
   const [permissionMode, setPermissionModeState] = useState<PermissionMode>('restricted');
+  const [draftParticipantIDs, setDraftParticipantIDs] = useState<Array<number | string>>([]);
   const activeSessionIdRef = useRef<string | undefined>(state.activeSessionId);
   const hasOpenedStreamRef = useRef(false);
   const eventErrorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -258,20 +261,14 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
   const createSession = useCallback(async () => {
     if (!isRuntimeReady()) throw new Error('MonAgent runtime is not authenticated');
-    try {
-      const session = await createSessionRaw();
-      activeSessionIdRef.current = session.id;
-      dispatch(hydrateSessionList([session]));
-      dispatch(setActiveSession(session.id));
-      return session;
-    } catch (error) {
-      dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
-      throw error;
-    }
+    activeSessionIdRef.current = undefined;
+    setDraftParticipantIDs([]);
+    dispatch(setActiveSession(undefined));
   }, [isRuntimeReady]);
 
   const chooseSession = useCallback((sessionID?: string) => {
     activeSessionIdRef.current = sessionID;
+    if (sessionID) setDraftParticipantIDs([]);
     dispatch(setActiveSession(sessionID));
   }, []);
 
@@ -282,8 +279,14 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         throw new Error('MonAgent runtime is not authenticated');
       }
       if (!sessionID) {
-        const session = await createSession();
+        const session = await createSessionRaw(draftParticipantIDs, { content, attachments });
         sessionID = session.id;
+        activeSessionIdRef.current = session.id;
+        setDraftParticipantIDs([]);
+        sendingSessionIdsRef.current.add(session.id);
+        dispatch(hydrateSessionList([session]));
+        dispatch(setActiveSession(session.id));
+        return;
       }
       if (!sessionID) {
         throw new Error('No active session');
@@ -302,7 +305,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         throw error;
       }
     },
-    [createSession, isRuntimeReady, state.activeSessionId],
+    [draftParticipantIDs, isRuntimeReady],
   );
 
   const compactSession = useCallback(async (instructions?: string) => {
@@ -348,11 +351,34 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
   const updateSessionParticipants = useCallback(async (assistantIDs: Array<number | string>) => {
     const sessionID = activeSessionIdRef.current;
-    if (!sessionID || !isRuntimeReady()) throw new Error('当前没有可更新的会话。');
+    if (!isRuntimeReady()) throw new Error('MonAgent runtime is not authenticated');
+    if (!sessionID) {
+      setDraftParticipantIDs([...assistantIDs]);
+      return undefined;
+    }
+    if (sendingSessionIdsRef.current.has(sessionID)) {
+      throw new Error('智能体正在处理当前任务，请等待本轮结束后再调整会话助手。');
+    }
     const session = await updateSessionParticipantsRaw(sessionID, assistantIDs);
     dispatch(hydrateSessionList([session]));
     return session;
   }, [isRuntimeReady]);
+
+  const deleteSession = useCallback(async (sessionID: string) => {
+    if (!isRuntimeReady()) throw new Error('MonAgent runtime is not authenticated');
+    if (sendingSessionIdsRef.current.has(sessionID)) {
+      throw new Error('智能体正在处理当前任务，请先停止任务再删除会话。');
+    }
+    await deleteSessionRaw(sessionID);
+    const nextSessionID = state.sessionOrder.find((id) => id !== sessionID);
+    sendingSessionIdsRef.current.delete(sessionID);
+    hydratingSessionIdsRef.current.delete(sessionID);
+    if (activeSessionIdRef.current === sessionID) {
+      activeSessionIdRef.current = nextSessionID;
+      if (!nextSessionID) setDraftParticipantIDs([]);
+    }
+    dispatch(removeSession(sessionID));
+  }, [isRuntimeReady, state.sessionOrder]);
 
   const interruptSubagent = useCallback(async (target: string) => {
     const sessionID = activeSessionIdRef.current;
@@ -421,6 +447,8 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     connectionError: state.connectionError,
     compactSession,
     createSession,
+    deleteSession,
+    draftParticipantIDs,
     dismissQuestion,
     followupSubagent,
     getSubagentThreadDetails,
@@ -430,7 +458,11 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     pendingQuestions,
     permissionMode,
     respondPermission,
-    reset: () => dispatch(resetRuntime()),
+    reset: () => {
+      activeSessionIdRef.current = undefined;
+      setDraftParticipantIDs([]);
+      dispatch(resetRuntime());
+    },
     selectSession: chooseSession,
     sendMessage,
     sessions,

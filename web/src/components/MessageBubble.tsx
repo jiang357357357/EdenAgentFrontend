@@ -91,7 +91,7 @@ function TextSegment({
               content={visibleContent}
               paragraphClassName="my-0"
               separateActionLines
-              actionParagraphClassName="my-0 italic text-accent/85"
+              actionParagraphClassName="my-0 italic text-text/60"
             />
           </div>
           {canSpeak && clip?.status === "synthesizing" ? (
