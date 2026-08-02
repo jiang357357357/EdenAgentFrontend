@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict")
 const test = require("node:test")
 
-const { desktopFileUrl, filePathFromDesktopUrl } = require("../src/file-protocol.cjs")
+const { desktopFileUrl, filePathFromDesktopUrl } = require("../src/protocols/file-protocol.cjs")
 
 test("round-trips Windows paths without losing the drive separator", () => {
   const filePath = "C:\\Users\\测试\\wall #1.jpg"

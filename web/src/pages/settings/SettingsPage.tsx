@@ -24,7 +24,7 @@ import {
   X,
 } from "lucide-react"
 import { motion } from "motion/react"
-import { DesktopPetStage } from "../../components/DesktopPetStage"
+import { DesktopPetStage } from "../../components/desktop-pet"
 import {
   resolveCoreAssetUrl,
   type ActiveCharacterAction,

@@ -1,7 +1,7 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
 
-const { shouldAllowMediaPermission } = require("../src/media-permission-policy.cjs")
+const { shouldAllowMediaPermission } = require("../src/permissions/media-permission-policy.cjs")
 
 test("primary chat surface may request microphone or camera separately", () => {
   const access = { allowAudio: true, allowVideo: true }

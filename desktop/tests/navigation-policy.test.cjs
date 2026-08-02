@@ -3,7 +3,7 @@ const { pathToFileURL } = require("node:url")
 const test = require("node:test")
 const assert = require("node:assert/strict")
 
-const { isInternalAppUrl, isSupportedExternalUrl } = require("../src/navigation-policy.cjs")
+const { isInternalAppUrl, isSupportedExternalUrl } = require("../src/protocols/navigation-policy.cjs")
 
 test("development mode only treats the exact Web origin as internal", () => {
   const options = {

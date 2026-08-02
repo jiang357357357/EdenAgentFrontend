@@ -4,15 +4,15 @@ import test from "node:test"
 
 const [pageSource, rendererSource, spineSource, imageSource] = await Promise.all([
   readFile(new URL("../src/pages/assistant-switcher/AssistantSwitcherPage.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../src/components/CharacterVisualRenderer.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../src/components/SpineCharacterCanvas.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../src/components/CharacterStandeeImage.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/components/character/renderer/CharacterVisualRenderer.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/components/character/renderer/spine/SpineCharacterCanvas.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/components/character/renderer/CharacterStandeeImage.tsx", import.meta.url), "utf8"),
 ])
 
 test("assistant switcher delegates the selected character preview to the unified visual renderer", () => {
   assert.match(
     pageSource,
-    /import\s+\{\s*CharacterVisualRenderer\s*\}\s+from\s+"..\/..\/components\/CharacterVisualRenderer"/,
+    /import\s+\{\s*CharacterVisualRenderer\s*\}\s+from\s+"..\/..\/components\/character\/renderer"/,
   )
   assert.match(pageSource, /<CharacterVisualRenderer\s+[\s\S]*?character=\{preview\.character\}/)
   assert.doesNotMatch(pageSource, /<motion\.img\b/)

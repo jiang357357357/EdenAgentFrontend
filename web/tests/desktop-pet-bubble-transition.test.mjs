@@ -4,7 +4,7 @@ import test from "node:test"
 
 const [pageSource, stageSource, desktopWindowSource, preloadSource, mainSource, webMainSource, cssSource] = await Promise.all([
   readFile(new URL("../src/pages/character/CharacterPage.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../src/components/DesktopPetStage.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/components/desktop-pet/DesktopPetStage.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/lib/desktop-window.ts", import.meta.url), "utf8"),
   readFile(new URL("../../desktop/src/preload.cjs", import.meta.url), "utf8"),
   readFile(new URL("../../desktop/src/main.cjs", import.meta.url), "utf8"),
@@ -21,7 +21,7 @@ test("the panel and collapsed icon are separate fixed native windows", () => {
 
 test("collapse switches fixed-window visibility without resizing or reconfiguring the HWND", () => {
   const collapseHandler = mainSource.match(
-    /case "set_pet_bubble_collapsed": \{([\s\S]*?)case "set_pet_bubble_keyboard_focus":/,
+    /set_pet_bubble_collapsed: \(\{ sender, args \}\) => \{([\s\S]*?)set_pet_bubble_keyboard_focus:/,
   )?.[1]
   assert.ok(collapseHandler)
   assert.match(collapseHandler, /applyPetBubbleVisibility\(\)/)
@@ -36,7 +36,7 @@ test("fixed renderer routes have deterministic content and need no async collaps
 })
 
 test("Electron owns the collapse state and broadcasts it to both fixed surfaces", () => {
-  assert.match(mainSource, /case "get_pet_bubble_collapsed":[\s\S]*?return petBubbleCollapsed/)
+  assert.match(mainSource, /get_pet_bubble_collapsed: \(\) => petBubbleCollapsed/)
   assert.match(mainSource, /broadcastPetBubbleCollapsed\(\)/)
   assert.match(mainSource, /targetWindow === petBubbleWindow \|\| targetWindow === petBubbleIconWindow/)
   assert.match(preloadSource, /onPetBubbleCollapsed\(callback\)/)
@@ -57,7 +57,7 @@ test("dragging the collapsed icon moves the whole pet group without turning the 
   assert.match(stageSource, /updateDesktopPetGroupDrag\(point\.x, point\.y\)/)
   assert.match(stageSource, /endDesktopPetGroupDrag\(event\.screenX, event\.screenY\)/)
   assert.match(stageSource, /suppressIconClickUntilRef\.current = performance\.now\(\) \+ 250/)
-  assert.match(mainSource, /case "begin_pet_group_drag"/)
+  assert.match(mainSource, /begin_pet_group_drag: \(\{ sender, args \}\) =>/)
   assert.match(mainSource, /targetWindow !== petBubbleIconWindow \|\| !petBubbleCollapsed/)
   assert.match(mainSource, /petSettings = normalizePetSettings\(\{ \.\.\.petSettings, windowX: position\.x, windowY: position\.y \}\)/)
 })

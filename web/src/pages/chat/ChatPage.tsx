@@ -2,12 +2,11 @@ import { Lock, Menu, MessageSquare, NotebookPen, Plus, Sparkles, Unlock, Users }
 import { motion } from "motion/react"
 import { Fragment, useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
-import { CharacterPanel } from "../../components/CharacterPanel"
-import { ChatInput } from "../../components/ChatInput"
-import { DirectorPlanCard } from "../../components/DirectorPlanCard"
-import { MessageBubble } from "../../components/MessageBubble"
-import { PermissionRequestCard } from "../../components/PermissionRequestCard"
-import { Sidebar } from "../../components/Sidebar"
+import { CharacterPanel } from "../../components/character"
+import { ChatInput } from "../../components/chat/input"
+import { DirectorPlanCard, MessageBubble } from "../../components/chat/message"
+import { PermissionRequestCard } from "../../components/requests"
+import { Sidebar } from "../../components/layout"
 import { resolveCoreAssetUrl, type ActiveCharacterAction, type AuthUser, type CoreAssistant } from "../../lib/auth"
 import {
   DEFAULT_PET_SETTINGS,

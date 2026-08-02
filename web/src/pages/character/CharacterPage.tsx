@@ -1,11 +1,9 @@
 import { useEffect, useLayoutEffect, useState, type CSSProperties } from "react"
 import { ArrowLeft, X } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
-import { ChatInput } from "../../components/ChatInput"
-import { DesktopPetChatBubble } from "../../components/DesktopPetChatBubble"
-import { DesktopPetStage } from "../../components/DesktopPetStage"
-import { PermissionRequestCard } from "../../components/PermissionRequestCard"
-import { QuestionRequestCard } from "../../components/QuestionRequestCard"
+import { ChatInput } from "../../components/chat/input"
+import { DesktopPetChatBubble, DesktopPetStage } from "../../components/desktop-pet"
+import { PermissionRequestCard, QuestionRequestCard } from "../../components/requests"
 import type { ActiveCharacterAction, CoreAssistant } from "../../lib/auth"
 import {
   DEFAULT_PET_SETTINGS,
