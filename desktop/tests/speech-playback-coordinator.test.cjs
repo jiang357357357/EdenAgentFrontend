@@ -60,3 +60,34 @@ test("revoking a destroyed owner stops and clears its playback lease", () => {
   assert.equal(coordinator.snapshot(), null)
   assert.equal(stops[0].control.reason, "window-closed")
 })
+
+test("an automatic logical speech unit is granted at most once but remains manually replayable", () => {
+  const coordinator = new SpeechPlaybackCoordinator()
+  const first = coordinator.claim({
+    ownerId: 1,
+    surface: "main-chat",
+    segmentId: "message-1:speech:0:tts:0",
+    intent: "auto",
+    preferredAutoSurface: "main-chat",
+  })
+  assert.equal(first.granted, true)
+  assert.equal(coordinator.release(1, first.leaseId), true)
+
+  const duplicate = coordinator.claim({
+    ownerId: 1,
+    surface: "main-chat",
+    segmentId: "message-1:speech:0:tts:0",
+    intent: "auto",
+    preferredAutoSurface: "main-chat",
+  })
+  assert.deepEqual(duplicate, { granted: false, reason: "duplicate-auto-segment" })
+
+  const manual = coordinator.claim({
+    ownerId: 1,
+    surface: "main-chat",
+    segmentId: "message-1:speech:0:tts:0",
+    intent: "manual",
+    preferredAutoSurface: "main-chat",
+  })
+  assert.equal(manual.granted, true)
+})

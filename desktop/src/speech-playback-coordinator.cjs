@@ -1,8 +1,24 @@
 class SpeechPlaybackCoordinator {
-  constructor(onStop) {
+  constructor(onStop, options = {}) {
     this.onStop = typeof onStop === "function" ? onStop : () => {}
     this.active = null
     this.sequence = 0
+    this.now = typeof options.now === "function" ? options.now : () => Date.now()
+    this.autoDedupeTtlMs = Number.isFinite(options.autoDedupeTtlMs)
+      ? Math.max(0, options.autoDedupeTtlMs)
+      : 10 * 60 * 1000
+    this.claimedAutomaticSegments = new Map()
+  }
+
+  pruneAutomaticSegments(now) {
+    for (const [segmentId, claimedAt] of this.claimedAutomaticSegments) {
+      if (now - claimedAt > this.autoDedupeTtlMs) this.claimedAutomaticSegments.delete(segmentId)
+    }
+    while (this.claimedAutomaticSegments.size > 512) {
+      const oldest = this.claimedAutomaticSegments.keys().next().value
+      if (oldest === undefined) break
+      this.claimedAutomaticSegments.delete(oldest)
+    }
   }
 
   claim({ ownerId, surface, segmentId, intent = "auto", preferredAutoSurface = null }) {
@@ -10,6 +26,14 @@ class SpeechPlaybackCoordinator {
     if (!surface || !segmentId) return { granted: false, reason: "invalid-request" }
     if (intent === "auto" && preferredAutoSurface && surface !== preferredAutoSurface) {
       return { granted: false, reason: "not-preferred-surface" }
+    }
+    if (intent === "auto") {
+      const now = this.now()
+      this.pruneAutomaticSegments(now)
+      if (this.claimedAutomaticSegments.has(segmentId)) {
+        return { granted: false, reason: "duplicate-auto-segment" }
+      }
+      this.claimedAutomaticSegments.set(segmentId, now)
     }
 
     if (

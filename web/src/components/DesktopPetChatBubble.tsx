@@ -15,6 +15,7 @@ import {
 } from "../lib/desktop-window"
 import {
   consumeSpeechStream,
+  speechStreamKey,
   speechChunksForTTS,
   textForTTS,
   type SpeechStreamCursor,
@@ -38,6 +39,8 @@ interface SpeechClip {
 }
 
 interface StreamingSpeechState {
+  segmentId: string
+  streamKey: string
   cursor?: SpeechStreamCursor
   nextChunkIndex: number
   pending: number
@@ -260,9 +263,10 @@ export function DesktopPetChatBubble({
     generation: number,
     playbackGeneration: number,
     intent: DesktopSpeechIntent,
+    speechKey = segmentID,
   ) => {
     if (generation !== speechGenerationRef.current || playbackGeneration !== playbackGenerationRef.current) return
-    const claim = await claimDesktopSpeechPlayback("pet-bubble", segmentID, intent)
+    const claim = await claimDesktopSpeechPlayback("pet-bubble", speechKey, intent)
     if (!claim.granted || !claim.leaseId) return
     if (generation !== speechGenerationRef.current || playbackGeneration !== playbackGenerationRef.current) {
       void releaseDesktopSpeechPlayback(claim.leaseId)
@@ -353,7 +357,8 @@ export function DesktopPetChatBubble({
       })
   }
 
-  const updateStreamingSpeechClip = (segmentID: string, state: StreamingSpeechState) => {
+  const updateStreamingSpeechClip = (state: StreamingSpeechState) => {
+    const segmentID = state.segmentId
     const sources = [...state.sources.entries()]
       .sort(([left], [right]) => left - right)
       .map(([, source]) => source)
@@ -369,7 +374,6 @@ export function DesktopPetChatBubble({
   }
 
   const enqueueStreamingSpeechChunk = (
-    segmentID: string,
     messageID: string,
     text: string,
     chunkIndex: number,
@@ -379,14 +383,14 @@ export function DesktopPetChatBubble({
     const generation = speechGenerationRef.current
     const playbackGeneration = playbackGenerationRef.current
     state.pending += 1
-    updateStreamingSpeechClip(segmentID, state)
+    updateStreamingSpeechClip(state)
 
     const request = speechSynthesisQueueRef.current
       .catch(() => undefined)
       .then(() => synthesizeSpeechSegment({
         sessionId,
         messageId: messageID,
-        segmentId: `${segmentID}:tts:${chunkIndex}`,
+        segmentId: `${state.streamKey}:tts:${chunkIndex}`,
         text,
         configId: ttsConfigId,
         mode: ttsMode,
@@ -411,7 +415,7 @@ export function DesktopPetChatBubble({
       .finally(() => {
         if (generation !== speechGenerationRef.current) return
         state.pending = Math.max(0, state.pending - 1)
-        updateStreamingSpeechClip(segmentID, state)
+        updateStreamingSpeechClip(state)
       })
 
     speechQueueRef.current = speechQueueRef.current
@@ -419,7 +423,14 @@ export function DesktopPetChatBubble({
       .then(async () => {
         const source = await synthesis
         if (!source || generation !== speechGenerationRef.current || playbackGeneration !== playbackGenerationRef.current) return
-        await playSpeechSources(segmentID, [source], generation, playbackGeneration, "auto")
+        await playSpeechSources(
+          state.segmentId,
+          [source],
+          generation,
+          playbackGeneration,
+          "auto",
+          `${state.streamKey}:tts:${chunkIndex}`,
+        )
       })
       .catch((error) => console.warn("[DesktopPet][TTS] 流式句子播放失败", error))
   }
@@ -549,17 +560,25 @@ export function DesktopPetChatBubble({
     }
     const maySpeakCurrentRun = isThinking || runWasActive
     if (maySpeakCurrentRun) {
+      let textSegmentIndex = 0
       for (const segment of latestAssistantMessage?.segments ?? []) {
-        if (segment.type !== "text" || !segment.content.trim() || !textForTTS(segment.content, ttsMode)) continue
-        let state = streamSpeechStatesRef.current.get(segment.id)
+        if (segment.type !== "text") continue
+        const streamKey = speechStreamKey(latestAssistantMessage?.id ?? "", textSegmentIndex)
+        textSegmentIndex += 1
+        if (!segment.content.trim() || !textForTTS(segment.content, ttsMode)) continue
+        let state = streamSpeechStatesRef.current.get(streamKey)
         if (!state) {
           state = {
+            segmentId: segment.id,
+            streamKey,
             nextChunkIndex: 0,
             pending: 0,
             sources: new Map(),
             complete: false,
           }
-          streamSpeechStatesRef.current.set(segment.id, state)
+          streamSpeechStatesRef.current.set(streamKey, state)
+        } else {
+          state.segmentId = segment.id
         }
         const flush = segment.state !== "streaming" || (!isThinking && runWasActive)
         const update = consumeSpeechStream(segment.content, ttsMode, state.cursor, flush)
@@ -567,11 +586,11 @@ export function DesktopPetChatBubble({
         for (const text of update.chunks) {
           const chunkIndex = state.nextChunkIndex
           state.nextChunkIndex += 1
-          enqueueStreamingSpeechChunk(segment.id, latestAssistantMessage.id, text, chunkIndex, state)
+          enqueueStreamingSpeechChunk(latestAssistantMessage.id, text, chunkIndex, state)
         }
         if (flush) {
           state.complete = true
-          updateStreamingSpeechClip(segment.id, state)
+          updateStreamingSpeechClip(state)
         }
       }
     }

@@ -5,11 +5,16 @@ const MAX_SPEECH_CHARS = 180
 export interface SpeechStreamCursor {
   speakableText: string
   consumed: number
+  committedChunks: number
 }
 
 export interface SpeechStreamUpdate {
   chunks: string[]
   cursor: SpeechStreamCursor
+}
+
+export function speechStreamKey(messageId: string, textSegmentIndex: number) {
+  return `${messageId}:speech:${Math.max(0, Math.trunc(textSegmentIndex))}`
 }
 
 function isMarkdownTableRow(line: string) {
@@ -152,12 +157,9 @@ export function consumeSpeechStream(
   flush = false,
 ): SpeechStreamUpdate {
   const speakableText = extractSpeakableText(text, mode)
-  const previousConsumed = previous?.consumed ?? 0
-  const prefixStillMatches = previousConsumed === 0
-    || speakableText.slice(0, previousConsumed) === previous?.speakableText.slice(0, previousConsumed)
-  const start = prefixStillMatches ? Math.min(previousConsumed, speakableText.length) : 0
-  const chunks: string[] = []
-  let consumed = start
+  const previousCommittedChunks = previous?.committedChunks ?? 0
+  const parsedChunks: string[] = []
+  let consumed = 0
 
   while (consumed < speakableText.length) {
     while (consumed < speakableText.length && /[\s\"'”’）)\]]/.test(speakableText[consumed])) consumed += 1
@@ -172,18 +174,28 @@ export function consumeSpeechStream(
     const chunk = speakableText.slice(consumed, end).trim()
     consumed = end
     while (consumed < speakableText.length && /\s/.test(speakableText[consumed])) consumed += 1
-    if (chunk) chunks.push(chunk)
+    if (chunk) parsedChunks.push(chunk)
   }
 
   if (flush && consumed < speakableText.length) {
     const remainder = speakableText.slice(consumed).trim()
-    if (remainder) chunks.push(...splitLongSentence(remainder))
+    if (remainder) parsedChunks.push(...splitLongSentence(remainder))
     consumed = speakableText.length
   }
 
+  // Treat the speech stream as an append-only sequence of logical units. The
+  // rendered text may be rewritten while Markdown or canonical message parts are
+  // completed, so byte offsets are not a safe deduplication key. Reparse the full
+  // value and commit only ordinals beyond the append-only frontier.
+  const chunks = parsedChunks.slice(previousCommittedChunks)
+
   return {
     chunks,
-    cursor: { speakableText, consumed },
+    cursor: {
+      speakableText,
+      consumed,
+      committedChunks: Math.max(previousCommittedChunks, parsedChunks.length),
+    },
   }
 }
 

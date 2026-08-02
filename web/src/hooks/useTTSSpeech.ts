@@ -12,6 +12,7 @@ import { synthesizeSpeechSegment } from "../lib/mon_agent_api"
 import { SpeechOutputGate } from "../lib/speech-output-gate"
 import {
   consumeSpeechStream,
+  speechStreamKey,
   speechChunksForTTS,
   textForTTS,
   type SpeechStreamCursor,
@@ -32,6 +33,8 @@ interface SpeechSegment {
 }
 
 interface StreamingSpeechState {
+  segmentId: string
+  streamKey: string
   cursor?: SpeechStreamCursor
   nextChunkIndex: number
   pending: number
@@ -124,9 +127,10 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
     generation: number,
     playbackGeneration: number,
     intent: DesktopSpeechIntent,
+    speechKey = segmentId,
   ) => {
     if (generation !== generationRef.current || playbackGeneration !== playbackGenerationRef.current) return
-    const claim = await claimDesktopSpeechPlayback("main-chat", segmentId, intent)
+    const claim = await claimDesktopSpeechPlayback("main-chat", speechKey, intent)
     if (!claim.granted || !claim.leaseId) return
     if (generation !== generationRef.current || playbackGeneration !== playbackGenerationRef.current) {
       void releaseDesktopSpeechPlayback(claim.leaseId)
@@ -208,7 +212,8 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
     return synthesis
   }
 
-  const updateStreamingClip = (segmentId: string, state: StreamingSpeechState) => {
+  const updateStreamingClip = (state: StreamingSpeechState) => {
+    const segmentId = state.segmentId
     const sources = [...state.sources.entries()]
       .sort(([left], [right]) => left - right)
       .map(([, source]) => source)
@@ -224,7 +229,6 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
   }
 
   const enqueueStreamingChunk = (
-    segmentId: string,
     messageId: string,
     text: string,
     chunkIndex: number,
@@ -234,14 +238,14 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
     const generation = generationRef.current
     const playbackGeneration = playbackGenerationRef.current
     state.pending += 1
-    updateStreamingClip(segmentId, state)
+    updateStreamingClip(state)
 
     const request = synthesisQueueRef.current
       .catch(() => undefined)
       .then(() => synthesizeSpeechSegment({
         sessionId,
         messageId,
-        segmentId: `${segmentId}:tts:${chunkIndex}`,
+        segmentId: `${state.streamKey}:tts:${chunkIndex}`,
         text,
         configId,
         mode,
@@ -266,7 +270,7 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
       .finally(() => {
         if (generation !== generationRef.current) return
         state.pending = Math.max(0, state.pending - 1)
-        updateStreamingClip(segmentId, state)
+        updateStreamingClip(state)
       })
 
     queueRef.current = queueRef.current
@@ -274,7 +278,14 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
       .then(async () => {
         const source = await synthesis
         if (!source || generation !== generationRef.current || playbackGeneration !== playbackGenerationRef.current) return
-        await playSources(segmentId, [source], generation, playbackGeneration, "auto")
+        await playSources(
+          state.segmentId,
+          [source],
+          generation,
+          playbackGeneration,
+          "auto",
+          `${state.streamKey}:tts:${chunkIndex}`,
+        )
       })
       .catch((error) => console.warn("[Chat][TTS] 流式句子播放失败", error))
   }
@@ -365,17 +376,22 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
       outputGateRef.current?.begin()
     }
     if (isThinking || runWasActive) {
-      for (const segment of segments) {
+      for (const [textSegmentIndex, segment] of segments.entries()) {
         if (!textForTTS(segment.text, mode)) continue
-        let state = streamStatesRef.current.get(segment.id)
+        const streamKey = speechStreamKey(segment.messageId, textSegmentIndex)
+        let state = streamStatesRef.current.get(streamKey)
         if (!state) {
           state = {
+            segmentId: segment.id,
+            streamKey,
             nextChunkIndex: 0,
             pending: 0,
             sources: new Map(),
             complete: false,
           }
-          streamStatesRef.current.set(segment.id, state)
+          streamStatesRef.current.set(streamKey, state)
+        } else {
+          state.segmentId = segment.id
         }
         const flush = segment.state !== "streaming" || (!isThinking && runWasActive)
         const update = consumeSpeechStream(segment.text, mode, state.cursor, flush)
@@ -383,11 +399,11 @@ export function useTTSSpeech({ configId, sessionId, mode, isThinking, segments }
         for (const text of update.chunks) {
           const chunkIndex = state.nextChunkIndex
           state.nextChunkIndex += 1
-          enqueueStreamingChunk(segment.id, segment.messageId, text, chunkIndex, state)
+          enqueueStreamingChunk(segment.messageId, text, chunkIndex, state)
         }
         if (flush) {
           state.complete = true
-          updateStreamingClip(segment.id, state)
+          updateStreamingClip(state)
         }
       }
     }
