@@ -1,9 +1,8 @@
 const { contextBridge, ipcRenderer } = require("electron")
+const { desktopFileUrl } = require("./file-protocol.cjs")
 
 function convertFileSrc(filePath) {
-  const normalized = String(filePath || "").replace(/\\/g, "/")
-  const withLeadingSlash = normalized.startsWith("/") ? normalized : `/${normalized}`
-  return `monagent-file://${encodeURI(withLeadingSlash).replace(/#/g, "%23")}`
+  return desktopFileUrl(filePath)
 }
 
 contextBridge.exposeInMainWorld("monAgentDesktop", {
@@ -20,6 +19,11 @@ contextBridge.exposeInMainWorld("monAgentDesktop", {
     ipcRenderer.on("mon-agent-pet-settings", handler)
     return () => ipcRenderer.removeListener("mon-agent-pet-settings", handler)
   },
+  onPetBubbleCollapsed(callback) {
+    const handler = (_event, collapsed) => callback(Boolean(collapsed))
+    ipcRenderer.on("mon-agent-pet-bubble-collapsed", handler)
+    return () => ipcRenderer.removeListener("mon-agent-pet-bubble-collapsed", handler)
+  },
   onDesktopEnvironment(callback) {
     const handler = (_event, environment) => callback(environment)
     ipcRenderer.on("mon-agent-desktop-environment", handler)
@@ -34,6 +38,11 @@ contextBridge.exposeInMainWorld("monAgentDesktop", {
     const handler = (_event, state) => callback(state)
     ipcRenderer.on("mon-agent-auth-state", handler)
     return () => ipcRenderer.removeListener("mon-agent-auth-state", handler)
+  },
+  onSpeechPlaybackControl(callback) {
+    const handler = (_event, control) => callback(control)
+    ipcRenderer.on("mon-agent-speech-playback-control", handler)
+    return () => ipcRenderer.removeListener("mon-agent-speech-playback-control", handler)
   },
   convertFileSrc,
 })

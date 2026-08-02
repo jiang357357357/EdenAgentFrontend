@@ -4,26 +4,48 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { resolveCoreAssetUrl } from "../lib/auth"
 import { RealtimeSTTService, type RealtimeSTTStatus } from "../lib/realtime-stt"
-import { updateDesktopActivityFacts, type PetTTSMode } from "../lib/desktop-window"
-import { speechChunksForTTS, textForTTS } from "../lib/tts-text"
+import {
+  claimDesktopSpeechPlayback,
+  listenDesktopSpeechPlaybackControl,
+  releaseDesktopSpeechPlayback,
+  setDesktopPetBubbleKeyboardFocus,
+  updateDesktopActivityFacts,
+  type DesktopSpeechIntent,
+  type PetTTSMode,
+} from "../lib/desktop-window"
+import {
+  consumeSpeechStream,
+  speechStreamKey,
+  speechChunksForTTS,
+  textForTTS,
+  type SpeechStreamCursor,
+} from "../lib/tts-text"
 import { synthesizeSpeechSegment } from "../lib/mon_agent_api"
+import { SpeechOutputGate } from "../lib/speech-output-gate"
 import { splitActionLines } from "../lib/message-actions"
+import {
+  normalizePetDialogSegments,
+  type PetDialogSegment,
+  type PetDialogSegmentInput,
+} from "../lib/pet-dialog-segments"
 import { cn } from "../lib/utils"
 import type { MessageData, PendingPermission, PendingQuestion, PromptAttachment, ToolCall } from "../types"
-
-interface PetDialogSegment {
-  speaker: string
-  text?: string
-  speechSegmentId?: string
-  runtimeTrace?: string
-  thinking?: string
-  tool?: ToolCall
-}
 
 interface SpeechClip {
   status: "synthesizing" | "ready" | "error"
   source?: string
   sources?: string[]
+  error?: string
+}
+
+interface StreamingSpeechState {
+  segmentId: string
+  streamKey: string
+  cursor?: SpeechStreamCursor
+  nextChunkIndex: number
+  pending: number
+  sources: Map<number, string>
+  complete: boolean
   error?: string
 }
 
@@ -35,7 +57,7 @@ interface DesktopPetChatBubbleProps {
   voiceInputEnabled: boolean
   ttsMode: PetTTSMode
   latestAssistantMessage?: MessageData
-  dialogSegments: PetDialogSegment[]
+  dialogSegments: PetDialogSegmentInput[]
   isThinking: boolean
   permissions: PendingPermission[]
   questions: PendingQuestion[]
@@ -144,20 +166,28 @@ export function DesktopPetChatBubble({
   const [activeSpeechSegmentId, setActiveSpeechSegmentId] = useState<string | null>(null)
   const [speechPaused, setSpeechPaused] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const audioSegmentIdRef = useRef<string | null>(null)
   const finishAudioRef = useRef<(() => void) | null>(null)
   const playbackGenerationRef = useRef(0)
   const speechGenerationRef = useRef(0)
+  const speechSynthesisQueueRef = useRef<Promise<void>>(Promise.resolve())
   const speechQueueRef = useRef<Promise<void>>(Promise.resolve())
   const speechRunActiveRef = useRef(isThinking)
-  const synthesizedSegmentIdsRef = useRef<Set<string>>(new Set())
+  const streamSpeechStatesRef = useRef<Map<string, StreamingSpeechState>>(new Map())
+  const speechLeaseRef = useRef<string | null>(null)
+  const speechContextRef = useRef(`${sessionId ?? ""}:${ttsMode}`)
+  const speechOutputGateRef = useRef<SpeechOutputGate | null>(null)
+  if (!speechOutputGateRef.current) {
+    speechOutputGateRef.current = new SpeechOutputGate(isThinking, setSpeechOutputPending)
+  }
   const voicePrefixRef = useRef("")
   const voiceServiceRef = useRef<RealtimeSTTService | null>(null)
   const halfDuplexActiveRef = useRef(false)
   const halfDuplexResponseObservedRef = useRef(false)
   const visibleSegments = useMemo(
-    () => dialogSegments.filter((segment) => Boolean(segmentText(segment))),
+    () => normalizePetDialogSegments(dialogSegments).filter((segment) => Boolean(segmentText(segment))),
     [dialogSegments],
   )
   const scrollKey = visibleSegments.map((segment) => `${segmentText(segment).length}:${segment.tool?.status ?? ""}`).join("|")
@@ -166,6 +196,7 @@ export function DesktopPetChatBubble({
   const attentionVisible = Boolean(permission || question)
   const fontRatio = Math.max(70, Math.min(140, fontScale)) / 100
   const voiceBusy = voiceStatus !== "idle"
+  const speechOutputActive = speechOutputPending || Boolean(activeSpeechSegmentId)
   const canSend = input.trim().length > 0 && !isThinking && !voiceBusy
 
   const toggleSegment = (id: string) => {
@@ -178,13 +209,21 @@ export function DesktopPetChatBubble({
   }
 
   const stopSpeechPlayback = (cancelSynthesis = false, clearClips = false) => {
+    speechOutputGateRef.current?.reset(false)
     playbackGenerationRef.current += 1
-    if (cancelSynthesis) speechGenerationRef.current += 1
+    if (cancelSynthesis) {
+      speechGenerationRef.current += 1
+      streamSpeechStatesRef.current.clear()
+    }
     audioRef.current?.pause()
     audioRef.current = null
     audioSegmentIdRef.current = null
     finishAudioRef.current?.()
     finishAudioRef.current = null
+    const leaseId = speechLeaseRef.current
+    speechLeaseRef.current = null
+    void releaseDesktopSpeechPlayback(leaseId)
+    speechSynthesisQueueRef.current = Promise.resolve()
     speechQueueRef.current = Promise.resolve()
     setActiveSpeechSegmentId(null)
     setSpeechPaused(false)
@@ -223,8 +262,17 @@ export function DesktopPetChatBubble({
     sources: string[],
     generation: number,
     playbackGeneration: number,
+    intent: DesktopSpeechIntent,
+    speechKey = segmentID,
   ) => {
     if (generation !== speechGenerationRef.current || playbackGeneration !== playbackGenerationRef.current) return
+    const claim = await claimDesktopSpeechPlayback("pet-bubble", speechKey, intent)
+    if (!claim.granted || !claim.leaseId) return
+    if (generation !== speechGenerationRef.current || playbackGeneration !== playbackGenerationRef.current) {
+      void releaseDesktopSpeechPlayback(claim.leaseId)
+      return
+    }
+    speechLeaseRef.current = claim.leaseId
     setActiveSpeechSegmentId(segmentID)
     setSpeechPaused(false)
     try {
@@ -233,12 +281,19 @@ export function DesktopPetChatBubble({
         await playSpeechAudioSource(segmentID, source, generation)
       }
     } finally {
+      if (speechLeaseRef.current === claim.leaseId) speechLeaseRef.current = null
+      void releaseDesktopSpeechPlayback(claim.leaseId)
       setActiveSpeechSegmentId((current) => current === segmentID ? null : current)
       setSpeechPaused(false)
     }
   }
 
-  const enqueueSpeechSegment = (segmentID: string, messageID: string, rawText: string) => {
+  const enqueueSpeechSegment = (
+    segmentID: string,
+    messageID: string,
+    rawText: string,
+    intent: DesktopSpeechIntent = "auto",
+  ) => {
     if (!sessionId || !messageID || typeof ttsConfigId !== "number" || ttsMode === "none") {
       console.warn("[DesktopPet][TTS] 当前角色未关联可用的 TTS 配置")
       return
@@ -295,17 +350,99 @@ export function DesktopPetChatBubble({
         if (playbackGeneration !== playbackGenerationRef.current) return
         if (outcome.error) throw outcome.error
         if (!outcome.sources) throw new Error(`语音段 ${segmentID} 未返回音频`)
-        await playSpeechSources(segmentID, outcome.sources, generation, playbackGeneration)
+        await playSpeechSources(segmentID, outcome.sources, generation, playbackGeneration, intent)
       })
       .catch((error) => {
         console.warn("[DesktopPet][TTS] 分段合成或播放失败", error)
       })
   }
 
-  const toggleSpeechClip = (segmentID: string) => {
+  const updateStreamingSpeechClip = (state: StreamingSpeechState) => {
+    const segmentID = state.segmentId
+    const sources = [...state.sources.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([, source]) => source)
+    const settled = state.complete && state.pending === 0
+    setSpeechClips((current) => ({
+      ...current,
+      [segmentID]: state.error && settled
+        ? { status: "error", source: sources[0], sources, error: state.error }
+        : settled
+          ? { status: "ready", source: sources[0], sources }
+          : { status: "synthesizing", source: sources[0], sources },
+    }))
+  }
+
+  const enqueueStreamingSpeechChunk = (
+    messageID: string,
+    text: string,
+    chunkIndex: number,
+    state: StreamingSpeechState,
+  ) => {
+    if (!sessionId || !messageID || typeof ttsConfigId !== "number" || ttsMode === "none") return
+    const generation = speechGenerationRef.current
+    const playbackGeneration = playbackGenerationRef.current
+    state.pending += 1
+    updateStreamingSpeechClip(state)
+
+    const request = speechSynthesisQueueRef.current
+      .catch(() => undefined)
+      .then(() => synthesizeSpeechSegment({
+        sessionId,
+        messageId: messageID,
+        segmentId: `${state.streamKey}:tts:${chunkIndex}`,
+        text,
+        configId: ttsConfigId,
+        mode: ttsMode,
+      }))
+    speechSynthesisQueueRef.current = request.then(() => undefined, () => undefined)
+    const synthesis = request
+      .then((result) => {
+        if (!result.success) throw new Error(result.error_message || `语音句子 ${chunkIndex + 1} 合成失败`)
+        const source = result.audio_data
+          ? `data:audio/wav;base64,${result.audio_data}`
+          : resolveCoreAssetUrl(result.audio_url)
+        if (!source) throw new Error(`语音句子 ${chunkIndex + 1} 未返回音频`)
+        if (generation === speechGenerationRef.current) state.sources.set(chunkIndex, source)
+        return source
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error)
+        if (generation === speechGenerationRef.current) state.error = message
+        console.warn("[DesktopPet][TTS] 流式句子合成失败", error)
+        return null
+      })
+      .finally(() => {
+        if (generation !== speechGenerationRef.current) return
+        state.pending = Math.max(0, state.pending - 1)
+        updateStreamingSpeechClip(state)
+      })
+
+    speechQueueRef.current = speechQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const source = await synthesis
+        if (!source || generation !== speechGenerationRef.current || playbackGeneration !== playbackGenerationRef.current) return
+        await playSpeechSources(
+          state.segmentId,
+          [source],
+          generation,
+          playbackGeneration,
+          "auto",
+          `${state.streamKey}:tts:${chunkIndex}`,
+        )
+      })
+      .catch((error) => console.warn("[DesktopPet][TTS] 流式句子播放失败", error))
+  }
+
+  const toggleSpeechClip = (segmentID: string, messageID: string, rawText: string) => {
     const clip = speechClips[segmentID]
     const sources = clip?.sources ?? (clip?.source ? [clip.source] : [])
-    if (clip?.status !== "ready" || !sources.length) return
+    if (clip?.status === "synthesizing") return
+    if (clip?.status !== "ready" || !sources.length) {
+      enqueueSpeechSegment(segmentID, messageID, rawText, "manual")
+      return
+    }
 
     if (audioSegmentIdRef.current === segmentID && audioRef.current) {
       if (audioRef.current.paused) {
@@ -328,6 +465,7 @@ export function DesktopPetChatBubble({
       sources,
       generation,
       playbackGenerationRef.current,
+      "manual",
     ).catch((error) => {
       console.warn("[DesktopPet][TTS] 手动播放失败", error)
     })
@@ -340,7 +478,23 @@ export function DesktopPetChatBubble({
   }, [scrollKey])
 
   useEffect(() => {
+    let disposed = false
+    let unsubscribe: (() => void) | undefined
+    void listenDesktopSpeechPlaybackControl((control) => {
+      if (control.type === "stop" && speechLeaseRef.current === control.leaseId) stopSpeechPlayback(false)
+    }).then((listener) => {
+      if (disposed) listener?.()
+      else unsubscribe = listener
+    })
     return () => {
+      disposed = true
+      unsubscribe?.()
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      void setDesktopPetBubbleKeyboardFocus(false)
       void voiceServiceRef.current?.cancel()
       voiceServiceRef.current = null
       stopSpeechPlayback(true)
@@ -369,6 +523,15 @@ export function DesktopPetChatBubble({
   }, [activeSpeechSegmentId, speechPaused])
 
   useEffect(() => {
+    const context = `${sessionId ?? ""}:${ttsMode}`
+    if (speechContextRef.current === context) return
+    speechContextRef.current = context
+    stopSpeechPlayback(true, true)
+    speechRunActiveRef.current = isThinking
+    speechOutputGateRef.current?.reset(isThinking)
+  }, [isThinking, sessionId, ttsMode])
+
+  useEffect(() => {
     if (voiceInputEnabled) return
     halfDuplexActiveRef.current = false
     setHalfDuplexActive(false)
@@ -382,32 +545,58 @@ export function DesktopPetChatBubble({
     if (ttsMode === "none") {
       stopSpeechPlayback(true, true)
       speechRunActiveRef.current = isThinking
-      setSpeechOutputPending(isThinking)
+      speechOutputGateRef.current?.reset(isThinking)
+      return
+    }
+    if (!sessionId || typeof ttsConfigId !== "number") {
+      speechRunActiveRef.current = isThinking
+      speechOutputGateRef.current?.reset(isThinking)
       return
     }
     const runWasActive = speechRunActiveRef.current
     if (isThinking) {
       speechRunActiveRef.current = true
-      setSpeechOutputPending(true)
+      speechOutputGateRef.current?.begin()
     }
     const maySpeakCurrentRun = isThinking || runWasActive
     if (maySpeakCurrentRun) {
+      let textSegmentIndex = 0
       for (const segment of latestAssistantMessage?.segments ?? []) {
-        if (segment.type !== "text" || segment.state !== "done" || !segment.content.trim()) continue
-        const text = textForTTS(segment.content, ttsMode)
-        if (!text || synthesizedSegmentIdsRef.current.has(segment.id)) continue
-        synthesizedSegmentIdsRef.current.add(segment.id)
-        enqueueSpeechSegment(segment.id, latestAssistantMessage.id, segment.content)
+        if (segment.type !== "text") continue
+        const streamKey = speechStreamKey(latestAssistantMessage?.id ?? "", textSegmentIndex)
+        textSegmentIndex += 1
+        if (!segment.content.trim() || !textForTTS(segment.content, ttsMode)) continue
+        let state = streamSpeechStatesRef.current.get(streamKey)
+        if (!state) {
+          state = {
+            segmentId: segment.id,
+            streamKey,
+            nextChunkIndex: 0,
+            pending: 0,
+            sources: new Map(),
+            complete: false,
+          }
+          streamSpeechStatesRef.current.set(streamKey, state)
+        } else {
+          state.segmentId = segment.id
+        }
+        const flush = segment.state !== "streaming" || (!isThinking && runWasActive)
+        const update = consumeSpeechStream(segment.content, ttsMode, state.cursor, flush)
+        state.cursor = update.cursor
+        for (const text of update.chunks) {
+          const chunkIndex = state.nextChunkIndex
+          state.nextChunkIndex += 1
+          enqueueStreamingSpeechChunk(latestAssistantMessage.id, text, chunkIndex, state)
+        }
+        if (flush) {
+          state.complete = true
+          updateStreamingSpeechClip(state)
+        }
       }
     }
     if (!isThinking && runWasActive) {
       speechRunActiveRef.current = false
-      const generation = speechGenerationRef.current
-      void speechQueueRef.current.finally(() => {
-        if (generation === speechGenerationRef.current) setSpeechOutputPending(false)
-      })
-    } else if (!isThinking && !runWasActive) {
-      setSpeechOutputPending(false)
+      speechOutputGateRef.current?.holdUntil(speechQueueRef.current)
     }
   }, [isThinking, latestAssistantMessage, sessionId, ttsConfigId, ttsMode])
 
@@ -426,7 +615,7 @@ export function DesktopPetChatBubble({
     if (
       !voiceInputEnabled
       || isThinking
-      || speechOutputPending
+      || speechOutputActive
       || voiceStatus !== "idle"
       || voiceServiceRef.current
     ) return
@@ -494,7 +683,7 @@ export function DesktopPetChatBubble({
 
   useEffect(() => {
     if (!halfDuplexActive) return
-    const outputActive = isThinking || speechOutputPending
+    const outputActive = isThinking || speechOutputActive
     if (outputActive) {
       halfDuplexResponseObservedRef.current = true
       const service = voiceServiceRef.current
@@ -511,7 +700,7 @@ export function DesktopPetChatBubble({
       return
     }
     if (voiceStatus === "idle" && !voiceServiceRef.current) void startVoiceInput()
-  }, [halfDuplexActive, halfDuplexWaiting, isThinking, speechOutputPending, sttConfigId, voiceStatus])
+  }, [halfDuplexActive, halfDuplexWaiting, isThinking, speechOutputActive, sttConfigId, voiceStatus])
 
   const replyPermission = async (reply: "once" | "reject") => {
     if (!permission || submitting) return
@@ -654,6 +843,7 @@ export function DesktopPetChatBubble({
                   )
                 }
                 const speechSegmentID = assistant ? segment.speechSegmentId : undefined
+                const speechMessageID = assistant ? segment.speechMessageId : undefined
                 const speechClip = speechSegmentID ? speechClips[speechSegmentID] : undefined
                 const speechClipPlaying = Boolean(
                   speechSegmentID && activeSpeechSegmentId === speechSegmentID && !speechPaused,
@@ -681,10 +871,10 @@ export function DesktopPetChatBubble({
                             <LoaderCircle className="h-full w-full animate-spin" />
                           </span>
                         ) : null}
-                        {speechSegmentID && speechClip?.status === "ready" ? (
+                        {speechSegmentID && speechMessageID && ttsMode !== "none" && speechClip?.status !== "synthesizing" ? (
                           <button
                             type="button"
-                            onClick={() => toggleSpeechClip(speechSegmentID)}
+                            onClick={() => toggleSpeechClip(speechSegmentID, speechMessageID, content)}
                             className={cn(
                               "mb-[0.2cqh] inline-flex h-[5cqh] w-[5cqh] shrink-0 items-center justify-center rounded-full transition-colors",
                               speechClipPlaying
@@ -727,18 +917,29 @@ export function DesktopPetChatBubble({
         <div className="flex h-[22%] min-h-0 shrink-0 items-center gap-[3cqh] border-t border-white/8 px-[5cqh] py-[3cqh]">
           <div className="flex h-full min-w-0 flex-1 items-center gap-[2cqh] rounded-[5cqh] border border-white/20 px-[4cqh] focus-within:border-white/35">
             <input
+              ref={inputRef}
               value={input}
               readOnly={voiceBusy}
+              onPointerDown={(event) => {
+                if (!window.monAgentDesktop || voiceBusy) return
+                event.preventDefault()
+                void setDesktopPetBubbleKeyboardFocus(true).then((granted) => {
+                  if (granted) inputRef.current?.focus({ preventScroll: true })
+                })
+              }}
               onChange={(event) => setInput(event.target.value)}
               onFocus={() => void updateDesktopActivityFacts({
                 surface: "pet-bubble",
                 chat_input_focused: true,
                 last_user_interaction_at: new Date().toISOString(),
               })}
-              onBlur={() => void updateDesktopActivityFacts({
-                surface: "pet-bubble",
-                chat_input_focused: false,
-              })}
+              onBlur={() => {
+                void setDesktopPetBubbleKeyboardFocus(false)
+                void updateDesktopActivityFacts({
+                  surface: "pet-bubble",
+                  chat_input_focused: false,
+                })
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault()

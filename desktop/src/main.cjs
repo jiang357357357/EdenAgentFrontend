@@ -4,8 +4,15 @@ const fs = require("node:fs")
 const path = require("node:path")
 const { fileURLToPath, pathToFileURL } = require("node:url")
 const { promisify } = require("node:util")
+const { readWindowsDesktopEnvironment } = require("./desktop-environment.cjs")
+const { filePathFromDesktopUrl } = require("./file-protocol.cjs")
+const { createPetGroupDrag, petGroupPositionAtPointer } = require("./pet-group-drag.cjs")
 const { isInternalAppUrl, isSupportedExternalUrl } = require("./navigation-policy.cjs")
 const { shouldAllowMediaPermission } = require("./media-permission-policy.cjs")
+const { resolvePetBubbleSurfaceVisibility, setWindowVisibleWithoutActivation } = require("./pet-bubble-surfaces.cjs")
+const { SpeechPlaybackCoordinator } = require("./speech-playback-coordinator.cjs")
+const { applyBubbleKeyboardFocus, makeWindowNonActivating } = require("./pet-window-focus.cjs")
+const { createWindowsNoActivateController } = require("./windows-noactivate.cjs")
 
 const execFileAsync = promisify(execFile)
 
@@ -45,6 +52,7 @@ const DEFAULT_PET_SETTINGS = {
 let mainWindow = null
 let petWindow = null
 let petBubbleWindow = null
+let petBubbleIconWindow = null
 let settingsWindow = null
 let tray = null
 let isQuitting = false
@@ -53,6 +61,8 @@ let petSettings = readPetSettings()
 let applyingPetBounds = false
 let savePetPositionTimer = null
 let petBubbleCollapsed = false
+let petBubbleKeyboardFocus = false
+let petGroupDrag = null
 let desktopEnvironmentBroadcastTimer = null
 const desktopEnvironmentMonitors = []
 let devParentWatchTimer = null
@@ -67,6 +77,55 @@ const recentActivityEvents = []
 let authSession = null
 let authVerification = null
 const AUTH_VERIFICATION_TTL_MS = 30_000
+
+function sendSpeechPlaybackControl(ownerId, control) {
+  const ownerWindow = BrowserWindow.getAllWindows().find(
+    (candidate) => !candidate.isDestroyed() && candidate.webContents.id === ownerId,
+  )
+  if (ownerWindow && !ownerWindow.webContents.isDestroyed()) {
+    ownerWindow.webContents.send("mon-agent-speech-playback-control", control)
+  }
+}
+
+const speechPlaybackCoordinator = new SpeechPlaybackCoordinator(sendSpeechPlaybackControl)
+const windowsNoActivate = createWindowsNoActivateController()
+
+function applyPetNativeTopmost(targetWindow) {
+  if (!targetWindow || targetWindow.isDestroyed()) return false
+  if (targetWindow.isAlwaysOnTop() !== petSettings.alwaysOnTop) {
+    targetWindow.setAlwaysOnTop(petSettings.alwaysOnTop)
+  }
+  return windowsNoActivate.applyTopmost(targetWindow, petSettings.alwaysOnTop)
+}
+
+function applyPetBubbleKeyboardFocus(targetWindow, enabled, collapsed) {
+  const active = Boolean(enabled && !collapsed)
+  if (active) windowsNoActivate.apply(targetWindow, false)
+  const result = applyBubbleKeyboardFocus(
+    targetWindow,
+    enabled,
+    collapsed,
+    petSettings.alwaysOnTop,
+  )
+  if (!active) windowsNoActivate.apply(targetWindow, true)
+  applyPetNativeTopmost(targetWindow)
+  if (targetWindow !== petWindow) applyPetNativeTopmost(petWindow)
+  return result
+}
+
+function speechSurfaceForSender(sender) {
+  const ownerWindow = BrowserWindow.fromWebContents(sender)
+  if (ownerWindow === mainWindow) return "main-chat"
+  if (ownerWindow === petBubbleWindow) return "pet-bubble"
+  return null
+}
+
+function preferredAutomaticSpeechSurface() {
+  const bubbleVisible = Boolean(
+    petBubbleWindow && !petBubbleWindow.isDestroyed() && petBubbleWindow.isVisible(),
+  )
+  return bubbleVisible ? "pet-bubble" : "main-chat"
+}
 
 function broadcastAuthState(state) {
   for (const targetWindow of BrowserWindow.getAllWindows()) {
@@ -490,7 +549,10 @@ async function collectActivityPresenceFacts() {
       main_window_visible: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()),
       main_window_focused: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()),
       pet_visible: Boolean(petWindow && !petWindow.isDestroyed() && petWindow.isVisible()),
-      bubble_visible: Boolean(petBubbleWindow && !petBubbleWindow.isDestroyed() && petBubbleWindow.isVisible()),
+      bubble_visible: Boolean(
+        (petBubbleWindow && !petBubbleWindow.isDestroyed() && petBubbleWindow.isVisible()) ||
+        (petBubbleIconWindow && !petBubbleIconWindow.isDestroyed() && petBubbleIconWindow.isVisible()),
+      ),
       settings_window_visible: Boolean(settingsWindow && !settingsWindow.isDestroyed() && settingsWindow.isVisible()),
       current_view_mode: currentViewMode,
       ...rendererFacts,
@@ -732,7 +794,9 @@ function petWindowLayout() {
 
 function applyPetWindowAttributes() {
   if (petWindow && !petWindow.isDestroyed()) {
-    petWindow.setAlwaysOnTop(petSettings.alwaysOnTop)
+    makeWindowNonActivating(petWindow)
+    windowsNoActivate.apply(petWindow, true)
+    applyPetNativeTopmost(petWindow)
     petWindow.setIgnoreMouseEvents(petSettings.clickThrough)
     petWindow.setOpacity(1)
     petWindow.setBackgroundColor(petSettings.transparentWindow ? "#00000000" : "#f5f5f4")
@@ -740,30 +804,58 @@ function applyPetWindowAttributes() {
   }
   if (petBubbleWindow && !petBubbleWindow.isDestroyed()) {
     petBubbleWindow.setSkipTaskbar(true)
-    petBubbleWindow.setAlwaysOnTop(petSettings.alwaysOnTop)
     petBubbleWindow.setIgnoreMouseEvents(false)
     petBubbleWindow.setOpacity(1)
     petBubbleWindow.setBackgroundColor("#00000000")
     petBubbleWindow.setHasShadow(false)
+    applyPetBubbleKeyboardFocus(
+      petBubbleWindow,
+      petBubbleKeyboardFocus,
+      petBubbleCollapsed,
+    )
   }
+  if (petBubbleIconWindow && !petBubbleIconWindow.isDestroyed()) {
+    petBubbleIconWindow.setSkipTaskbar(true)
+    petBubbleIconWindow.setIgnoreMouseEvents(false)
+    petBubbleIconWindow.setOpacity(1)
+    petBubbleIconWindow.setBackgroundColor("#00000000")
+    petBubbleIconWindow.setHasShadow(false)
+    applyPetBubbleKeyboardFocus(petBubbleIconWindow, false, true)
+  }
+  // Windows keeps an owned window above its owner. Reassert the character
+  // owner last so making the panel/icon topmost cannot demote it below a game.
+  applyPetNativeTopmost(petWindow)
 }
 
 function applyPetBubbleBounds() {
-  if (!petBubbleWindow || petBubbleWindow.isDestroyed()) return
   const layout = petWindowLayout()
-  petBubbleWindow.setBounds(petBubbleCollapsed ? layout.collapsedBubble : layout.expandedBubble, false)
+  if (petBubbleWindow && !petBubbleWindow.isDestroyed()) {
+    petBubbleWindow.setBounds(layout.expandedBubble, false)
+  }
+  if (petBubbleIconWindow && !petBubbleIconWindow.isDestroyed()) {
+    petBubbleIconWindow.setBounds(layout.collapsedBubble, false)
+  }
 }
 
 function applyPetBubbleVisibility() {
-  if (!petBubbleWindow || petBubbleWindow.isDestroyed()) return
   const characterVisible = Boolean(petWindow && !petWindow.isDestroyed() && petWindow.isVisible())
-  if (characterVisible && petSettings.showInput) {
-    petBubbleWindow.setSkipTaskbar(true)
-    petBubbleWindow.showInactive()
-    if (petSettings.alwaysOnTop) petBubbleWindow.moveTop()
-  } else {
-    petBubbleWindow.hide()
+  const { panelVisible, iconVisible } = resolvePetBubbleSurfaceVisibility({
+    characterVisible,
+    showInput: petSettings.showInput,
+    collapsed: petBubbleCollapsed,
+  })
+
+  if (!panelVisible) {
+    petBubbleKeyboardFocus = false
+    if (petBubbleWindow && !petBubbleWindow.isDestroyed()) {
+      applyPetBubbleKeyboardFocus(petBubbleWindow, false, true)
+    }
   }
+  setWindowVisibleWithoutActivation(petBubbleWindow, panelVisible)
+  setWindowVisibleWithoutActivation(petBubbleIconWindow, iconVisible)
+  applyPetNativeTopmost(petBubbleWindow)
+  applyPetNativeTopmost(petBubbleIconWindow)
+  applyPetNativeTopmost(petWindow)
 }
 
 function applyPetWindowBounds() {
@@ -787,7 +879,7 @@ function applyPetWindowSettings() {
 }
 
 function savePetWindowPosition() {
-  if (!petWindow || applyingPetBounds) return
+  if (!petWindow || applyingPetBounds || petGroupDrag) return
   const bounds = petWindow.getBounds()
   const layout = petWindowLayout()
   petSettings = normalizePetSettings({
@@ -810,7 +902,35 @@ function broadcastPetSettings() {
   mainWindow?.webContents.send("mon-agent-pet-settings", petSettings)
   petWindow?.webContents.send("mon-agent-pet-settings", petSettings)
   petBubbleWindow?.webContents.send("mon-agent-pet-settings", petSettings)
+  petBubbleIconWindow?.webContents.send("mon-agent-pet-settings", petSettings)
   settingsWindow?.webContents.send("mon-agent-pet-settings", petSettings)
+}
+
+function updatePetGroupDrag(sender, args = {}) {
+  if (!petGroupDrag || petGroupDrag.ownerId !== sender.id) return false
+  const position = petGroupPositionAtPointer(petGroupDrag, args.screenX, args.screenY)
+  if (!position) return false
+  petSettings = normalizePetSettings({ ...petSettings, windowX: position.x, windowY: position.y })
+  applyPetWindowBounds()
+  return true
+}
+
+function finishPetGroupDrag(sender, args = {}) {
+  if (!petGroupDrag || petGroupDrag.ownerId !== sender.id) return false
+  updatePetGroupDrag(sender, args)
+  petGroupDrag = null
+  writePetSettings(petSettings)
+  broadcastPetSettings()
+  scheduleDesktopEnvironmentBroadcast()
+  return true
+}
+
+function broadcastPetBubbleCollapsed() {
+  for (const targetWindow of [mainWindow, petWindow, petBubbleWindow, petBubbleIconWindow, settingsWindow]) {
+    if (targetWindow && !targetWindow.isDestroyed()) {
+      targetWindow.webContents.send("mon-agent-pet-bubble-collapsed", petBubbleCollapsed)
+    }
+  }
 }
 
 function parseGSettingsString(value) {
@@ -868,6 +988,9 @@ function panelForDisplay(display, enabled, heights, autoHide, applets) {
 }
 
 async function readDesktopEnvironment(display) {
+  if (process.platform === "win32") {
+    return readWindowsDesktopEnvironment(display, { execFileAsync })
+  }
   const desktopName = String(process.env.XDG_CURRENT_DESKTOP || process.env.DESKTOP_SESSION || "").toLowerCase()
   const cinnamon = desktopName.includes("cinnamon")
   const wallpaperSchema = cinnamon ? "org.cinnamon.desktop.background" : "org.gnome.desktop.background"
@@ -1077,6 +1200,38 @@ function loadWebApp(targetWindow, page) {
   }
 }
 
+function attachRendererDiagnostics(targetWindow, label) {
+  if (app.isPackaged) return
+  const contents = targetWindow.webContents
+  const report = (message) => {
+    const line = `[${new Date().toISOString()}] [${label}] ${message}`
+    console.error(`[MonAgent][Renderer] ${line}`)
+    try {
+      const diagnosticsDir = path.join(agentRoot, ".artifacts")
+      fs.mkdirSync(diagnosticsDir, { recursive: true })
+      fs.appendFileSync(path.join(diagnosticsDir, "renderer-diagnostics.log"), `${line}\n`, "utf8")
+    } catch (error) {
+      console.error(`[MonAgent][Renderer] unable to write diagnostics: ${error.message || error}`)
+    }
+  }
+  contents.on("console-message", (_event, ...args) => {
+    const details = args[0] && typeof args[0] === "object"
+      ? args[0]
+      : { level: args[0], message: args[1], lineNumber: args[2], sourceId: args[3] }
+    const level = details.level
+    if (level !== "error" && level !== 3) return
+    const source = details.sourceId ? ` (${details.sourceId}:${details.lineNumber ?? 0})` : ""
+    report(`${details.message ?? "Unknown renderer error"}${source}`)
+  })
+  contents.on("render-process-gone", (_event, details) => {
+    report(`process gone: ${details.reason} (${details.exitCode})`)
+  })
+  contents.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
+    if (!isMainFrame || code === -3) return
+    report(`load failed: ${code} ${description} ${url}`)
+  })
+}
+
 function createWindow() {
   const preload = path.join(__dirname, "preload.cjs")
 
@@ -1112,7 +1267,13 @@ function createWindow() {
       mainWindow?.hide()
     }
   })
+  attachRendererDiagnostics(mainWindow, "main")
   attachWindowActivityEvents(mainWindow, "main")
+  if (!app.isPackaged && process.env.MON_AGENT_OPEN_DEVTOOLS === "1") {
+    mainWindow.webContents.once("did-finish-load", () => {
+      mainWindow?.webContents.openDevTools({ mode: "detach", activate: true })
+    })
+  }
   loadWebApp(mainWindow)
 }
 
@@ -1121,7 +1282,7 @@ async function createPetWindow() {
 
   if (petWindow && !petWindow.isDestroyed()) {
     if (petWindow.isMinimized()) petWindow.restore()
-    createPetBubbleWindow()
+    createPetBubbleWindows()
     applyPetWindowSettings()
     petWindow.showInactive()
     applyPetBubbleVisibility()
@@ -1145,6 +1306,7 @@ async function createPetWindow() {
     titleBarStyle: "hidden",
     autoHideMenuBar: true,
     transparent: true,
+    focusable: false,
     backgroundColor: "#00000000",
     icon: resolveWindowIcon(),
     webPreferences: {
@@ -1168,28 +1330,38 @@ async function createPetWindow() {
     applyPetBubbleVisibility()
   })
   petWindow.on("hide", () => {
-    petBubbleWindow?.hide()
+    petBubbleKeyboardFocus = false
+    setWindowVisibleWithoutActivation(petBubbleWindow, false)
+    setWindowVisibleWithoutActivation(petBubbleIconWindow, false)
     updateTray()
   })
   petWindow.on("closed", () => {
+    petGroupDrag = null
     petWindow = null
     if (petBubbleWindow && !petBubbleWindow.isDestroyed()) petBubbleWindow.destroy()
+    if (petBubbleIconWindow && !petBubbleIconWindow.isDestroyed()) petBubbleIconWindow.destroy()
     updateTray()
   })
   petWindow.on("move", savePetWindowPosition)
   attachWindowActivityEvents(petWindow, "pet-character")
   loadWebApp(petWindow, "pet-character")
-  createPetBubbleWindow()
+  createPetBubbleWindows()
   updateTray()
 }
 
-function createPetBubbleWindow() {
+function createPetBubbleWindows() {
+  createPetBubblePanelWindow()
+  createPetBubbleIconWindow()
+}
+
+function createPetBubblePanelWindow() {
   if (petBubbleWindow && !petBubbleWindow.isDestroyed()) return
 
   const preload = path.join(__dirname, "preload.cjs")
-  const bounds = petBubbleCollapsed ? petWindowLayout().collapsedBubble : petWindowLayout().expandedBubble
+  const bounds = petWindowLayout().expandedBubble
   petBubbleWindow = new BrowserWindow({
     title: `${APP_WINDOW_TITLE} 桌宠气泡`,
+    parent: petWindow ?? undefined,
     ...(process.platform === "linux" ? { type: "dock" } : {}),
     ...bounds,
     minWidth: 1,
@@ -1202,7 +1374,8 @@ function createPetBubbleWindow() {
     backgroundColor: "#00000000",
     hasShadow: false,
     skipTaskbar: true,
-    focusable: true,
+    focusable: false,
+    alwaysOnTop: petSettings.alwaysOnTop,
     icon: resolveWindowIcon(),
     webPreferences: {
       preload,
@@ -1222,17 +1395,84 @@ function createPetBubbleWindow() {
   })
   petBubbleWindow.on("show", () => {
     petBubbleWindow?.setSkipTaskbar(true)
+    applyPetNativeTopmost(petBubbleWindow)
+    applyPetNativeTopmost(petWindow)
+  })
+  petBubbleWindow.on("blur", () => {
+    if (!petBubbleKeyboardFocus) return
+    petBubbleKeyboardFocus = false
+    applyPetBubbleKeyboardFocus(petBubbleWindow, false, petBubbleCollapsed)
+  })
+  const petBubbleContentsId = petBubbleWindow.webContents.id
+  petBubbleWindow.on("hide", () => {
+    petBubbleKeyboardFocus = false
+    speechPlaybackCoordinator.revokeOwner(petBubbleContentsId, "window-hidden")
   })
   petBubbleWindow.on("closed", () => {
+    speechPlaybackCoordinator.revokeOwner(petBubbleContentsId, "window-closed")
+    petGroupDrag = null
     petBubbleWindow = null
   })
   attachWindowActivityEvents(petBubbleWindow, "pet-bubble")
   loadWebApp(petBubbleWindow, "pet-bubble")
 }
 
+function createPetBubbleIconWindow() {
+  if (petBubbleIconWindow && !petBubbleIconWindow.isDestroyed()) return
+
+  const preload = path.join(__dirname, "preload.cjs")
+  const bounds = petWindowLayout().collapsedBubble
+  petBubbleIconWindow = new BrowserWindow({
+    title: `${APP_WINDOW_TITLE} 桌宠气泡图标`,
+    parent: petWindow ?? undefined,
+    ...(process.platform === "linux" ? { type: "dock" } : {}),
+    ...bounds,
+    minWidth: 1,
+    minHeight: 1,
+    show: false,
+    frame: false,
+    titleBarStyle: "hidden",
+    autoHideMenuBar: true,
+    transparent: true,
+    backgroundColor: "#00000000",
+    hasShadow: false,
+    skipTaskbar: true,
+    focusable: false,
+    alwaysOnTop: petSettings.alwaysOnTop,
+    icon: resolveWindowIcon(),
+    webPreferences: {
+      preload,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      webSecurity: false,
+    },
+  })
+
+  petBubbleIconWindow.once("ready-to-show", () => {
+    petBubbleIconWindow?.setSkipTaskbar(true)
+    applyPetWindowAttributes()
+    applyPetBubbleBounds()
+    applyPetBubbleVisibility()
+    broadcastPetSettings()
+  })
+  petBubbleIconWindow.on("show", () => {
+    petBubbleIconWindow?.setSkipTaskbar(true)
+    applyPetNativeTopmost(petBubbleIconWindow)
+    applyPetNativeTopmost(petWindow)
+  })
+  petBubbleIconWindow.on("closed", () => {
+    petGroupDrag = null
+    petBubbleIconWindow = null
+  })
+  attachWindowActivityEvents(petBubbleIconWindow, "pet-icon")
+  loadWebApp(petBubbleIconWindow, "pet-icon")
+}
+
 function hidePetWindows() {
-  petBubbleWindow?.hide()
-  petWindow?.hide()
+  setWindowVisibleWithoutActivation(petBubbleWindow, false)
+  setWindowVisibleWithoutActivation(petBubbleIconWindow, false)
+  if (petWindow && !petWindow.isDestroyed()) petWindow.hide()
 }
 
 async function createSettingsWindow() {
@@ -1375,11 +1615,7 @@ function createTray() {
 
 function registerFileProtocol() {
   protocol.handle("monagent-file", (request) => {
-    const url = new URL(request.url)
-    let filePath = decodeURIComponent(url.host ? `/${url.host}${url.pathname}` : url.pathname)
-    if (process.platform === "win32" && /^\/[A-Za-z]:/.test(filePath)) {
-      filePath = filePath.slice(1)
-    }
+    const filePath = filePathFromDesktopUrl(request.url)
     return net.fetch(pathToFileURL(filePath).toString())
   })
 }
@@ -1537,6 +1773,19 @@ ipcMain.handle("mon-agent:invoke", async (_event, command, args = {}) => {
     }
     case "update_activity_facts":
       return updateRendererActivityFacts(_event.sender, args.facts ?? {})
+    case "claim_speech_playback": {
+      const surface = speechSurfaceForSender(_event.sender)
+      if (!surface) return { granted: false, reason: "unsupported-surface" }
+      return speechPlaybackCoordinator.claim({
+        ownerId: _event.sender.id,
+        surface,
+        segmentId: String(args.segmentId || ""),
+        intent: args.intent === "manual" ? "manual" : "auto",
+        preferredAutoSurface: preferredAutomaticSpeechSurface(),
+      })
+    }
+    case "release_speech_playback":
+      return speechPlaybackCoordinator.release(_event.sender.id, String(args.leaseId || ""))
     case "publish_activity_presence":
       return publishActivityPresence()
     case "set_window_size":
@@ -1553,17 +1802,51 @@ ipcMain.handle("mon-agent:invoke", async (_event, command, args = {}) => {
       return true
     case "get_pet_settings":
       return petSettings
+    case "get_pet_bubble_collapsed":
+      return petBubbleCollapsed
     case "apply_pet_settings":
       return updatePetSettings(args.settings ?? {})
     case "set_pet_bubble_collapsed": {
       const targetWindow = BrowserWindow.fromWebContents(_event.sender)
-      if (targetWindow === petBubbleWindow) {
+      if (targetWindow === petBubbleWindow || targetWindow === petBubbleIconWindow) {
         petBubbleCollapsed = Boolean(args.collapsed)
-        applyPetBubbleBounds()
-        if (petSettings.alwaysOnTop) petBubbleWindow.moveTop()
+        petBubbleKeyboardFocus = false
+        if (petBubbleWindow && !petBubbleWindow.isDestroyed()) {
+          applyPetBubbleKeyboardFocus(petBubbleWindow, false, true)
+        }
+        if (!petBubbleCollapsed) petGroupDrag = null
+        broadcastPetBubbleCollapsed()
+        applyPetBubbleVisibility()
       }
       return true
     }
+    case "set_pet_bubble_keyboard_focus": {
+      const targetWindow = BrowserWindow.fromWebContents(_event.sender)
+      if (targetWindow !== petBubbleWindow) return false
+      petBubbleKeyboardFocus = Boolean(args.enabled) && !petBubbleCollapsed && petBubbleWindow.isVisible()
+      return applyPetBubbleKeyboardFocus(
+        petBubbleWindow,
+        petBubbleKeyboardFocus,
+        petBubbleCollapsed,
+      )
+    }
+    case "begin_pet_group_drag": {
+      const targetWindow = BrowserWindow.fromWebContents(_event.sender)
+      if (targetWindow !== petBubbleIconWindow || !petBubbleCollapsed) return false
+      const group = petWindowBounds()
+      petGroupDrag = createPetGroupDrag({
+        ownerId: _event.sender.id,
+        pointerX: args.screenX,
+        pointerY: args.screenY,
+        groupX: group.x,
+        groupY: group.y,
+      })
+      return Boolean(petGroupDrag)
+    }
+    case "update_pet_group_drag":
+      return updatePetGroupDrag(_event.sender, args)
+    case "end_pet_group_drag":
+      return finishPetGroupDrag(_event.sender, args)
     case "get_desktop_environment": {
       const targetWindow = BrowserWindow.fromWebContents(_event.sender) ?? settingsWindow ?? mainWindow
       const display = displayForPetSettings(targetWindow)

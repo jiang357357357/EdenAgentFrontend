@@ -234,6 +234,43 @@ export async function setDesktopPetBubbleCollapsed(collapsed: boolean) {
   }
 }
 
+export async function setDesktopPetBubbleKeyboardFocus(enabled: boolean) {
+  const bridge = getDesktopBridge();
+  if (!bridge) return true;
+
+  try {
+    return Boolean(await bridge.invoke<boolean>('set_pet_bubble_keyboard_focus', { enabled }));
+  } catch {
+    return false;
+  }
+}
+
+export type DesktopSpeechSurface = 'main-chat' | 'pet-bubble';
+export type DesktopSpeechIntent = 'auto' | 'manual';
+
+export interface DesktopSpeechPlaybackClaim {
+  granted: boolean;
+  leaseId?: string;
+  reason?: string;
+}
+
+export interface DesktopSpeechPlaybackControl {
+  type: 'stop';
+  leaseId: string;
+  reason?: string;
+}
+
+export async function getDesktopPetBubbleCollapsed() {
+  const bridge = getDesktopBridge();
+  if (!bridge) return false;
+
+  try {
+    return Boolean(await bridge.invoke<boolean>('get_pet_bubble_collapsed'));
+  } catch {
+    return false;
+  }
+}
+
 export async function getDesktopEnvironmentPreview() {
   const bridge = getDesktopBridge();
   if (!bridge) return null;
@@ -292,6 +329,87 @@ export async function listenDesktopPetSettings(onSettings: (settings: PetSetting
     });
   } catch {
     return undefined;
+  }
+}
+
+export async function claimDesktopSpeechPlayback(
+  surface: DesktopSpeechSurface,
+  segmentId: string,
+  intent: DesktopSpeechIntent,
+): Promise<DesktopSpeechPlaybackClaim> {
+  const bridge = getDesktopBridge();
+  if (!bridge) return { granted: true, leaseId: `browser:${surface}:${segmentId}` };
+  try {
+    return await bridge.invoke<DesktopSpeechPlaybackClaim>('claim_speech_playback', {
+      surface,
+      segmentId,
+      intent,
+    });
+  } catch {
+    return { granted: false, reason: 'desktop-coordinator-unavailable' };
+  }
+}
+
+export async function releaseDesktopSpeechPlayback(leaseId?: string | null) {
+  const bridge = getDesktopBridge();
+  if (!bridge || !leaseId || leaseId.startsWith('browser:')) return false;
+  try {
+    return await bridge.invoke<boolean>('release_speech_playback', { leaseId });
+  } catch {
+    return false;
+  }
+}
+
+export async function listenDesktopSpeechPlaybackControl(
+  onControl: (control: DesktopSpeechPlaybackControl) => void,
+) {
+  const bridge = getDesktopBridge();
+  if (!bridge?.onSpeechPlaybackControl) return undefined;
+  try {
+    return bridge.onSpeechPlaybackControl(onControl);
+  } catch {
+    return undefined;
+  }
+}
+
+export async function listenDesktopPetBubbleCollapsed(onCollapsed: (collapsed: boolean) => void) {
+  const bridge = getDesktopBridge();
+  if (!bridge?.onPetBubbleCollapsed) return undefined;
+
+  try {
+    return bridge.onPetBubbleCollapsed((collapsed) => onCollapsed(Boolean(collapsed)));
+  } catch {
+    return undefined;
+  }
+}
+
+export async function beginDesktopPetGroupDrag(screenX: number, screenY: number) {
+  const bridge = getDesktopBridge();
+  if (!bridge) return false;
+  try {
+    return Boolean(await bridge.invoke<boolean>('begin_pet_group_drag', { screenX, screenY }));
+  } catch {
+    return false;
+  }
+}
+
+export async function updateDesktopPetGroupDrag(screenX: number, screenY: number) {
+  const bridge = getDesktopBridge();
+  if (!bridge) return false;
+  try {
+    return Boolean(await bridge.invoke<boolean>('update_pet_group_drag', { screenX, screenY }));
+  } catch {
+    return false;
+  }
+}
+
+export async function endDesktopPetGroupDrag(screenX: number, screenY: number) {
+  const bridge = getDesktopBridge();
+  if (!bridge) return false;
+  try {
+    return Boolean(await bridge.invoke<boolean>('end_pet_group_drag', { screenX, screenY }));
+  } catch {
+    return false;
   }
 }
 

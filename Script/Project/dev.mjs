@@ -1,18 +1,18 @@
-import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { spawnExecutable, spawnNpm } from "./process_runner.mjs"
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const frontendRoot = path.resolve(scriptDir, "../..")
 const agentRoot = path.resolve(frontendRoot, "..")
 const configPath = path.join(agentRoot, ".monconfig")
+const smokeWebOnly = process.argv.includes("--smoke-web")
 
 const webPort = Number(process.env.MON_AGENT_WEB_PORT ?? readMonConfigValue("server", "WEB_PORT", "40091"))
 const quitFlag = resolveAgentPath(readMonConfigValue("desktop", "QUIT_FLAG", ".artifacts/desktop-quit.flag"))
 const children = []
 let shuttingDown = false
-let startedWeb = false
 
 function handleOutputError(error) {
   if (error?.code === "EPIPE" || error?.code === "ERR_STREAM_DESTROYED") {
@@ -56,10 +56,6 @@ function resolveAgentPath(value) {
   return path.isAbsolute(value) ? value : path.join(agentRoot, value)
 }
 
-function npmCommand() {
-  return process.platform === "win32" ? "npm.cmd" : "npm"
-}
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -90,13 +86,11 @@ function childEnv(extraEnv = {}) {
 }
 
 function start(label, args, extraEnv = {}) {
-  const child = spawn(npmCommand(), args, {
+  const child = spawnNpm(args, {
     cwd: frontendRoot,
-    stdout: "pipe",
-    stderr: "pipe",
+    stdio: ["ignore", "pipe", "pipe"],
     env: childEnv(extraEnv),
     detached: process.platform !== "win32",
-    windowsHide: true,
   })
   children.push(child)
   prefixOutput(label, child.stdout, process.stdout)
@@ -105,6 +99,12 @@ function start(label, args, extraEnv = {}) {
     if (!shuttingDown && code !== 0) {
       process.stderr.write(`[dev] ${label} exited with code ${code}\n`)
       void shutdown(code || 1)
+    }
+  })
+  child.on("error", (error) => {
+    if (!shuttingDown) {
+      process.stderr.write(`[dev] unable to start ${label}: ${error.message}\n`)
+      void shutdown(1)
     }
   })
   return child
@@ -139,7 +139,7 @@ async function waitForWeb(webProc) {
 
 async function runWithTimeout(args, timeoutMs) {
   return await new Promise((resolve) => {
-    const child = spawn(args[0], args.slice(1), { cwd: frontendRoot, stdio: "ignore", windowsHide: true })
+    const child = spawnExecutable(args[0], args.slice(1), { cwd: frontendRoot, stdio: "ignore" })
     const timer = setTimeout(() => child.kill(), timeoutMs)
     child.on("exit", () => {
       clearTimeout(timer)
@@ -154,7 +154,10 @@ async function runWithTimeout(args, timeoutMs) {
 
 function runCapture(args, timeoutMs = 3000) {
   return new Promise((resolve) => {
-    const child = spawn(args[0], args.slice(1), { cwd: frontendRoot, stdout: "pipe", stderr: "pipe", windowsHide: true })
+    const child = spawnExecutable(args[0], args.slice(1), {
+      cwd: frontendRoot,
+      stdio: ["ignore", "pipe", "pipe"],
+    })
     let stdout = ""
     let stderr = ""
     const timer = setTimeout(() => child.kill(), timeoutMs)
@@ -305,9 +308,7 @@ async function shutdown(code = 0) {
   shuttingDown = true
   writeQuitFlag()
   for (const child of [...children].reverse()) {
-    if (child.spawnargs.includes("--prefix") || startedWeb) {
-      await killProcessTree(child)
-    }
+    await killProcessTree(child)
   }
   fs.rmSync(quitFlag, { force: true })
   process.exit(code)
@@ -323,8 +324,11 @@ try {
   await releaseTcpPort(port, "web")
   console.log(`[dev] start web: http://127.0.0.1:${port}`)
   const web = start("web", ["--prefix", "web", "run", "dev"])
-  startedWeb = true
   await waitForWeb(web)
+  if (smokeWebOnly) {
+    console.log("[dev] web startup smoke check passed")
+    await shutdown(0)
+  }
 
   console.log("[dev] start desktop shell")
   const desktop = start("desktop", ["--prefix", "desktop", "run", "dev"], {

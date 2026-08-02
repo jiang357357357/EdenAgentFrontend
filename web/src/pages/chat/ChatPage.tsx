@@ -178,14 +178,24 @@ export function ChatPage({
     if (!activeReplyMessage) return []
     if (activeReplyMessage.segments?.length) {
       return activeReplyMessage.segments.flatMap((segment) => {
-        if (segment.type !== "text" || segment.state === "streaming") return []
+        if (segment.type !== "text") return []
         return segment.content.trim()
-          ? [{ id: segment.id, messageId: activeReplyMessage.id, text: segment.content }]
+          ? [{
+              id: segment.id,
+              messageId: activeReplyMessage.id,
+              text: segment.content,
+              state: segment.state,
+            }]
           : []
       })
     }
-    if (!activeReplyMessage.content || activeReplyMessage.isStreaming) return []
-    return [{ id: `${activeReplyMessage.id}:content`, messageId: activeReplyMessage.id, text: activeReplyMessage.content }]
+    if (!activeReplyMessage.content) return []
+    return [{
+      id: `${activeReplyMessage.id}:content`,
+      messageId: activeReplyMessage.id,
+      text: activeReplyMessage.content,
+      state: activeReplyMessage.isStreaming ? "streaming" as const : "done" as const,
+    }]
   }, [activeReplyMessage])
   const speech = useTTSSpeech({
     configId: activeReplyMessage?.speaker?.ttsConfigID ?? assistant?.character?.tts_config_id,

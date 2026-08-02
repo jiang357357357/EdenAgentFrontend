@@ -40,6 +40,7 @@ interface DialogSegment {
   speaker: string
   text?: string
   speechSegmentId?: string
+  speechMessageId?: string
   images?: string[]
   runtimeTrace?: string
   thinking?: string
@@ -47,7 +48,7 @@ interface DialogSegment {
 }
 
 interface CharacterPageProps {
-  surface?: "combined" | "character" | "bubble"
+  surface?: "combined" | "character" | "bubble" | "icon"
   isThinking: boolean
   activeSession?: Session
   activeReplyMessage?: MessageData
@@ -106,9 +107,9 @@ export function CharacterPage({
   onPreviewImage,
 }: CharacterPageProps) {
   const [petSettings, setPetSettings] = useState<PetSettings>(DEFAULT_PET_SETTINGS)
-  const [inputCollapsed, setInputCollapsed] = useState(false)
+  const [combinedInputCollapsed, setCombinedInputCollapsed] = useState(false)
   const displayName = assistant?.name || assistant?.character?.name || "默认助手"
-  const petBackgroundClass = surface === "bubble" || petSettings.transparentWindow ? "!bg-transparent" : "bg-bg"
+  const petBackgroundClass = surface === "bubble" || surface === "icon" || petSettings.transparentWindow ? "!bg-transparent" : "bg-bg"
   const noDragStyle = { WebkitAppRegion: "no-drag" } as CSSProperties
 
   useEffect(() => {
@@ -134,10 +135,14 @@ export function CharacterPage({
     return () => document.documentElement.classList.remove("character-transparent")
   }, [petSettings.transparentWindow])
 
-  useEffect(() => {
-    if (surface !== "bubble") return
-    void setDesktopPetBubbleCollapsed(inputCollapsed)
-  }, [inputCollapsed, surface])
+  const resolvedInputCollapsed = surface === "icon" ? true : surface === "bubble" ? false : combinedInputCollapsed
+  const handleInputCollapsedChange = (collapsed: boolean) => {
+    if (surface === "bubble" || surface === "icon") {
+      void setDesktopPetBubbleCollapsed(collapsed)
+      return
+    }
+    setCombinedInputCollapsed(collapsed)
+  }
 
   return (
     <motion.div
@@ -152,15 +157,15 @@ export function CharacterPage({
         activeCharacterAction={activeCharacterAction}
         settings={petSettings}
         surface={surface}
-        inputCollapsed={inputCollapsed}
-        onInputCollapsedChange={setInputCollapsed}
+        inputCollapsed={resolvedInputCollapsed}
+        onInputCollapsedChange={(collapsed) => void handleInputCollapsedChange(collapsed)}
         inputContent={
           surface === "bubble" ? (
             <DesktopPetChatBubble
               assistantName={displayName}
               sessionId={activeSession?.id}
               sttConfigId={assistant?.character?.stt_config_id}
-              ttsConfigId={assistant?.character?.tts_config_id}
+              ttsConfigId={activeReplyMessage?.speaker?.ttsConfigID ?? assistant?.character?.tts_config_id}
               voiceInputEnabled={petSettings.voiceInputEnabled}
               ttsMode={petSettings.ttsMode}
               latestAssistantMessage={activeReplyMessage}

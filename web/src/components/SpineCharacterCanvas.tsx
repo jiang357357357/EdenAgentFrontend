@@ -17,6 +17,7 @@ interface SpineCharacterCanvasProps {
   activeAction?: ActiveCharacterAction
   className?: string
   onError?: (error: Error) => void
+  onReady?: () => void
 }
 
 type InteractionMode = "none" | "look" | "press" | "pat" | "reaction"
@@ -142,7 +143,7 @@ function playMappedAction(spine: Spine, availableAnimations: Set<string>, idleAn
   }
 }
 
-export function SpineCharacterCanvas({ asset, activeAction, className, onError }: SpineCharacterCanvasProps) {
+export function SpineCharacterCanvas({ asset, activeAction, className, onError, onReady }: SpineCharacterCanvasProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
   const loadedRef = useRef<LoadedSpineAsset | null>(null)
@@ -152,11 +153,13 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError }
   const pointerInteractionRef = useRef<PointerInteractionState>(initialInteractionState())
   const activeActionRef = useRef(activeAction)
   const onErrorRef = useRef(onError)
-  const [loading, setLoading] = useState(true)
+  const onReadyRef = useRef(onReady)
+  const [ready, setReady] = useState(false)
   const [interactive, setInteractive] = useState(false)
 
   activeActionRef.current = activeAction
   onErrorRef.current = onError
+  onReadyRef.current = onReady
 
   const assetKey = useMemo(() => JSON.stringify({
     skeleton: asset.skeleton_url,
@@ -259,7 +262,7 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError }
     }
     document.addEventListener("visibilitychange", handleVisibility)
 
-    setLoading(true)
+    setReady(false)
     setInteractive(false)
     void loadSpineAsset(asset, abortController.signal)
       .then((loaded) => {
@@ -286,13 +289,19 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError }
         idleAnimationRef.current = idleAnimation
         if (idleAnimation) loaded.spine.state.setAnimation(0, idleAnimation, true)
         playMappedAction(loaded.spine, animationNamesRef.current, idleAnimation, actionMapping(activeActionRef.current))
-        requestAnimationFrame(fitModel)
-        setLoading(false)
+        requestAnimationFrame(() => {
+          fitModel()
+          requestAnimationFrame(() => {
+            if (!disposed) {
+              setReady(true)
+              onReadyRef.current?.()
+            }
+          })
+        })
       })
       .catch((error: unknown) => {
         if (disposed || abortController.signal.aborted) return
         const normalized = error instanceof Error ? error : new Error(String(error))
-        setLoading(false)
         onErrorRef.current?.(normalized)
       })
 
@@ -534,10 +543,15 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError }
   return (
     <div
       ref={hostRef}
-      className={cn(className, interactive && "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent/60")}
-      role={interactive ? "button" : "img"}
-      tabIndex={interactive ? 0 : undefined}
-      aria-label={interactive ? "动态 Spine 角色；移动指针或点击角色可以互动" : "动态 Spine 角色"}
+      className={cn(
+        className,
+        !ready && "pointer-events-none opacity-0",
+        ready && interactive && "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
+      )}
+      role={ready ? (interactive ? "button" : "img") : undefined}
+      tabIndex={ready && interactive ? 0 : undefined}
+      aria-hidden={!ready}
+      aria-label={ready ? (interactive ? "动态 Spine 角色；移动指针或点击角色可以互动" : "动态 Spine 角色") : undefined}
       onPointerEnter={handlePointerEnter}
       onPointerMove={handlePointerMove}
       onPointerDown={handlePointerDown}
@@ -545,12 +559,6 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError }
       onPointerCancel={handlePointerCancel}
       onPointerLeave={handlePointerLeave}
       onKeyDown={handleKeyDown}
-    >
-      {loading ? (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[1.25vh] text-text-muted">
-          正在加载动态角色…
-        </div>
-      ) : null}
-    </div>
+    />
   )
 }
