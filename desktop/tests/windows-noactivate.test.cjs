@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict")
 const test = require("node:test")
 
-const { createWindowsNoActivateController } = require("../src/windows-noactivate.cjs")
+const { createWindowsNoActivateController } = require("../src/windows/windows-noactivate.cjs")
 
 function createWindow({ destroyed = false } = {}) {
   const handle = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8])

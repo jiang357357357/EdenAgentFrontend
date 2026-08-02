@@ -1,7 +1,7 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
-import {AppErrorBoundary} from './components/AppErrorBoundary.tsx';
+import {AppErrorBoundary} from './components/errors';
 import './index.css';
 
 // The bubble is a transparent native window. Apply this before React mounts so

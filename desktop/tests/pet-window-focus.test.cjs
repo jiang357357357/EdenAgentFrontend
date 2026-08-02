@@ -4,7 +4,7 @@ const test = require("node:test")
 const {
   applyBubbleKeyboardFocus,
   makeWindowNonActivating,
-} = require("../src/pet-window-focus.cjs")
+} = require("../src/pet/pet-window-focus.cjs")
 
 function createWindow({ focused = false, visible = true, focusable = true, topmost = false } = {}) {
   const calls = []

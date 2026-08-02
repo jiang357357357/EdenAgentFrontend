@@ -4,7 +4,7 @@ import test from "node:test"
 
 const [mainSource, boundarySource] = await Promise.all([
   readFile(new URL("../src/main.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../src/components/AppErrorBoundary.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/components/errors/AppErrorBoundary.tsx", import.meta.url), "utf8"),
 ])
 
 test("the root application has a visible recovery boundary", () => {

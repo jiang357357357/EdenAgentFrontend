@@ -1,0 +1,92 @@
+import { LoaderCircle, Pause, Play } from "lucide-react"
+
+import { useTypewriterText } from "../../../hooks/useTypewriterText"
+import type { SpeechClip } from "../../../hooks/useTTSSpeech"
+import type { PetTTSMode } from "../../../lib/desktop-window"
+import { textForTTS } from "../../../lib/tts-text"
+import { cn } from "../../../lib/utils"
+import type { MessageSegment } from "../../../types"
+import { MarkdownContent } from "./MarkdownContent"
+
+interface TextSegmentProps {
+  segment: Extract<MessageSegment, { type: "text" }>
+  isUser: boolean
+  messageId: string
+  isMessageStreaming?: boolean
+  onTextReveal?: () => void
+  ttsMode: PetTTSMode
+  speechClips: Record<string, SpeechClip>
+  activeSpeechSegmentId?: string | null
+  speechPaused: boolean
+  onToggleSpeech?: (segmentId: string, text: string, messageId: string) => void
+}
+
+export function TextSegment({
+  segment,
+  isUser,
+  messageId,
+  isMessageStreaming,
+  onTextReveal,
+  ttsMode,
+  speechClips,
+  activeSpeechSegmentId,
+  speechPaused,
+  onToggleSpeech,
+}: TextSegmentProps) {
+  const visibleContent = useTypewriterText({
+    active: !isUser && Boolean(isMessageStreaming) && segment.state === "streaming",
+    cacheKey: `${messageId}:${segment.id}`,
+    target: segment.content,
+    onFrame: onTextReveal,
+  })
+  const speechSegmentId = segment.id
+  const clip = speechClips[speechSegmentId]
+  const segmentComplete = segment.state !== "streaming"
+  const canSpeak = segmentComplete && Boolean(textForTTS(visibleContent, ttsMode))
+  const playing = activeSpeechSegmentId === speechSegmentId && !speechPaused
+
+  return (
+    <div
+      className={cn(
+        "relative text-[1.82vh] leading-[1.58]",
+        isUser
+          ? "rounded-[2vh] rounded-tr-[0.45vh] border border-border bg-card px-[2.05vh] py-[1.35vh] font-sans text-text"
+          : "w-full max-w-none bg-transparent px-[2.05vh] py-[0.35vh] text-text prose",
+      )}
+    >
+      {isUser ? (
+        <div className="whitespace-pre-wrap">{visibleContent}</div>
+      ) : (
+        <div className="flex min-w-0 items-end gap-[0.8vh]">
+          <div className="markdown-body min-w-0 flex-1">
+            <MarkdownContent
+              content={visibleContent}
+              paragraphClassName="my-0"
+              separateActionLines
+              actionParagraphClassName="my-0 italic text-accent/85"
+            />
+          </div>
+          {canSpeak && clip?.status === "synthesizing" ? (
+            <LoaderCircle className="mb-[0.35vh] h-[1.8vh] w-[1.8vh] shrink-0 animate-spin text-text-muted" aria-label="正在合成语音" />
+          ) : null}
+          {canSpeak && clip?.status !== "synthesizing" ? (
+            <button
+              type="button"
+              onClick={() => onToggleSpeech?.(speechSegmentId, visibleContent, messageId)}
+              className={cn(
+                "mb-[0.15vh] flex h-[2.5vh] w-[2.5vh] shrink-0 items-center justify-center rounded-full transition-colors",
+                playing ? "bg-accent/10 text-accent" : clip?.status === "error" ? "text-red-500" : "text-text-muted hover:bg-bg hover:text-accent",
+              )}
+              aria-label={playing ? "暂停这段语音" : "播放这段语音"}
+              title={clip?.status === "error"
+                ? `重新合成并播放${clip.error ? `：${clip.error}` : ""}`
+                : playing ? "暂停" : "播放"}
+            >
+              {playing ? <Pause className="h-[1.45vh] w-[1.45vh] fill-current" /> : <Play className="h-[1.45vh] w-[1.45vh] fill-current" />}
+            </button>
+          ) : null}
+        </div>
+      )}
+    </div>
+  )
+}

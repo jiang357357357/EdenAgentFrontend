@@ -1,5 +1,5 @@
 const { contextBridge, ipcRenderer } = require("electron")
-const { desktopFileUrl } = require("./file-protocol.cjs")
+const { desktopFileUrl } = require("./protocols/file-protocol.cjs")
 
 function convertFileSrc(filePath) {
   return desktopFileUrl(filePath)

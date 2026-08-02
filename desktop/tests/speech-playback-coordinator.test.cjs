@@ -1,6 +1,6 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const { SpeechPlaybackCoordinator } = require("../src/speech-playback-coordinator.cjs")
+const { SpeechPlaybackCoordinator } = require("../src/speech/speech-playback-coordinator.cjs")
 
 test("automatic playback is granted only to the preferred visible surface", () => {
   const coordinator = new SpeechPlaybackCoordinator()

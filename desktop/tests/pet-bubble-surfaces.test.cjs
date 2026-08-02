@@ -4,7 +4,7 @@ const test = require("node:test")
 const {
   resolvePetBubbleSurfaceVisibility,
   setWindowVisibleWithoutActivation,
-} = require("../src/pet-bubble-surfaces.cjs")
+} = require("../src/pet/pet-bubble-surfaces.cjs")
 
 function createWindow({ visible = false, destroyed = false } = {}) {
   const calls = []

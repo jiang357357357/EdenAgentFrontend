@@ -1,6 +1,6 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const { createPetGroupDrag, petGroupPositionAtPointer } = require("../src/pet-group-drag.cjs")
+const { createPetGroupDrag, petGroupPositionAtPointer } = require("../src/pet/pet-group-drag.cjs")
 
 test("moves the whole pet group by the pointer delta", () => {
   const drag = createPetGroupDrag({ ownerId: 7, pointerX: 100, pointerY: 200, groupX: 40, groupY: 60 })

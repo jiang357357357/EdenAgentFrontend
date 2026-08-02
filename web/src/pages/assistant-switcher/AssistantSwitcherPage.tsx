@@ -14,7 +14,7 @@ import {
 import { motion } from "motion/react"
 import { useEffect, useMemo, useState } from "react"
 import paperTexture from "../../assets/assistant-switcher-paper.png"
-import { CharacterVisualRenderer } from "../../components/CharacterVisualRenderer"
+import { CharacterVisualRenderer } from "../../components/character/renderer"
 import {
   fetchAssistants,
   getErrorMessage,
