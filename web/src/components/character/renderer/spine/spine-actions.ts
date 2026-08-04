@@ -28,6 +28,29 @@ export function playLayeredInteraction(spine: Spine, main?: string, aux?: string
   return true
 }
 
+export function playHeldInteraction(
+  spine: Spine,
+  introMain?: string,
+  introAux?: string,
+  holdMain?: string,
+  holdAux?: string,
+) {
+  if (!introMain) return false
+  const mixSeconds = 0.12
+  spine.state.data.defaultMix = mixSeconds
+  spine.state.clearTrack(1)
+  spine.state.clearTrack(2)
+  spine.state.setAnimation(1, introMain, false)
+  if (holdMain) spine.state.addAnimation(1, holdMain, true, 0)
+  if (introAux) {
+    spine.state.setAnimation(2, introAux, false)
+    if (holdAux) spine.state.addAnimation(2, holdAux, true, 0)
+  } else if (holdAux) {
+    spine.state.setAnimation(2, holdAux, true)
+  }
+  return true
+}
+
 export function interactionTrackAvailable(spine: Spine, animations: SpineInteractionAnimations) {
   const current = spine.state.getCurrent(1)
   if (!current) return true

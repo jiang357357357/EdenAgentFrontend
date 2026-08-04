@@ -2,6 +2,7 @@ import { Bot, ImageOff } from 'lucide-react';
 import { resolveCoreAssetUrl, type ActiveCharacterAction, type CoreAssistant } from '../../lib/auth';
 import { CharacterPerformanceStage } from './CharacterPerformanceStage';
 import { CharacterVisualRenderer } from './renderer/CharacterVisualRenderer';
+import { isMemoryLobbySpineAsset } from './renderer/spine/spine-layout';
 
 interface CharacterPanelProps {
   assistant?: CoreAssistant | null;
@@ -20,6 +21,7 @@ export function CharacterPanel({ assistant, assistantError, activeAction }: Char
   const image = resolveCoreAssetUrl(activeActionImage || character?.default_standing_image_url || character?.avatar_url);
   const hasSpine = character?.visual_preference === 'spine' && Boolean(character.spine_asset);
   const hasVisual = Boolean(character && (hasSpine || image));
+  const memoryLobby = hasSpine && isMemoryLobbySpineAsset(character?.spine_asset);
 
   return (
     <aside className="flex h-[100vh] w-[34vw] flex-none items-end justify-center overflow-hidden border-l border-border bg-bg">
@@ -27,7 +29,7 @@ export function CharacterPanel({ assistant, assistantError, activeAction }: Char
         {hasVisual && character ? (
           <CharacterPerformanceStage
             activeAction={activeAction}
-            className="absolute inset-x-0 bottom-0 flex h-[96vh] justify-center"
+            className={memoryLobby ? "absolute inset-0 flex justify-center" : "absolute inset-x-0 bottom-0 flex h-[96vh] justify-center"}
             contentClassName={hasSpine ? "w-full" : undefined}
           >
             <CharacterVisualRenderer

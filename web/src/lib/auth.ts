@@ -128,6 +128,8 @@ export interface CoreCharacterSpineAsset {
   offset_x?: number
   offset_y?: number
   enabled?: boolean
+  layout: "standee" | "memory-lobby"
+  metadata?: Record<string, unknown>
 }
 
 export interface CoreCharacterVisualActionGroup {

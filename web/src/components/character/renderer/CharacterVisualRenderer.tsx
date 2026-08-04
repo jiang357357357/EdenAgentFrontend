@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 import type { ActiveCharacterAction, CoreCharacter } from "../../../lib/auth"
 import { resolveCoreAssetUrl } from "../../../lib/auth"
 import { CharacterStandeeImage } from "./CharacterStandeeImage"
+import { resolveSpineLayout } from "./spine/spine-layout"
 
 const LazySpineCharacterCanvas = lazy(() =>
   import("./spine/SpineCharacterCanvas").then((module) => ({ default: module.SpineCharacterCanvas })),
@@ -55,7 +56,7 @@ export function CharacterVisualRenderer({
     </div>
   )
 
-  if (!spineAsset || failedSpineKey === spineKey) return renderFallback()
+  if (!spineAsset || !resolveSpineLayout(spineAsset.layout) || failedSpineKey === spineKey) return renderFallback()
 
   return (
     <Suspense fallback={null}>

@@ -1,17 +1,73 @@
 import { Application, UPDATE_PRIORITY } from "pixi.js"
-import { Physics } from "@esotericsoftware/spine-pixi-v7"
+import { Physics, Spine, VertexAttachment } from "@esotericsoftware/spine-pixi-v7"
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react"
 import type { ActiveCharacterAction, CoreCharacterSpineAsset } from "../../../../lib/auth"
 import { loadSpineAsset, type LoadedSpineAsset } from "../../../../lib/spine-loader"
 import {
+  pickSpineInteractionPair,
   pickSpineReaction,
+  randomSpineDelayMs,
   resolveSpineInteractionAnimations,
   spineInteractionZone,
   type SpineInteractionAnimations,
 } from "../../../../lib/spine-interactions"
 import { cn } from "../../../../lib/utils"
-import { actionMapping, interactionTrackAvailable, playLayeredInteraction, playMappedAction } from "./spine-actions"
-import { initialInteractionState, type PointerInteractionState } from "./spine-interactions"
+import {
+  actionMapping,
+  interactionTrackAvailable,
+  playHeldInteraction,
+  playLayeredInteraction,
+  playMappedAction,
+} from "./spine-actions"
+import { initialInteractionState, type InteractionZone, type PointerInteractionState } from "./spine-interactions"
+import {
+  calculateVertexBounds,
+  calculateSpinePlacement,
+  MEMORY_LOBBY_CAMERA_SCALE,
+  MEMORY_LOBBY_CAMERA_Y_BIAS,
+  resolveMemoryLobbyCameraSlots,
+  type SpineBounds,
+  type SpineLayout,
+} from "./spine-layout"
+
+function getAttachmentBounds(model: Spine, slotName: string): SpineBounds | undefined {
+  model.skeleton.updateWorldTransform(Physics.update)
+  const slot = model.skeleton.findSlot(slotName)
+  const attachment = slot?.getAttachment()
+  if (!slot || !(attachment instanceof VertexAttachment)) return undefined
+
+  const vertices = new Float32Array(attachment.worldVerticesLength)
+  attachment.computeWorldVertices(slot, 0, attachment.worldVerticesLength, vertices, 0, 2)
+  return calculateVertexBounds(vertices)
+}
+
+function getLargestAttachmentBounds(model: Spine): SpineBounds | undefined {
+  return model.skeleton.slots
+    .map((slot) => getAttachmentBounds(model, slot.data.name))
+    .filter((bounds): bounds is SpineBounds => bounds !== undefined)
+    .sort((left, right) => right.width * right.height - left.width * left.height)[0]
+}
+
+interface ViewportPoint {
+  x: number
+  y: number
+}
+
+function getBoneViewportPoint(model: Spine, names: string[]): ViewportPoint | undefined {
+  const bone = names.map((name) => model.skeleton.findBone(name)).find((candidate) => candidate !== null)
+  if (!bone) return undefined
+  return model.toGlobal({ x: bone.worldX, y: bone.worldY })
+}
+
+function midpoint(left?: ViewportPoint, right?: ViewportPoint): ViewportPoint | undefined {
+  if (!left) return right
+  if (!right) return left
+  return { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 }
+}
+
+function withinRadius(point: ViewportPoint, center: ViewportPoint | undefined, radius: number) {
+  return Boolean(center && Math.hypot(point.x - center.x, point.y - center.y) <= radius)
+}
 
 interface SpineCharacterCanvasProps {
   asset: CoreCharacterSpineAsset
@@ -26,7 +82,8 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
   const appRef = useRef<Application | null>(null)
   const loadedRef = useRef<LoadedSpineAsset | null>(null)
   const idleAnimationRef = useRef("")
-  const memoryLobbyRef = useRef(false)
+  const layoutRef = useRef<SpineLayout>(asset.layout)
+  const cameraBoundsRef = useRef<SpineBounds | undefined>(undefined)
   const startupPendingRef = useRef(false)
   const animationNamesRef = useRef<Set<string>>(new Set())
   const interactionAnimationsRef = useRef<SpineInteractionAnimations>(resolveSpineInteractionAnimations([]))
@@ -50,15 +107,21 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     scale: asset.scale,
     x: asset.offset_x,
     y: asset.offset_y,
+    layout: asset.layout,
+    metadata: asset.metadata,
   }), [asset])
 
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
+    layoutRef.current = asset.layout
+    cameraBoundsRef.current = undefined
 
     const abortController = new AbortController()
     let disposed = false
     let startupFitTimer: number | undefined
+    let blinkTimer: number | undefined
+    let rareIdleTimer: number | undefined
     const app = new Application({
       resizeTo: host,
       antialias: true,
@@ -79,10 +142,10 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
       loaded.spine.update(deltaSeconds)
 
       const interaction = pointerInteractionRef.current
-      const targetX = interaction.mode === "look" || interaction.mode === "press" || interaction.mode === "pat"
+      const targetX = interaction.mode === "look" || interaction.mode === "pat"
         ? interaction.targetX
         : 0
-      const targetY = interaction.mode === "look" || interaction.mode === "press" || interaction.mode === "pat"
+      const targetY = interaction.mode === "look" || interaction.mode === "pat"
         ? interaction.targetY
         : 0
       const blend = 1 - Math.exp(-14 * deltaSeconds)
@@ -91,14 +154,15 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
 
       const pointerActive =
         interaction.mode === "look" ||
-        interaction.mode === "press" ||
         interaction.mode === "pat" ||
         Math.abs(interaction.currentX) > 0.01 ||
         Math.abs(interaction.currentY) > 0.01
       if (!pointerActive) return
 
-      const eyeTarget = loaded.spine.skeleton.findBone("Touch_Eye_Key")
-      const pointTarget = loaded.spine.skeleton.findBone("Touch_Point_Key")
+      const eyeTarget = loaded.spine.skeleton.findBone("Touch_Eye")
+        ?? loaded.spine.skeleton.findBone("Touch_Eye_Key")
+      const pointTarget = loaded.spine.skeleton.findBone("Touch_Point")
+        ?? loaded.spine.skeleton.findBone("Touch_Point_Key")
       if (eyeTarget) {
         eyeTarget.x = eyeTarget.data.x + (interaction.targetKind === "eye" ? interaction.currentX : 0)
         eyeTarget.y = eyeTarget.data.y + (interaction.targetKind === "eye" ? interaction.currentY : 0)
@@ -116,30 +180,24 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
       if (!spine || app.screen.width <= 0 || app.screen.height <= 0) return
       spine.scale.set(1)
       spine.update(0)
-      const measuredBounds = spine.getLocalBounds()
-      const skeletonData = spine.skeleton.data
-      const bounds = memoryLobbyRef.current && skeletonData.width > 0 && skeletonData.height > 0
-        ? {
-            x: skeletonData.x,
-            y: skeletonData.y,
-            width: skeletonData.width,
-            height: skeletonData.height,
-          }
-        : measuredBounds
-      if (!bounds.width || !bounds.height) return
-
-      const padding = Math.min(app.screen.width, app.screen.height) * 0.025
-      const availableWidth = Math.max(1, app.screen.width - padding * 2)
-      const availableHeight = Math.max(1, app.screen.height - padding * 2)
-      const fittedScale = memoryLobbyRef.current
-        ? Math.max(availableWidth / bounds.width, availableHeight / bounds.height)
-        : Math.min(availableWidth / bounds.width, availableHeight / bounds.height)
-      const finalScale = fittedScale * Math.max(0.05, asset.scale ?? 1)
-      spine.scale.set(finalScale)
-      spine.x = app.screen.width / 2 - (bounds.x + bounds.width / 2) * finalScale + (asset.offset_x ?? 0)
-      spine.y = memoryLobbyRef.current
-        ? app.screen.height / 2 - (bounds.y + bounds.height / 2) * finalScale + (asset.offset_y ?? 0)
-        : app.screen.height - padding - (bounds.y + bounds.height) * finalScale + (asset.offset_y ?? 0)
+      const memoryLobby = layoutRef.current === "memory-lobby"
+      const bounds = memoryLobby ? cameraBoundsRef.current ?? spine.getLocalBounds() : spine.getLocalBounds()
+      const padding = memoryLobby ? 0 : Math.min(app.screen.width, app.screen.height) * 0.025
+      const placement = calculateSpinePlacement({
+        bounds,
+        viewportWidth: app.screen.width,
+        viewportHeight: app.screen.height,
+        padding,
+        assetScale: (asset.scale ?? 1) * (memoryLobby ? MEMORY_LOBBY_CAMERA_SCALE : 1),
+        offsetX: asset.offset_x,
+        offsetY: (asset.offset_y ?? 0) + (memoryLobby ? app.screen.height * MEMORY_LOBBY_CAMERA_Y_BIAS : 0),
+        fit: memoryLobby ? "cover" : "contain",
+        verticalAlignment: memoryLobby ? "center" : "bottom",
+      })
+      if (!placement) return
+      spine.scale.set(placement.scale)
+      spine.x = placement.x
+      spine.y = placement.y
     }
 
     const observer = new ResizeObserver(() => {
@@ -154,6 +212,49 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
       else app.ticker.start()
     }
     document.addEventListener("visibilitychange", handleVisibility)
+
+    const scheduleBlink = (delayMs = randomSpineDelayMs(12, 15)) => {
+      if (blinkTimer !== undefined) window.clearTimeout(blinkTimer)
+      blinkTimer = window.setTimeout(() => {
+        const loaded = loadedRef.current
+        const blink = interactionAnimationsRef.current.blink
+        if (!disposed && !document.hidden && layoutRef.current === "memory-lobby" && loaded && blink) {
+          loaded.spine.state.setAnimation(3, blink, false)
+          loaded.spine.state.addEmptyAnimation(3, 0, 0)
+        }
+        if (!disposed) scheduleBlink()
+      }, delayMs)
+    }
+
+    const scheduleRareIdle = (additionalDelayMs = 0) => {
+      if (rareIdleTimer !== undefined) window.clearTimeout(rareIdleTimer)
+      rareIdleTimer = window.setTimeout(() => {
+        const loaded = loadedRef.current
+        const animations = interactionAnimationsRef.current
+        const interaction = pointerInteractionRef.current
+        const rareIdle = animations.rareIdle
+        if (
+          !disposed &&
+          !document.hidden &&
+          layoutRef.current === "memory-lobby" &&
+          loaded &&
+          rareIdle &&
+          interaction.mode === "none" &&
+          interactionTrackAvailable(loaded.spine, animations)
+        ) {
+          const durationMs = Math.max(
+            0,
+            (loaded.spine.skeleton.data.findAnimation(rareIdle)?.duration ?? 0) * 1000,
+          )
+          interaction.blockedUntil = Date.now() + durationMs + 300
+          loaded.spine.state.setAnimation(4, rareIdle, false)
+          loaded.spine.state.addEmptyAnimation(4, 0.3, 0)
+          scheduleRareIdle(durationMs)
+          return
+        }
+        if (!disposed) scheduleRareIdle()
+      }, additionalDelayMs + randomSpineDelayMs(70, 80))
+    }
 
     setReady(false)
     setInteractive(false)
@@ -182,10 +283,17 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
         const startupAnimation = loaded.animations.find(
           (name) => name.toLowerCase() === "start_idle_01",
         ) || ""
-        memoryLobbyRef.current = Boolean(startupAnimation)
-        startupPendingRef.current = Boolean(startupAnimation)
+        layoutRef.current = asset.layout
+        if (layoutRef.current === "memory-lobby") {
+          cameraBoundsRef.current = resolveMemoryLobbyCameraSlots(asset.metadata)
+            .map((slotName) => getAttachmentBounds(loaded.spine, slotName))
+            .find((bounds) => bounds !== undefined)
+            ?? getLargestAttachmentBounds(loaded.spine)
+        }
+        const shouldPlayStartup = Boolean(startupAnimation) && layoutRef.current !== "memory-lobby"
+        startupPendingRef.current = shouldPlayStartup
         idleAnimationRef.current = idleAnimation
-        if (startupAnimation) {
+        if (shouldPlayStartup) {
           loaded.spine.state.setAnimation(0, startupAnimation, false)
           if (idleAnimation) loaded.spine.state.addAnimation(0, idleAnimation, true, 0)
           const startupDuration = loaded.spine.skeleton.data.findAnimation(startupAnimation)?.duration ?? 0
@@ -205,6 +313,10 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
         } else if (idleAnimation) {
           loaded.spine.state.setAnimation(0, idleAnimation, true)
           playMappedAction(loaded.spine, animationNamesRef.current, idleAnimation, actionMapping(activeActionRef.current))
+        }
+        if (layoutRef.current === "memory-lobby") {
+          if (interactionAnimationsRef.current.blink) scheduleBlink(3_000)
+          if (interactionAnimationsRef.current.rareIdle) scheduleRareIdle()
         }
         requestAnimationFrame(() => {
           fitModel()
@@ -226,7 +338,10 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
       disposed = true
       abortController.abort()
       if (startupFitTimer !== undefined) window.clearTimeout(startupFitTimer)
-      memoryLobbyRef.current = false
+      if (blinkTimer !== undefined) window.clearTimeout(blinkTimer)
+      if (rareIdleTimer !== undefined) window.clearTimeout(rareIdleTimer)
+      layoutRef.current = "standee"
+      cameraBoundsRef.current = undefined
       startupPendingRef.current = false
       observer.disconnect()
       document.removeEventListener("visibilitychange", handleVisibility)
@@ -266,7 +381,7 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     interaction.targetY = (0.5 - normalizedY) * yRange
   }
 
-  const hitInteractionZone = (event: PointerEvent<HTMLDivElement>) => {
+  const hitInteractionZone = (event: PointerEvent<HTMLDivElement>): InteractionZone | undefined => {
     const host = hostRef.current
     const spine = loadedRef.current?.spine
     if (!host || !spine) return undefined
@@ -282,6 +397,19 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
       localY > bounds.y + bounds.height + padding ||
       !bounds.height
     ) return undefined
+
+    const point = { x: localX, y: localY }
+    const scale = Math.max(Math.abs(spine.scale.x), Math.abs(spine.scale.y), 0.01)
+    const animations = interactionAnimationsRef.current
+    const eyeCenter = getBoneViewportPoint(spine, ["Touch_Eye", "Touch_Eye_Key"])
+    const headCenter = getBoneViewportPoint(spine, ["Touch_Point", "Touch_Point_Key", "Head_Rot"])
+    const cheekCenter = midpoint(
+      getBoneViewportPoint(spine, ["nose", "face"]),
+      getBoneViewportPoint(spine, ["mouth", "M_chin"]),
+    )
+    if (animations.lookMain && withinRadius(point, eyeCenter, 105 * scale)) return "eye"
+    if (animations.pinchMain && withinRadius(point, cheekCenter, 135 * scale)) return "cheek"
+    if (animations.patMain && withinRadius(point, headCenter, 190 * scale)) return "head"
     return spineInteractionZone((localY - bounds.y) / bounds.height)
   }
 
@@ -292,25 +420,65 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     if (
       !spine ||
       !animations.lookMain ||
-      interaction.mode === "pat" ||
-      interaction.mode === "reaction" ||
+      interaction.mode !== "press" ||
+      interaction.pressedZone !== "eye" ||
       Date.now() < interaction.cooldownUntil ||
+      Date.now() < interaction.blockedUntil ||
       !interactionTrackAvailable(spine, animations)
     ) return
-    if (interaction.mode !== "look" && interaction.mode !== "press") {
-      playLayeredInteraction(spine, animations.lookMain, animations.lookAux, true)
-    }
+    playHeldInteraction(
+      spine,
+      animations.lookMain,
+      animations.lookAux,
+      animations.lookHoldMain,
+      animations.lookHoldAux,
+    )
     interaction.mode = "look"
     interaction.targetKind = "eye"
+  }
+
+  const startPat = () => {
+    const spine = loadedRef.current?.spine
+    const animations = interactionAnimationsRef.current
+    const interaction = pointerInteractionRef.current
+    if (!spine || !animations.patMain || !interactionTrackAvailable(spine, animations)) return false
+    interaction.mode = "pat"
+    interaction.targetKind = "point"
+    return playHeldInteraction(
+      spine,
+      animations.patMain,
+      animations.patAux,
+      animations.patHoldMain,
+      animations.patHoldAux,
+    )
+  }
+
+  const startPinch = () => {
+    const spine = loadedRef.current?.spine
+    const animations = interactionAnimationsRef.current
+    const interaction = pointerInteractionRef.current
+    if (!spine || !animations.pinchMain || !interactionTrackAvailable(spine, animations)) return false
+    interaction.mode = "pinch"
+    interaction.targetKind = "eye"
+    interaction.targetX = 0
+    interaction.targetY = 0
+    return playHeldInteraction(
+      spine,
+      animations.pinchMain,
+      animations.pinchAux,
+      animations.pinchHoldMain,
+      animations.pinchHoldAux,
+    )
   }
 
   const finishLook = () => {
     const spine = loadedRef.current?.spine
     const animations = interactionAnimationsRef.current
     const interaction = pointerInteractionRef.current
-    if (!spine || (interaction.mode !== "look" && interaction.mode !== "press")) return
+    if (!spine || interaction.mode !== "look") return
     interaction.mode = "none"
     interaction.pointerId = undefined
+    interaction.pressedZone = undefined
     interaction.targetX = 0
     interaction.targetY = 0
     if (!playLayeredInteraction(spine, animations.lookEndMain, animations.lookEndAux, false)) {
@@ -326,6 +494,7 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     if (!spine || interaction.mode !== "pat") return
     interaction.mode = "none"
     interaction.pointerId = undefined
+    interaction.pressedZone = undefined
     interaction.targetX = 0
     interaction.targetY = 0
     interaction.cooldownUntil = Date.now() + 650
@@ -336,21 +505,46 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     }
   }
 
-  const playRandomReaction = () => {
+  const finishPinch = () => {
     const spine = loadedRef.current?.spine
     const animations = interactionAnimationsRef.current
     const interaction = pointerInteractionRef.current
-    if (!spine || !interactionTrackAvailable(spine, animations) || Date.now() < interaction.cooldownUntil) return
+    if (!spine || interaction.mode !== "pinch") return
+    interaction.mode = "none"
+    interaction.pointerId = undefined
+    interaction.pressedZone = undefined
+    interaction.targetX = 0
+    interaction.targetY = 0
+    interaction.cooldownUntil = Date.now() + 650
+    interaction.releaseTimer = undefined
+    if (!playLayeredInteraction(spine, animations.pinchEndMain, animations.pinchEndAux, false)) {
+      spine.state.setEmptyAnimation(1, 0.12)
+      spine.state.setEmptyAnimation(2, 0.12)
+    }
+  }
+
+  const playTapReaction = () => {
+    const spine = loadedRef.current?.spine
+    const animations = interactionAnimationsRef.current
+    const interaction = pointerInteractionRef.current
+    if (
+      !spine ||
+      !interactionTrackAvailable(spine, animations) ||
+      Date.now() < interaction.cooldownUntil ||
+      Date.now() < interaction.blockedUntil
+    ) return
     const reaction = pickSpineReaction(animations.reactions, interaction.lastReaction)
-    if (!reaction) return
-    interaction.lastReaction = reaction
+    const talk = reaction ? undefined : pickSpineInteractionPair(animations.talks, interaction.lastReaction)
+    const main = reaction ?? talk?.main
+    if (!main) return
+    interaction.lastReaction = main
     interaction.mode = "reaction"
     interaction.targetKind = "eye"
     interaction.targetX = 0
     interaction.targetY = 0
     interaction.cooldownUntil = Date.now() + 1100
-    playLayeredInteraction(spine, reaction, undefined, false)
-    const durationMs = Math.max(650, (spine.skeleton.data.findAnimation(reaction)?.duration ?? 0.5) * 1000 + 160)
+    playLayeredInteraction(spine, main, talk?.aux, false)
+    const durationMs = Math.max(650, (spine.skeleton.data.findAnimation(main)?.duration ?? 0.5) * 1000 + 160)
     if (interaction.releaseTimer) window.clearTimeout(interaction.releaseTimer)
     interaction.releaseTimer = window.setTimeout(() => {
       const current = pointerInteractionRef.current
@@ -359,21 +553,16 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     }, durationMs)
   }
 
-  const handlePointerEnter = (event: PointerEvent<HTMLDivElement>) => {
-    updatePointerTarget(event)
-    startLook()
-  }
-
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const interaction = pointerInteractionRef.current
+    if (interaction.pointerId !== event.pointerId) return
     updatePointerTarget(event)
-    if (interaction.mode === "pat") return
+    if (interaction.mode === "pat" || interaction.mode === "pinch") return
     if (interaction.mode === "press") {
       const distance = Math.hypot(event.clientX - interaction.pressedX, event.clientY - interaction.pressedY)
       if (distance <= 12) return
-      interaction.mode = "look"
+      startLook()
     }
-    startLook()
   }
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -385,7 +574,8 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     if (
       !spine ||
       !zone ||
-      Date.now() < interaction.cooldownUntil
+      Date.now() < interaction.cooldownUntil ||
+      Date.now() < interaction.blockedUntil
     ) return
 
     if (interaction.releaseTimer) {
@@ -396,25 +586,22 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     interaction.pressedAt = performance.now()
     interaction.pressedX = event.clientX
     interaction.pressedY = event.clientY
+    interaction.pressedZone = zone
     try {
       event.currentTarget.setPointerCapture(event.pointerId)
     } catch {
       // Some Electron drag-region combinations do not permit pointer capture.
     }
 
-    // Explicit user input takes priority over a lingering agent performance.
-    // Passive hover still waits for the performance track to become available.
-
     if (zone === "head" && animations.patMain) {
-      interaction.mode = "pat"
-      interaction.targetKind = "point"
-      updatePointerTarget(event)
-      playLayeredInteraction(spine, animations.patMain, animations.patAux, true)
+      if (startPat()) updatePointerTarget(event)
+      else interaction.mode = "press"
+    } else if (zone === "cheek" && animations.pinchMain) {
+      if (!startPinch()) interaction.mode = "press"
     } else {
       interaction.mode = "press"
       interaction.targetKind = "eye"
-      updatePointerTarget(event)
-      if (animations.lookMain) playLayeredInteraction(spine, animations.lookMain, animations.lookAux, true)
+      if (zone === "eye") updatePointerTarget(event)
     }
     event.preventDefault()
   }
@@ -429,15 +616,23 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     }
 
     if (interaction.mode === "pat") {
-      const remainingMs = Math.max(0, 280 - (performance.now() - interaction.pressedAt))
+      const remainingMs = Math.max(0, 500 - (performance.now() - interaction.pressedAt))
       interaction.releaseTimer = window.setTimeout(finishPat, remainingMs)
+      return
+    }
+    if (interaction.mode === "pinch") {
+      const remainingMs = Math.max(0, 334 - (performance.now() - interaction.pressedAt))
+      interaction.releaseTimer = window.setTimeout(finishPinch, remainingMs)
       return
     }
     if (interaction.mode === "press") {
       const distance = Math.hypot(event.clientX - interaction.pressedX, event.clientY - interaction.pressedY)
+      interaction.mode = "none"
       interaction.pointerId = undefined
-      if (distance <= 12) playRandomReaction()
-      else finishLook()
+      interaction.pressedZone = undefined
+      interaction.targetX = 0
+      interaction.targetY = 0
+      if (distance <= 12) playTapReaction()
     } else if (interaction.mode === "look") {
       finishLook()
     }
@@ -446,18 +641,21 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
   const handlePointerCancel = () => {
     const interaction = pointerInteractionRef.current
     if (interaction.mode === "pat") finishPat()
-    else finishLook()
-  }
-
-  const handlePointerLeave = () => {
-    const interaction = pointerInteractionRef.current
-    if (interaction.mode === "look") finishLook()
+    else if (interaction.mode === "pinch") finishPinch()
+    else if (interaction.mode === "look") finishLook()
+    else {
+      interaction.mode = "none"
+      interaction.pointerId = undefined
+      interaction.pressedZone = undefined
+      interaction.targetX = 0
+      interaction.targetY = 0
+    }
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!interactive || (event.key !== "Enter" && event.key !== " ")) return
     event.preventDefault()
-    playRandomReaction()
+    playTapReaction()
   }
 
   return (
@@ -472,13 +670,11 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
       role={ready ? (interactive ? "button" : "img") : undefined}
       tabIndex={ready && interactive ? 0 : undefined}
       aria-hidden={!ready}
-      aria-label={ready ? (interactive ? "动态 Spine 角色；移动指针或点击角色可以互动" : "动态 Spine 角色") : undefined}
-      onPointerEnter={handlePointerEnter}
+      aria-label={ready ? (interactive ? "动态 Spine 角色；按住、拖动或点击角色可以互动" : "动态 Spine 角色") : undefined}
       onPointerMove={handlePointerMove}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
-      onPointerLeave={handlePointerLeave}
       onKeyDown={handleKeyDown}
     />
   )

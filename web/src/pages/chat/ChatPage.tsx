@@ -254,7 +254,7 @@ export function ChatPage({
 
       <main
         className={cn(
-          "relative grid h-[100vh] min-h-0 w-[66vw] flex-none overflow-hidden",
+          "relative grid h-[100vh] min-h-0 min-w-0 flex-1 overflow-hidden",
           activePendingPermissions.length > 0
             ? "grid-rows-[12.5vh_minmax(0,1fr)_44vh]"
             : "grid-rows-[12.5vh_minmax(0,1fr)_20vh]",
