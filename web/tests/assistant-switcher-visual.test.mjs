@@ -43,3 +43,11 @@ test("Spine stays visually empty until its first fitted frame is ready", () => {
   assert.match(spineSource, /!ready && "pointer-events-none opacity-0"/)
   assert.doesNotMatch(spineSource, /正在加载动态角色/)
 })
+
+test("memory-lobby Spine runs its startup animation and uses a cropped cover layout", () => {
+  assert.match(spineSource, /name\.toLowerCase\(\) === "start_idle_01"/)
+  assert.match(spineSource, /setAnimation\(0, startupAnimation, false\)/)
+  assert.match(spineSource, /addAnimation\(0, idleAnimation, true, 0\)/)
+  assert.match(spineSource, /memoryLobbyRef\.current[\s\S]*?Math\.max\(availableWidth \/ bounds\.width, availableHeight \/ bounds\.height\)/)
+  assert.match(spineSource, /"overflow-hidden"/)
+})

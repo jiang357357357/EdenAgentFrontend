@@ -26,6 +26,8 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
   const appRef = useRef<Application | null>(null)
   const loadedRef = useRef<LoadedSpineAsset | null>(null)
   const idleAnimationRef = useRef("")
+  const memoryLobbyRef = useRef(false)
+  const startupPendingRef = useRef(false)
   const animationNamesRef = useRef<Set<string>>(new Set())
   const interactionAnimationsRef = useRef<SpineInteractionAnimations>(resolveSpineInteractionAnimations([]))
   const pointerInteractionRef = useRef<PointerInteractionState>(initialInteractionState())
@@ -56,6 +58,7 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
 
     const abortController = new AbortController()
     let disposed = false
+    let startupFitTimer: number | undefined
     const app = new Application({
       resizeTo: host,
       antialias: true,
@@ -113,18 +116,30 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
       if (!spine || app.screen.width <= 0 || app.screen.height <= 0) return
       spine.scale.set(1)
       spine.update(0)
-      const bounds = spine.getLocalBounds()
+      const measuredBounds = spine.getLocalBounds()
+      const skeletonData = spine.skeleton.data
+      const bounds = memoryLobbyRef.current && skeletonData.width > 0 && skeletonData.height > 0
+        ? {
+            x: skeletonData.x,
+            y: skeletonData.y,
+            width: skeletonData.width,
+            height: skeletonData.height,
+          }
+        : measuredBounds
       if (!bounds.width || !bounds.height) return
 
       const padding = Math.min(app.screen.width, app.screen.height) * 0.025
-      const fittedScale = Math.min(
-        Math.max(1, app.screen.width - padding * 2) / bounds.width,
-        Math.max(1, app.screen.height - padding * 2) / bounds.height,
-      )
+      const availableWidth = Math.max(1, app.screen.width - padding * 2)
+      const availableHeight = Math.max(1, app.screen.height - padding * 2)
+      const fittedScale = memoryLobbyRef.current
+        ? Math.max(availableWidth / bounds.width, availableHeight / bounds.height)
+        : Math.min(availableWidth / bounds.width, availableHeight / bounds.height)
       const finalScale = fittedScale * Math.max(0.05, asset.scale ?? 1)
       spine.scale.set(finalScale)
       spine.x = app.screen.width / 2 - (bounds.x + bounds.width / 2) * finalScale + (asset.offset_x ?? 0)
-      spine.y = app.screen.height - padding - (bounds.y + bounds.height) * finalScale + (asset.offset_y ?? 0)
+      spine.y = memoryLobbyRef.current
+        ? app.screen.height / 2 - (bounds.y + bounds.height / 2) * finalScale + (asset.offset_y ?? 0)
+        : app.screen.height - padding - (bounds.y + bounds.height) * finalScale + (asset.offset_y ?? 0)
     }
 
     const observer = new ResizeObserver(() => {
@@ -164,9 +179,33 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
           loaded.animations.find((name) => name.toLowerCase().includes("idle")) ||
           loaded.animations[0] ||
           ""
+        const startupAnimation = loaded.animations.find(
+          (name) => name.toLowerCase() === "start_idle_01",
+        ) || ""
+        memoryLobbyRef.current = Boolean(startupAnimation)
+        startupPendingRef.current = Boolean(startupAnimation)
         idleAnimationRef.current = idleAnimation
-        if (idleAnimation) loaded.spine.state.setAnimation(0, idleAnimation, true)
-        playMappedAction(loaded.spine, animationNamesRef.current, idleAnimation, actionMapping(activeActionRef.current))
+        if (startupAnimation) {
+          loaded.spine.state.setAnimation(0, startupAnimation, false)
+          if (idleAnimation) loaded.spine.state.addAnimation(0, idleAnimation, true, 0)
+          const startupDuration = loaded.spine.skeleton.data.findAnimation(startupAnimation)?.duration ?? 0
+          startupFitTimer = window.setTimeout(
+            () => {
+              startupPendingRef.current = false
+              playMappedAction(
+                loaded.spine,
+                animationNamesRef.current,
+                idleAnimation,
+                actionMapping(activeActionRef.current),
+              )
+              requestAnimationFrame(fitModel)
+            },
+            Math.max(0, startupDuration * 1000),
+          )
+        } else if (idleAnimation) {
+          loaded.spine.state.setAnimation(0, idleAnimation, true)
+          playMappedAction(loaded.spine, animationNamesRef.current, idleAnimation, actionMapping(activeActionRef.current))
+        }
         requestAnimationFrame(() => {
           fitModel()
           requestAnimationFrame(() => {
@@ -186,6 +225,9 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     return () => {
       disposed = true
       abortController.abort()
+      if (startupFitTimer !== undefined) window.clearTimeout(startupFitTimer)
+      memoryLobbyRef.current = false
+      startupPendingRef.current = false
       observer.disconnect()
       document.removeEventListener("visibilitychange", handleVisibility)
       app.ticker.remove(updateSpine)
@@ -203,7 +245,7 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
 
   useEffect(() => {
     const spine = loadedRef.current?.spine
-    if (!spine) return
+    if (!spine || startupPendingRef.current) return
     const releaseTimer = pointerInteractionRef.current.releaseTimer
     if (releaseTimer) window.clearTimeout(releaseTimer)
     pointerInteractionRef.current = initialInteractionState()
@@ -423,6 +465,7 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
       ref={hostRef}
       className={cn(
         className,
+        "overflow-hidden",
         !ready && "pointer-events-none opacity-0",
         ready && interactive && "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
       )}
