@@ -77,6 +77,12 @@ export interface DesktopActivityFacts {
   last_user_interaction_at?: string;
 }
 
+export function reportPerformanceDiagnostic(kind: string, metrics: Record<string, unknown>) {
+  const bridge = getDesktopBridge()
+  if (!bridge) return Promise.resolve(false)
+  return bridge.invoke<boolean>('report_performance_diagnostic', { kind, metrics }).catch(() => false)
+}
+
 export const DEFAULT_PET_SETTINGS: PetSettings = {
   alwaysOnTop: true,
   transparentWindow: true,

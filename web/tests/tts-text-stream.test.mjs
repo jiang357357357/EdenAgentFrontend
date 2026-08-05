@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { consumeSpeechStream, speechStreamKey } from "../src/lib/tts-text.ts"
+import { consumeSpeechStream, speechChunksForTTS, speechStreamKey } from "../src/lib/tts-text.ts"
 
 test("emits complete sentences while retaining the unfinished tail", () => {
   const first = consumeSpeechStream("第一句已经完成。第二句还在", "all", undefined)
@@ -74,4 +74,10 @@ test("still emits an intentional repeated sentence at a new logical ordinal", ()
 test("logical speech stream keys are independent from renderer segment ids", () => {
   assert.equal(speechStreamKey("message-1", 0), "message-1:speech:0")
   assert.equal(speechStreamKey("message-1", 1), "message-1:speech:1")
+})
+
+test("manual replay uses the same chunks as completed streaming speech", () => {
+  const text = "第一句已经完成。第二句也完成了！最后一句没有标点"
+  const streamed = consumeSpeechStream(text, "all", undefined, true)
+  assert.deepEqual(speechChunksForTTS(text, "all"), streamed.chunks)
 })

@@ -14,7 +14,8 @@ import {
   listenDesktopPetSettings,
   type PetSettings,
 } from "../../lib/desktop-window"
-import { useTTSSpeech } from "../../hooks/useTTSSpeech"
+import { useTTSSpeech, type SpeechSegment } from "../../hooks/useTTSSpeech"
+import { usePerformanceDiagnostics } from "../../hooks/usePerformanceDiagnostics"
 import { startCompanionDirectorRun } from "../../lib/companion-director-state"
 import { estimateConversationTokens } from "../../lib/token-usage"
 import {
@@ -24,6 +25,7 @@ import {
 import { cn } from "../../lib/utils"
 import type {
   PendingPermission,
+  MessageData,
   PermissionMode,
   PromptAttachment,
   Session,
@@ -132,6 +134,11 @@ export function ChatPage({
   const assistantAvatarUrl = resolveCoreAssetUrl(assistant?.character?.avatar_url)
   const userAvatarUrl = resolveCoreAssetUrl(currentUser?.avatar_url)
   const messages = activeSession?.messages ?? []
+  usePerformanceDiagnostics({
+    messages: messages.length,
+    segments: messages.reduce((total, message) => total + (message.segments?.length ?? 0), 0),
+    streaming: isThinking,
+  })
 
   useEffect(() => {
     const handleSlashCommand = (event: Event) => {
@@ -169,39 +176,48 @@ export function ChatPage({
   )
   const visibleTokenEstimate = useMemo(() => estimateConversationTokens(messages), [messages])
   const contextTokenEstimate = activeSession?.contextTokens ?? visibleTokenEstimate
-  const activeReplyMessage = messages
-    .slice(Math.max(lastUserMessageIndex + 1, 0))
-    .reverse()
-    .find((message) => message.role === "assistant")
-  const speechSegments = useMemo(() => {
-    if (!activeReplyMessage) return []
-    if (activeReplyMessage.segments?.length) {
-      return activeReplyMessage.segments.flatMap((segment) => {
+  const messageSpeechSegments = (message?: MessageData): SpeechSegment[] => {
+    if (!message) return []
+    if (message.segments?.length) {
+      return message.segments.flatMap((segment) => {
         if (segment.type !== "text") return []
         return segment.content.trim()
           ? [{
               id: segment.id,
-              messageId: activeReplyMessage.id,
+              messageId: message.id,
               text: segment.content,
               state: segment.state,
+              configId: message.speaker?.ttsConfigID,
             }]
           : []
       })
     }
-    if (!activeReplyMessage.content) return []
+    if (!message.content) return []
     return [{
-      id: `${activeReplyMessage.id}:content`,
-      messageId: activeReplyMessage.id,
-      text: activeReplyMessage.content,
-      state: activeReplyMessage.isStreaming ? "streaming" as const : "done" as const,
+      id: `${message.id}:content`,
+      messageId: message.id,
+      text: message.content,
+      state: message.isStreaming ? "streaming" : "done",
+      configId: message.speaker?.ttsConfigID,
     }]
-  }, [activeReplyMessage])
+  }
+  const speechSegments = useMemo(
+    () => messages.filter((message) => message.role === "assistant").flatMap(messageSpeechSegments),
+    [messages],
+  )
+  const activeSpeechSegments = useMemo(
+    () => messages
+      .slice(Math.max(lastUserMessageIndex + 1, 0))
+      .filter((message) => message.role === "assistant")
+      .flatMap(messageSpeechSegments),
+    [lastUserMessageIndex, messages],
+  )
   const speech = useTTSSpeech({
-    configId: activeReplyMessage?.speaker?.ttsConfigID ?? assistant?.character?.tts_config_id,
     sessionId: activeSessionId,
     mode: petSettings.ttsMode,
     isThinking,
     segments: speechSegments,
+    activeSegments: activeSpeechSegments,
   })
   const latestStreamingAssistantIndex = messages.reduce(
     (latestIndex, message, index) =>
@@ -454,7 +470,11 @@ export function ChatPage({
                       speechClips={speech.clips}
                       activeSpeechSegmentId={speech.activeSegmentId}
                       speechPaused={speech.paused}
+                      getSpeechProgress={speech.getProgress}
                       onToggleSpeech={speech.toggle}
+                      onSeekSpeech={speech.seek}
+                      onBeginSeekSpeech={speech.beginSeek}
+                      onEndSeekSpeech={speech.endSeek}
                       onPreviewImage={(src, alt) => onPreviewImage(src, alt ?? "图片预览")}
                       subagentThreads={activeSession?.agentThreads ?? []}
                       coordinationBatches={activeSession?.coordinationBatches ?? []}

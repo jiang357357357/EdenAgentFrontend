@@ -126,7 +126,7 @@ export function ChatComposerFooter({
         </div>
       )}
 
-      {!overlay && !voiceBusy ? (
+      {!overlay && !voicePanelVisible ? (
         <div className="absolute bottom-[1.5vh] right-[2.4vh] z-30 flex flex-col items-center gap-[0.9vh]">
           <TokenMeter inputTokens={inputTokens} contextTokens={contextTokens} contextWindow={contextWindow} />
           {disabled && onAbort ? <StopButton overlay={false} onStop={() => void onAbort()} /> : <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay={false} onSend={onSend} />}

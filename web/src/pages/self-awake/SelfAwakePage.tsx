@@ -627,7 +627,7 @@ export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageP
                           ["来源", selectedRun.event_source || selectedRun.source_service],
                           ["原因", selectedRun.event_reason],
                           ["系统空闲", selectedSystemInput.idle_seconds !== undefined ? `${formatFact(selectedSystemInput.idle_seconds)} 秒` : "未采集"],
-                          ["会话状态", selectedSession.locked === true ? "已锁定" : selectedSession.locked === false ? "未锁定" : "未采集"],
+                          ["屏幕锁定", selectedSession.locked === true ? "是" : selectedSession.locked === false ? "否" : "未采集"],
                           ["前台应用", formatFact(selectedForeground.application_name, "未采集")],
                           ["文档/窗口", formatFact(selectedForeground.window_title, "未采集")],
                           ["捕获时间", typeof selectedActivity.captured_at === "string" ? formatClock(selectedActivity.captured_at) : "未记录"],

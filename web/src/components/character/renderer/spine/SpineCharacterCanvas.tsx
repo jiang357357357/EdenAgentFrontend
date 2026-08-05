@@ -12,6 +12,7 @@ import {
   type SpineInteractionAnimations,
 } from "../../../../lib/spine-interactions"
 import { cn } from "../../../../lib/utils"
+import { reportPerformanceDiagnostic } from "../../../../lib/desktop-window"
 import {
   actionMapping,
   interactionTrackAvailable,
@@ -122,6 +123,9 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     let startupFitTimer: number | undefined
     let blinkTimer: number | undefined
     let rareIdleTimer: number | undefined
+    let diagnosticTicks = 0
+    let diagnosticUpdateMs = 0
+    let diagnosticStartedAt = performance.now()
     const app = new Application({
       resizeTo: host,
       antialias: true,
@@ -129,6 +133,7 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
       resolution: Math.min(window.devicePixelRatio || 1, 2),
       backgroundAlpha: 0,
     })
+    app.ticker.maxFPS = 24
     const canvas = app.view as HTMLCanvasElement
     canvas.className = "block h-full w-full"
     canvas.setAttribute("aria-hidden", "true")
@@ -138,8 +143,31 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     const updateSpine = () => {
       const loaded = loadedRef.current
       if (!loaded) return
+      const updateStartedAt = performance.now()
       const deltaSeconds = Math.min(0.05, Math.max(0, app.ticker.elapsedMS / 1000))
       loaded.spine.update(deltaSeconds)
+      diagnosticTicks += 1
+      diagnosticUpdateMs += performance.now() - updateStartedAt
+      const diagnosticElapsed = performance.now() - diagnosticStartedAt
+      if (diagnosticElapsed >= 5_000) {
+        void reportPerformanceDiagnostic("spine-renderer", {
+          ticksPer5s: diagnosticTicks,
+          tickerFPS: Math.round(app.ticker.FPS),
+          updateTotalMs: Math.round(diagnosticUpdateMs),
+          updateAverageMs: diagnosticTicks ? Number((diagnosticUpdateMs / diagnosticTicks).toFixed(3)) : 0,
+          canvasCssWidth: host.clientWidth,
+          canvasCssHeight: host.clientHeight,
+          canvasPixelWidth: app.renderer.width,
+          canvasPixelHeight: app.renderer.height,
+          resolution: app.renderer.resolution,
+          interactionMode: pointerInteractionRef.current.mode,
+          visible: !document.hidden,
+          focused: document.hasFocus(),
+        })
+        diagnosticTicks = 0
+        diagnosticUpdateMs = 0
+        diagnosticStartedAt = performance.now()
+      }
 
       const interaction = pointerInteractionRef.current
       const targetX = interaction.mode === "look" || interaction.mode === "pat"
@@ -207,11 +235,21 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     })
     observer.observe(host)
 
-    const handleVisibility = () => {
-      if (document.hidden) app.ticker.stop()
+    let isIntersecting = true
+    const updateTickerState = () => {
+      if (document.hidden || !document.hasFocus() || !isIntersecting) app.ticker.stop()
       else app.ticker.start()
     }
+    const visibilityObserver = new IntersectionObserver(([entry]) => {
+      isIntersecting = entry?.isIntersecting ?? false
+      updateTickerState()
+    })
+    visibilityObserver.observe(host)
+    const handleVisibility = () => updateTickerState()
     document.addEventListener("visibilitychange", handleVisibility)
+    window.addEventListener("focus", handleVisibility)
+    window.addEventListener("blur", handleVisibility)
+    updateTickerState()
 
     const scheduleBlink = (delayMs = randomSpineDelayMs(12, 15)) => {
       if (blinkTimer !== undefined) window.clearTimeout(blinkTimer)
@@ -344,7 +382,10 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
       cameraBoundsRef.current = undefined
       startupPendingRef.current = false
       observer.disconnect()
+      visibilityObserver.disconnect()
       document.removeEventListener("visibilitychange", handleVisibility)
+      window.removeEventListener("focus", handleVisibility)
+      window.removeEventListener("blur", handleVisibility)
       app.ticker.remove(updateSpine)
       const releaseTimer = pointerInteractionRef.current.releaseTimer
       if (releaseTimer) window.clearTimeout(releaseTimer)

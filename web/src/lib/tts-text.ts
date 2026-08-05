@@ -200,31 +200,5 @@ export function consumeSpeechStream(
 }
 
 export function speechChunksForTTS(text: string, mode: PetTTSMode) {
-  const speakable = extractSpeakableText(text, mode)
-  if (!speakable) return []
-
-  const sentences = speakable
-    .split(/\n+/)
-    .flatMap((paragraph) => paragraph.match(/[^。！？!?；;]+[。！？!?；;]?/g) ?? [])
-    .map((sentence) => sentence.trim())
-    .filter(Boolean)
-    .flatMap(splitLongSentence)
-
-  const chunks: string[] = []
-  let current = ""
-  for (const sentence of sentences) {
-    if (!current) {
-      current = sentence
-      continue
-    }
-    const separator = /[。！？!?；;：:]$/.test(current) ? "" : "。"
-    if (current.length + separator.length + sentence.length <= MAX_SPEECH_CHARS) {
-      current += `${separator}${sentence}`
-      continue
-    }
-    chunks.push(current)
-    current = sentence
-  }
-  if (current) chunks.push(current)
-  return chunks
+  return consumeSpeechStream(text, mode, undefined, true).chunks
 }

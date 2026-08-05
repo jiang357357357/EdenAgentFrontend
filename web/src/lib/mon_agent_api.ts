@@ -858,7 +858,7 @@ export type InstalledSkill = {
   displayName: string
   description: string
   scope: "system" | "user" | "project"
-  sourceType: "builtin" | "local" | "git" | "archive" | "marketplace"
+  sourceType: "builtin" | "local" | "git" | "archive" | "marketplace" | "generated"
   sourceUri?: string
   sourceRef?: string
   sourceSubpath?: string
@@ -871,6 +871,13 @@ export type InstalledSkill = {
   profiles?: string[]
   installedAt?: string
   updatedAt?: string
+  shadowed?: boolean
+}
+
+export type SkillDetails = InstalledSkill & {
+  content: string
+  files: string[]
+  manifest: Record<string, unknown>
 }
 
 export type SkillPreview = {
@@ -894,6 +901,10 @@ export type SkillPreview = {
 export async function listSkills() {
   const payload = await request<{ skills: InstalledSkill[] }>("/skills")
   return payload.skills
+}
+
+export function getSkillDetails(id: string) {
+  return request<SkillDetails>(`/skills/${encodeURIComponent(id)}`)
 }
 
 export function inspectSkill(input: {
@@ -1278,22 +1289,46 @@ export async function updateRuntimeModel(aiEntityId: number | string) {
 export async function synthesizeSpeechSegment(input: {
   sessionId: string
   messageId: string
-  segmentId: string
+  segmentGroupId: string
+  groupIndex: number
+  sequence: number
   text: string
   configId: number
   mode: "text_only" | "all"
 }) {
-  return request<CoreTTSSynthesisResponse & { cached?: boolean; cache_key?: string }>("/speech/synthesize", {
+  return request<CoreTTSSynthesisResponse>("/speech/synthesize", {
     method: "POST",
     body: JSON.stringify({
       session_id: input.sessionId,
       message_id: input.messageId,
-      segment_id: input.segmentId,
+      segment_group_id: input.segmentGroupId,
+      group_index: input.groupIndex,
+      sequence: input.sequence,
       text: input.text,
       config_id: input.configId,
       mode: input.mode,
     }),
   })
+}
+
+export type PersistedSpeechSegment = {
+  id: number
+  external_message_id: string
+  audio_asset_id: number
+  audio_url: string
+  duration_ms?: number | null
+  audio_format: string
+  segment_group_id: string
+  group_index: number
+  sequence: number
+  text_hash: string
+  text_length: number
+}
+
+export async function listMessageSpeechSegments(sessionId: string, messageId?: string) {
+  const query = new URLSearchParams({ session_id: sessionId })
+  if (messageId) query.set("message_id", messageId)
+  return request<PersistedSpeechSegment[]>(`/speech/segments?${query.toString()}`)
 }
 
 export async function listSelfAwakeRuns(limit = 30) {

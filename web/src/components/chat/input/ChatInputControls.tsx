@@ -125,9 +125,13 @@ export function TokenMeter({
 export function VoiceLevelWaveform({ level, active }: { level: number; active: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const targetLevelRef = useRef(0)
+  const activeRef = useRef(active)
+  const startDrawingRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
+    activeRef.current = active
     targetLevelRef.current = active ? Math.max(0, Math.min(1, level)) : 0
+    startDrawingRef.current?.()
   }, [active, level])
 
   useEffect(() => {
@@ -138,6 +142,8 @@ export function VoiceLevelWaveform({ level, active }: { level: number; active: b
     let currentLevel = 0
     let lastSampleAt = performance.now()
     let animationFrame = 0
+
+    const shouldContinue = () => activeRef.current || targetLevelRef.current > 0.001 || currentLevel > 0.001 || history.some((sample) => sample > 0.001)
 
     const draw = (now: number) => {
       const ratio = window.devicePixelRatio || 1
@@ -180,11 +186,19 @@ export function VoiceLevelWaveform({ level, active }: { level: number; active: b
           context.stroke()
         })
       }
-      animationFrame = window.requestAnimationFrame(draw)
+      if (shouldContinue()) animationFrame = window.requestAnimationFrame(draw)
+      else animationFrame = 0
     }
 
-    animationFrame = window.requestAnimationFrame(draw)
-    return () => window.cancelAnimationFrame(animationFrame)
+    const startDrawing = () => {
+      if (!animationFrame) animationFrame = window.requestAnimationFrame(draw)
+    }
+    startDrawingRef.current = startDrawing
+    startDrawing()
+    return () => {
+      startDrawingRef.current = null
+      if (animationFrame) window.cancelAnimationFrame(animationFrame)
+    }
   }, [])
 
   return <canvas ref={canvasRef} className="h-[2.6vh] w-[54%]" aria-hidden="true" />

@@ -6,7 +6,7 @@ import { cn } from "../../../lib/utils"
 import { resolveMonAgentUrl } from "../../../lib/mon_agent_api"
 import { resolveCoreAssetUrl } from "../../../lib/auth"
 import { User } from "lucide-react"
-import type { SpeechClip } from "../../../hooks/useTTSSpeech"
+import type { SpeechClip, SpeechProgress } from "../../../hooks/useTTSSpeech"
 import type { PetTTSMode } from "../../../lib/desktop-window"
 import { shouldShowOrganizingReply, type MessageGroupPosition } from "../../../lib/message-grouping"
 import { MessageErrorCard, RawOutput } from "./MessageDetails"
@@ -24,7 +24,11 @@ interface MessageBubbleProps {
   speechClips?: Record<string, SpeechClip>
   activeSpeechSegmentId?: string | null
   speechPaused?: boolean
+  getSpeechProgress?: (segmentId: string) => SpeechProgress | null
   onToggleSpeech?: (segmentId: string, text: string, messageId: string) => void
+  onSeekSpeech?: (segmentId: string, time: number) => void
+  onBeginSeekSpeech?: (segmentId: string) => void
+  onEndSeekSpeech?: (segmentId: string) => void
   groupPosition?: MessageGroupPosition
   allowOrganizingReply?: boolean
   subagentThreads?: SubagentThread[]
@@ -46,7 +50,11 @@ export function MessageBubble({
   speechClips = {},
   activeSpeechSegmentId,
   speechPaused = false,
+  getSpeechProgress,
   onToggleSpeech,
+  onSeekSpeech,
+  onBeginSeekSpeech,
+  onEndSeekSpeech,
   groupPosition = "single",
   allowOrganizingReply = true,
   subagentThreads,
@@ -148,7 +156,11 @@ export function MessageBubble({
                     speechClips={speechClips}
                     activeSpeechSegmentId={activeSpeechSegmentId}
                     speechPaused={speechPaused}
+                    getSpeechProgress={getSpeechProgress}
                     onToggleSpeech={onToggleSpeech}
+                    onSeekSpeech={onSeekSpeech}
+                    onBeginSeekSpeech={onBeginSeekSpeech}
+                    onEndSeekSpeech={onEndSeekSpeech}
                   />
                 )
               }
@@ -282,7 +294,11 @@ export function MessageBubble({
               speechClips={speechClips}
               activeSpeechSegmentId={activeSpeechSegmentId}
               speechPaused={speechPaused}
+              getSpeechProgress={getSpeechProgress}
               onToggleSpeech={onToggleSpeech}
+              onSeekSpeech={onSeekSpeech}
+              onBeginSeekSpeech={onBeginSeekSpeech}
+              onEndSeekSpeech={onEndSeekSpeech}
             />
             {!isUser && !message.isStreaming && <RawOutput content={renderedContent} />}
           </>

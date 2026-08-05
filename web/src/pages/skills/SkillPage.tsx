@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { ArrowLeft, Check, FolderOpen, Github, LoaderCircle, Package, Power, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react"
+import { ArrowLeft, Check, Eye, FolderOpen, Github, LoaderCircle, Package, Power, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react"
 import { motion } from "motion/react"
 import {
   inspectSkill,
@@ -8,7 +8,9 @@ import {
   listSkills,
   setSkillEnabled,
   uninstallSkill,
+  getSkillDetails,
   type InstalledSkill,
+  type SkillDetails,
   type SkillPreview,
 } from "../../lib/mon_agent_api"
 import { selectDesktopSkillDirectory } from "../../lib/desktop-window"
@@ -27,12 +29,14 @@ function SkillRow({
   onToggle,
   onUninstall,
   onUpdate,
+  onView,
 }: {
   skill: InstalledSkill
   busy: boolean
   onToggle: () => void
   onUninstall: () => void
   onUpdate: () => void
+  onView: () => void
 }) {
   return (
     <article className="flex items-start gap-4 border-b border-stone-200/75 px-5 py-4 last:border-b-0">
@@ -45,16 +49,22 @@ function SkillRow({
           <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[11px] text-stone-500">{skill.skillName}</span>
           {skill.builtin && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700">内置</span>}
           {!skill.available && <span className="rounded bg-red-50 px-1.5 py-0.5 text-[11px] text-red-600">本地文件缺失</span>}
+          {skill.shadowed && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700">被项目同名技能覆盖</span>}
         </div>
         <p className="mt-1 text-[13px] leading-6 text-stone-500">{skill.description}</p>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-stone-400">
           <span>{skill.scope === "system" ? "系统范围" : skill.scope === "project" ? "当前项目" : "当前用户"}</span>
-          <span>{skill.sourceType === "git" ? "Git" : skill.sourceType === "local" ? "本地目录" : "随应用提供"}</span>
+          <span>{skill.sourceType === "git" ? "Git" : skill.sourceType === "local" ? "本地目录" : skill.sourceType === "generated" ? "智能体创建" : "随应用提供"}</span>
           {skill.version && <span>v{skill.version}</span>}
           {skill.tools?.length ? <span>{skill.tools.length} 个工具</span> : null}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
+        {!skill.builtin && (
+          <button type="button" disabled={busy} onClick={onView} className="flex h-8 w-8 items-center justify-center rounded-full text-stone-400 transition hover:bg-stone-100 hover:text-stone-700 disabled:opacity-50" title="查看技能内容">
+            <Eye className="h-4 w-4" />
+          </button>
+        )}
         <button
           type="button"
           disabled={skill.builtin || busy}
@@ -69,7 +79,7 @@ function SkillRow({
           <Power className="h-3.5 w-3.5" />
           {skill.enabled ? "已启用" : "已停用"}
         </button>
-        {!skill.builtin && (
+        {!skill.builtin && skill.sourceType !== "generated" && (
           <button
             type="button"
             disabled={busy}
@@ -108,6 +118,7 @@ export function SkillPage({ onBack }: { onBack: () => void }) {
   const [scope, setScope] = useState<"user" | "project">("user")
   const [preview, setPreview] = useState<SkillPreview | null>(null)
   const [installOpen, setInstallOpen] = useState(false)
+  const [details, setDetails] = useState<SkillDetails | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -210,6 +221,18 @@ export function SkillPage({ onBack }: { onBack: () => void }) {
     }
   }
 
+  async function view(skill: InstalledSkill) {
+    setBusyID(skill.id)
+    setError("")
+    try {
+      setDetails(await getSkillDetails(skill.id))
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError))
+    } finally {
+      setBusyID("")
+    }
+  }
+
   return (
     <motion.main
       key="skills"
@@ -224,7 +247,7 @@ export function SkillPage({ onBack }: { onBack: () => void }) {
         </button>
         <div>
           <h1 className="text-[clamp(1.35rem,2.7vh,2rem)] font-semibold">技能</h1>
-          <p className="mt-1 text-xs text-stone-500">{installedCount} 个已安装技能 · 按任务动态加载工具</p>
+          <p className="mt-1 text-xs text-stone-500">{installedCount} 个已安装技能 · 按任务动态加载工作流</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button type="button" onClick={() => void refresh()} className="flex items-center gap-2 rounded-full px-4 py-2 text-sm text-stone-500 hover:bg-stone-100">
@@ -243,13 +266,33 @@ export function SkillPage({ onBack }: { onBack: () => void }) {
             <div className="flex h-40 items-center justify-center text-stone-400"><LoaderCircle className="mr-2 h-5 w-5 animate-spin" />读取技能目录</div>
           ) : skills.length ? (
             skills.map((skill) => (
-              <SkillRow key={skill.id} skill={skill} busy={busyID === skill.id} onToggle={() => void toggle(skill)} onUninstall={() => void remove(skill)} onUpdate={() => void update(skill)} />
+              <SkillRow key={skill.id} skill={skill} busy={busyID === skill.id} onToggle={() => void toggle(skill)} onUninstall={() => void remove(skill)} onUpdate={() => void update(skill)} onView={() => void view(skill)} />
             ))
           ) : (
             <div className="p-10 text-center text-stone-400">还没有可用技能</div>
           )}
         </section>
       </div>
+
+      {details && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-5 backdrop-blur-sm">
+          <div className="flex max-h-[82vh] w-full max-w-3xl flex-col rounded-2xl border border-stone-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-start gap-4">
+              <div>
+                <h2 className="text-lg font-semibold">{details.displayName || details.skillName}</h2>
+                <p className="mt-1 text-xs text-stone-500">{details.skillName} · {details.sourceType === "generated" ? "智能体创建" : details.sourceType}</p>
+              </div>
+              <button type="button" onClick={() => setDetails(null)} className="ml-auto rounded-full p-2 text-stone-400 hover:bg-stone-100"><X className="h-4 w-4" /></button>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-stone-600">{details.description}</p>
+            <div className="mt-4 min-h-0 flex-1 overflow-auto rounded-xl border border-stone-200 bg-stone-50 p-4">
+              <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-6 text-stone-700">{details.content || "本地 SKILL.md 不可用"}</pre>
+            </div>
+            {details.files.length > 0 && <p className="mt-3 text-xs text-stone-400">包含文件：{details.files.join("、")}</p>}
+            {details.sourceType === "generated" && <p className="mt-3 text-xs text-amber-700">需要修改时，直接在聊天中让当前角色更新这个技能。</p>}
+          </div>
+        </div>
+      )}
 
       {installOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-5 backdrop-blur-sm">

@@ -49,10 +49,14 @@ export interface LoginResponse {
 
 export interface CoreTTSSynthesisResponse {
   success: boolean
-  audio_data?: string | null
   audio_url?: string | null
   text?: string
   error_message?: string | null
+  cached?: boolean
+  cache_key?: string | null
+  audio_format?: string | null
+  duration_ms?: number | null
+  size_bytes?: number | null
 }
 
 export interface VerifyTokenResponse {

@@ -9,7 +9,7 @@ import {
   type DesktopSpeechIntent,
   type PetTTSMode,
 } from "../../../../lib/desktop-window"
-import { synthesizeSpeechSegment } from "../../../../lib/mon_agent_api"
+import { listMessageSpeechSegments, synthesizeSpeechSegment } from "../../../../lib/mon_agent_api"
 import { SpeechOutputGate } from "../../../../lib/speech-output-gate"
 import {
   consumeSpeechStream,
@@ -30,6 +30,7 @@ export interface SpeechClip {
 interface StreamingSpeechState {
   segmentId: string
   streamKey: string
+  groupIndex: number
   cursor?: SpeechStreamCursor
   nextChunkIndex: number
   pending: number
@@ -44,6 +45,11 @@ interface PetSpeechPlaybackOptions {
   sessionId?: string
   ttsConfigId?: number | null
   ttsMode: PetTTSMode
+}
+
+async function speechTextHash(text: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text.trim()))
+  return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("")
 }
 
 export function usePetSpeechPlayback({ isThinking, latestAssistantMessage, sessionId, ttsConfigId, ttsMode }: PetSpeechPlaybackOptions) {
@@ -161,24 +167,26 @@ export function usePetSpeechPlayback({ isThinking, latestAssistantMessage, sessi
     if (!chunks.length) return
 
     const generation = speechGenerationRef.current
+    const groupIndex = Math.max(0, (latestAssistantMessage?.segments ?? [])
+      .filter((segment) => segment.type === "text")
+      .findIndex((segment) => segment.id === segmentID))
     const playbackGeneration = playbackGenerationRef.current
     setSpeechClips((current) => ({ ...current, [segmentID]: { status: "synthesizing" } }))
     const synthesis = (async () => {
       const sources: string[] = []
       for (const [index, text] of chunks.entries()) {
-        const requestSegmentID = chunks.length === 1 ? segmentID : `${segmentID}:tts:${index}`
         const result = await synthesizeSpeechSegment({
           sessionId,
           messageId: messageID,
-          segmentId: requestSegmentID,
+          segmentGroupId: segmentID,
+          groupIndex,
+          sequence: index,
           text,
           configId: ttsConfigId,
           mode: ttsMode,
         })
         if (!result.success) throw new Error(result.error_message || `语音段 ${index + 1}/${chunks.length} 合成失败`)
-        const source = result.audio_data
-          ? `data:audio/wav;base64,${result.audio_data}`
-          : resolveCoreAssetUrl(result.audio_url)
+        const source = resolveCoreAssetUrl(result.audio_url)
         if (!source) throw new Error(`语音段 ${index + 1}/${chunks.length} 未返回音频`)
         sources.push(source)
       }
@@ -249,7 +257,9 @@ export function usePetSpeechPlayback({ isThinking, latestAssistantMessage, sessi
       .then(() => synthesizeSpeechSegment({
         sessionId,
         messageId: messageID,
-        segmentId: `${state.streamKey}:tts:${chunkIndex}`,
+        segmentGroupId: state.segmentId,
+        groupIndex: state.groupIndex,
+        sequence: chunkIndex,
         text,
         configId: ttsConfigId,
         mode: ttsMode,
@@ -258,9 +268,7 @@ export function usePetSpeechPlayback({ isThinking, latestAssistantMessage, sessi
     const synthesis = request
       .then((result) => {
         if (!result.success) throw new Error(result.error_message || `语音句子 ${chunkIndex + 1} 合成失败`)
-        const source = result.audio_data
-          ? `data:audio/wav;base64,${result.audio_data}`
-          : resolveCoreAssetUrl(result.audio_url)
+        const source = resolveCoreAssetUrl(result.audio_url)
         if (!source) throw new Error(`语音句子 ${chunkIndex + 1} 未返回音频`)
         if (generation === speechGenerationRef.current) state.sources.set(chunkIndex, source)
         return source
@@ -363,6 +371,29 @@ export function usePetSpeechPlayback({ isThinking, latestAssistantMessage, sessi
   }, [isThinking, sessionId, ttsMode])
 
   useEffect(() => {
+    if (!sessionId || !latestAssistantMessage || ttsMode === "none" || isThinking) return
+    const generation = speechGenerationRef.current
+    void listMessageSpeechSegments(sessionId, latestAssistantMessage.id).then(async (persisted) => {
+      const textSegments = (latestAssistantMessage.segments ?? []).filter((segment) => segment.type === "text")
+      for (const segment of textSegments) {
+        const chunks = speechChunksForTTS(segment.content, ttsMode)
+        const saved = persisted
+          .filter((item) => item.segment_group_id === segment.id)
+          .sort((left, right) => left.sequence - right.sequence)
+        if (!chunks.length || saved.length !== chunks.length) continue
+        const hashes = await Promise.all(chunks.map(speechTextHash))
+        if (saved.some((item, index) => item.sequence !== index || item.text_hash !== hashes[index])) continue
+        const sources = saved.map((item) => resolveCoreAssetUrl(item.audio_url)).filter((url): url is string => Boolean(url))
+        if (sources.length !== saved.length || generation !== speechGenerationRef.current) continue
+        setSpeechClips((current) => ({
+          ...current,
+          [segment.id]: { status: "ready", source: sources[0], sources },
+        }))
+      }
+    }).catch((error) => console.warn("[DesktopPet][TTS] 恢复持久化语音失败", error))
+  }, [isThinking, latestAssistantMessage, sessionId, ttsMode])
+
+  useEffect(() => {
     if (ttsMode === "none") {
       stopSpeechPlayback(true, true)
       speechRunActiveRef.current = isThinking
@@ -384,6 +415,7 @@ export function usePetSpeechPlayback({ isThinking, latestAssistantMessage, sessi
       let textSegmentIndex = 0
       for (const segment of latestAssistantMessage?.segments ?? []) {
         if (segment.type !== "text") continue
+        const groupIndex = textSegmentIndex
         const streamKey = speechStreamKey(latestAssistantMessage?.id ?? "", textSegmentIndex)
         textSegmentIndex += 1
         if (!segment.content.trim() || !textForTTS(segment.content, ttsMode)) continue
@@ -392,6 +424,7 @@ export function usePetSpeechPlayback({ isThinking, latestAssistantMessage, sessi
           state = {
             segmentId: segment.id,
             streamKey,
+            groupIndex,
             nextChunkIndex: 0,
             pending: 0,
             sources: new Map(),
@@ -400,6 +433,7 @@ export function usePetSpeechPlayback({ isThinking, latestAssistantMessage, sessi
           streamSpeechStatesRef.current.set(streamKey, state)
         } else {
           state.segmentId = segment.id
+          state.groupIndex = groupIndex
         }
         const flush = segment.state !== "streaming" || (!isThinking && runWasActive)
         const update = consumeSpeechStream(segment.content, ttsMode, state.cursor, flush)

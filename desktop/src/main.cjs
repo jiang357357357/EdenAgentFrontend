@@ -56,6 +56,7 @@ const quitFlag =
   process.env.MON_AGENT_DESKTOP_QUIT_FLAG?.trim() ||
   resolveMonConfigPath("desktop", "QUIT_FLAG", ".artifacts/desktop-quit.flag")
 const petSettingsPath = resolveMonConfigPath("desktop", "PET_SETTINGS", ".artifacts/desktop-pet-settings.json")
+const performanceLogPath = path.join(agentRoot, ".artifacts", "frontend-performance.jsonl")
 const petSettingsStore = createPetSettingsStore({
   filePath: petSettingsPath,
   defaults: DEFAULT_PET_SETTINGS,
@@ -905,6 +906,19 @@ registerDesktopIpc({
     }),
     ...createWindowCommandHandlers({ BrowserWindow, dialog, getMainWindow: () => mainWindow }),
     update_activity_facts: ({ sender, args }) => updateRendererActivityFacts(sender, args.facts ?? {}),
+    report_performance_diagnostic: ({ sender, args }) => {
+      const entry = {
+        time: new Date().toISOString(),
+        rendererId: sender.id,
+        kind: String(args.kind || "unknown").slice(0, 80),
+        metrics: args.metrics && typeof args.metrics === "object" ? args.metrics : {},
+      }
+      fs.mkdirSync(path.dirname(performanceLogPath), { recursive: true })
+      fs.appendFile(performanceLogPath, `${JSON.stringify(entry)}\n`, "utf8", (error) => {
+        if (error) console.warn("[MonAgent][Performance] 写入诊断日志失败", error)
+      })
+      return true
+    },
     claim_speech_playback: ({ sender, args }) => {
       const surface = speechSurfaceForSender(sender)
       if (!surface) return { granted: false, reason: "unsupported-surface" }
