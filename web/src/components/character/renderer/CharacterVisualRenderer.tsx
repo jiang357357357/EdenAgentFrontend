@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 import type { ActiveCharacterAction, CoreCharacter } from "../../../lib/auth"
 import { resolveCoreAssetUrl } from "../../../lib/auth"
 import { CharacterStandeeImage } from "./CharacterStandeeImage"
-import { resolveSpineLayout } from "./spine/spine-layout"
+import { resolveSpineLayout, selectSpineAsset, type SpineLayout } from "./spine/spine-layout"
 
 const LazySpineCharacterCanvas = lazy(() =>
   import("./spine/SpineCharacterCanvas").then((module) => ({ default: module.SpineCharacterCanvas })),
@@ -13,6 +13,7 @@ interface CharacterVisualRendererProps {
   activeAction?: ActiveCharacterAction
   displayName: string
   className?: string
+  preferredSpineLayout?: SpineLayout
   onReady?: () => void
 }
 
@@ -21,6 +22,7 @@ export function CharacterVisualRenderer({
   activeAction,
   displayName,
   className,
+  preferredSpineLayout = "standee",
   onReady,
 }: CharacterVisualRendererProps) {
   const activeActionImage =
@@ -30,8 +32,8 @@ export function CharacterVisualRenderer({
     activeAction?.action?.dynamic_frames?.[0]?.file_url
   const fallbackImage = resolveCoreAssetUrl(activeActionImage || character.default_standing_image_url || character.avatar_url)
   const activeActionLabel = activeAction?.action?.name || activeAction?.action?.action_label || activeAction?.action?.intent
-  const spineAsset = character.visual_preference === "spine" && character.spine_asset?.enabled !== false
-    ? character.spine_asset
+  const spineAsset = character.visual_preference === "spine"
+    ? selectSpineAsset(character.spine_assets, character.spine_asset, preferredSpineLayout)
     : undefined
   const spineKey = useMemo(() => spineAsset
     ? `${spineAsset.id ?? "spine"}:${spineAsset.skeleton_url}:${spineAsset.atlas_url}`

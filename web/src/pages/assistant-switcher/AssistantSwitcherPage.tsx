@@ -15,6 +15,7 @@ import { motion } from "motion/react"
 import { useEffect, useMemo, useState } from "react"
 import paperTexture from "../../assets/assistant-switcher-paper.png"
 import { CharacterVisualRenderer } from "../../components/character/renderer"
+import { selectSpineAsset } from "../../components/character/renderer/spine/spine-layout"
 import {
   fetchAssistants,
   getErrorMessage,
@@ -137,7 +138,9 @@ type VisualTransitionPhase = "idle" | "leaving" | "entering"
 function assistantVisualPreview(assistant: CoreAssistant): AssistantVisualPreview {
   const character = assistant.character
   const staticUrl = standeeUrl(assistant)
-  const spineAsset = character?.spine_asset
+  const spineAsset = character
+    ? selectSpineAsset(character.spine_assets, character.spine_asset, "standee")
+    : undefined
   const hasSpine = Boolean(
     character?.visual_preference === "spine" &&
     spineAsset &&
@@ -678,6 +681,7 @@ export function AssistantSwitcherPage({
                     <CharacterVisualRenderer
                       character={preview.character}
                       displayName={assistantName(preview.assistant)}
+                      preferredSpineLayout="standee"
                       className="relative h-full w-full"
                       onReady={() => handleVisualReady(preview.key)}
                     />

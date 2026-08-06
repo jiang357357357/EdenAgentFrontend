@@ -1,7 +1,9 @@
 import type { Spine, TrackEntry } from "@esotericsoftware/spine-pixi-v7"
 
-import type { ActiveCharacterAction, CoreSpineAction } from "../../../../lib/auth"
+import type { CoreSpineAction } from "../../../../lib/auth"
 import { shouldLoopSpineAction, type SpineInteractionAnimations } from "../../../../lib/spine-interactions"
+
+export { actionMapping } from "./spine-action-mapping"
 
 function clearEntryWhenComplete(spine: Spine, track: number, entry: TrackEntry, mixSeconds = 0.12) {
   entry.listener = {
@@ -56,21 +58,6 @@ export function interactionTrackAvailable(spine: Spine, animations: SpineInterac
   if (!current) return true
   const name = current.animation?.name ?? ""
   return !name || name.startsWith("<") || animations.all.has(name)
-}
-
-export function actionMapping(activeAction?: ActiveCharacterAction): CoreSpineAction | undefined {
-  const action = activeAction?.action
-  if (!action) return undefined
-  if (action.spine?.animation) return action.spine
-  if (!action.spine_animation) return undefined
-  return {
-    animation: action.spine_animation,
-    track: action.spine_track,
-    loop: action.spine_loop,
-    mix_ms: action.spine_mix_ms,
-    sync: action.spine_sync_animations,
-    reset_to_idle: action.spine_reset_to_idle,
-  }
 }
 
 export function playMappedAction(

@@ -92,6 +92,7 @@ export interface CoreCharacterVisualAction {
   spine_mix_ms?: number
   spine_sync_animations?: CoreSpineSyncAnimation[]
   spine_reset_to_idle?: boolean
+  spine_variants?: Partial<Record<"standee" | "memory-lobby", CoreSpineAction>>
   spine?: CoreSpineAction | null
   has_spine?: boolean
   priority?: number
@@ -183,6 +184,7 @@ export interface CoreCharacter {
   visual_actions?: CoreCharacterVisualAction[]
   visual_action_groups?: CoreCharacterVisualActionGroup[]
   spine_asset?: CoreCharacterSpineAsset | null
+  spine_assets?: CoreCharacterSpineAsset[]
   visual_preference?: "static" | "dynamic" | "spine" | string | null
   default_visual_action_id?: number | null
   tts_config_id?: number | null

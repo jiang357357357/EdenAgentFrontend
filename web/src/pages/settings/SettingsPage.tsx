@@ -379,7 +379,11 @@ export function SettingsPage({
   const avatarUrl =
     resolveCoreAssetUrl(assistant?.character?.avatar_url || assistant?.character?.default_standing_image_url) || "/favicon-256.png"
   const supportsDynamicStandee = Boolean(assistant?.character?.visual_actions?.some((action) => action.dynamic_preview_url))
-  const supportsSpineStandee = Boolean(assistant?.character?.spine_asset)
+  const supportsSpineStandee = Boolean(
+    assistant?.character?.spine_assets?.some(
+      (asset) => asset.enabled !== false && asset.layout === "standee",
+    ) ?? assistant?.character?.spine_asset,
+  )
   const visualPreference = assistant?.character?.visual_preference === "dynamic"
     ? "dynamic"
     : assistant?.character?.visual_preference === "spine"

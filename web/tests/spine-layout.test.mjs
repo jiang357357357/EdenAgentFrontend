@@ -9,6 +9,7 @@ import {
   MEMORY_LOBBY_CAMERA_Y_BIAS,
   resolveMemoryLobbyCameraSlots,
   resolveSpineLayout,
+  selectSpineAsset,
 } from "../src/components/character/renderer/spine/spine-layout.ts"
 
 const closeTo = (actual, expected, epsilon = 1e-9) => {
@@ -82,6 +83,21 @@ test("Spine layout only follows the explicit API field", () => {
   assert.equal(resolveSpineLayout(undefined), undefined)
   assert.equal(isMemoryLobbySpineAsset({ layout: "memory-lobby" }), true)
   assert.equal(isMemoryLobbySpineAsset({ layout: "standee" }), false)
+})
+
+test("selects ordinary and memory-lobby variants by rendering context", () => {
+  const standee = { id: 1, layout: "standee", enabled: true }
+  const memoryLobby = { id: 2, layout: "memory-lobby", enabled: true }
+  const assets = [memoryLobby, standee]
+
+  assert.equal(selectSpineAsset(assets, memoryLobby, "standee"), standee)
+  assert.equal(selectSpineAsset(assets, standee, "memory-lobby"), memoryLobby)
+})
+
+test("falls back to the available legacy Spine asset", () => {
+  const memoryLobby = { id: 2, layout: "memory-lobby", enabled: true }
+  assert.equal(selectSpineAsset(undefined, memoryLobby, "standee"), memoryLobby)
+  assert.equal(selectSpineAsset([], { ...memoryLobby, enabled: false }, "standee"), undefined)
 })
 
 test("memory-lobby camera slots default to BG and allow metadata overrides", () => {
