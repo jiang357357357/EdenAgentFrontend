@@ -3,10 +3,11 @@ import type { ActiveCharacterAction, CoreSpineAction } from "../../../../lib/aut
 export function actionMapping(
   activeAction?: ActiveCharacterAction,
   layout?: "standee" | "memory-lobby",
+  costumeId = "default",
 ): CoreSpineAction | undefined {
   const action = activeAction?.action
   if (!action) return undefined
-  const variant = layout ? action.spine_variants?.[layout] : undefined
+  const variant = layout ? action.spine_variants?.[costumeId]?.[layout] : undefined
   if (variant?.animation) return variant
   if (action.spine?.animation) return action.spine
   if (!action.spine_animation) return undefined

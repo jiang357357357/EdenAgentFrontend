@@ -8,6 +8,7 @@ import {
   TextureAtlas,
 } from "@esotericsoftware/spine-pixi-v7"
 import { resolveCoreAssetUrl, type CoreCharacterSpineAsset } from "./auth"
+import { isSpineAbortError, SpineAssetLoadError } from "./spine-load-policy"
 
 export interface LoadedSpineAsset {
   spine: Spine
@@ -19,9 +20,22 @@ export interface LoadedSpineAsset {
 
 async function fetchAsset(url: string, label: string, signal: AbortSignal) {
   const resolved = resolveCoreAssetUrl(url)
-  if (!resolved) throw new Error(`缺少 ${label} 地址`)
-  const response = await fetch(resolved, { signal })
-  if (!response.ok) throw new Error(`${label}读取失败（${response.status}）`)
+  if (!resolved) throw new SpineAssetLoadError("asset-incomplete", `缺少 ${label} 地址`, false)
+  let response: Response
+  try {
+    response = await fetch(resolved, { signal })
+  } catch (error) {
+    if (isSpineAbortError(error)) throw error
+    throw new SpineAssetLoadError("network", `${label}网络读取失败`, true, { cause: error })
+  }
+  if (!response.ok) {
+    const retryable = response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500
+    throw new SpineAssetLoadError(
+      "http",
+      `${label}读取失败（${response.status}）`,
+      retryable,
+    )
+  }
   return response
 }
 
@@ -30,13 +44,17 @@ async function blobToImage(blob: Blob, label: string) {
   const image = new Image()
   image.src = url
   try {
-    if (typeof image.decode === "function") {
-      await image.decode()
-    } else {
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve()
-        image.onerror = () => reject(new Error(`无法读取纹理：${label}`))
-      })
+    try {
+      if (typeof image.decode === "function") {
+        await image.decode()
+      } else {
+        await new Promise<void>((resolve, reject) => {
+          image.onload = () => resolve()
+          image.onerror = () => reject(new Error(`无法读取纹理：${label}`))
+        })
+      }
+    } catch (error) {
+      throw new SpineAssetLoadError("texture-decode", `无法读取纹理：${label}`, false, { cause: error })
     }
     return image
   } finally {
@@ -46,7 +64,11 @@ async function blobToImage(blob: Blob, label: string) {
 
 export async function loadSpineAsset(asset: CoreCharacterSpineAsset, signal: AbortSignal): Promise<LoadedSpineAsset> {
   if (!asset.skeleton_url || !asset.atlas_url || !asset.textures?.length) {
-    throw new Error("Spine 资源不完整，需要骨骼、atlas 和纹理")
+    throw new SpineAssetLoadError(
+      "asset-incomplete",
+      "Spine 资源不完整，需要骨骼、atlas 和纹理",
+      false,
+    )
   }
 
   const [skeletonResponse, atlasResponse, textureResponses] = await Promise.all([
@@ -67,7 +89,11 @@ export async function loadSpineAsset(asset: CoreCharacterSpineAsset, signal: Abo
     for (const page of atlas.pages) {
       const textureIndex = asset.textures.findIndex((texture) => texture.page_name.replace(/\\/g, "/") === page.name.replace(/\\/g, "/"))
       if (textureIndex < 0) {
-        throw new Error(`atlas 引用了 ${page.name}，但资源配置中没有对应纹理`)
+        throw new SpineAssetLoadError(
+          "atlas-texture-missing",
+          `atlas 引用了 ${page.name}，但资源配置中没有对应纹理`,
+          false,
+        )
       }
       const image = await blobToImage(textureBlobs[textureIndex], page.name)
       if (signal.aborted) throw new DOMException("Spine resource loading aborted", "AbortError")
@@ -85,7 +111,11 @@ export async function loadSpineAsset(asset: CoreCharacterSpineAsset, signal: Abo
       : (reader as SkeletonBinary).readSkeletonData(skeletonBuffer)
     const version = skeletonData.version || asset.runtime_version || "未知"
     if (version !== "未知" && !version.startsWith("4.2")) {
-      throw new Error(`资源由 Spine ${version} 导出，当前只支持 Spine 4.2`)
+      throw new SpineAssetLoadError(
+        "runtime-version",
+        `资源由 Spine ${version} 导出，当前只支持 Spine 4.2`,
+        false,
+      )
     }
 
     // The canvas owns the ticker so it can apply pointer-driven bone targets
@@ -103,6 +133,13 @@ export async function loadSpineAsset(asset: CoreCharacterSpineAsset, signal: Abo
     }
   } catch (error) {
     atlas.dispose()
-    throw error
+    if (error instanceof SpineAssetLoadError || isSpineAbortError(error)) throw error
+    const message = error instanceof Error ? error.message : String(error)
+    throw new SpineAssetLoadError(
+      "asset-invalid",
+      `Spine 资源解析失败：${message}`,
+      false,
+      { cause: error },
+    )
   }
 }

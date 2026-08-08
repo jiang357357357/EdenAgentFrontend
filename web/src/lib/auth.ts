@@ -92,7 +92,7 @@ export interface CoreCharacterVisualAction {
   spine_mix_ms?: number
   spine_sync_animations?: CoreSpineSyncAnimation[]
   spine_reset_to_idle?: boolean
-  spine_variants?: Partial<Record<"standee" | "memory-lobby", CoreSpineAction>>
+  spine_variants?: Record<string, Partial<Record<"standee" | "memory-lobby", CoreSpineAction>>>
   spine?: CoreSpineAction | null
   has_spine?: boolean
   priority?: number
@@ -119,6 +119,8 @@ export interface CoreSpineAction {
 export interface CoreCharacterSpineAsset {
   id?: number
   character_id?: number
+  costume_id?: number
+  costume_key?: string
   skeleton_url: string
   atlas_url: string
   textures: Array<{
@@ -135,6 +137,19 @@ export interface CoreCharacterSpineAsset {
   enabled?: boolean
   layout: "standee" | "memory-lobby"
   metadata?: Record<string, unknown>
+}
+
+export interface CoreCharacterCostume {
+  id: number
+  character_id?: number
+  costume_id: string
+  name: string
+  description?: string
+  avatar_url?: string | null
+  is_default: boolean
+  enabled: boolean
+  sort_order?: number
+  spine_assets?: CoreCharacterSpineAsset[]
 }
 
 export interface CoreCharacterVisualActionGroup {
@@ -183,6 +198,8 @@ export interface CoreCharacter {
   default_standing_image_url?: string | null
   visual_actions?: CoreCharacterVisualAction[]
   visual_action_groups?: CoreCharacterVisualActionGroup[]
+  costumes?: CoreCharacterCostume[]
+  default_costume_id?: string | null
   spine_asset?: CoreCharacterSpineAsset | null
   spine_assets?: CoreCharacterSpineAsset[]
   visual_preference?: "static" | "dynamic" | "spine" | string | null
@@ -201,6 +218,8 @@ export interface CoreAssistant {
   character?: CoreCharacter | null
   is_default: boolean
   is_assistant_mode: boolean
+  visual_costume_id?: number | null
+  visual_layout?: "standee" | "memory-lobby"
   devices?: unknown[]
   created_at?: string
   updated_at?: string
@@ -217,6 +236,19 @@ const TOKEN_KEY = "agent.auth_token"
 const USER_KEY = "agent.auth_user"
 const EXPIRES_KEY = "agent.auth_expires_at"
 const CLIENT_ID_KEY = "agent.client_id"
+const assistantDetailCache = new Map<string, CoreAssistant>()
+const assistantDetailRequests = new Map<string, Promise<CoreAssistant>>()
+const assistantListRequests = new Map<string, Promise<CoreAssistant[]>>()
+
+function assistantCacheKey(token: string, assistantId: number) {
+  return `${token}:${assistantId}`
+}
+
+function clearAssistantRequestCaches() {
+  assistantDetailCache.clear()
+  assistantDetailRequests.clear()
+  assistantListRequests.clear()
+}
 
 function randomClientSuffix() {
   const webCrypto = globalThis.crypto
@@ -390,6 +422,7 @@ export function getStoredUser() {
 }
 
 export function clearAuth() {
+  clearAssistantRequestCaches()
   window.localStorage.removeItem(TOKEN_KEY)
   window.localStorage.removeItem(USER_KEY)
   window.localStorage.removeItem(EXPIRES_KEY)
@@ -519,19 +552,60 @@ export async function fetchDefaultAssistant(token: string) {
 }
 
 export async function fetchCurrentAssistant(token: string) {
-  if (isDesktopRuntime()) {
-    return invokeDesktop<CoreAssistant>("core_current_assistant", { token })
-  }
-
-  return request<CoreAssistant>("/api/assistants/current/", { method: "GET" }, token)
+  const assistant = isDesktopRuntime()
+    ? await invokeDesktop<CoreAssistant>("core_current_assistant", { token })
+    : await request<CoreAssistant>("/api/assistants/current/", { method: "GET" }, token)
+  assistantDetailCache.set(assistantCacheKey(token, assistant.id), assistant)
+  return assistant
 }
 
-export async function fetchAssistants(token: string) {
-  const payload = isDesktopRuntime()
-    ? await invokeDesktop<CoreAssistant[] | { results?: CoreAssistant[] }>("core_list_assistants", { token })
-    : await request<CoreAssistant[] | { results?: CoreAssistant[] }>("/api/assistants/", { method: "GET" }, token)
+export async function fetchAssistants(token: string, options: { summary?: boolean } = {}) {
+  const summary = options.summary === true
+  const requestKey = `${token}:${summary ? "summary" : "full"}`
+  const existing = assistantListRequests.get(requestKey)
+  if (existing) return existing
 
-  return Array.isArray(payload) ? payload : Array.isArray(payload.results) ? payload.results : []
+  const pending = (async () => {
+    const path = summary ? "/api/assistants/?summary=1" : "/api/assistants/"
+    const payload = isDesktopRuntime()
+      ? await invokeDesktop<CoreAssistant[] | { results?: CoreAssistant[] }>("core_list_assistants", { token, summary })
+      : await request<CoreAssistant[] | { results?: CoreAssistant[] }>(path, { method: "GET" }, token)
+
+    return Array.isArray(payload) ? payload : Array.isArray(payload.results) ? payload.results : []
+  })()
+  assistantListRequests.set(requestKey, pending)
+  try {
+    return await pending
+  } finally {
+    if (assistantListRequests.get(requestKey) === pending) assistantListRequests.delete(requestKey)
+  }
+}
+
+export async function fetchAssistant(token: string, assistantId: number, options: { refresh?: boolean } = {}) {
+  const requestKey = assistantCacheKey(token, assistantId)
+  if (!options.refresh) {
+    const cached = assistantDetailCache.get(requestKey)
+    if (cached) return cached
+    const existing = assistantDetailRequests.get(requestKey)
+    if (existing) return existing
+  }
+
+  const pending = isDesktopRuntime()
+    ? invokeDesktop<CoreAssistant>("core_get_assistant", { token, assistantId })
+    : request<CoreAssistant>(`/api/assistants/${assistantId}/`, { method: "GET" }, token)
+  assistantDetailRequests.set(requestKey, pending)
+  try {
+    const assistant = await pending
+    assistantDetailCache.set(requestKey, assistant)
+    return assistant
+  } finally {
+    if (assistantDetailRequests.get(requestKey) === pending) assistantDetailRequests.delete(requestKey)
+  }
+}
+
+function cacheAssistantDetail(token: string, assistant: CoreAssistant) {
+  assistantDetailCache.set(assistantCacheKey(token, assistant.id), assistant)
+  return assistant
 }
 
 export async function setCurrentAssistant(token: string, assistantId: number) {
@@ -556,6 +630,34 @@ export async function setCurrentAssistant(token: string, assistantId: number) {
     token,
   )
   return fetchCurrentAssistant(token)
+}
+
+export async function updateAssistantAppearance(
+  token: string,
+  assistantId: number,
+  input: {
+    visual_costume_id: number
+    visual_layout: "standee" | "memory-lobby"
+  },
+) {
+  if (isDesktopRuntime()) {
+    const assistant = await invokeDesktop<CoreAssistant>("core_update_assistant", {
+      token,
+      assistantId,
+      input,
+    })
+    return cacheAssistantDetail(token, assistant)
+  }
+
+  const assistant = await request<CoreAssistant>(
+    `/api/assistants/${assistantId}/`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+    token,
+  )
+  return cacheAssistantDetail(token, assistant)
 }
 
 export function resolveCoreAssetUrl(url?: string | null) {

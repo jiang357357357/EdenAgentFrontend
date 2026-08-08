@@ -24,6 +24,7 @@ export const MEMORY_LOBBY_CAMERA_Y_BIAS = 0.018
 interface SpineAssetLayoutHint {
   layout?: SpineLayout
   enabled?: boolean
+  costume_key?: string
 }
 
 interface CalculateSpinePlacementOptions {
@@ -51,14 +52,32 @@ export function selectSpineAsset<T extends SpineAssetLayoutHint>(
   assets: T[] | undefined,
   legacyAsset: T | null | undefined,
   preferredLayout: SpineLayout = "standee",
+  preferredCostumeId?: string | null,
 ): T | undefined {
-  const candidates = (assets ?? []).filter((asset) => asset.enabled !== false)
+  const enabled = (assets ?? []).filter((asset) => asset.enabled !== false)
+  const costumeCandidates = preferredCostumeId
+    ? enabled.filter((asset) => asset.costume_key === preferredCostumeId)
+    : enabled
+  const candidates = costumeCandidates.length > 0 ? costumeCandidates : enabled
   const preferred = candidates.find((asset) => resolveSpineLayout(asset.layout) === preferredLayout)
   if (preferred) return preferred
   const fallbackLayout = preferredLayout === "standee" ? "memory-lobby" : "standee"
   const fallback = candidates.find((asset) => resolveSpineLayout(asset.layout) === fallbackLayout)
   if (fallback) return fallback
   return legacyAsset?.enabled === false ? undefined : legacyAsset ?? undefined
+}
+
+export function selectExactSpineAsset<T extends SpineAssetLayoutHint>(
+  assets: T[] | undefined,
+  costumeId: string | null | undefined,
+  layout: SpineLayout,
+): T | undefined {
+  if (!costumeId) return undefined
+  return (assets ?? []).find((asset) =>
+    asset.enabled !== false &&
+    asset.costume_key === costumeId &&
+    resolveSpineLayout(asset.layout) === layout
+  )
 }
 
 export function resolveMemoryLobbyCameraSlots(metadata: Record<string, unknown> | undefined): string[] {

@@ -54,6 +54,30 @@ test("core settings updates use an authenticated JSON patch", async () => {
   }])
 })
 
+test("assistant appearance updates use the owned assistant endpoint", async () => {
+  const { handlers, requests } = createHandlers()
+  await handlers.core_update_assistant({ args: {
+    token: "abc",
+    assistantId: 7,
+    input: { visual_costume_id: 12, visual_layout: "memory-lobby" },
+  } })
+  assert.deepEqual(requests[0], ["/api/assistants/7/", {
+    method: "PATCH",
+    headers: { Authorization: "Bearer abc", "content-type": "application/json" },
+    body: '{"visual_costume_id":12,"visual_layout":"memory-lobby"}',
+  }])
+})
+
+test("assistant summaries and on-demand details use separate endpoints", async () => {
+  const { handlers, requests } = createHandlers()
+  await handlers.core_list_assistants({ args: { token: "abc", summary: true } })
+  await handlers.core_get_assistant({ args: { token: "abc", assistantId: 7 } })
+
+  assert.equal(requests[0][0], "/api/assistants/?summary=1")
+  assert.equal(requests[1][0], "/api/assistants/7/")
+  assert.deepEqual(requests[1][1].headers, { Authorization: "Bearer abc" })
+})
+
 test("core logout always clears local authentication state", async () => {
   const { handlers, presence, sessions } = createHandlers()
   await handlers.core_logout({ args: { token: "abc" } })

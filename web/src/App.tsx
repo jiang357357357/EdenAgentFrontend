@@ -15,6 +15,7 @@ import { SkillPage } from "./pages/skills"
 import { useSessionRuntime } from "./hooks/useSessionRuntime"
 import {
   clearAuth,
+  fetchAssistant,
   fetchAssistants,
   fetchCurrentAssistant,
   getAuthMode,
@@ -33,6 +34,7 @@ import {
   type CoreAssistant,
   type DevAccount,
 } from "./lib/auth"
+import { hasAssistantDetail, resolveConversationAssistant } from "./lib/assistant-detail"
 import type { MessageData, PromptAttachment } from "./types"
 import {
   listenDesktopOpenSettings,
@@ -530,7 +532,7 @@ export default function App() {
       try {
         const [assistant, assistants] = await Promise.all([
           fetchCurrentAssistant(token),
-          fetchAssistants(token),
+          fetchAssistants(token, { summary: true }),
         ])
         if (cancelled) return
         setCurrentAssistant(assistant)
@@ -735,9 +737,34 @@ export default function App() {
   }
 
   const conversationAssistantID = draftParticipantIDs[0] ?? activeSession?.participants?.[0]?.assistantID
-  const conversationAssistant =
-    availableAssistants.find((assistant) => String(assistant.id) === String(conversationAssistantID)) ??
-    currentAssistant
+  const conversationAssistant = resolveConversationAssistant(
+    currentAssistant,
+    availableAssistants,
+    conversationAssistantID,
+  )
+
+  useEffect(() => {
+    if (authStatus !== "authenticated" || !conversationAssistantID) return
+    if (hasAssistantDetail(conversationAssistant)) return
+    const token = getStoredToken()
+    const assistantId = Number(conversationAssistantID)
+    if (!token || !Number.isFinite(assistantId)) return
+
+    let cancelled = false
+    void fetchAssistant(token, assistantId)
+      .then((assistant) => {
+        if (cancelled) return
+        setAvailableAssistants((items) =>
+          items.map((item) => item.id === assistant.id ? assistant : item),
+        )
+      })
+      .catch((error) => {
+        if (!cancelled) console.warn("[Assistant] load conversation assistant detail failed", error)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [authStatus, conversationAssistant, conversationAssistantID])
 
   const handleCompactSession = async (instructions?: string) => {
     await compactRuntimeSession(instructions)

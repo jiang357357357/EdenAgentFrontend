@@ -16,6 +16,9 @@ test("assistant switcher delegates the selected character preview to the unified
   )
   assert.match(pageSource, /<CharacterVisualRenderer\s+[\s\S]*?character=\{preview\.character\}/)
   assert.doesNotMatch(pageSource, /<motion\.img\b/)
+  assert.match(pageSource, /fetchAssistants\(token, \{ summary: true \}\)/)
+  assert.match(pageSource, /fetchAssistant\(token, selectedId\)/)
+  assert.match(pageSource, /renderQuality="preview"/)
 })
 
 test("assistant switcher loads first, then removes the current preview before entering the next", () => {
@@ -25,7 +28,8 @@ test("assistant switcher loads first, then removes the current preview before en
   assert.match(pageSource, /setDisplayedVisualKey\(transitionTargetKey\)[\s\S]*?setVisualTransitionPhase\("entering"\)/)
   assert.match(pageSource, /const isLeaving = isDisplayed && visualTransitionPhase === "leaving"/)
   assert.match(pageSource, /onReady=\{\(\) => handleVisualReady\(preview\.key\)\}/)
-  assert.match(pageSource, /selectedIsCurrent \|\| !selectedVisualReady/)
+  assert.match(pageSource, /\(selectedIsCurrent && !appearanceDirty\) \|\| !selectedVisualReady/)
+  assert.match(pageSource, /strictSpineSelection/)
   assert.match(pageSource, /正在准备…/)
 })
 
@@ -34,6 +38,12 @@ test("static and Spine renderers propagate readiness through the unified rendere
   assert.match(rendererSource, /<LazySpineCharacterCanvas[\s\S]*?onReady=\{onReady\}/)
   assert.match(imageSource, /onReadyRef\.current\?\.\(\)/)
   assert.match(spineSource, /onReadyRef\.current\?\.\(\)/)
+})
+
+test("assistant preview Spine uses a bounded resolution and frame rate", () => {
+  assert.match(rendererSource, /renderQuality=\{renderQuality\}/)
+  assert.match(spineSource, /renderQuality === "preview" \? 1\.25 : 2/)
+  assert.match(spineSource, /renderQuality === "preview" \? 15 : 24/)
 })
 
 test("a missing Spine layout never falls through to the standee renderer", () => {

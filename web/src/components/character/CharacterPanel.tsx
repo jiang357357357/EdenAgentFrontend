@@ -1,8 +1,9 @@
 import { Bot, ImageOff } from 'lucide-react';
 import { resolveCoreAssetUrl, type ActiveCharacterAction, type CoreAssistant } from '../../lib/auth';
 import { CharacterPerformanceStage } from './CharacterPerformanceStage';
+import { resolveAssistantAppearance } from './assistant-appearance';
 import { CharacterVisualRenderer } from './renderer/CharacterVisualRenderer';
-import { isMemoryLobbySpineAsset, selectSpineAsset } from './renderer/spine/spine-layout';
+import { isMemoryLobbySpineAsset } from './renderer/spine/spine-layout';
 
 interface CharacterPanelProps {
   assistant?: CoreAssistant | null;
@@ -19,9 +20,8 @@ export function CharacterPanel({ assistant, assistantError, activeAction }: Char
     activeAction?.action?.dynamic_preview_url ||
     activeAction?.action?.dynamic_frames?.[0]?.file_url;
   const image = resolveCoreAssetUrl(activeActionImage || character?.default_standing_image_url || character?.avatar_url);
-  const spineAsset = character?.visual_preference === 'spine'
-    ? selectSpineAsset(character.spine_assets, character.spine_asset, 'memory-lobby')
-    : undefined;
+  const appearance = resolveAssistantAppearance(assistant);
+  const spineAsset = character?.visual_preference === 'spine' ? appearance.asset : undefined;
   const hasSpine = Boolean(spineAsset);
   const hasVisual = Boolean(character && (hasSpine || image));
   const memoryLobby = hasSpine && isMemoryLobbySpineAsset(spineAsset);
@@ -39,7 +39,9 @@ export function CharacterPanel({ assistant, assistantError, activeAction }: Char
               character={character}
               activeAction={activeAction}
               displayName={displayName}
-              preferredSpineLayout="memory-lobby"
+              preferredSpineLayout={appearance.layout}
+              preferredCostumeId={appearance.costumeKey}
+              strictSpineSelection
               className="relative h-full w-full"
             />
           </CharacterPerformanceStage>

@@ -74,11 +74,19 @@ interface SpineCharacterCanvasProps {
   asset: CoreCharacterSpineAsset
   activeAction?: ActiveCharacterAction
   className?: string
+  renderQuality?: "default" | "preview"
   onError?: (error: Error) => void
   onReady?: () => void
 }
 
-export function SpineCharacterCanvas({ asset, activeAction, className, onError, onReady }: SpineCharacterCanvasProps) {
+export function SpineCharacterCanvas({
+  asset,
+  activeAction,
+  className,
+  renderQuality = "default",
+  onError,
+  onReady,
+}: SpineCharacterCanvasProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
   const loadedRef = useRef<LoadedSpineAsset | null>(null)
@@ -110,7 +118,8 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     y: asset.offset_y,
     layout: asset.layout,
     metadata: asset.metadata,
-  }), [asset])
+    renderQuality,
+  }), [asset, renderQuality])
 
   useEffect(() => {
     const host = hostRef.current
@@ -130,10 +139,10 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
       resizeTo: host,
       antialias: true,
       autoDensity: true,
-      resolution: Math.min(window.devicePixelRatio || 1, 2),
+      resolution: Math.min(window.devicePixelRatio || 1, renderQuality === "preview" ? 1.25 : 2),
       backgroundAlpha: 0,
     })
-    app.ticker.maxFPS = 24
+    app.ticker.maxFPS = renderQuality === "preview" ? 15 : 24
     const canvas = app.view as HTMLCanvasElement
     canvas.className = "block h-full w-full"
     canvas.setAttribute("aria-hidden", "true")
@@ -342,7 +351,7 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
                 loaded.spine,
                 animationNamesRef.current,
                 idleAnimation,
-                actionMapping(activeActionRef.current, asset.layout),
+                actionMapping(activeActionRef.current, asset.layout, asset.costume_key),
               )
               requestAnimationFrame(fitModel)
             },
@@ -354,7 +363,7 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
             loaded.spine,
             animationNamesRef.current,
             idleAnimation,
-            actionMapping(activeActionRef.current, asset.layout),
+            actionMapping(activeActionRef.current, asset.layout, asset.costume_key),
           )
         }
         if (layoutRef.current === "memory-lobby") {
@@ -414,7 +423,7 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
       spine,
       animationNamesRef.current,
       idleAnimationRef.current,
-      actionMapping(activeAction, asset.layout),
+      actionMapping(activeAction, asset.layout, asset.costume_key),
     )
   }, [activeAction?.action, activeAction?.performanceID, activeAction?.time])
 

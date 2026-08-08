@@ -10,8 +10,9 @@ import {
 } from "../../lib/desktop-window"
 import { cn } from "../../lib/utils"
 import { CharacterPerformanceStage } from "../character/CharacterPerformanceStage"
+import { resolveAssistantAppearance } from "../character/assistant-appearance"
 import { CharacterVisualRenderer } from "../character/renderer/CharacterVisualRenderer"
-import { selectSpineAsset } from "../character/renderer/spine/spine-layout"
+import { selectExactSpineAsset } from "../character/renderer/spine/spine-layout"
 
 const stageTransition = {
   duration: 0.28,
@@ -64,8 +65,9 @@ export function DesktopPetStage({
     activeCharacterAction?.action?.dynamic_preview_url ||
     activeCharacterAction?.action?.dynamic_frames?.[0]?.file_url
   const characterImage = resolveCoreAssetUrl(activeActionImage || character?.default_standing_image_url || character?.avatar_url)
+  const appearance = resolveAssistantAppearance(assistant)
   const hasSpine = character?.visual_preference === "spine" && Boolean(
-    selectSpineAsset(character.spine_assets, character.spine_asset, "standee"),
+    selectExactSpineAsset(character.spine_assets, appearance.costumeKey, "standee"),
   )
   const hasVisual = Boolean(character && (hasSpine || characterImage))
   const characterOnly = surface === "character"
@@ -221,6 +223,8 @@ export function DesktopPetStage({
                 activeAction={activeCharacterAction}
                 displayName={displayName}
                 preferredSpineLayout="standee"
+                preferredCostumeId={appearance.costumeKey}
+                strictSpineSelection
                 className="relative h-full w-full"
               />
             </CharacterPerformanceStage>

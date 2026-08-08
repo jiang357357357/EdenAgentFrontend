@@ -9,6 +9,7 @@ import {
   MEMORY_LOBBY_CAMERA_Y_BIAS,
   resolveMemoryLobbyCameraSlots,
   resolveSpineLayout,
+  selectExactSpineAsset,
   selectSpineAsset,
 } from "../src/components/character/renderer/spine/spine-layout.ts"
 
@@ -98,6 +99,25 @@ test("falls back to the available legacy Spine asset", () => {
   const memoryLobby = { id: 2, layout: "memory-lobby", enabled: true }
   assert.equal(selectSpineAsset(undefined, memoryLobby, "standee"), memoryLobby)
   assert.equal(selectSpineAsset([], { ...memoryLobby, enabled: false }, "standee"), undefined)
+})
+
+test("selects costume before Spine layout", () => {
+  const defaultStandee = { id: 1, costume_key: "default", layout: "standee", enabled: true }
+  const summerStandee = { id: 2, costume_key: "summer", layout: "standee", enabled: true }
+  const summerLobby = { id: 3, costume_key: "summer", layout: "memory-lobby", enabled: true }
+  assert.equal(
+    selectSpineAsset([defaultStandee, summerLobby, summerStandee], defaultStandee, "standee", "summer"),
+    summerStandee,
+  )
+})
+
+test("exact selection never crosses costume or layout boundaries", () => {
+  const defaultStandee = { id: 1, costume_key: "default", layout: "standee", enabled: true }
+  const summerLobby = { id: 2, costume_key: "summer", layout: "memory-lobby", enabled: true }
+
+  assert.equal(selectExactSpineAsset([defaultStandee, summerLobby], "summer", "memory-lobby"), summerLobby)
+  assert.equal(selectExactSpineAsset([defaultStandee, summerLobby], "summer", "standee"), undefined)
+  assert.equal(selectExactSpineAsset([defaultStandee, summerLobby], "default", "memory-lobby"), undefined)
 })
 
 test("memory-lobby camera slots default to BG and allow metadata overrides", () => {

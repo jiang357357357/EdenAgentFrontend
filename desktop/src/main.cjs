@@ -8,6 +8,7 @@ const { createWorkspaceContext } = require("./app/workspace-context.cjs")
 const { createActivityPresenceService } = require("./activity/activity-presence.cjs")
 const { registerDesktopIpc } = require("./ipc/command-router.cjs")
 const { createCoreCommandHandlers } = require("./ipc/core-command-handlers.cjs")
+const { parseCoreError } = require("./ipc/core-response-error.cjs")
 const { createWindowCommandHandlers } = require("./ipc/window-command-handlers.cjs")
 const { createPetGroupDrag, petGroupPositionAtPointer } = require("./pet/pet-group-drag.cjs")
 const { calculatePetWindowBounds, calculatePetWindowLayout, petCoordinate } = require("./pet/pet-layout.cjs")
@@ -21,9 +22,11 @@ const { createWindowsNoActivateController } = require("./windows/windows-noactiv
 const { createDesktopCapture } = require("./media/desktop-capture.cjs")
 const { registerMediaPermissions } = require("./permissions/register-media-permissions.cjs")
 const { createProcessLifecycle } = require("./processes/process-lifecycle.cjs")
+const { createDesktopQuitFlagController } = require("./processes/desktop-quit-flag.cjs")
 const { registerFileProtocol } = require("./protocols/register-file-protocol.cjs")
 const { createWebAppLoader } = require("./windows/web-app-loader.cjs")
 const { createTrayController } = require("./windows/tray-controller.cjs")
+const { rendererConsoleError } = require("./windows/renderer-console-message.cjs")
 
 const execFileAsync = promisify(execFile)
 const { captureDesktopScreen } = createDesktopCapture({ app, desktopCapturer, screen })
@@ -52,9 +55,11 @@ const {
   resolveMonConfigPath,
   resolveWindowIcon,
 } = workspaceContext
-const quitFlag =
+const quitFlagPath =
   process.env.MON_AGENT_DESKTOP_QUIT_FLAG?.trim() ||
   resolveMonConfigPath("desktop", "QUIT_FLAG", ".artifacts/desktop-quit.flag")
+const quitFlagController = createDesktopQuitFlagController({ quitFlagPath })
+quitFlagController.clearStaleFlagForLaunch()
 const petSettingsPath = resolveMonConfigPath("desktop", "PET_SETTINGS", ".artifacts/desktop-pet-settings.json")
 const performanceLogPath = path.join(agentRoot, ".artifacts", "frontend-performance.jsonl")
 const petSettingsStore = createPetSettingsStore({
@@ -124,7 +129,7 @@ const { createTray, updateTray } = createTrayController({
   createSettingsWindow,
   onQuit: () => {
     isQuitting = true
-    writeQuitFlag()
+    quitFlagController.signalQuit()
     app.quit()
   },
 })
@@ -215,17 +220,6 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ])
-
-async function parseCoreError(response) {
-  const status = response.status
-  const text = await response.text().catch(() => "")
-  try {
-    const data = JSON.parse(text)
-    return data.error || data.message || `${status} ${response.statusText}`
-  } catch {
-    return text || `${status} ${response.statusText}`
-  }
-}
 
 async function coreRequest(endpoint, init = {}) {
   const baseUrl = resolveCoreBaseUrl()
@@ -562,14 +556,9 @@ function attachRendererDiagnostics(targetWindow, label) {
       console.error(`[MonAgent][Renderer] unable to write diagnostics: ${error.message || error}`)
     }
   }
-  contents.on("console-message", (_event, ...args) => {
-    const details = args[0] && typeof args[0] === "object"
-      ? args[0]
-      : { level: args[0], message: args[1], lineNumber: args[2], sourceId: args[3] }
-    const level = details.level
-    if (level !== "error" && level !== 3) return
-    const source = details.sourceId ? ` (${details.sourceId}:${details.lineNumber ?? 0})` : ""
-    report(`${details.message ?? "Unknown renderer error"}${source}`)
+  contents.on("console-message", (event, ...args) => {
+    const message = rendererConsoleError(event, args)
+    if (message) report(message)
   })
   contents.on("render-process-gone", (_event, details) => {
     report(`process gone: ${details.reason} (${details.exitCode})`)
@@ -610,7 +599,7 @@ function createWindow() {
     mainWindow?.show()
   })
   mainWindow.on("close", (event) => {
-    if (!isQuitting && !hasQuitFlag()) {
+    if (!isQuitting && !quitFlagController.hasQuitFlag()) {
       event.preventDefault()
       mainWindow?.hide()
     }
@@ -928,22 +917,9 @@ async function createSettingsWindow() {
   loadWebApp(settingsWindow, "settings")
 }
 
-function hasQuitFlag() {
-  return fs.existsSync(quitFlag)
-}
-
-function writeQuitFlag() {
-  try {
-    fs.mkdirSync(path.dirname(quitFlag), { recursive: true })
-    fs.writeFileSync(quitFlag, String(Date.now()), "utf8")
-  } catch (error) {
-    console.warn("[MonAgent][Desktop] 写入退出标记失败", error)
-  }
-}
-
 function watchQuitFlag() {
   setInterval(() => {
-    if (!hasQuitFlag()) return
+    if (!quitFlagController.hasQuitFlag()) return
     isQuitting = true
     app.quit()
   }, 500).unref?.()

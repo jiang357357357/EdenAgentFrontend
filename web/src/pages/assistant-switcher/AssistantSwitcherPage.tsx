@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   Search,
   ShieldCheck,
+  Shirt,
   Smile,
   Sparkles,
   SquareTerminal,
@@ -14,16 +15,24 @@ import {
 import { motion } from "motion/react"
 import { useEffect, useMemo, useState } from "react"
 import paperTexture from "../../assets/assistant-switcher-paper.png"
-import { CharacterVisualRenderer } from "../../components/character/renderer"
-import { selectSpineAsset } from "../../components/character/renderer/spine/spine-layout"
 import {
+  costumeLayouts,
+  enabledCharacterCostumes,
+  resolveAssistantAppearance,
+} from "../../components/character/assistant-appearance"
+import { CharacterVisualRenderer } from "../../components/character/renderer"
+import type { SpineLayout } from "../../components/character/renderer/spine/spine-layout"
+import {
+  fetchAssistant,
   fetchAssistants,
   getErrorMessage,
   getStoredToken,
   resolveCoreAssetUrl,
   setCurrentAssistant,
+  updateAssistantAppearance,
   type CoreAssistant,
 } from "../../lib/auth"
+import { hasAssistantDetail } from "../../lib/assistant-detail"
 import { cn } from "../../lib/utils"
 
 const pageMotion = {
@@ -131,23 +140,27 @@ interface AssistantVisualPreview {
   character?: AssistantCharacter
   hasVisual: boolean
   key: string
+  costumeKey?: string
+  layout: SpineLayout
 }
 
 type VisualTransitionPhase = "idle" | "leaving" | "entering"
 
-function assistantVisualPreview(assistant: CoreAssistant): AssistantVisualPreview {
+function assistantVisualPreview(
+  assistant: CoreAssistant,
+  override?: { costumeId?: number | null; layout?: SpineLayout },
+): AssistantVisualPreview {
   const character = assistant.character
   const staticUrl = standeeUrl(assistant)
-  const spineAsset = character
-    ? selectSpineAsset(character.spine_assets, character.spine_asset, "standee")
-    : undefined
+  const appearance = resolveAssistantAppearance(assistant, override)
+  const spineAsset = appearance.asset
   const hasSpine = Boolean(
     character?.visual_preference === "spine" &&
     spineAsset &&
     spineAsset.enabled !== false,
   )
   const sourceKey = hasSpine
-    ? `spine:${spineAsset?.id ?? "asset"}:${spineAsset?.skeleton_url}:${spineAsset?.atlas_url}`
+    ? `spine:${appearance.costumeKey ?? "costume"}:${appearance.layout}:${spineAsset?.id ?? "asset"}:${spineAsset?.skeleton_url}:${spineAsset?.atlas_url}`
     : staticUrl
       ? `static:${staticUrl}`
       : "none"
@@ -157,6 +170,8 @@ function assistantVisualPreview(assistant: CoreAssistant): AssistantVisualPrevie
     character,
     hasVisual: Boolean(character && (hasSpine || staticUrl)),
     key: `${assistant.id}:${sourceKey}`,
+    costumeKey: appearance.costumeKey,
+    layout: appearance.layout,
   }
 }
 
@@ -245,6 +260,11 @@ export function AssistantSwitcherPage({
   onParticipantsChanged,
 }: AssistantSwitcherPageProps) {
   const [assistants, setAssistants] = useState<CoreAssistant[]>([])
+  const [assistantDetails, setAssistantDetails] = useState<Record<number, CoreAssistant>>(() =>
+    currentAssistant && hasAssistantDetail(currentAssistant)
+      ? { [currentAssistant.id]: currentAssistant }
+      : {},
+  )
   const [selectedId, setSelectedId] = useState<number | undefined>(currentAssistant?.id)
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(true)
@@ -255,6 +275,9 @@ export function AssistantSwitcherPage({
   const [transitionTargetKey, setTransitionTargetKey] = useState<string>()
   const [visualTransitionPhase, setVisualTransitionPhase] = useState<VisualTransitionPhase>("idle")
   const [readyVisualKeys, setReadyVisualKeys] = useState<Set<string>>(() => new Set())
+  const [selectedCostumeId, setSelectedCostumeId] = useState<number>()
+  const [selectedLayout, setSelectedLayout] = useState<SpineLayout>("standee")
+  const [appearanceDirty, setAppearanceDirty] = useState(false)
   const [selectedIds, setSelectedIds] = useState<number[]>(() =>
     sessionParticipantIDs.map(Number).filter(Number.isFinite),
   )
@@ -272,7 +295,7 @@ export function AssistantSwitcherPage({
       setLoading(true)
       setError(undefined)
       try {
-        const items = await fetchAssistants(token)
+        const items = await fetchAssistants(token, { summary: true })
         if (cancelled) return
         const currentId = currentAssistant?.id ?? items.find((item) => item.is_default)?.id
         const ordered = [...items].sort((left, right) => Number(right.id === currentId) - Number(left.id === currentId))
@@ -303,10 +326,43 @@ export function AssistantSwitcherPage({
     if (currentAssistant?.id) setSelectedId((current) => current ?? currentAssistant.id)
   }, [currentAssistant?.id])
 
+  useEffect(() => {
+    if (!currentAssistant || !hasAssistantDetail(currentAssistant)) return
+    setAssistantDetails((current) => current[currentAssistant.id] === currentAssistant
+      ? current
+      : { ...current, [currentAssistant.id]: currentAssistant })
+  }, [currentAssistant])
+
+  useEffect(() => {
+    if (!selectedId || hasAssistantDetail(assistantDetails[selectedId])) return
+    const token = getStoredToken()
+    if (!token) return
+    let cancelled = false
+    void fetchAssistant(token, selectedId)
+      .then((assistant) => {
+        if (!cancelled) {
+          setAssistantDetails((current) => ({ ...current, [assistant.id]: assistant }))
+        }
+      })
+      .catch((detailError) => {
+        if (!cancelled) setError(getErrorMessage(detailError, "助手详情加载失败。"))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [assistantDetails, selectedId])
+
+  const hydratedAssistants = useMemo(() => assistants.map((assistant) => {
+    const detail = assistantDetails[assistant.id]
+    return detail
+      ? { ...assistant, ...detail, character: detail.character ?? assistant.character }
+      : assistant
+  }), [assistantDetails, assistants])
+
   const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN")
   const filteredAssistants = useMemo(() => {
-    if (!normalizedQuery) return assistants
-    return assistants.filter((assistant) =>
+    if (!normalizedQuery) return hydratedAssistants
+    return hydratedAssistants.filter((assistant) =>
       [
         assistantName(assistant),
         assistant.character?.name,
@@ -317,25 +373,44 @@ export function AssistantSwitcherPage({
         .filter(Boolean)
         .some((value) => String(value).toLocaleLowerCase("zh-CN").includes(normalizedQuery)),
     )
-  }, [assistants, normalizedQuery])
+  }, [hydratedAssistants, normalizedQuery])
   const selectedAssistant =
-    assistants.find((assistant) => assistant.id === selectedId) ??
-    assistants.find((assistant) => assistant.id === currentAssistant?.id) ??
-    assistants.find((assistant) => assistant.is_default) ??
-    assistants[0]
-  const currentAssistantId = currentAssistant?.id ?? assistants.find((assistant) => assistant.is_default)?.id
+    hydratedAssistants.find((assistant) => assistant.id === selectedId) ??
+    hydratedAssistants.find((assistant) => assistant.id === currentAssistant?.id) ??
+    hydratedAssistants.find((assistant) => assistant.is_default) ??
+    hydratedAssistants[0]
+  const currentAssistantId = currentAssistant?.id ?? hydratedAssistants.find((assistant) => assistant.is_default)?.id
   const selectedIsCurrent = Boolean(selectedAssistant && currentAssistantId === selectedAssistant.id)
-  const selectedPreview = selectedAssistant ? assistantVisualPreview(selectedAssistant) : undefined
+  const savedAppearance = resolveAssistantAppearance(selectedAssistant)
+  const selectedAppearance = resolveAssistantAppearance(selectedAssistant, {
+    costumeId: selectedCostumeId,
+    layout: selectedLayout,
+  })
+  const selectedCostumes = enabledCharacterCostumes(selectedAssistant?.character)
+  const selectedCostumeLayouts = costumeLayouts(selectedAppearance.costume)
+  const showAppearanceControls = mode === "default" && selectedCostumes.some((costume) => costumeLayouts(costume).length > 0)
+  const selectedPreview = selectedAssistant
+    ? assistantVisualPreview(selectedAssistant, {
+      costumeId: selectedAppearance.costumeId,
+      layout: selectedAppearance.layout,
+    })
+    : undefined
   const selectedVisualLoaded = Boolean(
     selectedPreview &&
     (!selectedPreview.hasVisual || readyVisualKeys.has(selectedPreview.key)),
   )
   const selectedVisualReady = Boolean(
     selectedPreview &&
-    displayedVisualKey === selectedPreview.key &&
-    visualTransitionPhase === "idle",
+    (!selectedPreview.hasVisual || (
+      displayedVisualKey === selectedPreview.key &&
+      visualTransitionPhase === "idle"
+    )),
   )
-  const previews = assistants.map(assistantVisualPreview)
+  const previews = hydratedAssistants.map((assistant) =>
+    assistant.id === selectedAssistant?.id && selectedPreview
+      ? selectedPreview
+      : assistantVisualPreview(assistant),
+  )
   const displayedPreview = previews.find((preview) => preview.key === displayedVisualKey)
   const transitionTargetPreview = previews.find((preview) => preview.key === transitionTargetKey)
   const visualPreviews: AssistantVisualPreview[] = []
@@ -343,6 +418,14 @@ export function AssistantSwitcherPage({
     if (!preview?.hasVisual || visualPreviews.some((item) => item.key === preview.key)) continue
     visualPreviews.push(preview)
   }
+
+  useEffect(() => {
+    if (!selectedAssistant) return
+    const appearance = resolveAssistantAppearance(selectedAssistant)
+    setSelectedCostumeId(appearance.costumeId)
+    setSelectedLayout(appearance.layout)
+    setAppearanceDirty(false)
+  }, [selectedAssistant?.id, selectedAssistant?.visual_costume_id, selectedAssistant?.visual_layout])
 
   useEffect(() => {
     if (
@@ -405,7 +488,7 @@ export function AssistantSwitcherPage({
   }
 
   async function handleSwitch() {
-    if (!selectedAssistant || selectedIsCurrent || !selectedVisualReady || switchingId) return
+    if (!selectedAssistant || (selectedIsCurrent && !appearanceDirty) || !selectedVisualReady || switchingId) return
     const token = getStoredToken()
     if (!token) {
       setError("登录状态已失效，请重新登录。")
@@ -415,17 +498,33 @@ export function AssistantSwitcherPage({
     setError(undefined)
     setNotice(undefined)
     try {
-      const updated = await setCurrentAssistant(token, selectedAssistant.id)
+      let appearanceAssistant = selectedAssistant
+      if (appearanceDirty && selectedAppearance.costumeId) {
+        appearanceAssistant = await updateAssistantAppearance(token, selectedAssistant.id, {
+          visual_costume_id: selectedAppearance.costumeId,
+          visual_layout: selectedAppearance.layout,
+        })
+      }
+      const updated = selectedIsCurrent
+        ? appearanceAssistant
+        : await setCurrentAssistant(token, selectedAssistant.id)
       const nextAssistant: CoreAssistant = {
         ...selectedAssistant,
+        ...appearanceAssistant,
         ...updated,
-        character: updated.character ?? selectedAssistant.character,
+        character: updated.character ?? appearanceAssistant.character ?? selectedAssistant.character,
       }
       setAssistants((items) =>
         items.map((item) => (item.id === nextAssistant.id ? nextAssistant : item)),
       )
+      setAssistantDetails((items) => ({ ...items, [nextAssistant.id]: nextAssistant }))
       onAssistantChanged(nextAssistant)
-      setNotice(`已将${assistantName(nextAssistant)}设为默认助手，仅影响之后创建的新会话。`)
+      setAppearanceDirty(false)
+      setNotice(
+        selectedIsCurrent
+          ? `已应用${assistantName(nextAssistant)}的外观选择。`
+          : `已应用外观并将${assistantName(nextAssistant)}设为默认助手，仅影响之后创建的新会话。`,
+      )
     } catch (switchError) {
       setError(getErrorMessage(switchError, "切换助手失败。"))
     } finally {
@@ -554,12 +653,14 @@ export function AssistantSwitcherPage({
               type="button"
               onClick={mode === "participants" ? handleSaveParticipants : mode === "session" ? handleSessionSwitch : handleSwitch}
               disabled={
-                (mode === "participants" ? !selectedIds.length : selectedIsCurrent || !selectedVisualReady) ||
+                (mode === "participants"
+                  ? !selectedIds.length
+                  : (selectedIsCurrent && !appearanceDirty) || !selectedVisualReady) ||
                 switchingId !== undefined
               }
               className={cn(
                 "flex h-[4.8vh] min-w-[10.5vw] items-center justify-center rounded-[0.62vh] px-[1.35vw] text-[1.62vh] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2",
-                mode !== "participants" && (selectedIsCurrent || !selectedVisualReady)
+                mode !== "participants" && ((selectedIsCurrent && !appearanceDirty) || !selectedVisualReady)
                   ? "cursor-default border border-[#e1dbd4] bg-[#f4f0eb] text-[#8b837c]"
                   : "bg-accent text-white shadow-[0_0.25vh_0.7vh_rgba(180,95,0,0.16)] hover:bg-[#c86e05] active:bg-[#b86204]",
               )}
@@ -576,10 +677,10 @@ export function AssistantSwitcherPage({
                   <LoaderCircle className="mr-[0.55vw] h-[2vh] w-[2vh] animate-spin" />
                   正在准备…
                 </>
-              ) : selectedIsCurrent ? (
-                mode === "default" ? "默认助手" : "本会话助手"
+              ) : selectedIsCurrent && !appearanceDirty ? (
+                mode === "default" ? "当前选择" : "本会话助手"
               ) : (
-                mode === "default" ? `设为默认 · ${assistantName(selectedAssistant)}` : `切换本会话 · ${assistantName(selectedAssistant)}`
+                mode === "default" ? "应用选择" : `切换本会话 · ${assistantName(selectedAssistant)}`
               )}
             </button>
           ) : null}
@@ -632,7 +733,108 @@ export function AssistantSwitcherPage({
                 </div>
               </dl>
 
-              <div className="mt-[5.2vh] flex items-center gap-[0.65vw] text-[1.5vh] text-[#817970]">
+              {showAppearanceControls ? (
+                <section className="mt-[3.2vh] w-[34vw] max-w-[560px]" aria-labelledby="appearance-settings-title">
+                  <div className="flex items-center justify-between">
+                    <h3 id="appearance-settings-title" className="flex items-center gap-[0.55vw] text-[1.72vh] font-medium text-[#4d4742]">
+                      <Shirt className="h-[2vh] w-[2vh] text-[#777069]" strokeWidth={1.7} />
+                      外观设置
+                    </h3>
+                    <span className="text-[1.35vh] text-[#958c84]">
+                      当前：{selectedAppearance.costume?.name ?? "默认服装"} · {selectedAppearance.layout === "memory-lobby" ? "记忆大厅" : "普通立绘"}
+                    </span>
+                  </div>
+
+                  <div className="mt-[1.2vh] flex gap-[0.75vw] overflow-x-auto pb-[0.45vh]" role="listbox" aria-label="选择服装">
+                    {selectedCostumes.map((costume) => {
+                      const active = costume.id === selectedAppearance.costumeId
+                      const avatar = resolveCoreAssetUrl(costume.avatar_url || selectedAssistant.character?.avatar_url)
+                      const layouts = costumeLayouts(costume)
+                      const disabled = layouts.length === 0
+                      return (
+                        <button
+                          key={costume.id}
+                          type="button"
+                          role="option"
+                          aria-selected={active}
+                          disabled={disabled}
+                          onClick={() => {
+                            const next = resolveAssistantAppearance(selectedAssistant, {
+                              costumeId: costume.id,
+                              layout: selectedLayout,
+                            })
+                            setSelectedCostumeId(next.costumeId)
+                            setSelectedLayout(next.layout)
+                            setAppearanceDirty(
+                              next.costumeId !== savedAppearance.costumeId || next.layout !== savedAppearance.layout,
+                            )
+                            setNotice(undefined)
+                          }}
+                          className={cn(
+                            "flex h-[7.2vh] min-w-[8.4vw] items-center gap-[0.65vw] rounded-[0.72vh] border px-[0.7vw] text-left outline-none transition-all focus-visible:ring-2 focus-visible:ring-accent/35",
+                            active
+                              ? "border-accent bg-[#fff2df] shadow-[0_0.25vh_0.7vh_rgba(180,95,0,0.1)]"
+                              : "border-[#ded8d0] bg-white/55 hover:border-[#cfc6bc] hover:bg-white/80",
+                            disabled && "cursor-not-allowed opacity-45",
+                          )}
+                        >
+                          <span className="flex h-[5.2vh] w-[5.2vh] shrink-0 items-center justify-center overflow-hidden rounded-[0.55vh] bg-[#f7f2eb]">
+                            {avatar ? (
+                              <img src={avatar} alt="" className="h-full w-full object-cover object-top" draggable={false} />
+                            ) : (
+                              <Shirt className="h-[2.4vh] w-[2.4vh] text-[#9b9188]" strokeWidth={1.5} />
+                            )}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-[1.52vh] font-medium text-[#4d4640]">{costume.name}</span>
+                            <span className="mt-[0.35vh] block text-[1.18vh] text-[#948a82]">
+                              {layouts.length === 2 ? "两种展示" : layouts[0] === "memory-lobby" ? "记忆大厅" : layouts[0] === "standee" ? "普通立绘" : "暂无资源"}
+                            </span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <div className="mt-[1.15vh] grid grid-cols-[8vw_minmax(0,1fr)] items-center gap-[1vw]">
+                    <span className="text-[1.52vh] text-[#756e67]">展示模式</span>
+                    <div className="grid h-[4.5vh] grid-cols-2 rounded-[0.65vh] border border-[#ded8d0] bg-[#f2eee8]/70 p-[0.35vh]" role="radiogroup" aria-label="选择展示模式">
+                      {([
+                        ["standee", "普通立绘"],
+                        ["memory-lobby", "记忆大厅"],
+                      ] as const).map(([layout, label]) => {
+                        const available = selectedCostumeLayouts.includes(layout)
+                        const active = selectedAppearance.layout === layout
+                        return (
+                          <button
+                            key={layout}
+                            type="button"
+                            role="radio"
+                            aria-checked={active}
+                            disabled={!available}
+                            onClick={() => {
+                              setSelectedLayout(layout)
+                              setAppearanceDirty(
+                                selectedAppearance.costumeId !== savedAppearance.costumeId || layout !== savedAppearance.layout,
+                              )
+                              setNotice(undefined)
+                            }}
+                            className={cn(
+                              "rounded-[0.48vh] text-[1.45vh] font-medium outline-none transition-all focus-visible:ring-2 focus-visible:ring-accent/35",
+                              active ? "bg-white text-accent shadow-sm" : "text-[#777069] hover:text-[#4e4843]",
+                              !available && "cursor-not-allowed opacity-35",
+                            )}
+                          >
+                            {label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+
+              <div className={cn("flex items-center gap-[0.65vw] text-[1.5vh] text-[#817970]", showAppearanceControls ? "mt-[2.8vh]" : "mt-[5.2vh]") }>
                 <ShieldCheck className="h-[1.95vh] w-[1.95vh]" strokeWidth={1.7} />
                 {mode === "participants"
                   ? `已选择 ${selectedIds.length} 位助手；历史消息会保留各自说话人身份`
@@ -681,7 +883,10 @@ export function AssistantSwitcherPage({
                     <CharacterVisualRenderer
                       character={preview.character}
                       displayName={assistantName(preview.assistant)}
-                      preferredSpineLayout="standee"
+                      preferredSpineLayout={preview.layout}
+                      preferredCostumeId={preview.costumeKey}
+                      strictSpineSelection
+                      renderQuality="preview"
                       className="relative h-full w-full"
                       onReady={() => handleVisualReady(preview.key)}
                     />

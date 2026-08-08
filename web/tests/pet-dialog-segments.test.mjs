@@ -33,6 +33,8 @@ test("normalizes arbitrary tool results and status", () => {
     input: '{\n  "path": "README.md"\n}',
     output: '{\n  "lines": [\n    "hello"\n  ]\n}',
     error: undefined,
+    errorCode: undefined,
+    retryable: undefined,
     duration: undefined,
   })
 })

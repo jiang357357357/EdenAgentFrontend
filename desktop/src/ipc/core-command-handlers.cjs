@@ -43,9 +43,21 @@ function createCoreCommandHandlers({
       method: "GET",
       headers: authHeader(args.token),
     }),
-    core_list_assistants: ({ args }) => coreRequest("/api/assistants/", {
+    core_list_assistants: ({ args }) => coreRequest(
+      args.summary ? "/api/assistants/?summary=1" : "/api/assistants/",
+      {
       method: "GET",
       headers: authHeader(args.token),
+      },
+    ),
+    core_get_assistant: ({ args }) => coreRequest(`/api/assistants/${args.assistantId}/`, {
+      method: "GET",
+      headers: authHeader(args.token),
+    }),
+    core_update_assistant: ({ args }) => coreRequest(`/api/assistants/${args.assistantId}/`, {
+      method: "PATCH",
+      headers: { ...authHeader(args.token), "content-type": "application/json" },
+      body: JSON.stringify(args.input ?? {}),
     }),
     core_update_agent_settings: ({ args }) => coreRequest("/api/agent/settings/my/", {
       method: "PATCH",
