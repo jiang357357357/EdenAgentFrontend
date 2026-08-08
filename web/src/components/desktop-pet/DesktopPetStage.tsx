@@ -11,6 +11,7 @@ import {
 import { cn } from "../../lib/utils"
 import { CharacterPerformanceStage } from "../character/CharacterPerformanceStage"
 import { CharacterVisualRenderer } from "../character/renderer/CharacterVisualRenderer"
+import { selectSpineAsset } from "../character/renderer/spine/spine-layout"
 
 const stageTransition = {
   duration: 0.28,
@@ -63,7 +64,9 @@ export function DesktopPetStage({
     activeCharacterAction?.action?.dynamic_preview_url ||
     activeCharacterAction?.action?.dynamic_frames?.[0]?.file_url
   const characterImage = resolveCoreAssetUrl(activeActionImage || character?.default_standing_image_url || character?.avatar_url)
-  const hasSpine = character?.visual_preference === "spine" && Boolean(character.spine_asset)
+  const hasSpine = character?.visual_preference === "spine" && Boolean(
+    selectSpineAsset(character.spine_assets, character.spine_asset, "standee"),
+  )
   const hasVisual = Boolean(character && (hasSpine || characterImage))
   const characterOnly = surface === "character"
   const bubbleOnly = surface === "bubble" || surface === "icon"
@@ -217,6 +220,7 @@ export function DesktopPetStage({
                 character={character}
                 activeAction={activeCharacterAction}
                 displayName={displayName}
+                preferredSpineLayout="standee"
                 className="relative h-full w-full"
               />
             </CharacterPerformanceStage>

@@ -342,7 +342,7 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
                 loaded.spine,
                 animationNamesRef.current,
                 idleAnimation,
-                actionMapping(activeActionRef.current),
+                actionMapping(activeActionRef.current, asset.layout),
               )
               requestAnimationFrame(fitModel)
             },
@@ -350,7 +350,12 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
           )
         } else if (idleAnimation) {
           loaded.spine.state.setAnimation(0, idleAnimation, true)
-          playMappedAction(loaded.spine, animationNamesRef.current, idleAnimation, actionMapping(activeActionRef.current))
+          playMappedAction(
+            loaded.spine,
+            animationNamesRef.current,
+            idleAnimation,
+            actionMapping(activeActionRef.current, asset.layout),
+          )
         }
         if (layoutRef.current === "memory-lobby") {
           if (interactionAnimationsRef.current.blink) scheduleBlink(3_000)
@@ -405,7 +410,12 @@ export function SpineCharacterCanvas({ asset, activeAction, className, onError, 
     const releaseTimer = pointerInteractionRef.current.releaseTimer
     if (releaseTimer) window.clearTimeout(releaseTimer)
     pointerInteractionRef.current = initialInteractionState()
-    playMappedAction(spine, animationNamesRef.current, idleAnimationRef.current, actionMapping(activeAction))
+    playMappedAction(
+      spine,
+      animationNamesRef.current,
+      idleAnimationRef.current,
+      actionMapping(activeAction, asset.layout),
+    )
   }, [activeAction?.action, activeAction?.performanceID, activeAction?.time])
 
   const updatePointerTarget = (event: PointerEvent<HTMLDivElement>) => {
