@@ -409,9 +409,16 @@ export type ApiStepFinishPart = {
 }
 
 export type ApiToolState =
-  | { status: "pending" | "running"; input?: unknown; time?: { start?: number; end?: number } }
+  | { status: "pending" | "running"; input?: unknown; output?: string; time?: { start?: number; end?: number } }
   | { status: "completed"; input?: unknown; output: string; time?: { start?: number; end?: number } }
-  | { status: "error"; input?: unknown; error: string; time?: { start?: number; end?: number } }
+  | {
+      status: "error" | "aborted"
+      input?: unknown
+      error: string
+      errorCode?: string
+      retryable?: boolean
+      time?: { start?: number; end?: number }
+    }
 
 export type ApiToolPart = {
   id: string
@@ -977,7 +984,7 @@ export function resolveMonAgentUrl(url: string) {
 
 function mapTool(part: ApiToolPart): ToolCall {
   const state = part.state
-  const status = state.status === "completed" ? "success" : state.status === "error" ? "error" : "running"
+  const status = state.status === "completed" ? "success" : state.status === "aborted" ? "aborted" : state.status === "error" ? "error" : "running"
   const time = state.time
   const start = time?.start
   const end = time?.end
@@ -987,8 +994,10 @@ function mapTool(part: ApiToolPart): ToolCall {
     name: part.tool,
     status,
     input: stringify("input" in state ? state.input : {}),
-    output: state.status === "completed" ? state.output : undefined,
-    error: state.status === "error" ? state.error : undefined,
+    output: "output" in state ? state.output : undefined,
+    error: state.status === "error" || state.status === "aborted" ? state.error : undefined,
+    errorCode: state.status === "error" || state.status === "aborted" ? state.errorCode : undefined,
+    retryable: state.status === "error" || state.status === "aborted" ? state.retryable : undefined,
     duration: start && end ? end - start : undefined,
   }
 }

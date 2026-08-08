@@ -134,6 +134,9 @@ export function SkillPage({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     void refresh()
+    const handleChanged = () => void refresh()
+    window.addEventListener("monagent:skills-changed", handleChanged)
+    return () => window.removeEventListener("monagent:skills-changed", handleChanged)
   }, [refresh])
 
   const installedCount = useMemo(() => skills.filter((skill) => !skill.builtin).length, [skills])

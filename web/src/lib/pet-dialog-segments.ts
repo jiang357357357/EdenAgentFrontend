@@ -47,7 +47,7 @@ function normalizeTool(value: PetDialogSegmentInput["tool"]): ToolCall | undefin
   if (!value || typeof value !== "object") return undefined
   const tool = value as Record<string, unknown>
   const rawStatus = tool.status
-  const status: ToolCall["status"] = rawStatus === "success" || rawStatus === "error" ? rawStatus : "running"
+  const status: ToolCall["status"] = rawStatus === "success" || rawStatus === "error" || rawStatus === "aborted" ? rawStatus : "running"
   const duration = typeof tool.duration === "number" && Number.isFinite(tool.duration)
     ? tool.duration
     : undefined
@@ -59,6 +59,8 @@ function normalizeTool(value: PetDialogSegmentInput["tool"]): ToolCall | undefin
     input: petDialogValueText(tool.input),
     output: optionalText(tool.output),
     error: optionalText(tool.error),
+    errorCode: optionalText(tool.errorCode),
+    retryable: typeof tool.retryable === "boolean" ? tool.retryable : undefined,
     duration,
   }
 }

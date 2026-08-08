@@ -434,6 +434,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const activeSession = useMemo(() => selectActiveSession(state), [state]);
   const pendingPermissions = useMemo(() => selectPendingPermissions(state, state.activeSessionId), [state]);
   const pendingQuestions = useMemo(() => selectPendingQuestions(state, state.activeSessionId), [state]);
+  const allPendingQuestions = useMemo(() => selectPendingQuestions(state), [state]);
   const isThinking = selectSessionStatus(state, state.activeSessionId) !== 'idle';
   const activeSessionError = state.activeSessionId ? state.sessions[state.activeSessionId]?.error : undefined;
 
@@ -456,6 +457,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     interruptSubagent,
     pendingPermissions,
     pendingQuestions,
+    allPendingQuestions,
     permissionMode,
     respondPermission,
     reset: () => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveCoreAssetUrl } from "../lib/auth"
 import {
   claimDesktopSpeechPlayback,
@@ -229,6 +229,7 @@ export function useTTSSpeech({ sessionId, mode, isThinking, segments, activeSegm
     intent: DesktopSpeechIntent,
     speechKey = segmentId,
     startIndex = 0,
+    preservePresentation = false,
   ) => {
     if (generation !== generationRef.current || playbackGeneration !== playbackGenerationRef.current) return
     const durations = await Promise.all(sources.map(sourceDuration))
@@ -278,9 +279,11 @@ export function useTTSSpeech({ sessionId, mode, isThinking, segments, activeSegm
     } finally {
       if (speechLeaseRef.current === claim.leaseId) speechLeaseRef.current = null
       void releaseDesktopSpeechPlayback(claim.leaseId)
-      setActiveSegmentId((current) => current === segmentId ? null : current)
       setPaused(false)
-      if (progressRef.current?.segmentId === segmentId) progressRef.current = null
+      if (!preservePresentation) {
+        setActiveSegmentId((current) => current === segmentId ? null : current)
+        if (progressRef.current?.segmentId === segmentId) progressRef.current = null
+      }
       if (timelineRef.current === timeline) timelineRef.current = null
     }
   }
@@ -438,6 +441,7 @@ export function useTTSSpeech({ sessionId, mode, isThinking, segments, activeSegm
           "auto",
           `${state.streamKey}:tts:${chunkIndex}`,
           Math.max(0, availableSources.length - 1),
+          true,
         )
       })
       .catch((error) => console.warn("[Chat][TTS] 流式句子播放失败", error))
@@ -531,10 +535,10 @@ export function useTTSSpeech({ sessionId, mode, isThinking, segments, activeSegm
     }
   }
 
-  const getProgress = (segmentId: string) => {
+  const getProgress = useCallback((segmentId: string) => {
     const progress = progressRef.current
     return progress?.segmentId === segmentId ? progress : null
-  }
+  }, [])
 
   useEffect(() => {
     let disposed = false
@@ -653,7 +657,17 @@ export function useTTSSpeech({ sessionId, mode, isThinking, segments, activeSegm
     }
     if (!isThinking && runWasActive) {
       runActiveRef.current = false
-      outputGateRef.current?.holdUntil(queueRef.current)
+      const finalQueue = queueRef.current
+      const finalGeneration = generationRef.current
+      outputGateRef.current?.holdUntil(finalQueue)
+      void finalQueue.finally(() => {
+        if (generationRef.current !== finalGeneration) return
+        const segmentId = progressRef.current?.segmentId
+        if (!segmentId || audioRef.current) return
+        progressRef.current = null
+        setActiveSegmentId((current) => current === segmentId ? null : current)
+        setPaused(false)
+      })
     }
   }, [activeSegments, isThinking, mode, sessionId])
 

@@ -41,6 +41,7 @@ function subagentsForTool(tool: ToolCall, threads: SubagentThread[]) {
 function statusLabel(status: ToolCall["status"]) {
   if (status === "running") return "运行中"
   if (status === "error") return "失败"
+  if (status === "aborted") return "已中止"
   return "完成"
 }
 
@@ -77,7 +78,7 @@ export function ToolCard({
         <span
           className={cn(
             "shrink-0 rounded-full border px-[0.8vh] py-[0.12vh] text-[1.12vh]",
-            tool.status === "error"
+            tool.status === "error" || tool.status === "aborted"
               ? "border-red-200 text-red-500"
               : tool.status === "running"
                 ? "border-violet-200 text-violet-500"
@@ -87,7 +88,7 @@ export function ToolCard({
           {statusLabel(tool.status)}
         </span>
         {tool.duration ? <span className="shrink-0 text-[1.18vh] text-text-muted/60">{tool.duration}ms</span> : null}
-        {tool.status === "error" ? <AlertCircle className="h-[1.5vh] w-[1.5vh] shrink-0 text-red-500" /> : null}
+        {tool.status === "error" || tool.status === "aborted" ? <AlertCircle className="h-[1.5vh] w-[1.5vh] shrink-0 text-red-500" /> : null}
         <ChevronRight
           className={cn("h-[1.55vh] w-[1.55vh] shrink-0 text-text-muted/60 transition-transform", expanded && "rotate-90")}
         />
@@ -102,7 +103,11 @@ export function ToolCard({
             className="overflow-hidden"
           >
             <div className="grid min-w-0 gap-[1vh] border-t border-border bg-violet-50/20 px-[1.2vh] py-[1.1vh]">
-              <div className="text-[1.25vh] text-text-muted">状态：{statusLabel(tool.status)}</div>
+              <div className="flex flex-wrap gap-x-[1.2vh] text-[1.25vh] text-text-muted">
+                <span>状态：{statusLabel(tool.status)}</span>
+                {tool.errorCode ? <span>错误码：{tool.errorCode}</span> : null}
+                {typeof tool.retryable === "boolean" ? <span>{tool.retryable ? "可以重试" : "不建议原样重试"}</span> : null}
+              </div>
               {tool.input ? (
                 <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[0.9vh] bg-bg/80 p-[0.9vh] font-mono text-[1.28vh] leading-[1.5] text-text">
                   {tool.input}

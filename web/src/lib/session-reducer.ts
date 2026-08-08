@@ -298,7 +298,7 @@ function isRuntimeToolRuntimePart(part: RuntimePart | undefined): part is Runtim
 }
 
 function isTerminalToolState(status: RuntimeToolPart["state"]["status"]) {
-  return status === "completed" || status === "error"
+  return status === "completed" || status === "error" || status === "aborted"
 }
 
 function upsertPart(message: RuntimeMessage, part: RuntimePart) {

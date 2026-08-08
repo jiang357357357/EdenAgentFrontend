@@ -588,12 +588,7 @@ export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageP
                       <span>{assistantName}</span>
                     </div>
 
-                    <div className="mt-[2.3vh] flex min-h-[6.1vh] shrink-0 items-center gap-[0.85vw] rounded-[0.55vh] bg-accent-dim/45 px-[1vw] text-[1.62vh] leading-relaxed text-text">
-                      <Sparkles className="h-[2.05vh] w-[2.05vh] shrink-0 text-accent" />
-                      <span className="line-clamp-2">{trimText(selectedAction?.message || selectedDiary?.summary || selectedRun.current_desire, "完成本轮观察。")}</span>
-                    </div>
-
-                    <div className="mt-[3.2vh] flex min-h-0 flex-1 flex-col">
+                    <div className="mt-[2.4vh] flex min-h-0 flex-1 flex-col">
                       <h3 className="border-l-[0.22vw] border-accent pl-[0.8vw] font-serif text-[2.08vh] text-text">工作日记</h3>
                       <div className="mt-[1.8vh] min-h-0 flex-1 overflow-y-auto pr-[0.8vw]" style={{ scrollbarGutter: "stable" }}>
                         <p className="whitespace-pre-wrap font-serif text-[1.75vh] leading-[2.05] text-text">
@@ -616,6 +611,7 @@ export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageP
                       <dl className="mt-[2vh] space-y-[1.45vh] text-[1.95vh] leading-relaxed">
                         <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">状态</dt><dd>{trimText(selectedRun.mood, "平稳")}</dd></div>
                         <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">当前想法</dt><dd>{trimText(selectedRun.current_desire, "没有留下明确想法。")}</dd></div>
+                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">行动摘要</dt><dd>{trimText(selectedAction?.message || selectedDiary?.summary || selectedRun.current_desire, "完成本轮观察。")}</dd></div>
                       </dl>
                     </section>
 

@@ -17,6 +17,7 @@ export function toolStatus(status: ToolCall["status"]) {
   if (status === "running") return "运行中"
   if (status === "success") return "完成"
   if (status === "error") return "失败"
+  if (status === "aborted") return "已中止"
   return status || "等待"
 }
 

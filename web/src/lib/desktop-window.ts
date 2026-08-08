@@ -140,6 +140,12 @@ export async function setDesktopWindowAppearance(mode: DesktopWindowMode) {
   }
 }
 
+export async function setDesktopQuestionWindowVisible(visible: boolean) {
+  const bridge = getDesktopBridge()
+  if (!bridge) return false
+  return bridge.invoke<boolean>('set_question_window_visible', { visible }).catch(() => false)
+}
+
 export async function setDesktopViewModeState(mode: DesktopViewMode) {
   const bridge = getDesktopBridge();
   if (!bridge) return;

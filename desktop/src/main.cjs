@@ -81,6 +81,7 @@ let petWindow = null
 let petBubbleWindow = null
 let petBubbleIconWindow = null
 let settingsWindow = null
+let questionWindow = null
 let isQuitting = false
 let currentViewMode = "chatWithCharacter"
 let petSettings = petSettingsStore.read()
@@ -624,6 +625,63 @@ function createWindow() {
   loadWebApp(mainWindow)
 }
 
+function createQuestionWindow() {
+  if (questionWindow && !questionWindow.isDestroyed()) return questionWindow
+  const preload = path.join(__dirname, "preload.cjs")
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  const workArea = display.workArea
+  const bounds = {
+    width: Math.round(workArea.width * 0.36),
+    height: Math.round(workArea.height * 0.72),
+  }
+  questionWindow = new BrowserWindow({
+    title: "MonAgent 用户决策",
+    ...bounds,
+    minWidth: Math.round(workArea.width * 0.28),
+    minHeight: Math.round(workArea.height * 0.5),
+    center: true,
+    show: false,
+    frame: true,
+    autoHideMenuBar: true,
+    alwaysOnTop: true,
+    skipTaskbar: false,
+    backgroundColor: "#f5f5f4",
+    icon: resolveWindowIcon(),
+    webPreferences: {
+      preload,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      webSecurity: false,
+    },
+  })
+  questionWindow.on("close", (event) => {
+    if (isQuitting || hasQuitFlag()) return
+    event.preventDefault()
+    questionWindow?.hide()
+  })
+  questionWindow.on("closed", () => {
+    questionWindow = null
+  })
+  attachRendererDiagnostics(questionWindow, "question")
+  attachWindowActivityEvents(questionWindow, "question")
+  loadWebApp(questionWindow, "question")
+  return questionWindow
+}
+
+function setQuestionWindowVisible(visible) {
+  const targetWindow = createQuestionWindow()
+  if (!visible) {
+    targetWindow.hide()
+    return true
+  }
+  if (targetWindow.isMinimized()) targetWindow.restore()
+  targetWindow.setAlwaysOnTop(true)
+  targetWindow.show()
+  targetWindow.focus()
+  return true
+}
+
 async function createPetWindow() {
   petSettings = petSettingsStore.read()
 
@@ -944,6 +1002,7 @@ registerDesktopIpc({
       await createPetWindow()
       return true
     },
+    set_question_window_visible: ({ args }) => setQuestionWindowVisible(Boolean(args.visible)),
     set_view_mode_state: ({ args }) => {
       currentViewMode = args.mode === "character" ? "character" : "chatWithCharacter"
       updateTray()
@@ -1022,6 +1081,7 @@ app.on("second-instance", () => {
     })
     desktopEnvironmentService.startMonitors()
     createWindow()
+    createQuestionWindow()
     if (process.env.MON_AGENT_DESKTOP_START_PAGE === "settings") {
       void createSettingsWindow()
     } else if (process.env.MON_AGENT_DESKTOP_START_PAGE === "pet") {

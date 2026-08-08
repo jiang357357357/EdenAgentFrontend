@@ -169,17 +169,20 @@ function stringify(value: unknown) {
   }
 }
 
-function mapTool(part: RuntimeToolPart): ToolCall {
+function mapTool(part: RuntimeToolPart, sessionIsRunning = true): ToolCall {
   const state = part.state
   const start = state.time?.start
   const end = state.time?.end
+  const interrupted = !sessionIsRunning && (state.status === "pending" || state.status === "running")
   return {
     id: part.id,
     name: part.tool,
-    status: state.status === "completed" ? "success" : state.status === "error" ? "error" : "running",
+    status: state.status === "completed" ? "success" : state.status === "aborted" || interrupted ? "aborted" : state.status === "error" ? "error" : "running",
     input: stringify("input" in state ? state.input : {}),
-    output: state.status === "completed" ? state.output : undefined,
-    error: state.status === "error" ? state.error : undefined,
+    output: "output" in state ? state.output : undefined,
+    error: state.status === "error" || state.status === "aborted" ? state.error : interrupted ? "上一次运行在工具完成前已中止。" : undefined,
+    errorCode: state.status === "error" || state.status === "aborted" ? state.errorCode : undefined,
+    retryable: state.status === "error" || state.status === "aborted" ? state.retryable : undefined,
     duration: start && end ? end - start : undefined,
   }
 }
@@ -258,7 +261,7 @@ function mapMessage(message: RuntimeMessage, sessionIsRunning: boolean): Message
   const images = parts
     .filter((part): part is RuntimeFilePart => isRuntimeFilePart(part) && part.mime.startsWith("image/"))
     .map((part) => part.url)
-  const toolCalls = toolParts.map(mapTool)
+  const toolCalls = toolParts.map((part) => mapTool(part, sessionIsRunning))
   const metaParts = parts.map(mapMetaPart).filter((part): part is MetaPartCard => Boolean(part))
   const hasRunningTool = toolParts.some((part) => part.state.status === "pending" || part.state.status === "running")
   const isStreaming = isAssistantMessageStreaming(
@@ -301,7 +304,7 @@ function mapMessage(message: RuntimeMessage, sessionIsRunning: boolean): Message
         ]
       }
       if (isRuntimeToolPart(part)) {
-        return [{ id: part.id, type: "tool", tool: mapTool(part) }]
+        return [{ id: part.id, type: "tool", tool: mapTool(part, sessionIsRunning) }]
       }
       if (isRuntimeFilePart(part) && part.mime.startsWith("image/")) {
         return [{ id: part.id, type: "image", url: part.url, filename: part.filename }]
@@ -441,8 +444,7 @@ export function selectPendingPermissions(state: RuntimeState, sessionID?: string
 }
 
 export function selectPendingQuestions(state: RuntimeState, sessionID?: string): PendingQuestion[] {
-  if (!sessionID) return []
   return state.questionOrder
     .map((requestID) => state.questions[requestID])
-    .filter((request): request is PendingQuestion => Boolean(request && request.sessionID === sessionID))
+    .filter((request): request is PendingQuestion => Boolean(request && (!sessionID || request.sessionID === sessionID)))
 }

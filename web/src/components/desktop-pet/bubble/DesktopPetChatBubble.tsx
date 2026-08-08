@@ -209,7 +209,7 @@ export function DesktopPetChatBubble({
                         <span
                           className={cn(
                             "shrink-0 rounded-full border px-[2cqh] py-[0.7cqh] text-[0.82em]",
-                            segment.tool.status === "error"
+                            segment.tool.status === "error" || segment.tool.status === "aborted"
                               ? "border-red-400/30 bg-red-400/10 text-red-300"
                               : "border-white/12 bg-white/5 text-stone-400",
                           )}

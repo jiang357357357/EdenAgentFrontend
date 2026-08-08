@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { X } from "lucide-react"
 import { AnimatePresence, LayoutGroup, motion } from "motion/react"
 import { QuestionDecisionOverlay } from "./components/requests"
+import { setDesktopQuestionWindowVisible } from "./lib/desktop-window"
 import { PetSurfaceErrorBoundary } from "./components/desktop-pet"
 import { ChatPage } from "./pages/chat"
 import { CharacterPage } from "./pages/character"
@@ -46,11 +47,11 @@ const screenTransition = {
   ease: [0.16, 1, 0.3, 1],
 } as const
 
-type AppPage = "chat" | "selfAwake" | "memo" | "skills" | "settings" | "assistant-switcher" | "pet" | "pet-character" | "pet-bubble" | "pet-icon"
+type AppPage = "chat" | "selfAwake" | "memo" | "skills" | "settings" | "assistant-switcher" | "pet" | "pet-character" | "pet-bubble" | "pet-icon" | "question"
 
 function initialPageFromLocation(): AppPage {
   const page = new URLSearchParams(window.location.search).get("page")
-  if (page === "settings" || page === "skills" || page === "assistant-switcher" || page === "pet" || page === "pet-character" || page === "pet-bubble" || page === "pet-icon") return page
+  if (page === "settings" || page === "skills" || page === "assistant-switcher" || page === "pet" || page === "pet-character" || page === "pet-bubble" || page === "pet-icon" || page === "question") return page
   return "chat"
 }
 
@@ -108,6 +109,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const initialPage = initialPageFromLocation()
   const isSettingsWindow = initialPage === "settings"
+  const isQuestionWindow = initialPage === "question"
   const isPetWindow = initialPage === "pet" || initialPage === "pet-character" || initialPage === "pet-bubble" || initialPage === "pet-icon"
   const petSurface = initialPage === "pet-character"
     ? "character"
@@ -137,6 +139,10 @@ export default function App() {
   const modeResizeTimerRef = useRef<number | undefined>(undefined)
   const modeSwitchTokenRef = useRef(0)
   const handleRuntimeEvent = useCallback((event: { type: string; properties?: unknown }) => {
+    if (event.type === "tools.changed") {
+      window.dispatchEvent(new CustomEvent("monagent:skills-changed", { detail: event.properties }))
+      return
+    }
     if (event.type !== "character.action.changed") return
     const properties = event.properties as CharacterActionChangedEvent["properties"] | undefined
     if (!properties) return
@@ -176,6 +182,7 @@ export default function App() {
     loadOlderMessages,
     pendingPermissions,
     pendingQuestions,
+    allPendingQuestions,
     permissionMode,
     reset: resetSessionRuntime,
     respondPermission,
@@ -345,6 +352,14 @@ export default function App() {
   )
 
   useEffect(() => {
+    if (!isQuestionWindow) return
+    void setDesktopQuestionWindowVisible(allPendingQuestions.length > 0)
+    return () => {
+      void setDesktopQuestionWindowVisible(false)
+    }
+  }, [allPendingQuestions.length, isQuestionWindow])
+
+  useEffect(() => {
     let cancelled = false
 
     async function bootstrapAuth() {
@@ -489,11 +504,11 @@ export default function App() {
   }, [messageScrollKey, autoScrollEnabled])
 
   useEffect(() => {
-    if (isSettingsWindow || isPetWindow) return
+    if (isSettingsWindow || isPetWindow || isQuestionWindow) return
     void resizeDesktopWindow(authStatus === "authenticated" ? "chatWithCharacter" : "login")
     if (authStatus !== "authenticated") return
     void setDesktopWindowAppearance("chatWithCharacter")
-  }, [authStatus, isPetWindow, isSettingsWindow])
+  }, [authStatus, isPetWindow, isQuestionWindow, isSettingsWindow])
 
   useEffect(() => {
     if (authStatus !== "authenticated") {
@@ -760,7 +775,7 @@ export default function App() {
   }
 
   if (authStatus !== "authenticated") {
-    if (isSettingsWindow || isPetWindow) {
+    if (isSettingsWindow || isPetWindow || isQuestionWindow) {
       return (
         <div className="flex min-h-screen items-center justify-center bg-bg px-6 text-center text-text-muted">
           请在 MonAgent 主窗口完成登录，此窗口会自动同步登录状态。
@@ -782,7 +797,19 @@ export default function App() {
       >
         <LayoutGroup id="mon-agent-mode-switch">
           <AnimatePresence mode="wait" initial={false}>
-            {isPetWindow || activePage === "pet" ? (
+            {isQuestionWindow ? (
+              <div className="fixed inset-0 bg-bg">
+                {allPendingQuestions[0] && (
+                  <QuestionDecisionOverlay
+                    key={allPendingQuestions[0].id}
+                    request={allPendingQuestions[0]}
+                    onReply={handleQuestionReply}
+                    onReject={handleQuestionReject}
+                    fillWindow
+                  />
+                )}
+              </div>
+            ) : isPetWindow || activePage === "pet" ? (
               <PetSurfaceErrorBoundary surface={petSurface}>
                 <CharacterPage
                   surface={petSurface}
@@ -952,7 +979,7 @@ export default function App() {
         )}
       </AnimatePresence>
       <AnimatePresence>
-        {!isPetWindow && activePage !== "pet" && activePendingQuestions[0] && (
+        {!window.monAgentDesktop && !isPetWindow && activePage !== "pet" && activePendingQuestions[0] && (
           <QuestionDecisionOverlay
             key={activePendingQuestions[0].id}
             request={activePendingQuestions[0]}

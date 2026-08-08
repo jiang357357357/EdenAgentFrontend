@@ -6,11 +6,13 @@ export type PermissionMode = "restricted" | "full_access" | "takeover"
 export interface ToolCall {
   id: string
   name: string
-  status: "running" | "success" | "error"
+  status: "running" | "success" | "error" | "aborted"
   input: string
   output?: string
   duration?: number
   error?: string
+  errorCode?: string
+  retryable?: boolean
 }
 
 export interface MetaPartCard {
@@ -434,14 +436,21 @@ export interface RuntimeToolPart {
   type: "tool"
   tool: string
   state:
-    | { status: "pending" | "running"; input?: unknown; time?: { start?: number; end?: number } }
+    | { status: "pending" | "running"; input?: unknown; output?: string; time?: { start?: number; end?: number } }
     | {
         status: "completed"
         input?: unknown
         output: string
         time?: { start?: number; end?: number; compacted?: number }
       }
-    | { status: "error"; input?: unknown; error: string; time?: { start?: number; end?: number } }
+    | {
+        status: "error" | "aborted"
+        input?: unknown
+        error: string
+        errorCode?: string
+        retryable?: boolean
+        time?: { start?: number; end?: number }
+      }
 }
 
 export interface RuntimeUnknownPart {

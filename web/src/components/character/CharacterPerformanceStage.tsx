@@ -1,18 +1,27 @@
 import { AnimatePresence, motion, useAnimationControls, useReducedMotion } from "motion/react"
 import { useEffect, useState, type ReactNode } from "react"
+import angerEffectUrl from "../../assets/character-reactions/anger.svg"
+import exclamationEffectUrl from "../../assets/character-reactions/exclamation.svg"
+import gloomyEffectUrl from "../../assets/character-reactions/gloomy.svg"
+import heartEffectUrl from "../../assets/character-reactions/heart.svg"
+import questionEffectUrl from "../../assets/character-reactions/question.svg"
+import sighEffectUrl from "../../assets/character-reactions/sigh.svg"
+import sleepyEffectUrl from "../../assets/character-reactions/sleepy.svg"
+import speechlessEffectUrl from "../../assets/character-reactions/speechless.svg"
+import sweatEffectUrl from "../../assets/character-reactions/sweat.svg"
 import type { ActiveCharacterAction } from "../../lib/auth"
 import { cn } from "../../lib/utils"
 
 const effectImagePaths: Record<string, string> = {
-  question: "/character-reactions/minimal/question.svg",
-  exclamation: "/character-reactions/minimal/exclamation.svg",
-  sweat: "/character-reactions/minimal/sweat.svg",
-  heart: "/character-reactions/minimal/heart.svg",
-  anger: "/character-reactions/minimal/anger.svg",
-  sigh: "/character-reactions/minimal/sigh.svg",
-  speechless: "/character-reactions/minimal/speechless.svg",
-  gloomy: "/character-reactions/minimal/gloomy.svg",
-  sleepy: "/character-reactions/minimal/sleepy.svg",
+  question: questionEffectUrl,
+  exclamation: exclamationEffectUrl,
+  sweat: sweatEffectUrl,
+  heart: heartEffectUrl,
+  anger: angerEffectUrl,
+  sigh: sighEffectUrl,
+  speechless: speechlessEffectUrl,
+  gloomy: gloomyEffectUrl,
+  sleepy: sleepyEffectUrl,
 }
 
 const performanceTransition = {

@@ -7,6 +7,7 @@ interface QuestionDecisionOverlayProps {
   request: PendingQuestion
   onReply: (requestID: string, answers: string[][]) => Promise<void>
   onReject: (requestID: string) => Promise<void>
+  fillWindow?: boolean
 }
 
 const dialogMotion = {
@@ -15,7 +16,7 @@ const dialogMotion = {
   exit: { opacity: 0, y: "-1vh", scale: 0.99 },
 }
 
-export function QuestionDecisionOverlay({ request, onReply, onReject }: QuestionDecisionOverlayProps) {
+export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow = false }: QuestionDecisionOverlayProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<Record<number, string[]>>({})
   const [custom, setCustom] = useState<Record<number, string>>({})
@@ -126,7 +127,12 @@ export function QuestionDecisionOverlay({ request, onReply, onReject }: Question
         aria-labelledby={`question-title-${request.id}`}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="flex h-[74.5vh] max-h-[74.5vh] w-[32vw] min-w-[min(300px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-[1.8vh] border border-stone-200/90 bg-card text-text shadow-[0_2.4vh_7vh_rgba(68,55,43,0.16),0_0.35vh_1.3vh_rgba(68,55,43,0.08)] outline-none"
+        className={cn(
+          "flex flex-col overflow-hidden rounded-[1.8vh] border border-stone-200/90 bg-card text-text shadow-[0_2.4vh_7vh_rgba(68,55,43,0.16),0_0.35vh_1.3vh_rgba(68,55,43,0.08)] outline-none",
+          fillWindow
+            ? "h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)]"
+            : "h-[74.5vh] max-h-[74.5vh] w-[32vw] min-w-[min(300px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)]",
+        )}
       >
         <form
           className="flex min-h-0 flex-1 flex-col"
