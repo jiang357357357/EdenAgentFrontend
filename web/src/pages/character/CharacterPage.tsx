@@ -6,10 +6,14 @@ import { DesktopPetChatBubble, DesktopPetStage } from "../../components/desktop-
 import { PermissionRequestCard, QuestionRequestCard } from "../../components/requests"
 import type { ActiveCharacterAction, CoreAssistant } from "../../lib/auth"
 import {
+  DEFAULT_PET_ICON_PLACEMENT,
   DEFAULT_PET_SETTINGS,
+  getDesktopPetIconPlacement,
   getDesktopPetSettings,
+  listenDesktopPetIconPlacement,
   listenDesktopPetSettings,
   setDesktopPetBubbleCollapsed,
+  type PetIconPlacement,
   type PetSettings,
 } from "../../lib/desktop-window"
 import { resolveMonAgentUrl } from "../../lib/mon_agent_api"
@@ -106,6 +110,7 @@ export function CharacterPage({
   onPreviewImage,
 }: CharacterPageProps) {
   const [petSettings, setPetSettings] = useState<PetSettings>(DEFAULT_PET_SETTINGS)
+  const [petIconPlacement, setPetIconPlacement] = useState<PetIconPlacement>(DEFAULT_PET_ICON_PLACEMENT)
   const [combinedInputCollapsed, setCombinedInputCollapsed] = useState(false)
   const displayName = assistant?.name || assistant?.character?.name || "默认助手"
   const petBackgroundClass = surface === "bubble" || surface === "icon" || petSettings.transparentWindow ? "!bg-transparent" : "bg-bg"
@@ -128,6 +133,25 @@ export function CharacterPage({
       unsubscribe?.()
     }
   }, [])
+
+  useEffect(() => {
+    if (surface !== "icon") return
+    let disposed = false
+    let unsubscribe: (() => void) | undefined
+    void getDesktopPetIconPlacement().then((placement) => {
+      if (!disposed) setPetIconPlacement(placement)
+    })
+    void listenDesktopPetIconPlacement((placement) => {
+      if (!disposed) setPetIconPlacement(placement)
+    }).then((cleanup) => {
+      unsubscribe = cleanup
+      if (disposed) cleanup?.()
+    })
+    return () => {
+      disposed = true
+      unsubscribe?.()
+    }
+  }, [surface])
 
   useLayoutEffect(() => {
     document.documentElement.classList.toggle("character-transparent", petSettings.transparentWindow)
@@ -156,6 +180,7 @@ export function CharacterPage({
         activeCharacterAction={activeCharacterAction}
         settings={petSettings}
         surface={surface}
+        iconPlacement={petIconPlacement}
         inputCollapsed={resolvedInputCollapsed}
         onInputCollapsedChange={(collapsed) => void handleInputCollapsedChange(collapsed)}
         inputContent={

@@ -119,4 +119,35 @@
   ::-webkit-scrollbar-thumb:hover {
     background-color: var(--color-accent);
   }
+
+  .surface-scrollbars,
+  .surface-scrollbars * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(120, 113, 108, 0.32) transparent;
+  }
+
+  .surface-scrollbars::-webkit-scrollbar,
+  .surface-scrollbars *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .surface-scrollbars::-webkit-scrollbar-track,
+  .surface-scrollbars *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .surface-scrollbars::-webkit-scrollbar-thumb,
+  .surface-scrollbars *::-webkit-scrollbar-thumb {
+    min-height: 48px;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+    background-color: rgba(120, 113, 108, 0.3);
+  }
+
+  .surface-scrollbars::-webkit-scrollbar-thumb:hover,
+  .surface-scrollbars *::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(217, 119, 6, 0.72);
+  }
 }

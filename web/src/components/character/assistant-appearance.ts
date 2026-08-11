@@ -48,7 +48,8 @@ export function resolveAssistantAppearance(
     : layouts.includes("standee")
       ? "standee"
       : layouts[0] ?? requestedLayout
-  const asset = selectExactSpineAsset(character?.spine_assets, costume?.costume_id, layout)
+  const asset = costume?.spine_assets?.find((item) => item.enabled !== false && item.layout === layout)
+    ?? selectExactSpineAsset(character?.spine_assets, costume?.costume_id, layout)
 
   return {
     costume,

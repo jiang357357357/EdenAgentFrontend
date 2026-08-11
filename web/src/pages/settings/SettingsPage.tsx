@@ -32,6 +32,7 @@ import {
 } from "../../lib/auth"
 import {
   applyDesktopPetSettings,
+  clampDesktopPetPosition,
   closeDesktopWindow,
   DEFAULT_PET_SETTINGS,
   getDesktopEnvironmentPreview,
@@ -40,6 +41,7 @@ import {
   listenDesktopPetSettings,
   MIN_PET_CHARACTER_HEIGHT,
   minimizeDesktopWindow,
+  previewDesktopPetSettings,
   resolveDesktopFileUrl,
   toggleMaximizeDesktopWindow,
   type DesktopEnvironmentPreview,
@@ -363,6 +365,8 @@ export function SettingsPage({
   const remoteUpdateRef = useRef(false)
   const syncTokenRef = useRef(0)
   const localRevisionRef = useRef(0)
+  const pendingPetScalePreviewRef = useRef<number | null>(null)
+  const petScalePreviewFrameRef = useRef<number | null>(null)
   const previewSurfaceRef = useRef<HTMLDivElement | null>(null)
   const previewDragRef = useRef<{
     pointerId: number
@@ -414,6 +418,24 @@ export function SettingsPage({
     setSaveState("idle")
     setSettings((current) => ({ ...current, ...patch }))
   }
+
+  const patchPetScale = (value: number) => {
+    patchSettings({ petScale: value })
+    pendingPetScalePreviewRef.current = value
+    if (petScalePreviewFrameRef.current !== null) return
+    petScalePreviewFrameRef.current = window.requestAnimationFrame(() => {
+      petScalePreviewFrameRef.current = null
+      const nextScale = pendingPetScalePreviewRef.current
+      pendingPetScalePreviewRef.current = null
+      if (nextScale !== null) void previewDesktopPetSettings({ petScale: nextScale })
+    })
+  }
+
+  useEffect(() => () => {
+    if (petScalePreviewFrameRef.current !== null) {
+      window.cancelAnimationFrame(petScalePreviewFrameRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     let disposed = false
@@ -498,19 +520,14 @@ export function SettingsPage({
     (0.5 * (petScale / 100) * 100) / Math.max(0.12, 1 - previewInputRatio - previewGapRatio)
   const calculatedDesktopPetHeight = desktopEnvironment
     ? Math.round(
-        Math.min(
-          desktopEnvironment.workArea.height,
-          Math.max(MIN_PET_CHARACTER_HEIGHT, desktopEnvironment.workArea.height * 0.5 * (petScale / 100)),
-        ) / Math.max(0.12, 1 - previewInputRatio - previewGapRatio),
+        Math.max(MIN_PET_CHARACTER_HEIGHT, desktopEnvironment.workArea.height * 0.5 * (petScale / 100)) /
+          Math.max(0.12, 1 - previewInputRatio - previewGapRatio),
       )
     : 0
   const calculatedDesktopPetWidth = Math.round(calculatedDesktopPetHeight * (7 / 16))
   const baseDesktopPetHeight = desktopEnvironment
     ? Math.round(
-        Math.min(
-          desktopEnvironment.workArea.height,
-          Math.max(MIN_PET_CHARACTER_HEIGHT, desktopEnvironment.workArea.height * 0.5),
-        ) /
+        Math.max(MIN_PET_CHARACTER_HEIGHT, desktopEnvironment.workArea.height * 0.5) /
           Math.max(0.12, 1 - previewInputRatio - previewGapRatio),
       )
     : 0
@@ -531,11 +548,22 @@ export function SettingsPage({
         : workArea.x + Math.round((workArea.width - calculatedDesktopPetWidth) / 2)
     : 0
   const fallbackPetY = workArea ? workArea.y + workArea.height - calculatedDesktopPetHeight - 16 : 0
+  const requestedPetX = windowX ?? fallbackPetX
+  const requestedPetY = windowY ?? fallbackPetY
+  const boundedPetPosition = workArea
+    ? clampDesktopPetPosition(
+        { x: requestedPetX, y: requestedPetY },
+        { width: calculatedDesktopPetWidth, height: calculatedDesktopPetHeight },
+        workArea,
+      )
+    : { x: requestedPetX, y: requestedPetY }
+  const previewPetX = boundedPetPosition.x
+  const previewPetY = boundedPetPosition.y
   const petPreviewPlacement =
     displayBounds && displayBounds.width > 0 && displayBounds.height > 0
       ? {
-          left: `${(((windowX ?? fallbackPetX) - displayBounds.x) / displayBounds.width) * 100}%`,
-          top: `${(((windowY ?? fallbackPetY) - displayBounds.y) / displayBounds.height) * 100}%`,
+          left: `${((previewPetX - displayBounds.x) / displayBounds.width) * 100}%`,
+          top: `${((previewPetY - displayBounds.y) / displayBounds.height) * 100}%`,
           width: `${(baseDesktopPetWidth / displayBounds.width) * 100}%`,
           height: `${(baseDesktopPetHeight / displayBounds.height) * 100}%`,
         }
@@ -568,10 +596,15 @@ export function SettingsPage({
     event.preventDefault()
     const desktopDeltaX = ((event.clientX - drag.startClientX) / drag.surfaceWidth) * displayBounds.width
     const desktopDeltaY = ((event.clientY - drag.startClientY) / drag.surfaceHeight) * displayBounds.height
-    patchSettings({
-      windowX: Math.round(drag.startWindowX + desktopDeltaX),
-      windowY: Math.round(drag.startWindowY + desktopDeltaY),
-    })
+    const position = clampDesktopPetPosition(
+      {
+        x: Math.round(drag.startWindowX + desktopDeltaX),
+        y: Math.round(drag.startWindowY + desktopDeltaY),
+      },
+      { width: calculatedDesktopPetWidth, height: calculatedDesktopPetHeight },
+      workArea ?? displayBounds,
+    )
+    patchSettings({ windowX: Math.round(position.x), windowY: Math.round(position.y) })
   }
 
   const finishPreviewPetDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -777,10 +810,10 @@ export function SettingsPage({
                     label="角色缩放"
                     value={petScale}
                     min={70}
-                    max={140}
+                    max={200}
                     unit="%"
-                    marks={[70, 100, 120, 140]}
-                    onChange={(value) => patchSettings({ petScale: value })}
+                    marks={[70, 100, 150, 200]}
+                    onChange={patchPetScale}
                   />
                 </div>
 

@@ -260,7 +260,11 @@ function resolveAction(run?: ApiSelfAwakeRun): ApiSelfAwakeAction | undefined {
   return run?.actions?.[0]
 }
 
-export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageProps) {
+function runAuthorName(run?: ApiSelfAwakeRun, fallback = "未知角色") {
+  return run?.author?.character_name || run?.author?.assistant_name || fallback
+}
+
+export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
   const [runs, setRuns] = useState<ApiSelfAwakeRun[]>([])
   const [selectedRunId, setSelectedRunId] = useState<number | undefined>()
   const [currentPage, setCurrentPage] = useState(1)
@@ -311,7 +315,7 @@ export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageP
   const hasMoreRuns = currentPage < totalPages
   const selectedDiary = resolveDiary(selectedRun)
   const selectedAction = resolveAction(selectedRun)
-  const assistantName = assistant?.name || "默认助手"
+  const selectedAuthorName = runAuthorName(selectedRun)
   const normalizedDiarySearch = searchQuery.toLowerCase()
   const overviewRuns = runs
   const overviewRunGroups = useMemo(() => {
@@ -556,7 +560,7 @@ export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageP
                             <span className="shrink-0 text-[1.42vh] text-text-muted">{formatClock(run.finished_at ?? run.created_at ?? run.started_at)}</span>
                           </div>
                           <div className={`mt-[0.7vh] truncate text-[1.38vh] text-text-muted ${selected ? "pl-[1.3vw]" : ""}`}>
-                            {eventLabels[run.event_type] || run.event_type} · {run.event_source || run.source_service} · {run.event_reason || "未记录原因"}
+                            {runAuthorName(run)} · {eventLabels[run.event_type] || run.event_type} · {run.event_reason || "未记录原因"}
                           </div>
                         </button>
                       )
@@ -585,7 +589,7 @@ export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageP
                     <h2 className="truncate font-serif text-[3vh] leading-tight text-text">{formatDisplayTitle(selectedDiary?.title)}</h2>
                     <div className="mt-[1vh] flex items-center gap-[0.5vw] text-[1.52vh] text-text-muted">
                       <UserRound className="h-[1.75vh] w-[1.75vh]" />
-                      <span>{assistantName}</span>
+                      <span>{selectedAuthorName}</span>
                     </div>
 
                     <div className="mt-[2.4vh] flex min-h-0 flex-1 flex-col">
@@ -797,6 +801,7 @@ export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageP
                                           <span className={`h-[0.72vh] w-[0.72vh] shrink-0 rounded-full ${selected ? "bg-accent" : "bg-transparent"}`} />
                                           <span className={`w-[3.5vw] shrink-0 text-[1.62vh] ${selected ? "text-accent" : "text-text-muted"}`}>{formatClock(timestamp)}</span>
                                           <span className="min-w-0 flex-1 truncate font-serif text-[1.92vh]">{diary.title || "一次自醒"}</span>
+                                          <span className="max-w-[7vw] shrink-0 truncate text-[1.5vh] text-text-muted">{runAuthorName(run)}</span>
                                         </button>
                                       )
                                     })}
@@ -859,7 +864,7 @@ export function SelfAwakePage({ currentUser, assistant, onBack }: SelfAwakePageP
                   </div>
                   <div className="min-w-0 pt-[1.25vh]">
                     <h2 className="font-serif text-[clamp(24px,1.75vw,30px)] leading-[1.18] tracking-[-0.02em] text-[#211e1b]">{selectedDiary.title || "一次自醒"}</h2>
-                    <div className="mt-[1.2vh] text-[1.82vh] text-text-muted">{assistantName} 写于 {formatDateTime(selectedDiary.created_at ?? selectedRun.finished_at)}</div>
+                    <div className="mt-[1.2vh] text-[1.82vh] text-text-muted">{selectedAuthorName} 写于 {formatDateTime(selectedDiary.created_at ?? selectedRun.finished_at)}</div>
                   </div>
                 </header>
 

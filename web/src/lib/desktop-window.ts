@@ -18,7 +18,37 @@ export type DesktopViewMode = 'chatWithCharacter' | 'character';
 export type PetDock = 'left' | 'center' | 'right';
 export type PetInputMode = 'compact' | 'panel' | 'hidden';
 export type PetTTSMode = 'none' | 'text_only' | 'all';
+export type PetIconAnchor = 'top-left' | 'top-right' | 'side-left' | 'side-right';
+export type PetIconEdge = 'none' | 'left' | 'right' | 'top' | 'bottom';
+export interface PetIconPlacement {
+  anchor: PetIconAnchor;
+  edge: PetIconEdge;
+}
+export const DEFAULT_PET_ICON_PLACEMENT: PetIconPlacement = {
+  anchor: 'top-left',
+  edge: 'none',
+};
 export const MIN_PET_CHARACTER_HEIGHT = 120;
+export const MIN_PET_VISIBLE_SIZE = 64;
+
+export function clampDesktopPetPosition(
+  position: { x: number; y: number },
+  petSize: { width: number; height: number },
+  workArea: { x: number; y: number; width: number; height: number },
+) {
+  const visibleWidth = Math.min(MIN_PET_VISIBLE_SIZE, workArea.width, petSize.width);
+  const visibleHeight = Math.min(MIN_PET_VISIBLE_SIZE, workArea.height, petSize.height);
+  return {
+    x: Math.min(
+      Math.max(position.x, workArea.x - petSize.width + visibleWidth),
+      workArea.x + workArea.width - visibleWidth,
+    ),
+    y: Math.min(
+      Math.max(position.y, workArea.y - petSize.height + visibleHeight),
+      workArea.y + workArea.height - visibleHeight,
+    ),
+  };
+}
 
 export interface PetSettings {
   alwaysOnTop: boolean;
@@ -140,6 +170,18 @@ export async function selectDesktopSkillDirectory() {
   return bridge.invoke<string | null>("select_skill_directory")
 }
 
+export async function selectDesktopWorkspaceDirectory(path?: string) {
+  const bridge = getDesktopBridge()
+  if (!bridge) return null
+  return bridge.invoke<string | null>("select_workspace_directory", { path })
+}
+
+export async function openDesktopWorkspaceDirectory(path: string) {
+  const bridge = getDesktopBridge()
+  if (!bridge) return false
+  return bridge.invoke<boolean>("open_workspace_directory", { path })
+}
+
 export async function setDesktopWindowAppearance(mode: DesktopWindowMode) {
   const bridge = getDesktopBridge();
   if (!bridge) return;
@@ -243,6 +285,17 @@ export async function applyDesktopPetSettings(settings: PetSettings) {
     return { ...settings, ...(await bridge.invoke<Partial<PetSettings>>('apply_pet_settings', { settings })) };
   } catch {
     return settings;
+  }
+}
+
+export async function previewDesktopPetSettings(settings: Partial<PetSettings>) {
+  const bridge = getDesktopBridge()
+  if (!bridge) return settings
+
+  try {
+    return await bridge.invoke<Partial<PetSettings>>('preview_pet_settings', { settings })
+  } catch {
+    return settings
   }
 }
 
@@ -373,6 +426,16 @@ export async function claimDesktopSpeechPlayback(
   }
 }
 
+export async function authorizeAutomaticSpeechSynthesis(surface: DesktopSpeechSurface) {
+  const bridge = getDesktopBridge();
+  if (!bridge) return true;
+  try {
+    return Boolean(await bridge.invoke<boolean>('authorize_automatic_speech_synthesis', { surface }));
+  } catch {
+    return false;
+  }
+}
+
 export async function releaseDesktopSpeechPlayback(leaseId?: string | null) {
   const bridge = getDesktopBridge();
   if (!bridge || !leaseId || leaseId.startsWith('browser:')) return false;
@@ -415,6 +478,39 @@ export async function listenDesktopGlobalPetPointer(onPointer: (pointer: Desktop
       if (!pointer || !['down', 'move', 'up', 'cancel'].includes(pointer.phase)) return;
       onPointer(pointer);
     });
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizePetIconPlacement(placement?: Partial<PetIconPlacement> | null): PetIconPlacement {
+  const anchors: PetIconAnchor[] = ['top-left', 'top-right', 'side-left', 'side-right'];
+  const edges: PetIconEdge[] = ['none', 'left', 'right', 'top', 'bottom'];
+  return {
+    anchor: anchors.includes(placement?.anchor as PetIconAnchor)
+      ? placement!.anchor as PetIconAnchor
+      : DEFAULT_PET_ICON_PLACEMENT.anchor,
+    edge: edges.includes(placement?.edge as PetIconEdge)
+      ? placement!.edge as PetIconEdge
+      : DEFAULT_PET_ICON_PLACEMENT.edge,
+  };
+}
+
+export async function getDesktopPetIconPlacement() {
+  const bridge = getDesktopBridge();
+  if (!bridge) return DEFAULT_PET_ICON_PLACEMENT;
+  try {
+    return normalizePetIconPlacement(await bridge.invoke<Partial<PetIconPlacement>>('get_pet_icon_placement'));
+  } catch {
+    return DEFAULT_PET_ICON_PLACEMENT;
+  }
+}
+
+export async function listenDesktopPetIconPlacement(onPlacement: (placement: PetIconPlacement) => void) {
+  const bridge = getDesktopBridge();
+  if (!bridge?.onPetIconPlacement) return undefined;
+  try {
+    return bridge.onPetIconPlacement((placement) => onPlacement(normalizePetIconPlacement(placement)));
   } catch {
     return undefined;
   }

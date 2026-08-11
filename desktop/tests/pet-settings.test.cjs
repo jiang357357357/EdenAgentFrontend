@@ -5,7 +5,7 @@ const { DEFAULT_PET_SETTINGS, normalizePetSettings } = require("../src/pet/pet-s
 
 test("pet settings clamp dimensions and normalize enum values", () => {
   const settings = normalizePetSettings({
-    petScale: 200,
+    petScale: 260,
     inputOpacity: 5,
     inputWidth: 101,
     inputHeight: 8,
@@ -16,7 +16,7 @@ test("pet settings clamp dimensions and normalize enum values", () => {
     windowY: "not-a-number",
   })
 
-  assert.equal(settings.petScale, 140)
+  assert.equal(settings.petScale, 200)
   assert.equal(settings.inputOpacity, 30)
   assert.equal(settings.inputWidth, 100)
   assert.equal(settings.inputHeight, 12)

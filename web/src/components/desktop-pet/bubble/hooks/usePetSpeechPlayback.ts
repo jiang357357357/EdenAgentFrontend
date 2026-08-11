@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 
 import { resolveCoreAssetUrl } from "../../../../lib/auth"
 import {
+  authorizeAutomaticSpeechSynthesis,
   claimDesktopSpeechPlayback,
   listenDesktopSpeechPlaybackControl,
   releaseDesktopSpeechPlayback,
@@ -65,6 +66,7 @@ export function usePetSpeechPlayback({ isThinking, latestAssistantMessage, sessi
   const speechSynthesisQueueRef = useRef<Promise<void>>(Promise.resolve())
   const speechQueueRef = useRef<Promise<void>>(Promise.resolve())
   const speechRunActiveRef = useRef(isThinking)
+  const speechRunBaselineMessageIdRef = useRef<string | null>(null)
   const streamSpeechStatesRef = useRef<Map<string, StreamingSpeechState>>(new Map())
   const speechLeaseRef = useRef<string | null>(null)
   const speechContextRef = useRef(`${sessionId ?? ""}:${ttsMode}`)
@@ -254,19 +256,23 @@ export function usePetSpeechPlayback({ isThinking, latestAssistantMessage, sessi
 
     const request = speechSynthesisQueueRef.current
       .catch(() => undefined)
-      .then(() => synthesizeSpeechSegment({
-        sessionId,
-        messageId: messageID,
-        segmentGroupId: state.segmentId,
-        groupIndex: state.groupIndex,
-        sequence: chunkIndex,
-        text,
-        configId: ttsConfigId,
-        mode: ttsMode,
-      }))
+      .then(async () => {
+        if (!await authorizeAutomaticSpeechSynthesis("pet-bubble")) return null
+        return synthesizeSpeechSegment({
+          sessionId,
+          messageId: messageID,
+          segmentGroupId: state.segmentId,
+          groupIndex: state.groupIndex,
+          sequence: chunkIndex,
+          text,
+          configId: ttsConfigId,
+          mode: ttsMode,
+        })
+      })
     speechSynthesisQueueRef.current = request.then(() => undefined, () => undefined)
     const synthesis = request
       .then((result) => {
+        if (!result) return null
         if (!result.success) throw new Error(result.error_message || `语音句子 ${chunkIndex + 1} 合成失败`)
         const source = resolveCoreAssetUrl(result.audio_url)
         if (!source) throw new Error(`语音句子 ${chunkIndex + 1} 未返回音频`)
@@ -406,11 +412,30 @@ export function usePetSpeechPlayback({ isThinking, latestAssistantMessage, sessi
       return
     }
     const runWasActive = speechRunActiveRef.current
+    if (isThinking && !runWasActive) {
+      const hasStreamingText = latestAssistantMessage?.segments?.some(
+        (segment) => segment.type === "text" && segment.state === "streaming",
+      )
+      // A connector run may announce `isThinking` one render before creating
+      // its message shell. Preserve the completed message visible at that
+      // boundary as a baseline instead of treating it as new speech.
+      speechRunBaselineMessageIdRef.current = hasStreamingText
+        ? null
+        : latestAssistantMessage?.id ?? null
+    }
     if (isThinking) {
       speechRunActiveRef.current = true
       speechOutputGateRef.current?.begin()
     }
-    const maySpeakCurrentRun = isThinking || runWasActive
+    const latestBelongsToCurrentRun = Boolean(
+      latestAssistantMessage && (
+        latestAssistantMessage.id !== speechRunBaselineMessageIdRef.current ||
+        latestAssistantMessage.segments?.some(
+          (segment) => segment.type === "text" && segment.state === "streaming",
+        )
+      ),
+    )
+    const maySpeakCurrentRun = (isThinking || runWasActive) && latestBelongsToCurrentRun
     if (maySpeakCurrentRun) {
       let textSegmentIndex = 0
       for (const segment of latestAssistantMessage?.segments ?? []) {
@@ -451,6 +476,7 @@ export function usePetSpeechPlayback({ isThinking, latestAssistantMessage, sessi
     }
     if (!isThinking && runWasActive) {
       speechRunActiveRef.current = false
+      speechRunBaselineMessageIdRef.current = null
       speechOutputGateRef.current?.holdUntil(speechQueueRef.current)
     }
   }, [isThinking, latestAssistantMessage, sessionId, ttsConfigId, ttsMode])

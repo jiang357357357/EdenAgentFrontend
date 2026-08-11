@@ -2,11 +2,13 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
 
-const [pageSource, rendererSource, spineSource, imageSource] = await Promise.all([
+const [pageSource, rendererSource, spineSource, imageSource, panelSource, desktopPetSource] = await Promise.all([
   readFile(new URL("../src/pages/assistant-switcher/AssistantSwitcherPage.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/components/character/renderer/CharacterVisualRenderer.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/components/character/renderer/spine/SpineCharacterCanvas.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/components/character/renderer/CharacterStandeeImage.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/components/character/CharacterPanel.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/components/desktop-pet/DesktopPetStage.tsx", import.meta.url), "utf8"),
 ])
 
 test("assistant switcher delegates the selected character preview to the unified visual renderer", () => {
@@ -38,6 +40,12 @@ test("static and Spine renderers propagate readiness through the unified rendere
   assert.match(rendererSource, /<LazySpineCharacterCanvas[\s\S]*?onReady=\{onReady\}/)
   assert.match(imageSource, /onReadyRef\.current\?\.\(\)/)
   assert.match(spineSource, /onReadyRef\.current\?\.\(\)/)
+})
+
+test("character stages never use the profile avatar as a standee fallback", () => {
+  assert.doesNotMatch(rendererSource, /default_standing_image_url\s*\|\|\s*character\.avatar_url/)
+  assert.doesNotMatch(panelSource, /default_standing_image_url\s*\|\|\s*character\?\.avatar_url/)
+  assert.doesNotMatch(desktopPetSource, /default_standing_image_url\s*\|\|\s*character\?\.avatar_url/)
 })
 
 test("assistant preview Spine uses a bounded resolution and frame rate", () => {

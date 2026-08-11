@@ -57,17 +57,23 @@ export function CharacterVisualRenderer({
     activeAction?.action?.static_image_url ||
     activeAction?.action?.dynamic_preview_url ||
     activeAction?.action?.dynamic_frames?.[0]?.file_url
-  const fallbackImage = resolveCoreAssetUrl(activeActionImage || character.default_standing_image_url || character.avatar_url)
+  const fallbackImage = resolveCoreAssetUrl(activeActionImage || character.default_standing_image_url)
   const activeActionLabel = activeAction?.action?.name || activeAction?.action?.action_label || activeAction?.action?.intent
   const costumeId = preferredCostumeId ?? character.default_costume_id
+  const costumeAsset = character.costumes
+    ?.find((costume) => costume.enabled !== false && costume.costume_id === costumeId)
+    ?.spine_assets
+    ?.find((asset) => asset.enabled !== false && asset.layout === preferredSpineLayout)
   const spineAsset = character.visual_preference === "spine"
-    ? strictSpineSelection
-      ? selectExactSpineAsset(character.spine_assets, costumeId, preferredSpineLayout)
-      : selectSpineAsset(
-        character.spine_assets,
-        character.spine_asset,
-        preferredSpineLayout,
-        costumeId,
+    ? costumeAsset ?? (
+        strictSpineSelection
+          ? selectExactSpineAsset(character.spine_assets, costumeId, preferredSpineLayout)
+          : selectSpineAsset(
+            character.spine_assets,
+            character.spine_asset,
+            preferredSpineLayout,
+            costumeId,
+          )
       )
     : undefined
   const spineKey = useMemo(() => spineAsset

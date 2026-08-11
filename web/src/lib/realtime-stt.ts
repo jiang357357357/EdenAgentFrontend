@@ -1,4 +1,5 @@
 import { getStoredToken, resolveCoreBaseUrl } from "./auth"
+import { realtimeSTTFinalization } from "./realtime-stt-finalization"
 
 export type RealtimeSTTStatus = "idle" | "connecting" | "recording" | "transcribing"
 
@@ -202,7 +203,7 @@ export class RealtimeSTTService {
     }
   }
 
-  async finish(timeoutMs = 5_000) {
+  async finish(timeoutMs = 30_000) {
     if (this.status === "idle") return this.latestTranscript
     this.stopAudioCapture()
     this.setStatus("transcribing")
@@ -260,32 +261,21 @@ export class RealtimeSTTService {
       const sentenceEnd = payload.sentence_end === true
       this.handlers.onTranscript?.({ text, isFinal, sentenceEnd })
       if (isFinal && sentenceEnd) {
-        if (this.finishPending) this.settleFinish(text)
-        else this.scheduleAutoFinish()
+        // A sentence result is still a preview of the recording as a whole.
+        // After `stop`, GSV may emit one last sentence before its authoritative
+        // commit_hint/status.final_text. Do not close the socket on that
+        // intermediate result or the final overwrite can be lost.
+        if (!this.finishPending) this.scheduleAutoFinish()
       }
       return
     }
 
-    if (payload.type === "commit_hint") {
-      const text = typeof payload.final_text === "string" ? payload.final_text.trim() : ""
-      if (text) {
-        this.latestTranscript = text
-        this.handlers.onTranscript?.({ text, isFinal: true, sentenceEnd: true })
-      }
-      this.settleFinish(text || this.latestTranscript)
-      return
+    const finalization = realtimeSTTFinalization(payload, this.latestTranscript)
+    if (finalization.authoritative) {
+      this.latestTranscript = finalization.text
+      this.handlers.onTranscript?.({ text: finalization.text, isFinal: true, sentenceEnd: true })
     }
-
-    if (payload.type === "status" && typeof payload.final_text === "string") {
-      const text = payload.final_text.trim()
-      if (text) {
-        this.latestTranscript = text
-        this.handlers.onTranscript?.({ text, isFinal: true, sentenceEnd: true })
-      }
-      this.settleFinish(text || this.latestTranscript)
-    } else if (payload.type === "status" && payload.status === "stopped") {
-      this.settleFinish()
-    }
+    if (finalization.settle) this.settleFinish(finalization.text)
   }
 
   private setStatus(status: RealtimeSTTStatus) {

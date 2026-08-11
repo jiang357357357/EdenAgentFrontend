@@ -141,13 +141,19 @@ function mapMetaPart(part: RuntimePart): MetaPartCard | undefined {
     }
     case "compaction": {
       const compaction = part as RuntimeCompactionPart
+      const details = typeof compaction.details === "string"
+        ? compaction.details
+        : compaction.details
+          ? JSON.stringify(compaction.details, null, 2)
+          : undefined
       return {
         id: compaction.id,
         type: compaction.type,
-        title: compaction.auto ? "Auto Compaction" : "Compaction",
-        summary: compaction.overflow ? "Context overflow triggered summarization." : "Context was compacted.",
-        detail: compaction.tail_start_id ? `tail start: ${compaction.tail_start_id}` : undefined,
-        tone: "muted",
+        title: compaction.auto ? "自动压缩上下文" : "上下文压缩",
+        summary: compaction.overflow ? "上下文接近容量上限，较早的对话已整理为摘要。" : "较早的对话已整理为摘要。",
+        detail: compaction.summary || details,
+        tone: "accent",
+        contextTokensBefore: compaction.tokensBefore,
         contextTokensAfter: compaction.tokensAfter,
       }
     }
@@ -183,6 +189,7 @@ function mapTool(part: RuntimeToolPart, sessionIsRunning = true): ToolCall {
     error: state.status === "error" || state.status === "aborted" ? state.error : interrupted ? "上一次运行在工具完成前已中止。" : undefined,
     errorCode: state.status === "error" || state.status === "aborted" ? state.errorCode : undefined,
     retryable: state.status === "error" || state.status === "aborted" ? state.retryable : undefined,
+    details: state.details,
     duration: start && end ? end - start : undefined,
   }
 }
@@ -402,7 +409,9 @@ function mapSession(session: RuntimeSession): Session {
   return {
     id: session.id,
     title: session.title || "新会话",
+    updatedAt: session.updatedAt,
     contextTokens: session.contextTokens,
+    tokenBreakdown: session.tokenBreakdown,
     date: timeLabel(session.updatedAt),
     messages,
     hasMoreMessages: session.hasMoreMessages,

@@ -6,6 +6,7 @@ import {
   beginDesktopPetGroupDrag,
   endDesktopPetGroupDrag,
   updateDesktopPetGroupDrag,
+  type PetIconPlacement,
   type PetSettings,
 } from "../../lib/desktop-window"
 import { cn } from "../../lib/utils"
@@ -25,6 +26,7 @@ interface DesktopPetStageProps {
   activeCharacterAction?: ActiveCharacterAction
   settings: PetSettings
   surface?: "combined" | "character" | "bubble" | "icon"
+  iconPlacement?: PetIconPlacement
   inputCollapsed: boolean
   inputTransitioning?: boolean
   onInputCollapsedChange?: (collapsed: boolean) => void
@@ -39,6 +41,7 @@ export function DesktopPetStage({
   activeCharacterAction,
   settings,
   surface = "combined",
+  iconPlacement,
   inputCollapsed,
   inputTransitioning = false,
   onInputCollapsedChange,
@@ -64,7 +67,7 @@ export function DesktopPetStage({
     activeCharacterAction?.action?.static_image_url ||
     activeCharacterAction?.action?.dynamic_preview_url ||
     activeCharacterAction?.action?.dynamic_frames?.[0]?.file_url
-  const characterImage = resolveCoreAssetUrl(activeActionImage || character?.default_standing_image_url || character?.avatar_url)
+  const characterImage = resolveCoreAssetUrl(activeActionImage || character?.default_standing_image_url)
   const appearance = resolveAssistantAppearance(assistant)
   const hasSpine = character?.visual_preference === "spine" && Boolean(
     selectExactSpineAsset(character.spine_assets, appearance.costumeKey, "standee"),
@@ -81,6 +84,16 @@ export function DesktopPetStage({
   const characterTop = surface === "combined" && inputEnabled ? interactionHeight + layoutGap : 0
   const characterHeight = 100 - characterTop
   const petBackgroundClass = bubbleOnly || settings.transparentWindow ? "bg-transparent" : "bg-bg"
+  const iconEdge = surface === "icon" ? iconPlacement?.edge ?? "none" : "none"
+  const iconShapeStyle: CSSProperties = iconEdge === "left"
+    ? { borderRadius: "0 9999px 9999px 0" }
+    : iconEdge === "right"
+      ? { borderRadius: "9999px 0 0 9999px" }
+      : iconEdge === "top"
+        ? { borderRadius: "0 0 9999px 9999px" }
+        : iconEdge === "bottom"
+          ? { borderRadius: "9999px 9999px 0 0" }
+          : {}
   const windowDragStyle =
     !preview && !bubbleOnly && settings.characterDraggable ? ({ WebkitAppRegion: "drag" } as CSSProperties) : undefined
   const noDragStyle = { WebkitAppRegion: "no-drag" } as CSSProperties
@@ -174,14 +187,19 @@ export function DesktopPetStage({
           onPointerCancel={finishPetIconDrag}
           disabled={!onInputCollapsedChange || inputTransitioning}
           className={cn(
-            "absolute z-30 flex items-center justify-center rounded-full border border-white/25 bg-stone-950/70 text-stone-100 shadow-sm backdrop-blur-md transition-colors hover:bg-stone-900/85 disabled:pointer-events-none",
+            "absolute z-30 flex items-center justify-center rounded-full border border-white/25 bg-stone-950/70 text-stone-100 shadow-sm backdrop-blur-md transition-[background-color,border-color,border-radius] duration-150 hover:bg-stone-900/85 disabled:pointer-events-none",
             bubbleOnly
               ? inputCollapsed
-                ? "inset-0 h-full w-full cursor-move"
+                ? surface === "icon"
+                  ? "inset-1 cursor-move"
+                  : "inset-0 h-full w-full cursor-move"
                 : "right-[3cqh] top-[3cqh] h-[9cqh] w-[9cqh] border-transparent bg-transparent text-stone-300 hover:bg-white/10 hover:text-white"
               : "left-[1.4cqh] h-[4.4cqh] w-[4.4cqh]",
           )}
-          style={bubbleOnly ? { ...noDragStyle, touchAction: inputCollapsed ? "none" : undefined } : { ...noDragStyle, top: `${characterTop + 3}%` }}
+          style={bubbleOnly
+            ? { ...noDragStyle, ...iconShapeStyle, touchAction: inputCollapsed ? "none" : undefined }
+            : { ...noDragStyle, top: `${characterTop + 3}%` }}
+          data-pet-icon-edge={iconEdge}
           aria-label={inputCollapsed ? "展开聊天框" : "收起聊天框"}
           title={inputCollapsed ? "展开聊天框" : "收起聊天框"}
         >
@@ -226,6 +244,7 @@ export function DesktopPetStage({
                 preferredCostumeId={appearance.costumeKey}
                 strictSpineSelection
                 globalPointerEnabled={!preview && settings.clickThrough}
+                renderQuality={preview ? "preview" : "default"}
                 className="relative h-full w-full"
               />
             </CharacterPerformanceStage>

@@ -44,6 +44,7 @@ export type ApiSession = {
   id: string
   title: string
   contextTokens?: number
+  tokenBreakdown?: import("../types").TokenBreakdown
   mode?: "companion" | "solo"
   directorPolicy?: Record<string, unknown>
   participants?: SessionParticipant[]
@@ -69,7 +70,107 @@ export type ToolStatus = {
     message?: string
   }
   tools: Record<string, string>
+  toolDetails?: Record<string, ToolDefinition>
 }
+
+export type ToolDefinition = {
+  name: string
+  label: string
+  description: string
+  parameters: Record<string, unknown>
+  source?: string
+  namespace?: string
+  exposure?: "direct" | "deferred" | "hidden"
+  capabilities?: string[]
+  requiresPermission?: boolean
+  executionMode?: string | null
+}
+
+export type Connector = {
+  id: number | string
+  connector_key: string
+  identity_key: string
+  display_name?: string
+  desired_state: "connected" | "disconnected"
+  runtime_state?: string
+  error?: string
+  last_error?: string
+  settings?: Record<string, unknown>
+  runtime?: Record<string, unknown>
+  created_at?: string
+  updated_at?: string
+}
+
+export type ConnectorCapability = {
+  id: string
+  kind: "event" | "query" | "action"
+  direction: "input" | "output"
+  label: string
+  description: string
+  schema: Record<string, unknown>
+  invocation?: {
+    tool: string
+    action?: string
+    query?: string
+  }
+}
+
+export type ConnectorCatalogEntry = {
+  key: string
+  name: string
+  description: string
+  icon: string
+  version: string
+  revision: string
+  hot_reload: boolean
+  worker_isolated: boolean
+  capabilities: ConnectorCapability[]
+}
+
+export async function listConnectors() {
+  const payload = await request<{ connectors: Connector[] }>("/connectors")
+  return payload.connectors
+}
+
+export async function listConnectorCatalog() {
+  const payload = await request<{
+    connectors: ConnectorCatalogEntry[]
+    errors?: Array<{ key: string; error: string }>
+  }>("/connectors/catalog")
+  return payload
+}
+
+export function createConnector(input: { connector_key: string; identity_key: string; desired_state?: "connected" | "disconnected" }) {
+  return request<Connector>("/connectors", { method: "POST", body: JSON.stringify(input) })
+}
+
+export function updateConnector(id: number | string, input: Partial<Pick<Connector, "desired_state" | "settings" | "display_name">>) {
+  return request<Connector>(`/connectors/${encodeURIComponent(String(id))}`, { method: "PATCH", body: JSON.stringify(input) })
+}
+
+export type WorkspaceEntry = {
+  name: string
+  path: string
+  type: "directory" | "file"
+  size?: number | null
+}
+
+export type WorkspaceDirectory = {
+  root: string
+  path: string
+  entries: WorkspaceEntry[]
+}
+
+export type WorkspaceFileContent = {
+  name: string
+  path: string
+  size: number
+  binary: boolean
+  truncated: boolean
+  content: string
+}
+
+export type WorkspaceInfo = { name: string; path: string }
 
 export type RuntimeModelOption = {
   id: string
@@ -136,6 +237,13 @@ export type ApiSelfAwakeRun = {
   user: number
   assistant?: number | null
   character?: number | null
+  author?: {
+    assistant_id?: number | string | null
+    assistant_name: string
+    character_id?: number | string | null
+    character_name: string
+    avatar_url?: string
+  }
   source_service: string
   external_run_id: string
   event_type: "startup" | "scheduled" | "manual" | "retry"
@@ -345,6 +453,9 @@ export type ApiCompactionPart = {
   auto: boolean
   overflow?: boolean
   tail_start_id?: string
+  firstKeptEntryId?: string
+  summary?: string
+  details?: unknown
   tokensBefore?: number
   tokensAfter?: number
 }
@@ -409,14 +520,15 @@ export type ApiStepFinishPart = {
 }
 
 export type ApiToolState =
-  | { status: "pending" | "running"; input?: unknown; output?: string; time?: { start?: number; end?: number } }
-  | { status: "completed"; input?: unknown; output: string; time?: { start?: number; end?: number } }
+  | { status: "pending" | "running"; input?: unknown; output?: string; details?: unknown; time?: { start?: number; end?: number } }
+  | { status: "completed"; input?: unknown; output: string; details?: unknown; time?: { start?: number; end?: number } }
   | {
       status: "error" | "aborted"
       input?: unknown
       error: string
       errorCode?: string
       retryable?: boolean
+      details?: unknown
       time?: { start?: number; end?: number }
     }
 
@@ -856,6 +968,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`${response.status} ${response.statusText}${text ? `: ${text}` : ""}`)
   }
 
+  const contentType = response.headers.get("content-type") ?? ""
+  if (!contentType.includes("application/json")) {
+    const text = await response.text().catch(() => "")
+    const received = text.trimStart().startsWith("<") ? "HTML 页面" : contentType || "未知内容"
+    throw new Error(`Agent Server 接口返回了${received}，请重启后端服务后重试。`)
+  }
   return response.json() as Promise<T>
 }
 
@@ -998,6 +1116,7 @@ function mapTool(part: ApiToolPart): ToolCall {
     error: state.status === "error" || state.status === "aborted" ? state.error : undefined,
     errorCode: state.status === "error" || state.status === "aborted" ? state.errorCode : undefined,
     retryable: state.status === "error" || state.status === "aborted" ? state.retryable : undefined,
+    details: state.details,
     duration: start && end ? end - start : undefined,
   }
 }
@@ -1006,7 +1125,9 @@ export function mapSession(info: ApiSession, messages: MessageData[] = []): Sess
   return {
     id: info.id,
     title: info.title || "新会话",
+    updatedAt: info.time.updated,
     contextTokens: info.contextTokens,
+    tokenBreakdown: info.tokenBreakdown,
     date: timeLabel(info.time.updated),
     messages,
   }
@@ -1282,6 +1403,23 @@ export async function rejectQuestion(requestID: string) {
 
 export async function getToolStatus() {
   return request<ToolStatus>("/tools/status")
+}
+
+export async function listWorkspaceDirectory(path = "") {
+  const query = path ? `?path=${encodeURIComponent(path)}` : ""
+  return request<WorkspaceDirectory>(`/files${query}`)
+}
+
+export async function readWorkspaceFile(path: string) {
+  return request<WorkspaceFileContent>(`/files/content?path=${encodeURIComponent(path)}`)
+}
+
+export async function getWorkspace() {
+  return request<WorkspaceInfo>("/workspace")
+}
+
+export async function switchWorkspace(path: string) {
+  return request<WorkspaceInfo>("/workspace", { method: "PATCH", body: JSON.stringify({ path }) })
 }
 
 export async function getRuntimeModelConfig() {

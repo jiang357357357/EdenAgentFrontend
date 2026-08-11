@@ -25,23 +25,32 @@ function reassertWindowTopmost(targetWindow, enabled) {
   return true
 }
 
-function applyBubbleKeyboardFocus(targetWindow, enabled, collapsed, alwaysOnTop = false) {
+function applyBubbleKeyboardFocus(
+  targetWindow,
+  enabled,
+  collapsed,
+  alwaysOnTop = false,
+  platform = process.platform,
+) {
   if (!canControlWindow(targetWindow)) return false
   const active = Boolean(enabled && !collapsed)
+  // Electron only supports changing focusability at runtime on macOS and
+  // Windows. Linux bubbles must be created focusable and retain that native
+  // capability; blur/focus controls activation without mutating it.
+  const mutableFocusability = platform === "darwin" || platform === "win32"
   let focusabilityChanged = false
   if (!active) {
     if (targetWindow.isFocused()) targetWindow.blur()
-    if (targetWindow.isFocusable()) {
+    if (mutableFocusability && targetWindow.isFocusable()) {
       targetWindow.setFocusable(false)
       focusabilityChanged = true
     }
   } else {
-    if (!targetWindow.isFocusable()) {
+    if (mutableFocusability && !targetWindow.isFocusable()) {
       targetWindow.setFocusable(true)
       focusabilityChanged = true
     }
     if (!targetWindow.isVisible()) targetWindow.showInactive()
-    if (!targetWindow.isFocused()) targetWindow.focus()
   }
 
   const requestedTopmost = Boolean(alwaysOnTop)
@@ -51,6 +60,11 @@ function applyBubbleKeyboardFocus(targetWindow, enabled, collapsed, alwaysOnTop 
   if (focusabilityChanged || targetWindow.isAlwaysOnTop() !== requestedTopmost) {
     targetWindow.setAlwaysOnTop(requestedTopmost)
   }
+  // On Linux, changing focusability or the topmost state after focus() can
+  // produce a transient blur. The bubble's blur handler intentionally returns
+  // it to no-activate mode, so focus must be the final native-window mutation
+  // when text input is requested.
+  if (active && !targetWindow.isFocused()) targetWindow.focus()
   return active
 }
 

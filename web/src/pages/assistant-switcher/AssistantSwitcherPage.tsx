@@ -745,91 +745,55 @@ export function AssistantSwitcherPage({
                     </span>
                   </div>
 
-                  <div className="mt-[1.2vh] flex gap-[0.75vw] overflow-x-auto pb-[0.45vh]" role="listbox" aria-label="选择服装">
-                    {selectedCostumes.map((costume) => {
-                      const active = costume.id === selectedAppearance.costumeId
-                      const avatar = resolveCoreAssetUrl(costume.avatar_url || selectedAssistant.character?.avatar_url)
-                      const layouts = costumeLayouts(costume)
-                      const disabled = layouts.length === 0
-                      return (
-                        <button
-                          key={costume.id}
-                          type="button"
-                          role="option"
-                          aria-selected={active}
-                          disabled={disabled}
-                          onClick={() => {
-                            const next = resolveAssistantAppearance(selectedAssistant, {
-                              costumeId: costume.id,
-                              layout: selectedLayout,
-                            })
-                            setSelectedCostumeId(next.costumeId)
-                            setSelectedLayout(next.layout)
-                            setAppearanceDirty(
-                              next.costumeId !== savedAppearance.costumeId || next.layout !== savedAppearance.layout,
-                            )
-                            setNotice(undefined)
-                          }}
-                          className={cn(
-                            "flex h-[7.2vh] min-w-[8.4vw] items-center gap-[0.65vw] rounded-[0.72vh] border px-[0.7vw] text-left outline-none transition-all focus-visible:ring-2 focus-visible:ring-accent/35",
-                            active
-                              ? "border-accent bg-[#fff2df] shadow-[0_0.25vh_0.7vh_rgba(180,95,0,0.1)]"
-                              : "border-[#ded8d0] bg-white/55 hover:border-[#cfc6bc] hover:bg-white/80",
-                            disabled && "cursor-not-allowed opacity-45",
-                          )}
-                        >
-                          <span className="flex h-[5.2vh] w-[5.2vh] shrink-0 items-center justify-center overflow-hidden rounded-[0.55vh] bg-[#f7f2eb]">
-                            {avatar ? (
-                              <img src={avatar} alt="" className="h-full w-full object-cover object-top" draggable={false} />
-                            ) : (
-                              <Shirt className="h-[2.4vh] w-[2.4vh] text-[#9b9188]" strokeWidth={1.5} />
-                            )}
-                          </span>
-                          <span className="min-w-0">
-                            <span className="block truncate text-[1.52vh] font-medium text-[#4d4640]">{costume.name}</span>
-                            <span className="mt-[0.35vh] block text-[1.18vh] text-[#948a82]">
-                              {layouts.length === 2 ? "两种展示" : layouts[0] === "memory-lobby" ? "记忆大厅" : layouts[0] === "standee" ? "普通立绘" : "暂无资源"}
-                            </span>
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
+                  <div className="mt-[1.2vh] grid grid-cols-2 gap-[1vw]">
+                    <label className="grid gap-[0.55vh] text-[1.42vh] text-[#756e67]">
+                      服装
+                      <select
+                        value={String(selectedAppearance.costumeId ?? "")}
+                        onChange={(event) => {
+                          const costume = selectedCostumes.find((item) => String(item.id) === event.currentTarget.value)
+                          if (!costume) return
+                          const next = resolveAssistantAppearance(selectedAssistant, {
+                            costumeId: costume.id,
+                            layout: selectedLayout,
+                          })
+                          setSelectedCostumeId(next.costumeId)
+                          setSelectedLayout(next.layout)
+                          setAppearanceDirty(
+                            next.costumeId !== savedAppearance.costumeId || next.layout !== savedAppearance.layout,
+                          )
+                          setNotice(undefined)
+                        }}
+                        className="h-[4.6vh] w-full rounded-[0.65vh] border border-[#ded8d0] bg-white/75 px-[0.8vw] text-[1.52vh] text-[#4d4640] outline-none transition-colors hover:border-[#c9c0b7] focus:border-accent/60 focus:ring-2 focus:ring-accent/10"
+                        aria-label="选择服装"
+                      >
+                        {selectedCostumes.map((costume) => (
+                          <option key={costume.id} value={String(costume.id)} disabled={costumeLayouts(costume).length === 0}>
+                            {costume.name}{costumeLayouts(costume).length === 0 ? "（暂无可用资源）" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-                  <div className="mt-[1.15vh] grid grid-cols-[8vw_minmax(0,1fr)] items-center gap-[1vw]">
-                    <span className="text-[1.52vh] text-[#756e67]">展示模式</span>
-                    <div className="grid h-[4.5vh] grid-cols-2 rounded-[0.65vh] border border-[#ded8d0] bg-[#f2eee8]/70 p-[0.35vh]" role="radiogroup" aria-label="选择展示模式">
-                      {([
-                        ["standee", "普通立绘"],
-                        ["memory-lobby", "记忆大厅"],
-                      ] as const).map(([layout, label]) => {
-                        const available = selectedCostumeLayouts.includes(layout)
-                        const active = selectedAppearance.layout === layout
-                        return (
-                          <button
-                            key={layout}
-                            type="button"
-                            role="radio"
-                            aria-checked={active}
-                            disabled={!available}
-                            onClick={() => {
-                              setSelectedLayout(layout)
-                              setAppearanceDirty(
-                                selectedAppearance.costumeId !== savedAppearance.costumeId || layout !== savedAppearance.layout,
-                              )
-                              setNotice(undefined)
-                            }}
-                            className={cn(
-                              "rounded-[0.48vh] text-[1.45vh] font-medium outline-none transition-all focus-visible:ring-2 focus-visible:ring-accent/35",
-                              active ? "bg-white text-accent shadow-sm" : "text-[#777069] hover:text-[#4e4843]",
-                              !available && "cursor-not-allowed opacity-35",
-                            )}
-                          >
-                            {label}
-                          </button>
-                        )
-                      })}
-                    </div>
+                    <label className="grid gap-[0.55vh] text-[1.42vh] text-[#756e67]">
+                      展示模式
+                      <select
+                        value={selectedAppearance.layout}
+                        onChange={(event) => {
+                          const layout = event.currentTarget.value as SpineLayout
+                          setSelectedLayout(layout)
+                          setAppearanceDirty(
+                            selectedAppearance.costumeId !== savedAppearance.costumeId || layout !== savedAppearance.layout,
+                          )
+                          setNotice(undefined)
+                        }}
+                        className="h-[4.6vh] w-full rounded-[0.65vh] border border-[#ded8d0] bg-white/75 px-[0.8vw] text-[1.52vh] text-[#4d4640] outline-none transition-colors hover:border-[#c9c0b7] focus:border-accent/60 focus:ring-2 focus:ring-accent/10"
+                        aria-label="选择展示模式"
+                      >
+                        <option value="standee" disabled={!selectedCostumeLayouts.includes("standee")}>普通立绘</option>
+                        <option value="memory-lobby" disabled={!selectedCostumeLayouts.includes("memory-lobby")}>记忆大厅</option>
+                      </select>
+                    </label>
                   </div>
                 </section>
               ) : null}

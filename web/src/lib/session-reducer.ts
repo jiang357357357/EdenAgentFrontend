@@ -104,6 +104,14 @@ function sortIdsByValue(order: string[]) {
   order.sort((left, right) => left.localeCompare(right))
 }
 
+function sortSessionsByActivity(state: RuntimeState) {
+  state.sessionOrder.sort((left, right) => {
+    const leftTime = state.sessions[left]?.updatedAt ?? 0
+    const rightTime = state.sessions[right]?.updatedAt ?? 0
+    return rightTime - leftTime
+  })
+}
+
 function upsertPermission(state: RuntimeState, permission: PendingPermission) {
   state.permissions[permission.id] = permission
   if (!state.permissionOrder.includes(permission.id)) {
@@ -168,6 +176,7 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
         ...existing,
         title: info.title || existing.title || "新会话",
         contextTokens: info.contextTokens ?? existing.contextTokens,
+        tokenBreakdown: info.tokenBreakdown ?? existing.tokenBreakdown,
         createdAt: info.time.created,
         updatedAt: info.time.updated,
         mode: info.mode ?? existing.mode,
@@ -186,6 +195,7 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
         id: info.id,
         title: info.title || "新会话",
         contextTokens: info.contextTokens,
+        tokenBreakdown: info.tokenBreakdown,
         status: "idle",
         messageOrder: [],
         messages: {},
@@ -207,11 +217,7 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
   if (!state.sessionOrder.includes(info.id)) {
     state.sessionOrder.push(info.id)
   }
-  state.sessionOrder.sort((left, right) => {
-    const leftTime = state.sessions[left]?.updatedAt ?? 0
-    const rightTime = state.sessions[right]?.updatedAt ?? 0
-    return rightTime - leftTime
-  })
+  sortSessionsByActivity(state)
   return session
 }
 
@@ -389,6 +395,9 @@ function mapPart(part: ApiPart): RuntimePart {
       auto: part.auto,
       overflow: part.overflow,
       tail_start_id: part.tail_start_id,
+      firstKeptEntryId: part.firstKeptEntryId,
+      summary: part.summary,
+      details: part.details,
       tokensBefore: part.tokensBefore,
       tokensAfter: part.tokensAfter,
     }
@@ -823,6 +832,9 @@ function applyMessageUpdate(state: RuntimeState, sessionID: string, info: ApiMes
     removeMessage(session, optimisticUser.id)
   }
   applyMessageInfo(message, info)
+  const completedAt = "completed" in info.time ? info.time.completed : undefined
+  session.updatedAt = Math.max(session.updatedAt ?? 0, completedAt ?? info.time.created)
+  sortSessionsByActivity(state)
   reconcileOptimisticUsers(session)
 }
 
@@ -876,6 +888,15 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       connectionState: "connecting",
       connectionError: undefined,
     }
+  }
+
+  // The global SSE stream also carries connector notifications, tool catalog
+  // changes and other events that this reducer does not project into chat
+  // state. Returning the existing object is important: cloning state for an
+  // ignored event invalidates every selector and makes the full message
+  // history render again.
+  if (action.type === "event" && !isRuntimeStateEvent(action.event)) {
+    return state
   }
 
   const next: RuntimeState = {
@@ -954,6 +975,7 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       session.messages = { ...session.messages, [message.id]: message }
       session.messageOrder = [...session.messageOrder, message.id]
       session.updatedAt = message.createdAt
+      sortSessionsByActivity(next)
       session.status = "busy"
       session.error = undefined
       session.orchestratorRun = localOrchestratorRun(message.id)
@@ -1122,6 +1144,29 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
     default:
       return next
   }
+}
+
+function isRuntimeStateEvent(event: ApiEvent): boolean {
+  if (event.type === "session.deleted" && typeof event.properties?.sessionID === "string") return true
+  if (isOrchestratorEvent(event)) return true
+  if (coordinationBatchFromEvent(event)) return true
+  if (subagentFromEvent(event)) return true
+  return (
+    isSessionEvent(event) ||
+    isMessageUpdatedEvent(event) ||
+    isMessagePartUpdatedEvent(event) ||
+    isMessagePartDeltaEvent(event) ||
+    isMessagePartRemovedEvent(event) ||
+    isCompanionDirectorStartedEvent(event) ||
+    isCompanionPlanEvent(event) ||
+    isCompanionSpeakerEvent(event) ||
+    isSessionStatusEvent(event) ||
+    isSessionErrorEvent(event) ||
+    isPermissionAskedEvent(event) ||
+    isPermissionRepliedEvent(event) ||
+    isQuestionAskedEvent(event) ||
+    isQuestionResolvedEvent(event)
+  )
 }
 
 export function hydrateSessionMessages(sessionID: string, page: import("./mon_agent_api").MessagePage): RuntimeAction {

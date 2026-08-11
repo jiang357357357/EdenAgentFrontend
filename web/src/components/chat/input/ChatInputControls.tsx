@@ -68,10 +68,12 @@ export function TokenMeter({
   inputTokens,
   contextTokens,
   contextWindow,
+  breakdown,
 }: {
   inputTokens: number
   contextTokens: number
   contextWindow: number
+  breakdown?: import("../../../types").TokenBreakdown
 }) {
   const contextPercent = Math.min(100, (contextTokens / Math.max(1, contextWindow)) * 100)
   const contextArcLength = Math.min(58, Math.max(0, contextPercent * 0.58))
@@ -86,7 +88,7 @@ export function TokenMeter({
           "relative flex h-[4.7vh] w-[4.7vh] items-center justify-center rounded-full bg-card text-[1.65vh] font-medium tabular-nums outline-none transition-transform hover:scale-[1.04] focus-visible:scale-[1.04]",
           warning ? "text-red-600" : "text-text-muted",
         )}
-        aria-label={`本次输入约 ${inputTokens} tokens，会话上下文约 ${contextTokens}，可用上限 ${contextWindow}`}
+        aria-label={`本次输入约 ${inputTokens} tokens，角色人设约 ${breakdown?.character ?? 0}，技能约 ${breakdown?.skills ?? 0}，系统约 ${breakdown?.system ?? 0}，工具约 ${breakdown?.tools ?? 0}，对话历史约 ${breakdown?.history ?? contextTokens - inputTokens}，命中缓冲 ${breakdown?.cacheRead ?? 0}，当前上下文 ${contextTokens}，可用上限 ${contextWindow}`}
         aria-describedby={tooltipId}
       >
         <Circle className="absolute inset-0 h-full w-full text-border" strokeWidth={1.7} aria-hidden="true" />
@@ -112,7 +114,19 @@ export function TokenMeter({
         <span className="grid grid-cols-[1fr_auto] gap-x-[1.3vh] gap-y-[0.65vh]">
           <span className="text-text-muted">本次输入</span>
           <strong className="font-medium tabular-nums">{formatTokenCount(inputTokens)}</strong>
-          <span className="text-text-muted">会话上下文</span>
+          <span className="text-text-muted">角色人设</span>
+          <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.character ?? 0)}</strong>
+          <span className="text-text-muted">技能</span>
+          <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.skills ?? 0)}</strong>
+          <span className="text-text-muted">系统</span>
+          <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.system ?? 0)}</strong>
+          <span className="text-text-muted">工具</span>
+          <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.tools ?? 0)}</strong>
+          <span className="text-text-muted">对话历史</span>
+          <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.history ?? Math.max(0, contextTokens - inputTokens))}</strong>
+          <span className="text-text-muted">命中缓冲</span>
+          <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.cacheRead ?? 0)}</strong>
+          <span className="text-text-muted">当前上下文</span>
           <strong className="font-medium tabular-nums">{formatTokenCount(contextTokens)}</strong>
           <span className="text-text-muted">可用上限</span>
           <strong className="font-medium tabular-nums">{formatTokenCount(contextWindow)}</strong>

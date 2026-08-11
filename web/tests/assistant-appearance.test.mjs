@@ -48,3 +48,22 @@ test("reports only enabled layouts from a costume", () => {
     spine_assets: [standee, { ...lobby, costume_key: "default", enabled: false }],
   }), ["standee"])
 })
+
+test("uses a costume-owned Spine asset when it is absent from the character aggregate", () => {
+  const costumeOnlyLobby = { ...lobby, id: 99, costume_key: undefined }
+  const appearance = resolveAssistantAppearance({
+    ...assistant,
+    character: {
+      ...assistant.character,
+      spine_assets: [standee],
+      costumes: [
+        assistant.character.costumes[0],
+        { ...assistant.character.costumes[1], spine_assets: [costumeOnlyLobby] },
+      ],
+    },
+  })
+
+  assert.equal(appearance.costumeKey, "summer")
+  assert.equal(appearance.layout, "memory-lobby")
+  assert.equal(appearance.asset, costumeOnlyLobby)
+})
