@@ -24,6 +24,11 @@ contextBridge.exposeInMainWorld("monAgentDesktop", {
     ipcRenderer.on("mon-agent-pet-bubble-collapsed", handler)
     return () => ipcRenderer.removeListener("mon-agent-pet-bubble-collapsed", handler)
   },
+  onGlobalPetPointer(callback) {
+    const handler = (_event, pointer) => callback(pointer)
+    ipcRenderer.on("mon-agent-global-pet-pointer", handler)
+    return () => ipcRenderer.removeListener("mon-agent-global-pet-pointer", handler)
+  },
   onDesktopEnvironment(callback) {
     const handler = (_event, environment) => callback(environment)
     ipcRenderer.on("mon-agent-desktop-environment", handler)

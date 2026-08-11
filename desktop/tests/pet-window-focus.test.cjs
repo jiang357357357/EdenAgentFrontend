@@ -4,6 +4,7 @@ const test = require("node:test")
 const {
   applyBubbleKeyboardFocus,
   makeWindowNonActivating,
+  reassertWindowTopmost,
 } = require("../src/pet/pet-window-focus.cjs")
 
 function createWindow({ focused = false, visible = true, focusable = true, topmost = false } = {}) {
@@ -23,10 +24,11 @@ function createWindow({ focused = false, visible = true, focusable = true, topmo
       focusable = value
     },
     isAlwaysOnTop: () => topmost,
-    setAlwaysOnTop: (value) => {
-      calls.push(`topmost:${value}`)
+    setAlwaysOnTop: (value, level) => {
+      calls.push(`topmost:${value}${level ? `:${level}` : ""}`)
       topmost = value
     },
+    moveTop: () => calls.push("moveTop"),
     showInactive: () => {
       calls.push("showInactive")
       visible = true
@@ -63,4 +65,16 @@ test("an unchanged non-activating topmost policy does not mutate native window s
   window.calls.length = 0
   assert.equal(applyBubbleKeyboardFocus(window, false, false, true), false)
   assert.deepEqual(window.calls, [])
+})
+
+test("Electron topmost is reasserted even when its cached state already says true", () => {
+  const window = createWindow({ visible: true, topmost: true })
+  assert.equal(reassertWindowTopmost(window, true), true)
+  assert.deepEqual(window.calls, ["topmost:true:screen-saver", "moveTop"])
+})
+
+test("disabling topmost does not move the window to the front", () => {
+  const window = createWindow({ visible: true, topmost: true })
+  assert.equal(reassertWindowTopmost(window, false), true)
+  assert.deepEqual(window.calls, ["topmost:false"])
 })

@@ -5,6 +5,7 @@ import {
   pickSpineInteractionPair,
   pickSpineReaction,
   randomSpineDelayMs,
+  resolveSpineBlinkPlayback,
   resolveSpineInteractionAnimations,
   shouldLoopSpineAction,
   spineInteractionZone,
@@ -66,6 +67,16 @@ test("resolves Kei held gestures, talk layers, and scheduled idles", () => {
     { main: "Talk_01_M", aux: "Talk_01_A" },
     { main: "Talk_02_M", aux: "Talk_02_A" },
   ])
+})
+
+test("resolves common standalone blink animation names", () => {
+  assert.equal(resolveSpineInteractionAnimations(["Idle", "Blink"]).blink, "Blink")
+  assert.equal(resolveSpineInteractionAnimations(["Idle", "EyeClose_02"]).blink, "EyeClose_02")
+})
+
+test("short blink clips receive a natural minimum duration and smooth mix out", () => {
+  assert.deepEqual(resolveSpineBlinkPlayback(0.08), { timeScale: 0.5, mixOutSeconds: 0.08 })
+  assert.deepEqual(resolveSpineBlinkPlayback(0.24), { timeScale: 1, mixOutSeconds: 0.08 })
 })
 
 test("separates head and body interaction zones", () => {

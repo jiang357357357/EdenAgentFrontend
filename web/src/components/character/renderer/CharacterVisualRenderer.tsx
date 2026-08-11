@@ -17,6 +17,7 @@ interface CharacterVisualRendererProps {
   character: CoreCharacter
   activeAction?: ActiveCharacterAction
   displayName: string
+  globalPointerEnabled?: boolean
   className?: string
   preferredSpineLayout?: SpineLayout
   preferredCostumeId?: string | null
@@ -43,6 +44,7 @@ export function CharacterVisualRenderer({
   character,
   activeAction,
   displayName,
+  globalPointerEnabled = false,
   className,
   preferredSpineLayout = "standee",
   preferredCostumeId,
@@ -125,6 +127,7 @@ export function CharacterVisualRenderer({
         asset={spineAsset}
         activeAction={activeAction}
         renderQuality={renderQuality}
+        globalPointerEnabled={globalPointerEnabled}
         className={className ?? "relative h-full w-full"}
         onReady={onReady}
         onError={(error) => {

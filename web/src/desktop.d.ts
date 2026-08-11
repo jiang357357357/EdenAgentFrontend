@@ -7,6 +7,7 @@ declare global {
       onViewMode?(callback: (mode: "chatWithCharacter" | "character") => void): () => void
       onPetSettings?(callback: (settings: Record<string, unknown>) => void): () => void
       onPetBubbleCollapsed?(callback: (collapsed: boolean) => void): () => void
+      onGlobalPetPointer?(callback: (pointer: import("./lib/desktop-window").DesktopPetPointerInput) => void): () => void
       onDesktopEnvironment?(callback: (environment: Record<string, unknown>) => void): () => void
       onOpenSettings?(callback: () => void): () => void
       onAuthState?(callback: (state: {

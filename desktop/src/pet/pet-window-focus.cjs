@@ -9,6 +9,22 @@ function makeWindowNonActivating(targetWindow) {
   return true
 }
 
+function reassertWindowTopmost(targetWindow, enabled) {
+  if (!canControlWindow(targetWindow)) return false
+  const topmost = Boolean(enabled)
+  if (topmost) {
+    // Do not trust Electron's cached isAlwaysOnTop() value here. Windows can
+    // change the native Z-order when owned bubble windows are shown or focused.
+    targetWindow.setAlwaysOnTop(true, "screen-saver")
+    if (targetWindow.isVisible() && typeof targetWindow.moveTop === "function") {
+      targetWindow.moveTop()
+    }
+  } else {
+    targetWindow.setAlwaysOnTop(false)
+  }
+  return true
+}
+
 function applyBubbleKeyboardFocus(targetWindow, enabled, collapsed, alwaysOnTop = false) {
   if (!canControlWindow(targetWindow)) return false
   const active = Boolean(enabled && !collapsed)
@@ -41,4 +57,5 @@ function applyBubbleKeyboardFocus(targetWindow, enabled, collapsed, alwaysOnTop 
 module.exports = {
   applyBubbleKeyboardFocus,
   makeWindowNonActivating,
+  reassertWindowTopmost,
 }

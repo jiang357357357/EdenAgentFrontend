@@ -1,7 +1,11 @@
 import type { Spine, TrackEntry } from "@esotericsoftware/spine-pixi-v7"
 
-import type { CoreSpineAction } from "../../../../lib/auth"
-import { shouldLoopSpineAction, type SpineInteractionAnimations } from "../../../../lib/spine-interactions"
+import type { ActiveCharacterAction, CoreSpineAction } from "../../../../lib/auth"
+import {
+  resolveSpineBlinkPlayback,
+  shouldLoopSpineAction,
+  type SpineInteractionAnimations,
+} from "../../../../lib/spine-interactions"
 
 export { actionMapping } from "./spine-action-mapping"
 
@@ -13,6 +17,19 @@ function clearEntryWhenComplete(spine: Spine, track: number, entry: TrackEntry, 
       }
     },
   }
+}
+
+export function playBlinkAnimation(spine: Spine, animationName?: string) {
+  if (!animationName) return false
+  const animation = spine.skeleton.data.findAnimation(animationName)
+  if (!animation) return false
+
+  const track = 3
+  const playback = resolveSpineBlinkPlayback(animation.duration)
+  const entry = spine.state.setAnimation(track, animationName, false)
+  entry.timeScale = playback.timeScale
+  clearEntryWhenComplete(spine, track, entry, playback.mixOutSeconds)
+  return true
 }
 
 export function playLayeredInteraction(spine: Spine, main?: string, aux?: string, loop = true) {

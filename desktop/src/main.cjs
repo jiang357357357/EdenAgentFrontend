@@ -1,5 +1,5 @@
 const { app, BrowserWindow, Menu, Tray, desktopCapturer, dialog, ipcMain, nativeImage, powerMonitor, protocol, screen, net, session, shell } = require("electron")
-const { execFile } = require("node:child_process")
+const { execFile, spawn } = require("node:child_process")
 const fs = require("node:fs")
 const path = require("node:path")
 const { promisify } = require("node:util")
@@ -11,14 +11,18 @@ const { createCoreCommandHandlers } = require("./ipc/core-command-handlers.cjs")
 const { parseCoreError } = require("./ipc/core-response-error.cjs")
 const { createWindowCommandHandlers } = require("./ipc/window-command-handlers.cjs")
 const { createPetGroupDrag, petGroupPositionAtPointer } = require("./pet/pet-group-drag.cjs")
+const { createGlobalPointerObserver } = require("./pet/global-pointer-observer.cjs")
 const { calculatePetWindowBounds, calculatePetWindowLayout, petCoordinate } = require("./pet/pet-layout.cjs")
 const { DEFAULT_PET_SETTINGS, normalizePetSettings } = require("./pet/pet-settings.cjs")
 const { createPetSettingsStore } = require("./pet/pet-settings-store.cjs")
 const { isInternalAppUrl, isSupportedExternalUrl } = require("./protocols/navigation-policy.cjs")
 const { resolvePetBubbleSurfaceVisibility, setWindowVisibleWithoutActivation } = require("./pet/pet-bubble-surfaces.cjs")
 const { SpeechPlaybackCoordinator } = require("./speech/speech-playback-coordinator.cjs")
-const { applyBubbleKeyboardFocus, makeWindowNonActivating } = require("./pet/pet-window-focus.cjs")
-const { createWindowsNoActivateController } = require("./windows/windows-noactivate.cjs")
+const {
+  applyBubbleKeyboardFocus,
+  makeWindowNonActivating,
+  reassertWindowTopmost,
+} = require("./pet/pet-window-focus.cjs")
 const { createDesktopCapture } = require("./media/desktop-capture.cjs")
 const { registerMediaPermissions } = require("./permissions/register-media-permissions.cjs")
 const { createProcessLifecycle } = require("./processes/process-lifecycle.cjs")
@@ -99,6 +103,19 @@ let desktopEnvironmentBroadcastTimer = null
 let authSession = null
 let authVerification = null
 const AUTH_VERIFICATION_TTL_MS = 30_000
+const pointerObserverExecutablePath =
+  process.env.MON_AGENT_POINTER_OBSERVER?.trim() ||
+  (app.isPackaged
+    ? path.join(process.resourcesPath, "monagent-pointer-observer.exe")
+    : path.resolve(__dirname, "..", "native", "win32-pointer-observer", "bin", "monagent-pointer-observer.exe"))
+const globalPointerObserver = createGlobalPointerObserver({
+  platform: process.platform,
+  executablePath: pointerObserverExecutablePath,
+  spawnProcess: spawn,
+  getCursorPoint: () => screen.getCursorScreenPoint(),
+  getTargetWindow: () => petWindow,
+  logger: console,
+})
 const {
   attachWindowActivityEvents,
   publishActivityPresence,
@@ -144,28 +161,30 @@ function sendSpeechPlaybackControl(ownerId, control) {
 }
 
 const speechPlaybackCoordinator = new SpeechPlaybackCoordinator(sendSpeechPlaybackControl)
-const windowsNoActivate = createWindowsNoActivateController()
 
-function applyPetNativeTopmost(targetWindow) {
-  if (!targetWindow || targetWindow.isDestroyed()) return false
-  if (targetWindow.isAlwaysOnTop() !== petSettings.alwaysOnTop) {
-    targetWindow.setAlwaysOnTop(petSettings.alwaysOnTop)
-  }
-  return windowsNoActivate.applyTopmost(targetWindow, petSettings.alwaysOnTop)
+function applyPetTopmost(targetWindow) {
+  return reassertWindowTopmost(targetWindow, petSettings.alwaysOnTop)
+}
+
+function syncGlobalPointerObserver() {
+  const enabled = Boolean(
+    petSettings.clickThrough &&
+    petWindow &&
+    !petWindow.isDestroyed() &&
+    petWindow.isVisible(),
+  )
+  globalPointerObserver.setEnabled(enabled)
 }
 
 function applyPetBubbleKeyboardFocus(targetWindow, enabled, collapsed) {
-  const active = Boolean(enabled && !collapsed)
-  if (active) windowsNoActivate.apply(targetWindow, false)
   const result = applyBubbleKeyboardFocus(
     targetWindow,
     enabled,
     collapsed,
     petSettings.alwaysOnTop,
   )
-  if (!active) windowsNoActivate.apply(targetWindow, true)
-  applyPetNativeTopmost(targetWindow)
-  if (targetWindow !== petWindow) applyPetNativeTopmost(petWindow)
+  applyPetTopmost(targetWindow)
+  if (targetWindow !== petWindow) applyPetTopmost(petWindow)
   return result
 }
 
@@ -302,9 +321,9 @@ function petWindowLayout() {
 function applyPetWindowAttributes() {
   if (petWindow && !petWindow.isDestroyed()) {
     makeWindowNonActivating(petWindow)
-    windowsNoActivate.apply(petWindow, true)
-    applyPetNativeTopmost(petWindow)
-    petWindow.setIgnoreMouseEvents(petSettings.clickThrough)
+    applyPetTopmost(petWindow)
+    if (petSettings.clickThrough) petWindow.setIgnoreMouseEvents(true, { forward: true })
+    else petWindow.setIgnoreMouseEvents(false)
     petWindow.setOpacity(1)
     petWindow.setBackgroundColor(petSettings.transparentWindow ? "#00000000" : "#f5f5f4")
     petWindow.setHasShadow(!petSettings.transparentWindow)
@@ -331,7 +350,8 @@ function applyPetWindowAttributes() {
   }
   // Windows keeps an owned window above its owner. Reassert the character
   // owner last so making the panel/icon topmost cannot demote it below a game.
-  applyPetNativeTopmost(petWindow)
+  applyPetTopmost(petWindow)
+  syncGlobalPointerObserver()
 }
 
 function applyPetBubbleBounds() {
@@ -360,9 +380,9 @@ function applyPetBubbleVisibility() {
   }
   setWindowVisibleWithoutActivation(petBubbleWindow, panelVisible)
   setWindowVisibleWithoutActivation(petBubbleIconWindow, iconVisible)
-  applyPetNativeTopmost(petBubbleWindow)
-  applyPetNativeTopmost(petBubbleIconWindow)
-  applyPetNativeTopmost(petWindow)
+  applyPetTopmost(petBubbleWindow)
+  applyPetTopmost(petBubbleIconWindow)
+  applyPetTopmost(petWindow)
 }
 
 function applyPetWindowBounds() {
@@ -724,12 +744,14 @@ async function createPetWindow() {
     applyPetBubbleVisibility()
   })
   petWindow.on("hide", () => {
+    globalPointerObserver.setEnabled(false)
     petBubbleKeyboardFocus = false
     setWindowVisibleWithoutActivation(petBubbleWindow, false)
     setWindowVisibleWithoutActivation(petBubbleIconWindow, false)
     updateTray()
   })
   petWindow.on("closed", () => {
+    globalPointerObserver.setEnabled(false)
     petGroupDrag = null
     petWindow = null
     if (petBubbleWindow && !petBubbleWindow.isDestroyed()) petBubbleWindow.destroy()
@@ -789,8 +811,8 @@ function createPetBubblePanelWindow() {
   })
   petBubbleWindow.on("show", () => {
     petBubbleWindow?.setSkipTaskbar(true)
-    applyPetNativeTopmost(petBubbleWindow)
-    applyPetNativeTopmost(petWindow)
+    applyPetTopmost(petBubbleWindow)
+    applyPetTopmost(petWindow)
   })
   petBubbleWindow.on("blur", () => {
     if (!petBubbleKeyboardFocus) return
@@ -852,8 +874,8 @@ function createPetBubbleIconWindow() {
   })
   petBubbleIconWindow.on("show", () => {
     petBubbleIconWindow?.setSkipTaskbar(true)
-    applyPetNativeTopmost(petBubbleIconWindow)
-    applyPetNativeTopmost(petWindow)
+    applyPetTopmost(petBubbleIconWindow)
+    applyPetTopmost(petWindow)
   })
   petBubbleIconWindow.on("closed", () => {
     petGroupDrag = null
@@ -864,6 +886,7 @@ function createPetBubbleIconWindow() {
 }
 
 function hidePetWindows() {
+  globalPointerObserver.setEnabled(false)
   setWindowVisibleWithoutActivation(petBubbleWindow, false)
   setWindowVisibleWithoutActivation(petBubbleIconWindow, false)
   if (petWindow && !petWindow.isDestroyed()) petWindow.hide()
@@ -1068,6 +1091,7 @@ app.on("second-instance", () => {
 
   app.on("before-quit", () => {
     isQuitting = true
+    globalPointerObserver.dispose()
     stopActivityPresence()
     processLifecycle.stopDevParentWatch()
 

@@ -225,6 +225,7 @@ export function DesktopPetStage({
                 preferredSpineLayout="standee"
                 preferredCostumeId={appearance.costumeKey}
                 strictSpineSelection
+                globalPointerEnabled={!preview && settings.clickThrough}
                 className="relative h-full w-full"
               />
             </CharacterPerformanceStage>

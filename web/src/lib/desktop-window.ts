@@ -77,6 +77,17 @@ export interface DesktopActivityFacts {
   last_user_interaction_at?: string;
 }
 
+export interface DesktopPetPointerInput {
+  phase: 'down' | 'move' | 'up' | 'cancel';
+  pointerId: number;
+  button: number;
+  clientX: number;
+  clientY: number;
+  screenX: number;
+  screenY: number;
+  time: number;
+}
+
 export function reportPerformanceDiagnostic(kind: string, metrics: Record<string, unknown>) {
   const bridge = getDesktopBridge()
   if (!bridge) return Promise.resolve(false)
@@ -390,6 +401,20 @@ export async function listenDesktopPetBubbleCollapsed(onCollapsed: (collapsed: b
 
   try {
     return bridge.onPetBubbleCollapsed((collapsed) => onCollapsed(Boolean(collapsed)));
+  } catch {
+    return undefined;
+  }
+}
+
+export async function listenDesktopGlobalPetPointer(onPointer: (pointer: DesktopPetPointerInput) => void) {
+  const bridge = getDesktopBridge();
+  if (!bridge?.onGlobalPetPointer) return undefined;
+
+  try {
+    return bridge.onGlobalPetPointer((pointer) => {
+      if (!pointer || !['down', 'move', 'up', 'cancel'].includes(pointer.phase)) return;
+      onPointer(pointer);
+    });
   } catch {
     return undefined;
   }

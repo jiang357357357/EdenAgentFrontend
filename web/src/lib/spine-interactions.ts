@@ -29,6 +29,17 @@ export interface SpineInteractionPair {
   aux?: string
 }
 
+export function resolveSpineBlinkPlayback(animationDurationSeconds: number) {
+  const duration = Number.isFinite(animationDurationSeconds) ? Math.max(0, animationDurationSeconds) : 0
+  const minimumDurationSeconds = 0.16
+  return {
+    timeScale: duration > 0 && duration < minimumDurationSeconds
+      ? duration / minimumDurationSeconds
+      : 1,
+    mixOutSeconds: 0.08,
+  }
+}
+
 function firstExact(animationNames: string[], candidates: string[]) {
   const byLowerName = new Map(animationNames.map((name) => [name.toLowerCase(), name]))
   for (const candidate of candidates) {
@@ -65,7 +76,11 @@ export function resolveSpineInteractionAnimations(animationNames: string[]): Spi
   const pinchHoldAux = firstExact(animationNames, ["Pinch_02_A"])
   const pinchEndMain = resolveOne(animationNames, ["PinchEnd_01_M", "PinchEnd_M"], /^PinchEnd(?:_\d+)?_M$/i)
   const pinchEndAux = resolveOne(animationNames, ["PinchEnd_01_A", "PinchEnd_A"], /^PinchEnd(?:_\d+)?_A$/i)
-  const blink = firstExact(animationNames, ["Eye_Close_01"])
+  const blink = resolveOne(
+    animationNames,
+    ["Eye_Close_01", "Eye_Close", "EyeClose", "Blink_01", "Blink"],
+    /^(?:Eye_?Close|Blink)(?:_\d+)?$/i,
+  )
   const rareIdle = firstExact(animationNames, ["Idle_01_R"])
   const talks = animationNames
     .filter((name) => /^Talk_\d+_M$/i.test(name))

@@ -13,9 +13,11 @@ import {
 } from "../../../../lib/spine-interactions"
 import { cn } from "../../../../lib/utils"
 import { reportPerformanceDiagnostic } from "../../../../lib/desktop-window"
+import { listenDesktopGlobalPetPointer } from "../../../../lib/desktop-window"
 import {
   actionMapping,
   interactionTrackAvailable,
+  playBlinkAnimation,
   playHeldInteraction,
   playLayeredInteraction,
   playMappedAction,
@@ -77,6 +79,7 @@ interface SpineCharacterCanvasProps {
   renderQuality?: "default" | "preview"
   onError?: (error: Error) => void
   onReady?: () => void
+  globalPointerEnabled?: boolean
 }
 
 export function SpineCharacterCanvas({
@@ -86,6 +89,7 @@ export function SpineCharacterCanvas({
   renderQuality = "default",
   onError,
   onReady,
+  globalPointerEnabled = false,
 }: SpineCharacterCanvasProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
@@ -235,6 +239,7 @@ export function SpineCharacterCanvas({
       spine.scale.set(placement.scale)
       spine.x = placement.x
       spine.y = placement.y
+      app.render()
     }
 
     const observer = new ResizeObserver(() => {
@@ -246,7 +251,9 @@ export function SpineCharacterCanvas({
 
     let isIntersecting = true
     const updateTickerState = () => {
-      if (document.hidden || !document.hasFocus() || !isIntersecting) app.ticker.stop()
+      // The standalone desktop-pet window is deliberately non-focusable, so
+      // document.hasFocus() is always false even while the character is visible.
+      if (document.hidden || !isIntersecting) app.ticker.stop()
       else app.ticker.start()
     }
     const visibilityObserver = new IntersectionObserver(([entry]) => {
@@ -256,8 +263,6 @@ export function SpineCharacterCanvas({
     visibilityObserver.observe(host)
     const handleVisibility = () => updateTickerState()
     document.addEventListener("visibilitychange", handleVisibility)
-    window.addEventListener("focus", handleVisibility)
-    window.addEventListener("blur", handleVisibility)
     updateTickerState()
 
     const scheduleBlink = (delayMs = randomSpineDelayMs(12, 15)) => {
@@ -265,9 +270,8 @@ export function SpineCharacterCanvas({
       blinkTimer = window.setTimeout(() => {
         const loaded = loadedRef.current
         const blink = interactionAnimationsRef.current.blink
-        if (!disposed && !document.hidden && layoutRef.current === "memory-lobby" && loaded && blink) {
-          loaded.spine.state.setAnimation(3, blink, false)
-          loaded.spine.state.addEmptyAnimation(3, 0, 0)
+        if (!disposed && !document.hidden && loaded && blink) {
+          playBlinkAnimation(loaded.spine, blink)
         }
         if (!disposed) scheduleBlink()
       }, delayMs)
@@ -366,8 +370,8 @@ export function SpineCharacterCanvas({
             actionMapping(activeActionRef.current, asset.layout, asset.costume_key),
           )
         }
+        if (interactionAnimationsRef.current.blink) scheduleBlink(3_000)
         if (layoutRef.current === "memory-lobby") {
-          if (interactionAnimationsRef.current.blink) scheduleBlink(3_000)
           if (interactionAnimationsRef.current.rareIdle) scheduleRareIdle()
         }
         requestAnimationFrame(() => {
@@ -398,8 +402,6 @@ export function SpineCharacterCanvas({
       observer.disconnect()
       visibilityObserver.disconnect()
       document.removeEventListener("visibilitychange", handleVisibility)
-      window.removeEventListener("focus", handleVisibility)
-      window.removeEventListener("blur", handleVisibility)
       app.ticker.remove(updateSpine)
       const releaseTimer = pointerInteractionRef.current.releaseTimer
       if (releaseTimer) window.clearTimeout(releaseTimer)
@@ -717,6 +719,37 @@ export function SpineCharacterCanvas({
     event.preventDefault()
     playTapReaction()
   }
+
+  useEffect(() => {
+    if (!globalPointerEnabled) return
+    let disposed = false
+    let unsubscribe: (() => void) | undefined
+    void listenDesktopGlobalPetPointer((pointer) => {
+      if (disposed) return
+      const host = hostRef.current
+      if (!host) return
+      const event = {
+        button: pointer.button,
+        clientX: pointer.clientX,
+        clientY: pointer.clientY,
+        pointerId: pointer.pointerId,
+        currentTarget: host,
+        preventDefault() {},
+      } as unknown as PointerEvent<HTMLDivElement>
+      if (pointer.phase === "down") handlePointerDown(event)
+      else if (pointer.phase === "move") handlePointerMove(event)
+      else if (pointer.phase === "up") handlePointerUp(event)
+      else handlePointerCancel()
+    }).then((cleanup) => {
+      unsubscribe = cleanup
+      if (disposed) cleanup?.()
+    })
+    return () => {
+      disposed = true
+      unsubscribe?.()
+      handlePointerCancel()
+    }
+  }, [globalPointerEnabled, interactive, assetKey])
 
   return (
     <div

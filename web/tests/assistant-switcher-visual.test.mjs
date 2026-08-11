@@ -59,6 +59,12 @@ test("Spine stays visually empty until its first fitted frame is ready", () => {
   assert.doesNotMatch(spineSource, /正在加载动态角色/)
 })
 
+test("a visible non-focusable desktop-pet window still renders Spine frames", () => {
+  assert.doesNotMatch(spineSource, /document\.hidden \|\| !document\.hasFocus\(\)/)
+  assert.match(spineSource, /if \(document\.hidden \|\| !isIntersecting\) app\.ticker\.stop\(\)/)
+  assert.match(spineSource, /spine\.y = placement\.y\s+app\.render\(\)/)
+})
+
 test("memory-lobby Spine skips its intro and renders against a stable covered camera", () => {
   assert.match(spineSource, /name\.toLowerCase\(\) === "start_idle_01"/)
   assert.match(spineSource, /layoutRef\.current !== "memory-lobby"/)
@@ -71,12 +77,15 @@ test("memory-lobby Spine skips its intro and renders against a stable covered ca
   assert.match(spineSource, /"overflow-hidden"/)
 })
 
-test("memory-lobby interactions require a press and schedule passive animation independently", () => {
+test("Spine interactions require a press and passive animations use the correct layout scope", () => {
   assert.doesNotMatch(spineSource, /onPointerEnter=/)
   assert.match(spineSource, /if \(interaction\.pointerId !== event\.pointerId\) return/)
   assert.match(spineSource, /interaction\.pressedZone !== "eye"/)
   assert.match(spineSource, /playHeldInteraction\([\s\S]*?animations\.pinchHoldMain/)
   assert.match(spineSource, /scheduleBlink\(3_000\)/)
+  assert.match(spineSource, /playBlinkAnimation\(loaded\.spine, blink\)/)
+  assert.doesNotMatch(spineSource, /layoutRef\.current === "memory-lobby" && loaded && blink/)
+  assert.match(spineSource, /if \(layoutRef\.current === "memory-lobby"\) \{\s+if \(interactionAnimationsRef\.current\.rareIdle\)/)
   assert.match(spineSource, /randomSpineDelayMs\(12, 15\)/)
   assert.match(spineSource, /randomSpineDelayMs\(70, 80\)/)
 })

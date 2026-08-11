@@ -4,17 +4,13 @@
   "type": "module",
   "main": "src/main.cjs",
   "scripts": {
-    "build:native:noactivate": "node Script/build-native-noactivate.cjs",
-    "predev": "npm run build:native:noactivate",
     "dev": "electron .",
-    "prestart": "npm run build:native:noactivate",
     "start": "electron .",
     "test": "node --test tests/*.test.cjs",
-    "test:native:noactivate": "npm run build:native:noactivate && node Script/run-native-noactivate-test.cjs",
+    "build:pointer-observer": "node Script/build-pointer-observer.cjs",
     "build": "npm --prefix ../web run build"
   },
   "devDependencies": {
-    "electron": "42.4.0",
-    "node-gyp": "13.0.1"
+    "electron": "42.4.0"
   }
 }
