@@ -13,6 +13,7 @@ export interface ToolCall {
   error?: string
   errorCode?: string
   retryable?: boolean
+  details?: unknown
 }
 
 export interface MetaPartCard {
@@ -22,6 +23,7 @@ export interface MetaPartCard {
   summary?: string
   detail?: string
   tone?: "default" | "muted" | "accent" | "warning"
+  contextTokensBefore?: number
   contextTokensAfter?: number
 }
 
@@ -165,7 +167,9 @@ export interface PromptAttachment {
 export interface Session {
   id: string
   title: string
+  updatedAt?: number
   contextTokens?: number
+  tokenBreakdown?: TokenBreakdown
   date: string
   messages: MessageData[]
   hasMoreMessages?: boolean
@@ -178,6 +182,17 @@ export interface Session {
   coordinationBatches?: CoordinationBatch[]
   orchestratorRun?: OrchestratorRun
   orchestratorRuns?: OrchestratorRun[]
+}
+
+export interface TokenBreakdown {
+  character?: number
+  skills?: number
+  system?: number
+  tools?: number
+  history?: number
+  cacheRead?: number
+  tokenizer?: string
+  tokenizerModel?: string
 }
 
 export interface OrchestratorRun {
@@ -376,6 +391,9 @@ export interface RuntimeCompactionPart {
   auto: boolean
   overflow?: boolean
   tail_start_id?: string
+  firstKeptEntryId?: string
+  summary?: string
+  details?: unknown
   tokensBefore?: number
   tokensAfter?: number
 }
@@ -436,11 +454,12 @@ export interface RuntimeToolPart {
   type: "tool"
   tool: string
   state:
-    | { status: "pending" | "running"; input?: unknown; output?: string; time?: { start?: number; end?: number } }
+    | { status: "pending" | "running"; input?: unknown; output?: string; details?: unknown; time?: { start?: number; end?: number } }
     | {
         status: "completed"
         input?: unknown
         output: string
+        details?: unknown
         time?: { start?: number; end?: number; compacted?: number }
       }
     | {
@@ -449,6 +468,7 @@ export interface RuntimeToolPart {
         error: string
         errorCode?: string
         retryable?: boolean
+        details?: unknown
         time?: { start?: number; end?: number }
       }
 }
@@ -521,6 +541,7 @@ export interface RuntimeSession {
   id: string
   title: string
   contextTokens?: number
+  tokenBreakdown?: TokenBreakdown
   status: SessionStatus
   messageOrder: string[]
   messages: Record<string, RuntimeMessage>

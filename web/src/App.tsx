@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react"
 import { X } from "lucide-react"
 import { AnimatePresence, LayoutGroup, motion } from "motion/react"
 import { QuestionDecisionOverlay } from "./components/requests"
@@ -12,6 +12,7 @@ import { MemoPage } from "./pages/memo"
 import { SelfAwakePage } from "./pages/self-awake"
 import { SettingsPage } from "./pages/settings"
 import { SkillPage } from "./pages/skills"
+import { ConnectorPage } from "./pages/connectors"
 import { useSessionRuntime } from "./hooks/useSessionRuntime"
 import {
   clearAuth,
@@ -49,11 +50,11 @@ const screenTransition = {
   ease: [0.16, 1, 0.3, 1],
 } as const
 
-type AppPage = "chat" | "selfAwake" | "memo" | "skills" | "settings" | "assistant-switcher" | "pet" | "pet-character" | "pet-bubble" | "pet-icon" | "question"
+type AppPage = "chat" | "selfAwake" | "memo" | "skills" | "connectors" | "settings" | "assistant-switcher" | "pet" | "pet-character" | "pet-bubble" | "pet-icon" | "question"
 
 function initialPageFromLocation(): AppPage {
   const page = new URLSearchParams(window.location.search).get("page")
-  if (page === "settings" || page === "skills" || page === "assistant-switcher" || page === "pet" || page === "pet-character" || page === "pet-bubble" || page === "pet-icon" || page === "question") return page
+  if (page === "settings" || page === "skills" || page === "connectors" || page === "assistant-switcher" || page === "pet" || page === "pet-character" || page === "pet-bubble" || page === "pet-icon" || page === "question") return page
   return "chat"
 }
 
@@ -108,7 +109,6 @@ export default function App() {
   const [authError, setAuthError] = useState<string | undefined>()
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [currentUser, setCurrentUser] = useState(() => getStoredUser())
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const initialPage = initialPageFromLocation()
   const isSettingsWindow = initialPage === "settings"
   const isQuestionWindow = initialPage === "question"
@@ -137,10 +137,16 @@ export default function App() {
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const historyPrependInProgressRef = useRef(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const pendingSessionBottomRef = useRef("")
+  const lastScrollSessionRef = useRef("")
   const authProbeInFlightRef = useRef(false)
   const modeResizeTimerRef = useRef<number | undefined>(undefined)
   const modeSwitchTokenRef = useRef(0)
   const handleRuntimeEvent = useCallback((event: { type: string; properties?: unknown }) => {
+    if (event.type === "workspace.changed") {
+      window.dispatchEvent(new CustomEvent("monagent:workspace-changed", { detail: event.properties }))
+      return
+    }
     if (event.type === "tools.changed") {
       window.dispatchEvent(new CustomEvent("monagent:skills-changed", { detail: event.properties }))
       return
@@ -196,6 +202,12 @@ export default function App() {
     updateSessionParticipants,
   } = useSessionRuntime(authStatus === "authenticated", { onEvent: handleRuntimeEvent })
 
+  const latestSessionId = sessions[0]?.id
+  useEffect(() => {
+    if (!isPetWindow || !latestSessionId || latestSessionId === activeSessionId) return
+    selectRuntimeSession(latestSessionId)
+  }, [activeSessionId, isPetWindow, latestSessionId, selectRuntimeSession])
+
   const reportAuthError = (stage: string, error: unknown, fallback: string) => {
     const message = getErrorMessage(error, fallback)
     console.error(`[Auth] ${stage} failed`, error)
@@ -210,7 +222,6 @@ export default function App() {
     }
     setModeContentVisible(true)
     setActiveCharacterAction(undefined)
-    setSidebarOpen(false)
     resetSessionRuntime()
     setCurrentAssistant(null)
     setAvailableAssistants([])
@@ -493,9 +504,19 @@ export default function App() {
     }
   }
 
-  useEffect(() => {
-    setAutoScrollEnabled(true)
-  }, [activeSessionId])
+  useLayoutEffect(() => {
+    if (!activeSessionId) return
+    if (lastScrollSessionRef.current !== activeSessionId) {
+      lastScrollSessionRef.current = activeSessionId
+      pendingSessionBottomRef.current = activeSessionId
+      setAutoScrollEnabled(true)
+    }
+    if (pendingSessionBottomRef.current !== activeSessionId) return
+    if (!activeMessages.length) return
+    const element = messagesScrollRef.current
+    if (element) element.scrollTop = element.scrollHeight
+    pendingSessionBottomRef.current = ""
+  }, [activeSessionId, messageScrollKey, activeMessages.length])
 
   useEffect(() => {
     if (!autoScrollEnabled || historyPrependInProgressRef.current) return
@@ -632,7 +653,6 @@ export default function App() {
 
     void listenDesktopOpenSettings(() => {
       setActivePage("settings")
-      setSidebarOpen(false)
     }).then((dispose) => {
       if (disposed) {
         dispose?.()
@@ -721,7 +741,6 @@ export default function App() {
   const handleNewSession = async () => {
     try {
       await createRuntimeSession()
-      setSidebarOpen(false)
     } catch (error) {
       console.error("[Runtime] create session failed", error)
     }
@@ -862,7 +881,7 @@ export default function App() {
                   onQuestionReply={handleQuestionReply}
                   onQuestionReject={handleQuestionReject}
                   onStartWindowDrag={startDesktopWindowDrag}
-                  assistant={currentAssistant}
+                  assistant={conversationAssistant}
                   assistantError={currentAssistantError}
                   activeCharacterAction={activeCharacterAction}
                   onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
@@ -879,6 +898,8 @@ export default function App() {
               <MemoPage onBack={() => setActivePage("chat")} />
             ) : activePage === "skills" ? (
               <SkillPage onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
+            ) : activePage === "connectors" ? (
+              <ConnectorPage onBack={() => setActivePage("chat")} />
             ) : activePage === "assistant-switcher" ? (
               <AssistantSwitcherPage
                 currentAssistant={assistantSwitcherMode === "default" ? currentAssistant : conversationAssistant}
@@ -899,12 +920,12 @@ export default function App() {
               />
             ) : activePage === "settings" ? (
               <SettingsPage
-                assistant={currentAssistant}
+                assistant={conversationAssistant}
                 assistantError={currentAssistantError}
                 activeCharacterAction={activeCharacterAction}
                 onBack={isSettingsWindow ? undefined : () => setActivePage("chat")}
                 onOpenAssistantSwitcher={() => {
-                  setAssistantSwitcherMode("default")
+                  setAssistantSwitcherMode("session")
                   setActivePage("assistant-switcher")
                 }}
                 onOpenSkills={() => setActivePage("skills")}
@@ -914,8 +935,6 @@ export default function App() {
                 sessions={sessions}
                 activeSessionId={activeSessionId}
                 activeSession={activeSession}
-                sidebarOpen={sidebarOpen}
-                setSidebarOpen={setSidebarOpen}
                 currentUser={currentUser}
                 assistant={conversationAssistant}
                 assistantError={currentAssistantError}
@@ -943,30 +962,31 @@ export default function App() {
                 onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
                 onLogout={handleLogout}
                 onOpenAssistantSwitcher={() => {
-                  setSidebarOpen(false)
                   setAssistantSwitcherMode("participants")
                   setActivePage("assistant-switcher")
                 }}
+                onOpenDutyAssistantSwitcher={() => {
+                  setAssistantSwitcherMode("default")
+                  setActivePage("assistant-switcher")
+                }}
                 onOpenSessionAssistantSwitcher={() => {
-                  setSidebarOpen(false)
                   setAssistantSwitcherMode("session")
                   setActivePage("assistant-switcher")
                 }}
                 onOpenSettings={() => {
-                  setSidebarOpen(false)
                   setActivePage("settings")
                 }}
                 onOpenSelfAwake={() => {
-                  setSidebarOpen(false)
                   setActivePage("selfAwake")
                 }}
                 onOpenMemo={() => {
-                  setSidebarOpen(false)
                   setActivePage("memo")
                 }}
                 onOpenSkills={() => {
-                  setSidebarOpen(false)
                   setActivePage("skills")
+                }}
+                onOpenConnectors={() => {
+                  setActivePage("connectors")
                 }}
               />
             )}

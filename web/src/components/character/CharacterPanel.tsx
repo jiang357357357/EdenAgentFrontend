@@ -19,7 +19,7 @@ export function CharacterPanel({ assistant, assistantError, activeAction }: Char
     activeAction?.action?.static_image_url ||
     activeAction?.action?.dynamic_preview_url ||
     activeAction?.action?.dynamic_frames?.[0]?.file_url;
-  const image = resolveCoreAssetUrl(activeActionImage || character?.default_standing_image_url || character?.avatar_url);
+  const image = resolveCoreAssetUrl(activeActionImage || character?.default_standing_image_url);
   const appearance = resolveAssistantAppearance(assistant);
   const spineAsset = character?.visual_preference === 'spine' ? appearance.asset : undefined;
   const hasSpine = Boolean(spineAsset);

@@ -76,36 +76,51 @@ export function TextSegment({
       )}
     >
       {isUser ? (
-        <div className="whitespace-pre-wrap">{visibleContent}</div>
+        <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{visibleContent}</div>
       ) : (
         <div className="min-w-0">
           <div className="flex min-w-0 items-end gap-[0.8vh]">
-            <div className="markdown-body min-w-0 flex-1">
-            <MarkdownContent
-              content={visibleContent}
-              paragraphClassName="my-0"
-              separateActionLines
-              actionParagraphClassName="my-0 italic text-text/60"
-            />
+            <div className="markdown-body min-w-0 max-w-full flex-1 [overflow-wrap:anywhere]">
+              <MarkdownContent
+                content={visibleContent}
+                paragraphClassName="my-0"
+                separateActionLines
+                actionParagraphClassName="my-0 italic text-text/60"
+              />
             </div>
             {canSpeak && clip?.status === "synthesizing" ? (
-            <LoaderCircle className="mb-[0.35vh] h-[1.8vh] w-[1.8vh] shrink-0 animate-spin text-text-muted" aria-label="正在合成语音" />
+              <LoaderCircle
+                className="mb-[0.35vh] h-[1.8vh] w-[1.8vh] shrink-0 animate-spin text-text-muted"
+                aria-label="正在合成语音"
+              />
             ) : null}
             {canSpeak && clip?.status !== "synthesizing" ? (
-            <button
-              type="button"
-              onClick={() => onToggleSpeech?.(speechSegmentId, visibleContent, messageId)}
-              className={cn(
-                "mb-[0.15vh] flex h-[2.5vh] w-[2.5vh] shrink-0 items-center justify-center rounded-full transition-colors",
-                playing ? "bg-accent/10 text-accent" : clip?.status === "error" ? "text-red-500" : "text-text-muted hover:bg-bg hover:text-accent",
-              )}
-              aria-label={playing ? "暂停这段语音" : "播放这段语音"}
-              title={clip?.status === "error"
-                ? `重新合成并播放${clip.error ? `：${clip.error}` : ""}`
-                : playing ? "暂停" : "播放"}
-            >
-              {playing ? <Pause className="h-[1.45vh] w-[1.45vh] fill-current" /> : <Play className="h-[1.45vh] w-[1.45vh] fill-current" />}
-            </button>
+              <button
+                type="button"
+                onClick={() => onToggleSpeech?.(speechSegmentId, visibleContent, messageId)}
+                className={cn(
+                  "mb-[0.15vh] flex h-[2.5vh] w-[2.5vh] shrink-0 items-center justify-center rounded-full transition-colors",
+                  playing
+                    ? "bg-accent/10 text-accent"
+                    : clip?.status === "error"
+                      ? "text-red-500"
+                      : "text-text-muted hover:bg-bg hover:text-accent",
+                )}
+                aria-label={playing ? "暂停这段语音" : "播放这段语音"}
+                title={
+                  clip?.status === "error"
+                    ? `重新合成并播放${clip.error ? `：${clip.error}` : ""}`
+                    : playing
+                      ? "暂停"
+                      : "播放"
+                }
+              >
+                {playing ? (
+                  <Pause className="h-[1.45vh] w-[1.45vh] fill-current" />
+                ) : (
+                  <Play className="h-[1.45vh] w-[1.45vh] fill-current" />
+                )}
+              </button>
             ) : null}
           </div>
           {activeProgress ? (

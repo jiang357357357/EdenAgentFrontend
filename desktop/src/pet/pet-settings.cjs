@@ -39,7 +39,7 @@ function normalizePetSettings(input = {}, defaults = DEFAULT_PET_SETTINGS) {
     showInput,
     voiceInputEnabled: Boolean(input.voiceInputEnabled ?? defaults.voiceInputEnabled),
     ttsMode,
-    petScale: clampNumber(input.petScale, defaults.petScale, 70, 140),
+    petScale: clampNumber(input.petScale, defaults.petScale, 70, 200),
     inputOpacity: clampNumber(input.inputOpacity, defaults.inputOpacity, 30, 100),
     dock: ["left", "center", "right"].includes(input.dock) ? input.dock : defaults.dock,
     inputMode: ["compact", "panel", "hidden"].includes(input.inputMode) ? input.inputMode : defaults.inputMode,

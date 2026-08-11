@@ -130,8 +130,10 @@ export function SpineCharacterCanvas({
     const abortController = new AbortController()
     let disposed = false
     let startupFitTimer: number | undefined
+    let readyFitFrame: number | undefined
     let blinkTimer: number | undefined
     let rareIdleTimer: number | undefined
+    let readyReported = false
     let diagnosticTicks = 0
     let diagnosticUpdateMs = 0
     let diagnosticStartedAt = performance.now()
@@ -214,7 +216,7 @@ export function SpineCharacterCanvas({
 
     const fitModel = () => {
       const spine = loadedRef.current?.spine
-      if (!spine || app.screen.width <= 0 || app.screen.height <= 0) return
+      if (!spine || app.screen.width <= 0 || app.screen.height <= 0) return false
       spine.scale.set(1)
       spine.update(0)
       const memoryLobby = layoutRef.current === "memory-lobby"
@@ -231,22 +233,53 @@ export function SpineCharacterCanvas({
         fit: memoryLobby ? "cover" : "contain",
         verticalAlignment: memoryLobby ? "center" : "bottom",
       })
-      if (!placement) return
+      if (!placement) return false
       spine.scale.set(placement.scale)
       spine.x = placement.x
       spine.y = placement.y
+      return true
+    }
+
+    const markReady = () => {
+      if (disposed || readyReported) return
+      readyReported = true
+      setReady(true)
+      onReadyRef.current?.()
+    }
+
+    const fitUntilReady = (attempt = 0) => {
+      if (disposed || readyReported) return
+      if (fitModel()) {
+        markReady()
+        return
+      }
+      // Spine bounds can still be empty during the first frame after an
+      // animation/skin is installed. Retrying avoids leaving the preview as a
+      // permanently transparent canvas because of that one-frame race.
+      if (attempt < 30) {
+        readyFitFrame = window.requestAnimationFrame(() => fitUntilReady(attempt + 1))
+        return
+      }
+      onErrorRef.current?.(new Error("Spine 角色边界在初始化后仍不可用"))
     }
 
     const observer = new ResizeObserver(() => {
       if (host.clientWidth <= 0 || host.clientHeight <= 0) return
       app.renderer.resize(host.clientWidth, host.clientHeight)
-      requestAnimationFrame(fitModel)
+      requestAnimationFrame(() => {
+        if (readyReported) fitModel()
+        else fitUntilReady()
+      })
     })
     observer.observe(host)
 
     let isIntersecting = true
     const updateTickerState = () => {
-      if (document.hidden || !document.hasFocus() || !isIntersecting) app.ticker.stop()
+      // Desktop pet windows intentionally stay unfocused while the user works
+      // in another application. Focus therefore cannot represent visibility:
+      // stopping here leaves a newly loaded Spine model permanently transparent
+      // until an unrelated resize happens to force Pixi to render one frame.
+      if (document.hidden || !isIntersecting) app.ticker.stop()
       else app.ticker.start()
     }
     const visibilityObserver = new IntersectionObserver(([entry]) => {
@@ -256,8 +289,6 @@ export function SpineCharacterCanvas({
     visibilityObserver.observe(host)
     const handleVisibility = () => updateTickerState()
     document.addEventListener("visibilitychange", handleVisibility)
-    window.addEventListener("focus", handleVisibility)
-    window.addEventListener("blur", handleVisibility)
     updateTickerState()
 
     const scheduleBlink = (delayMs = randomSpineDelayMs(12, 15)) => {
@@ -370,15 +401,7 @@ export function SpineCharacterCanvas({
           if (interactionAnimationsRef.current.blink) scheduleBlink(3_000)
           if (interactionAnimationsRef.current.rareIdle) scheduleRareIdle()
         }
-        requestAnimationFrame(() => {
-          fitModel()
-          requestAnimationFrame(() => {
-            if (!disposed) {
-              setReady(true)
-              onReadyRef.current?.()
-            }
-          })
-        })
+        readyFitFrame = window.requestAnimationFrame(() => fitUntilReady())
       })
       .catch((error: unknown) => {
         if (disposed || abortController.signal.aborted) return
@@ -390,6 +413,7 @@ export function SpineCharacterCanvas({
       disposed = true
       abortController.abort()
       if (startupFitTimer !== undefined) window.clearTimeout(startupFitTimer)
+      if (readyFitFrame !== undefined) window.cancelAnimationFrame(readyFitFrame)
       if (blinkTimer !== undefined) window.clearTimeout(blinkTimer)
       if (rareIdleTimer !== undefined) window.clearTimeout(rareIdleTimer)
       layoutRef.current = "standee"
@@ -398,8 +422,6 @@ export function SpineCharacterCanvas({
       observer.disconnect()
       visibilityObserver.disconnect()
       document.removeEventListener("visibilitychange", handleVisibility)
-      window.removeEventListener("focus", handleVisibility)
-      window.removeEventListener("blur", handleVisibility)
       app.ticker.remove(updateSpine)
       const releaseTimer = pointerInteractionRef.current.releaseTimer
       if (releaseTimer) window.clearTimeout(releaseTimer)

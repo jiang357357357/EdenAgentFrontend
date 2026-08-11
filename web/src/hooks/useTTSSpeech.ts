@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveCoreAssetUrl } from "../lib/auth"
 import {
+  authorizeAutomaticSpeechSynthesis,
   claimDesktopSpeechPlayback,
   listenDesktopSpeechPlaybackControl,
   releaseDesktopSpeechPlayback,
@@ -96,6 +97,7 @@ export function useTTSSpeech({ sessionId, mode, isThinking, segments, activeSegm
   const synthesisQueuesRef = useRef<Map<string, Promise<void>>>(new Map())
   const queueRef = useRef<Promise<void>>(Promise.resolve())
   const runActiveRef = useRef(isThinking)
+  const runBaselineMessageIdsRef = useRef<Set<string>>(new Set())
   const streamStatesRef = useRef<Map<string, StreamingSpeechState>>(new Map())
   const speechLeaseRef = useRef<string | null>(null)
   const synthesisContextRef = useRef(`${sessionId ?? ""}:${mode}`)
@@ -382,6 +384,7 @@ export function useTTSSpeech({ sessionId, mode, isThinking, segments, activeSegm
     const previousRequest = synthesisQueuesRef.current.get(messageId) ?? Promise.resolve()
     const request = previousRequest
       .then(async () => {
+        if (!await authorizeAutomaticSpeechSynthesis("main-chat")) return null
         let lastError: unknown
         for (const delayMs of [0, 150, 400, 900]) {
           if (delayMs) await new Promise((resolve) => window.setTimeout(resolve, delayMs))
@@ -407,6 +410,7 @@ export function useTTSSpeech({ sessionId, mode, isThinking, segments, activeSegm
     synthesisQueuesRef.current.set(messageId, request.then(() => undefined, () => undefined))
     const synthesis = request
       .then((result) => {
+        if (!result) return null
         const source = resolveCoreAssetUrl(result.audio_url)
         if (!source) throw new Error(`语音句子 ${chunkIndex + 1} 未返回音频`)
         if (generation === generationRef.current) state.sources.set(chunkIndex, source)
@@ -611,6 +615,16 @@ export function useTTSSpeech({ sessionId, mode, isThinking, segments, activeSegm
       return
     }
     const runWasActive = runActiveRef.current
+    if (isThinking && !runWasActive) {
+      // Connector/self-awake runs can become active before their new message
+      // shell arrives. Completed messages visible at that boundary belong to
+      // the previous run and must never be replayed as fresh output.
+      runBaselineMessageIdsRef.current = new Set(
+        activeSegments
+          .filter((segment) => segment.state !== "streaming")
+          .map((segment) => segment.messageId),
+      )
+    }
     if (isThinking) {
       runActiveRef.current = true
       outputGateRef.current?.begin()
@@ -618,6 +632,10 @@ export function useTTSSpeech({ sessionId, mode, isThinking, segments, activeSegm
     if (isThinking || runWasActive) {
       const messageGroupIndexes = new Map<string, number>()
       for (const segment of activeSegments) {
+        if (
+          runBaselineMessageIdsRef.current.has(segment.messageId) &&
+          segment.state !== "streaming"
+        ) continue
         const textSegmentIndex = messageGroupIndexes.get(segment.messageId) ?? 0
         messageGroupIndexes.set(segment.messageId, textSegmentIndex + 1)
         if (typeof segment.configId !== "number") continue
@@ -657,6 +675,7 @@ export function useTTSSpeech({ sessionId, mode, isThinking, segments, activeSegm
     }
     if (!isThinking && runWasActive) {
       runActiveRef.current = false
+      runBaselineMessageIdsRef.current.clear()
       const finalQueue = queueRef.current
       const finalGeneration = generationRef.current
       outputGateRef.current?.holdUntil(finalQueue)

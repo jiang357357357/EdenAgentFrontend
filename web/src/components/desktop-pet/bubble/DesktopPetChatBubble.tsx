@@ -51,10 +51,11 @@ export function DesktopPetChatBubble({
     voiceLevel,
     voiceStatus,
   } = useRealtimeVoiceInput({
+    autoSendOnFinish: true,
     disabled: isThinking,
     halfDuplexOutputActive: speechOutputActive,
     input,
-    onSend: (text) => void onSend(text, []),
+    onSend: (text) => onSend(text, []),
     onStart: () => stopSpeechPlayback(),
     overlay: false,
     setInput,

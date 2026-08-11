@@ -12,6 +12,7 @@ const { parseCoreError } = require("./ipc/core-response-error.cjs")
 const { createWindowCommandHandlers } = require("./ipc/window-command-handlers.cjs")
 const { createPetGroupDrag, petGroupPositionAtPointer } = require("./pet/pet-group-drag.cjs")
 const { calculatePetWindowBounds, calculatePetWindowLayout, petCoordinate } = require("./pet/pet-layout.cjs")
+const { createPetMousePassthroughController } = require("./pet/pet-mouse-passthrough.cjs")
 const { DEFAULT_PET_SETTINGS, normalizePetSettings } = require("./pet/pet-settings.cjs")
 const { createPetSettingsStore } = require("./pet/pet-settings-store.cjs")
 const { isInternalAppUrl, isSupportedExternalUrl } = require("./protocols/navigation-policy.cjs")
@@ -94,7 +95,9 @@ let applyingPetBounds = false
 let savePetPositionTimer = null
 let petBubbleCollapsed = false
 let petBubbleKeyboardFocus = false
+let petBubbleBlurTimer = null
 let petGroupDrag = null
+let petIconPlacement = { anchor: "top-left", edge: "none" }
 let desktopEnvironmentBroadcastTimer = null
 let authSession = null
 let authVerification = null
@@ -145,6 +148,10 @@ function sendSpeechPlaybackControl(ownerId, control) {
 
 const speechPlaybackCoordinator = new SpeechPlaybackCoordinator(sendSpeechPlaybackControl)
 const windowsNoActivate = createWindowsNoActivateController()
+const petMousePassthrough = createPetMousePassthroughController({
+  getWindow: () => petWindow,
+  getClickThrough: () => petSettings.clickThrough,
+})
 
 function applyPetNativeTopmost(targetWindow) {
   if (!targetWindow || targetWindow.isDestroyed()) return false
@@ -156,14 +163,29 @@ function applyPetNativeTopmost(targetWindow) {
 
 function applyPetBubbleKeyboardFocus(targetWindow, enabled, collapsed) {
   const active = Boolean(enabled && !collapsed)
-  if (active) windowsNoActivate.apply(targetWindow, false)
+  if (active) {
+    // All native style/topmost mutations must happen before focus(). KWin can
+    // emit a transient blur when either state changes; doing this afterwards
+    // made the input look focused while the bubble had already returned to
+    // no-activate mode and therefore could not receive keyboard events.
+    windowsNoActivate.apply(targetWindow, false)
+    if (targetWindow !== petWindow) applyPetNativeTopmost(petWindow)
+    applyPetNativeTopmost(targetWindow)
+    return applyBubbleKeyboardFocus(
+      targetWindow,
+      true,
+      collapsed,
+      petSettings.alwaysOnTop,
+    )
+  }
+
   const result = applyBubbleKeyboardFocus(
     targetWindow,
-    enabled,
+    false,
     collapsed,
     petSettings.alwaysOnTop,
   )
-  if (!active) windowsNoActivate.apply(targetWindow, true)
+  windowsNoActivate.apply(targetWindow, true)
   applyPetNativeTopmost(targetWindow)
   if (targetWindow !== petWindow) applyPetNativeTopmost(petWindow)
   return result
@@ -296,7 +318,14 @@ function petWindowBounds() {
 
 function petWindowLayout() {
   const display = displayForPetSettings()
-  return calculatePetWindowLayout(petSettings, display.workArea)
+  const layout = calculatePetWindowLayout(
+    petSettings,
+    display.workArea,
+    undefined,
+    { previousIconPlacement: petIconPlacement },
+  )
+  petIconPlacement = layout.iconPlacement
+  return layout
 }
 
 function applyPetWindowAttributes() {
@@ -304,10 +333,10 @@ function applyPetWindowAttributes() {
     makeWindowNonActivating(petWindow)
     windowsNoActivate.apply(petWindow, true)
     applyPetNativeTopmost(petWindow)
-    petWindow.setIgnoreMouseEvents(petSettings.clickThrough)
     petWindow.setOpacity(1)
     petWindow.setBackgroundColor(petSettings.transparentWindow ? "#00000000" : "#f5f5f4")
     petWindow.setHasShadow(!petSettings.transparentWindow)
+    petMousePassthrough.apply()
   }
   if (petBubbleWindow && !petBubbleWindow.isDestroyed()) {
     petBubbleWindow.setSkipTaskbar(true)
@@ -341,6 +370,9 @@ function applyPetBubbleBounds() {
   }
   if (petBubbleIconWindow && !petBubbleIconWindow.isDestroyed()) {
     petBubbleIconWindow.setBounds(layout.collapsedBubble, false)
+    if (!petBubbleIconWindow.webContents.isDestroyed()) {
+      petBubbleIconWindow.webContents.send("mon-agent-pet-icon-placement", layout.iconPlacement)
+    }
   }
 }
 
@@ -373,6 +405,7 @@ function applyPetWindowBounds() {
   petWindow.setMaximumSize(100000, 100000)
   applyingPetBounds = true
   petWindow.setBounds(layout.character, false)
+  petMousePassthrough.reapplyAfterBoundsChange()
   applyPetBubbleBounds()
   setTimeout(() => {
     applyingPetBounds = false
@@ -380,8 +413,8 @@ function applyPetWindowBounds() {
 }
 
 function applyPetWindowSettings() {
-  applyPetWindowAttributes()
   applyPetWindowBounds()
+  applyPetWindowAttributes()
   applyPetBubbleVisibility()
 }
 
@@ -462,10 +495,12 @@ function stopDesktopEnvironmentMonitors() {
   desktopEnvironmentService.stopMonitors()
 }
 
-function updatePetSettings(input) {
+function updatePetSettings(input, options = {}) {
+  const persist = options.persist !== false
+  const broadcast = options.broadcast !== false
   const previousSettings = petSettings
   petSettings = normalizePetSettings({ ...petSettings, ...(input ?? {}) })
-  petSettingsStore.write(petSettings)
+  if (persist) petSettingsStore.write(petSettings)
   applyPetWindowAttributes()
   if (
     previousSettings.petScale !== petSettings.petScale ||
@@ -480,7 +515,7 @@ function updatePetSettings(input) {
     scheduleDesktopEnvironmentBroadcast()
   }
   applyPetBubbleVisibility()
-  broadcastPetSettings()
+  if (broadcast) broadcastPetSettings()
   return petSettings
 }
 
@@ -731,12 +766,17 @@ async function createPetWindow() {
   })
   petWindow.on("closed", () => {
     petGroupDrag = null
+    petMousePassthrough.cancelPending()
     petWindow = null
     if (petBubbleWindow && !petBubbleWindow.isDestroyed()) petBubbleWindow.destroy()
     if (petBubbleIconWindow && !petBubbleIconWindow.isDestroyed()) petBubbleIconWindow.destroy()
     updateTray()
   })
-  petWindow.on("move", savePetWindowPosition)
+  petWindow.on("move", () => {
+    savePetWindowPosition()
+    petMousePassthrough.reapplyAfterBoundsChange()
+  })
+  petWindow.on("resize", () => petMousePassthrough.reapplyAfterBoundsChange())
   attachWindowActivityEvents(petWindow, "pet-character")
   loadWebApp(petWindow, "pet-character")
   createPetBubbleWindows()
@@ -756,7 +796,9 @@ function createPetBubblePanelWindow() {
   petBubbleWindow = new BrowserWindow({
     title: `${APP_WINDOW_TITLE} 桌宠气泡`,
     parent: petWindow ?? undefined,
-    ...(process.platform === "linux" ? { type: "dock" } : {}),
+    // The expanded bubble must remain an ordinary window on Linux. A `dock`
+    // window may contain a focusable DOM input, but KWin intentionally keeps
+    // keyboard focus on the previously active application.
     ...bounds,
     minWidth: 1,
     minHeight: 1,
@@ -768,7 +810,10 @@ function createPetBubblePanelWindow() {
     backgroundColor: "#00000000",
     hasShadow: false,
     skipTaskbar: true,
-    focusable: false,
+    // Electron cannot change focusability at runtime on Linux. Keep the
+    // expanded input surface natively focusable there and control activation
+    // with blur/focus instead.
+    focusable: process.platform === "linux",
     alwaysOnTop: petSettings.alwaysOnTop,
     icon: resolveWindowIcon(),
     webPreferences: {
@@ -794,8 +839,16 @@ function createPetBubblePanelWindow() {
   })
   petBubbleWindow.on("blur", () => {
     if (!petBubbleKeyboardFocus) return
-    petBubbleKeyboardFocus = false
-    applyPetBubbleKeyboardFocus(petBubbleWindow, false, petBubbleCollapsed)
+    if (petBubbleBlurTimer) clearTimeout(petBubbleBlurTimer)
+    // Native style changes can emit a transient blur on KWin. Defer the
+    // no-activate transition so a focus immediately restored by Electron is
+    // not mistaken for the user leaving the input.
+    petBubbleBlurTimer = setTimeout(() => {
+      petBubbleBlurTimer = null
+      if (!petBubbleWindow || petBubbleWindow.isDestroyed() || petBubbleWindow.isFocused()) return
+      petBubbleKeyboardFocus = false
+      applyPetBubbleKeyboardFocus(petBubbleWindow, false, petBubbleCollapsed)
+    }, 50)
   })
   const petBubbleContentsId = petBubbleWindow.webContents.id
   petBubbleWindow.on("hide", () => {
@@ -803,6 +856,8 @@ function createPetBubblePanelWindow() {
     speechPlaybackCoordinator.revokeOwner(petBubbleContentsId, "window-hidden")
   })
   petBubbleWindow.on("closed", () => {
+    if (petBubbleBlurTimer) clearTimeout(petBubbleBlurTimer)
+    petBubbleBlurTimer = null
     speechPlaybackCoordinator.revokeOwner(petBubbleContentsId, "window-closed")
     petGroupDrag = null
     petBubbleWindow = null
@@ -938,7 +993,7 @@ registerDesktopIpc({
       authHeader,
       stopActivityPresence,
     }),
-    ...createWindowCommandHandlers({ BrowserWindow, dialog, getMainWindow: () => mainWindow }),
+    ...createWindowCommandHandlers({ BrowserWindow, dialog, shell, getMainWindow: () => mainWindow }),
     update_activity_facts: ({ sender, args }) => updateRendererActivityFacts(sender, args.facts ?? {}),
     report_performance_diagnostic: ({ sender, args }) => {
       const entry = {
@@ -964,6 +1019,10 @@ registerDesktopIpc({
         preferredAutoSurface: preferredAutomaticSpeechSurface(),
       })
     },
+    authorize_automatic_speech_synthesis: ({ sender }) => {
+      const surface = speechSurfaceForSender(sender)
+      return Boolean(surface && surface === preferredAutomaticSpeechSurface())
+    },
     release_speech_playback: ({ sender, args }) => {
       return speechPlaybackCoordinator.release(sender.id, String(args.leaseId || ""))
     },
@@ -987,7 +1046,12 @@ registerDesktopIpc({
     },
     get_pet_settings: () => petSettings,
     get_pet_bubble_collapsed: () => petBubbleCollapsed,
+    get_pet_icon_placement: () => petIconPlacement,
     apply_pet_settings: ({ args }) => updatePetSettings(args.settings ?? {}),
+    preview_pet_settings: ({ args }) => updatePetSettings(
+      args.settings ?? {},
+      { persist: false, broadcast: false },
+    ),
     set_pet_bubble_collapsed: ({ sender, args }) => {
       const targetWindow = BrowserWindow.fromWebContents(sender)
       if (targetWindow === petBubbleWindow || targetWindow === petBubbleIconWindow) {
@@ -1005,6 +1069,8 @@ registerDesktopIpc({
     set_pet_bubble_keyboard_focus: ({ sender, args }) => {
       const targetWindow = BrowserWindow.fromWebContents(sender)
       if (targetWindow !== petBubbleWindow) return false
+      if (petBubbleBlurTimer) clearTimeout(petBubbleBlurTimer)
+      petBubbleBlurTimer = null
       petBubbleKeyboardFocus = Boolean(args.enabled) && !petBubbleCollapsed && petBubbleWindow.isVisible()
       return applyPetBubbleKeyboardFocus(petBubbleWindow, petBubbleKeyboardFocus, petBubbleCollapsed)
     },

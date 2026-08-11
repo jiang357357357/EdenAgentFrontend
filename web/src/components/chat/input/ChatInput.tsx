@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react"
 import { cn } from "../../../lib/utils"
 import { updateDesktopActivityFacts } from "../../../lib/desktop-window"
 import { DEFAULT_CONTEXT_WINDOW, estimateTextTokens } from "../../../lib/token-usage"
-import type { PermissionMode, PromptAttachment, ToolCall } from "../../../types"
+import type { PermissionMode, PromptAttachment, TokenBreakdown, ToolCall } from "../../../types"
 import { AttachmentTray } from "./AttachmentTray"
 import { ChatComposerFooter } from "./ChatComposerFooter"
 import { ChatDialogPanel } from "./ChatDialogPanel"
@@ -42,6 +42,7 @@ interface ChatInputProps {
   sttConfigId?: number | null
   halfDuplexOutputActive?: boolean
   contextTokenEstimate?: number
+  tokenBreakdown?: TokenBreakdown
   onCompact?: (instructions?: string) => void | Promise<void>
   onAbort?: () => void | Promise<void>
   onNewSession?: () => void | Promise<void>
@@ -77,6 +78,7 @@ export function ChatInput({
   sttConfigId,
   halfDuplexOutputActive = false,
   contextTokenEstimate = 0,
+  tokenBreakdown,
   onCompact,
   onAbort,
   onNewSession,
@@ -270,9 +272,9 @@ export function ChatInput({
   return (
     <div
       className={cn(
-        "sticky bottom-0 z-10 [container-type:size]",
+        "sticky bottom-0 z-10",
         overlay
-          ? "bg-transparent p-0"
+          ? "bg-transparent p-0 [container-type:size]"
           : "bg-gradient-to-t from-bg via-bg/95 to-transparent pt-[1.2vh] pb-[2.8vh]",
       )}
       style={overlay ? { height: standaloneOverlay ? "100%" : `${overlayHeight ?? (overlayCompact ? 20 : 40)}vh` } : undefined}
@@ -390,7 +392,7 @@ export function ChatInput({
                     scrollbarWidth: "none",
                     fontSize: standaloneOverlay ? `${11 * overlayFontRatio}cqh` : `${2.2 * overlayFontRatio}vh`,
                   }
-                : { height: "100%", scrollbarWidth: "none" }
+                : { scrollbarWidth: "none" }
             }
             className={cn(
               "resize-none overflow-x-hidden overflow-y-hidden bg-transparent outline-none leading-relaxed select-text",
@@ -399,8 +401,12 @@ export function ChatInput({
                     "absolute inset-0 box-border h-full max-h-none min-h-0 w-full overflow-hidden text-stone-100 placeholder:text-stone-400/55 [&::-webkit-scrollbar]:hidden",
                     standaloneOverlay ? "px-[8cqh] pb-[8cqh] pt-[8cqh]" : "px-[2.8vh] pt-[2.7vh]",
                   )
-                : "absolute inset-0 box-border h-full max-h-none min-h-0 w-full overflow-hidden pl-[2.8vh] pr-[10vh] pt-[2.7vh] text-[2.2vh] text-text placeholder:text-text-muted/65 [&::-webkit-scrollbar]:hidden",
-              hideComposerFooter ? (standaloneOverlay ? "" : "pb-[2.7vh]") : "pb-[8.2vh]",
+                : "relative block box-border min-h-[9.3vh] w-full overflow-hidden pl-[2.8vh] pr-[10vh] pt-[2.7vh] text-[2.2vh] text-text placeholder:text-text-muted/65 [&::-webkit-scrollbar]:hidden",
+              hideComposerFooter
+                ? (standaloneOverlay ? "" : "pb-[2.7vh]")
+                : overlay
+                  ? "pb-[8.2vh]"
+                  : "mb-[6.7vh] pb-[1.5vh]",
             )}
           />
         )}
@@ -414,6 +420,7 @@ export function ChatInput({
           hideComposerFooter={hideComposerFooter}
           hideOverlayActions={hideOverlayActions}
           inputTokens={inputTokens}
+          tokenBreakdown={tokenBreakdown}
           isDialogMode={isDialogMode}
           modelButtonTitle={modelButtonTitle}
           modelConfigAvailable={Boolean(modelConfig)}

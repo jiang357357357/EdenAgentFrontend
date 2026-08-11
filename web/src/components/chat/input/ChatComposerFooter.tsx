@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronLeft, History, Keyboard, LoaderCircle, MessageSquare, Mic, Move, Plus, ShieldAlert, Square } from "lucide-react"
 
 import type { RealtimeSTTStatus } from "../../../lib/realtime-stt"
+import type { TokenBreakdown } from "../../../types"
 import { cn } from "../../../lib/utils"
 import { SendButton, StopButton, TokenMeter } from "./ChatInputControls"
 
@@ -13,6 +14,7 @@ interface ChatComposerFooterProps {
   hideComposerFooter: boolean
   hideOverlayActions: boolean
   inputTokens: number
+  tokenBreakdown?: TokenBreakdown
   isDialogMode: boolean
   modelButtonTitle: string
   modelConfigAvailable: boolean
@@ -52,6 +54,7 @@ export function ChatComposerFooter({
   hideComposerFooter,
   hideOverlayActions,
   inputTokens,
+  tokenBreakdown,
   isDialogMode,
   modelButtonTitle,
   modelConfigAvailable,
@@ -128,7 +131,7 @@ export function ChatComposerFooter({
 
       {!overlay && !voicePanelVisible ? (
         <div className="absolute bottom-[1.5vh] right-[2.4vh] z-30 flex flex-col items-center gap-[0.9vh]">
-          <TokenMeter inputTokens={inputTokens} contextTokens={contextTokens} contextWindow={contextWindow} />
+          <TokenMeter inputTokens={inputTokens} contextTokens={contextTokens} contextWindow={contextWindow} breakdown={tokenBreakdown} />
           {disabled && onAbort ? <StopButton overlay={false} onStop={() => void onAbort()} /> : <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay={false} onSend={onSend} />}
         </div>
       ) : null}

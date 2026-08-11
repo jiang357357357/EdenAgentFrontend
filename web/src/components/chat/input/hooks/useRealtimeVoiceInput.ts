@@ -4,10 +4,11 @@ import { updateDesktopActivityFacts } from "../../../../lib/desktop-window"
 import { RealtimeSTTService, type RealtimeSTTStatus } from "../../../../lib/realtime-stt"
 
 interface RealtimeVoiceInputOptions {
+  autoSendOnFinish?: boolean
   disabled?: boolean
   halfDuplexOutputActive: boolean
   input: string
-  onSend: (text: string) => void
+  onSend: (text: string) => void | Promise<void>
   onStart: () => void
   overlay: boolean
   surface?: "chat-overlay" | "main-chat" | "pet-bubble"
@@ -17,6 +18,7 @@ interface RealtimeVoiceInputOptions {
 }
 
 export function useRealtimeVoiceInput({
+  autoSendOnFinish = false,
   disabled,
   halfDuplexOutputActive,
   input,
@@ -40,10 +42,12 @@ export function useRealtimeVoiceInput({
   const voiceOriginalInputRef = useRef("")
   const voiceStartedAtRef = useRef<number | null>(null)
   const voiceServiceRef = useRef<RealtimeSTTService | null>(null)
+  const voiceGenerationRef = useRef(0)
   const halfDuplexActiveRef = useRef(false)
   const halfDuplexResponseObservedRef = useRef(false)
 
   useEffect(() => () => {
+    voiceGenerationRef.current += 1
     void voiceServiceRef.current?.cancel()
     voiceServiceRef.current = null
     void updateDesktopActivityFacts({
@@ -63,11 +67,14 @@ export function useRealtimeVoiceInput({
 
   useEffect(() => {
     if (voiceInputEnabled) return
+    voiceGenerationRef.current += 1
     halfDuplexActiveRef.current = false
     setHalfDuplexActive(false)
     setHalfDuplexWaiting(false)
     void voiceServiceRef.current?.cancel()
     voiceServiceRef.current = null
+    setVoiceStatus("idle")
+    setVoiceLevel(0)
     setVoiceError("")
   }, [voiceInputEnabled])
 
@@ -87,6 +94,7 @@ export function useRealtimeVoiceInput({
   const finishVoiceInput = async (keepHalfDuplex = false) => {
     const service = voiceServiceRef.current
     if (!service) return
+    const generation = voiceGenerationRef.current
     if (!keepHalfDuplex) {
       halfDuplexActiveRef.current = false
       setHalfDuplexActive(false)
@@ -94,16 +102,24 @@ export function useRealtimeVoiceInput({
       setHalfDuplexWaiting(false)
     }
     try {
-      await service.finish()
+      const finalText = await service.finish()
+      if (voiceGenerationRef.current === generation && voiceServiceRef.current === service) {
+        setInput(`${voicePrefixRef.current}${finalText}`.trim())
+      }
     } catch (error) {
-      setVoiceError(error instanceof Error ? error.message : "语音转写失败")
+      if (voiceGenerationRef.current === generation && voiceServiceRef.current === service) {
+        setVoiceError(error instanceof Error ? error.message : "语音转写失败")
+      }
     } finally {
-      voiceStartedAtRef.current = null
-      if (voiceServiceRef.current === service) voiceServiceRef.current = null
+      if (voiceGenerationRef.current === generation && voiceServiceRef.current === service) {
+        voiceStartedAtRef.current = null
+        voiceServiceRef.current = null
+      }
     }
   }
 
   const cancelVoiceInput = async () => {
+    voiceGenerationRef.current += 1
     halfDuplexActiveRef.current = false
     setHalfDuplexActive(false)
     setHalfDuplexPaused(false)
@@ -112,17 +128,22 @@ export function useRealtimeVoiceInput({
     voiceServiceRef.current = null
     voiceStartedAtRef.current = null
     setVoiceElapsedSeconds(0)
+    setVoiceStatus("idle")
+    setVoiceLevel(0)
     setInput(voiceOriginalInputRef.current)
     setVoiceError("")
     await service?.cancel()
   }
 
   const pauseVoiceSession = async () => {
+    voiceGenerationRef.current += 1
     setHalfDuplexPaused(true)
     const service = voiceServiceRef.current
     voiceServiceRef.current = null
     voiceStartedAtRef.current = null
     setVoiceElapsedSeconds(0)
+    setVoiceStatus("idle")
+    setVoiceLevel(0)
     await service?.cancel()
   }
 
@@ -144,26 +165,43 @@ export function useRealtimeVoiceInput({
     setVoiceError("")
     onStart()
     voiceOriginalInputRef.current = input
-    voicePrefixRef.current = input.trim() ? `${input.trim()} ` : ""
+    const prefix = input.trim() ? `${input.trim()} ` : ""
+    voicePrefixRef.current = prefix
+    const generation = voiceGenerationRef.current + 1
+    voiceGenerationRef.current = generation
     voiceStartedAtRef.current = Date.now()
     setVoiceElapsedSeconds(0)
     const service = new RealtimeSTTService({
-      onStatus: setVoiceStatus,
-      onLevel: setVoiceLevel,
-      onTranscript: ({ text }) => setInput(`${voicePrefixRef.current}${text}`),
+      onStatus: (status) => {
+        if (voiceGenerationRef.current === generation) setVoiceStatus(status)
+      },
+      onLevel: (level) => {
+        if (voiceGenerationRef.current === generation) setVoiceLevel(level)
+      },
+      onTranscript: ({ text }) => {
+        if (voiceGenerationRef.current === generation && voiceServiceRef.current === service) {
+          setInput(`${prefix}${text}`)
+        }
+      },
       onAutoFinish: ({ text, autoSend }) => {
+        if (voiceGenerationRef.current !== generation || voiceServiceRef.current !== service) return
         if (voiceServiceRef.current === service) voiceServiceRef.current = null
         voiceStartedAtRef.current = null
-        const completedText = `${voicePrefixRef.current}${text}`.trim()
+        const completedText = `${prefix}${text}`.trim()
         setInput(completedText)
-        if ((autoSend || halfDuplexActiveRef.current) && completedText) {
+        if ((autoSendOnFinish || autoSend || halfDuplexActiveRef.current) && completedText) {
           halfDuplexResponseObservedRef.current = false
           setHalfDuplexWaiting(true)
           setInput("")
-          onSend(completedText)
+          void Promise.resolve(onSend(completedText)).catch((error) => {
+            setHalfDuplexWaiting(false)
+            setVoiceError(error instanceof Error ? error.message : "语音消息发送失败")
+            setInput(completedText)
+          })
         }
       },
       onError: (error) => {
+        if (voiceGenerationRef.current !== generation || voiceServiceRef.current !== service) return
         halfDuplexActiveRef.current = false
         setHalfDuplexActive(false)
         setHalfDuplexPaused(false)
@@ -175,8 +213,10 @@ export function useRealtimeVoiceInput({
     try {
       await service.start({ configId: sttConfigId })
     } catch {
-      voiceStartedAtRef.current = null
-      if (voiceServiceRef.current === service) voiceServiceRef.current = null
+      if (voiceGenerationRef.current === generation && voiceServiceRef.current === service) {
+        voiceStartedAtRef.current = null
+        voiceServiceRef.current = null
+      }
     }
   }
 
