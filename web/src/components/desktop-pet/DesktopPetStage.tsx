@@ -6,6 +6,7 @@ import {
   beginDesktopPetGroupDrag,
   endDesktopPetGroupDrag,
   updateDesktopPetGroupDrag,
+  type PetCharacterViewport,
   type PetIconPlacement,
   type PetSettings,
 } from "../../lib/desktop-window"
@@ -27,6 +28,7 @@ interface DesktopPetStageProps {
   settings: PetSettings
   surface?: "combined" | "character" | "bubble" | "icon"
   iconPlacement?: PetIconPlacement
+  characterViewport?: PetCharacterViewport
   inputCollapsed: boolean
   inputTransitioning?: boolean
   onInputCollapsedChange?: (collapsed: boolean) => void
@@ -42,6 +44,7 @@ export function DesktopPetStage({
   settings,
   surface = "combined",
   iconPlacement,
+  characterViewport = { mode: "window", x: 0, y: 0, width: 1, height: 1 },
   inputCollapsed,
   inputTransitioning = false,
   onInputCollapsedChange,
@@ -75,6 +78,7 @@ export function DesktopPetStage({
   const hasVisual = Boolean(character && (hasSpine || characterImage))
   const characterOnly = surface === "character"
   const bubbleOnly = surface === "bubble" || surface === "icon"
+  const workAreaHosted = characterOnly && characterViewport.mode === "work-area"
   const inputEnabled = settings.showInput && !characterOnly
   const inputVisible = inputEnabled && !inputCollapsed
   const inputWidth = Math.max(10, Math.min(100, settings.inputWidth))
@@ -83,7 +87,8 @@ export function DesktopPetStage({
   const layoutGap = inputEnabled ? 4 : 0
   const characterTop = surface === "combined" && inputEnabled ? interactionHeight + layoutGap : 0
   const characterHeight = 100 - characterTop
-  const petBackgroundClass = bubbleOnly || settings.transparentWindow ? "bg-transparent" : "bg-bg"
+  const windowBackgroundClass = characterOnly || bubbleOnly || settings.transparentWindow ? "bg-transparent" : "bg-bg"
+  const characterBackgroundClass = settings.transparentWindow ? "bg-transparent" : "bg-bg"
   const iconEdge = surface === "icon" ? iconPlacement?.edge ?? "none" : "none"
   const iconShapeStyle: CSSProperties = iconEdge === "left"
     ? { borderRadius: "0 9999px 9999px 0" }
@@ -95,7 +100,9 @@ export function DesktopPetStage({
           ? { borderRadius: "9999px 9999px 0 0" }
           : {}
   const windowDragStyle =
-    !preview && !bubbleOnly && settings.characterDraggable ? ({ WebkitAppRegion: "drag" } as CSSProperties) : undefined
+    !preview && !bubbleOnly && !workAreaHosted && settings.characterDraggable
+      ? ({ WebkitAppRegion: "drag" } as CSSProperties)
+      : undefined
   const noDragStyle = { WebkitAppRegion: "no-drag" } as CSSProperties
 
   const flushPetIconDrag = () => {
@@ -105,8 +112,10 @@ export function DesktopPetStage({
     if (point) void updateDesktopPetGroupDrag(point.x, point.y)
   }
 
-  const handlePetIconPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (!bubbleOnly || !inputCollapsed || preview || event.button !== 0) return
+  const handlePetIconPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    const draggingIcon = bubbleOnly && inputCollapsed
+    const draggingHostedCharacter = workAreaHosted && settings.characterDraggable
+    if ((!draggingIcon && !draggingHostedCharacter) || preview || event.button !== 0) return
     petIconDragRef.current = {
       pointerId: event.pointerId,
       startX: event.screenX,
@@ -123,7 +132,7 @@ export function DesktopPetStage({
     }
   }
 
-  const handlePetIconPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const handlePetIconPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     const drag = petIconDragRef.current
     if (!drag || drag.pointerId !== event.pointerId) return
     drag.lastX = event.screenX
@@ -137,14 +146,14 @@ export function DesktopPetStage({
     if (dragFrameRef.current === null) dragFrameRef.current = requestAnimationFrame(flushPetIconDrag)
   }
 
-  const finishPetIconDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const finishPetIconDrag = (event: ReactPointerEvent<HTMLElement>) => {
     const drag = petIconDragRef.current
     if (!drag || drag.pointerId !== event.pointerId) return
     petIconDragRef.current = null
     if (dragFrameRef.current !== null) cancelAnimationFrame(dragFrameRef.current)
     dragFrameRef.current = null
     pendingDragPointRef.current = null
-    if (drag.dragging) suppressIconClickUntilRef.current = performance.now() + 250
+    if (drag.dragging && bubbleOnly) suppressIconClickUntilRef.current = performance.now() + 250
     void endDesktopPetGroupDrag(event.screenX, event.screenY)
     try {
       event.currentTarget.releasePointerCapture(event.pointerId)
@@ -157,13 +166,13 @@ export function DesktopPetStage({
     <main
       className={cn(
         "relative h-full w-full select-none overflow-hidden font-sans text-text [container-type:size]",
-        petBackgroundClass,
+        windowBackgroundClass,
         bubbleOnly && inputTransitioning && "opacity-0",
         className,
       )}
       style={windowDragStyle}
     >
-      {!preview && !bubbleOnly ? (
+      {!preview && !bubbleOnly && !workAreaHosted ? (
         <div
           className="absolute inset-x-0 top-0 z-30 h-[5%]"
           style={{ WebkitAppRegion: "drag" } as CSSProperties}
@@ -213,21 +222,36 @@ export function DesktopPetStage({
 
       {!bubbleOnly ? <section
         className={cn(
-          "absolute inset-x-0 flex items-end justify-center text-center",
+          "absolute flex items-end justify-center text-center [container-type:size]",
+          !workAreaHosted && "inset-x-0",
           !preview && (hasSpine || settings.characterDraggable) ? "pointer-events-auto" : "pointer-events-none",
         )}
-        style={{
-          top: `${characterTop}%`,
-          height: `${characterHeight}%`,
-          ...(hasSpine && !preview ? noDragStyle : {}),
-        }}
+        onPointerDown={workAreaHosted && settings.characterDraggable ? handlePetIconPointerDown : undefined}
+        onPointerMove={workAreaHosted && settings.characterDraggable ? handlePetIconPointerMove : undefined}
+        onPointerUp={workAreaHosted && settings.characterDraggable ? finishPetIconDrag : undefined}
+        onPointerCancel={workAreaHosted && settings.characterDraggable ? finishPetIconDrag : undefined}
+        style={workAreaHosted
+          ? {
+              left: `${characterViewport.x}px`,
+              top: `${characterViewport.y}px`,
+              width: `${characterViewport.width}px`,
+              height: `${characterViewport.height}px`,
+              cursor: settings.characterDraggable ? "move" : undefined,
+              touchAction: settings.characterDraggable ? "none" : undefined,
+              ...noDragStyle,
+            }
+          : {
+              top: `${characterTop}%`,
+              height: `${characterHeight}%`,
+              ...(hasSpine && !preview ? noDragStyle : {}),
+            }}
       >
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
           transition={{ ...stageTransition, delay: 0.08 }}
-          className={cn("relative h-full w-full overflow-hidden shadow-none", petBackgroundClass)}
+          className={cn("relative h-full w-full overflow-hidden shadow-none", characterBackgroundClass)}
         >
           {hasVisual && character ? (
             <CharacterPerformanceStage

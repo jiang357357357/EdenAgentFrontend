@@ -5,10 +5,15 @@ const test = require("node:test")
 const { createWorkspaceContext, parseMonConfigValue } = require("../src/app/workspace-context.cjs")
 
 test("parses sectioned Mon configuration values case-insensitively", () => {
-  const contents = "# comment\n[server]\nHost = 0.0.0.0\nPORT=40011\n"
+  const contents = "# comment\n[server]\nHost = 0.0.0.0\nPORT=40011 ; comment\nURL=https://example.test/#fragment # comment\n"
   assert.equal(parseMonConfigValue(contents, "SERVER", "host"), "0.0.0.0")
   assert.equal(parseMonConfigValue(contents, "server", "port"), "40011")
+  assert.equal(parseMonConfigValue(contents, "server", "url"), "https://example.test/#fragment")
   assert.equal(parseMonConfigValue(contents, "server", "missing"), undefined)
+})
+
+test("rejects malformed Mon configuration", () => {
+  assert.throws(() => parseMonConfigValue("[server]\nBROKEN\n", "server", "PORT"), /expected KEY=VALUE/)
 })
 
 function createContext(files, env = {}) {
@@ -49,8 +54,10 @@ test("resolves frontend, agent configuration and desktop icons", () => {
 
 test("resolves the MonCore URL from the workspace and normalizes wildcard hosts", () => {
   const context = createContext({
+    "D:\\Mon\\.monconfig": "[workspace]\nNAME=Mon",
+    "D:\\Mon\\.monworkspace": "{}",
     "D:\\Mon\\Agent\\.monconfig": "SERVICE_ID=monagent",
-    "D:\\Mon\\Backend\\Server\\.monconfig": "[server]\nHOST=0.0.0.0\nPORT=40111",
+    "D:\\Mon\\Server\\.monconfig": "[server]\nHOST=0.0.0.0\nPORT=40111",
   })
   assert.equal(context.resolveCoreBaseUrl(), "http://127.0.0.1:40111")
 })

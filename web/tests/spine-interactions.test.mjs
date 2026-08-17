@@ -75,8 +75,9 @@ test("resolves common standalone blink animation names", () => {
 })
 
 test("short blink clips receive a natural minimum duration and smooth mix out", () => {
-  assert.deepEqual(resolveSpineBlinkPlayback(0.08), { timeScale: 0.5, mixOutSeconds: 0.08 })
-  assert.deepEqual(resolveSpineBlinkPlayback(0.24), { timeScale: 1, mixOutSeconds: 0.08 })
+  assert.deepEqual(resolveSpineBlinkPlayback(0.08), { timeScale: 0.08 / 0.6, mixOutSeconds: 0.2 })
+  assert.deepEqual(resolveSpineBlinkPlayback(0.24), { timeScale: 0.24 / 0.6, mixOutSeconds: 0.2 })
+  assert.deepEqual(resolveSpineBlinkPlayback(0.64), { timeScale: 1, mixOutSeconds: 0.2 })
 })
 
 test("separates head and body interaction zones", () => {

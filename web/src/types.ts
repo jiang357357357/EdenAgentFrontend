@@ -1,5 +1,5 @@
 export type Role = "user" | "assistant"
-export type SessionStatus = "idle" | "busy" | "retry"
+export type SessionStatus = "idle" | "busy" | "retry" | "stopping"
 export type ConnectionState = "connecting" | "connected" | "disconnected"
 export type PermissionMode = "restricted" | "full_access" | "takeover"
 

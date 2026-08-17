@@ -2,6 +2,9 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { spawnExecutable, spawnNpm } from "./process_runner.mjs"
+import monconfig from "../../desktop/src/app/monconfig.cjs"
+
+const { parseMonConfigValue } = monconfig
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const frontendRoot = path.resolve(scriptDir, "../..")
@@ -26,30 +29,14 @@ process.stdout.on("error", handleOutputError)
 process.stderr.on("error", handleOutputError)
 
 function readMonConfigValue(targetSection, targetKey, fallback) {
-  let section = "default"
-  let contents = ""
+  let contents
   try {
     contents = fs.readFileSync(configPath, "utf8")
   } catch {
     return fallback
   }
-
-  for (const rawLine of contents.split(/\r?\n/)) {
-    const line = rawLine.trim()
-    if (!line || line.startsWith("#")) continue
-    if (line.startsWith("[") && line.endsWith("]")) {
-      section = line.slice(1, -1).trim().toLowerCase()
-      continue
-    }
-    const equalsIndex = line.indexOf("=")
-    if (equalsIndex < 0) continue
-    const key = line.slice(0, equalsIndex).trim().toUpperCase()
-    const value = line.slice(equalsIndex + 1).trim()
-    if (section === targetSection.toLowerCase() && key === targetKey.toUpperCase()) {
-      return value || fallback
-    }
-  }
-  return fallback
+  const value = parseMonConfigValue(contents, targetSection, targetKey)
+  return value || fallback
 }
 
 function resolveAgentPath(value) {

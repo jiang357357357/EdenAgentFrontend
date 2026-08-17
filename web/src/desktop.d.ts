@@ -11,6 +11,9 @@ declare global {
       onPetIconPlacement?(
         callback: (placement: Partial<import("./lib/desktop-window").PetIconPlacement>) => void,
       ): () => void
+      onPetCharacterViewport?(
+        callback: (viewport: Partial<import("./lib/desktop-window").PetCharacterViewport>) => void,
+      ): () => void
       onDesktopEnvironment?(callback: (environment: Record<string, unknown>) => void): () => void
       onOpenSettings?(callback: () => void): () => void
       onAuthState?(callback: (state: {

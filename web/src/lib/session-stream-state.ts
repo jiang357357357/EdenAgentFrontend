@@ -1,5 +1,14 @@
+import type { SessionStatus } from "../types"
+
+export function reconcileRuntimeSessionStatus(
+  current: SessionStatus,
+  hydrated?: SessionStatus,
+): SessionStatus {
+  return hydrated ?? current
+}
+
 export function isRuntimeSessionRunning(status: string) {
-  return status === "busy" || status === "retry"
+  return status === "busy" || status === "retry" || status === "stopping"
 }
 
 export function runtimePartState(sessionIsRunning: boolean, partIsIncomplete: boolean): "streaming" | "done" {

@@ -42,8 +42,14 @@ function createWindow({ focused = false, visible = true, focusable = true, topmo
 
 test("desktop character interactions never activate the character window", () => {
   const window = createWindow({ focused: true })
-  assert.equal(makeWindowNonActivating(window), true)
+  assert.equal(makeWindowNonActivating(window, "win32"), true)
   assert.deepEqual(window.calls, ["blur", "focusable:false"])
+})
+
+test("Linux character stays managed while incidental focus is removed", () => {
+  const window = createWindow({ focused: true, focusable: true })
+  assert.equal(makeWindowNonActivating(window, "linux"), true)
+  assert.deepEqual(window.calls, ["blur"])
 })
 
 test("collapsed and ordinary bubble interactions remain non-activating and topmost", () => {
@@ -77,6 +83,12 @@ test("Electron topmost is reasserted even when its cached state already says tru
   const window = createWindow({ visible: true, topmost: true })
   assert.equal(reassertWindowTopmost(window, true), true)
   assert.deepEqual(window.calls, ["topmost:true:screen-saver", "moveTop"])
+})
+
+test("topmost levels can keep interaction surfaces below the character", () => {
+  const window = createWindow({ visible: true, topmost: true })
+  assert.equal(reassertWindowTopmost(window, true, "floating"), true)
+  assert.deepEqual(window.calls, ["topmost:true:floating", "moveTop"])
 })
 
 test("disabling topmost does not move the window to the front", () => {

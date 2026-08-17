@@ -258,39 +258,23 @@ export function Sidebar({
         </nav>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="relative flex h-[8.4vh] min-h-16 items-center justify-between border-b border-border px-4">
-            {activity === "files" ? (
+          {activity === "files" ? (
+            <div className="relative flex h-[8.4vh] min-h-16 items-center justify-between border-b border-border px-4">
               <div className="flex min-w-0 items-baseline gap-2">
                 <div className="shrink-0 text-[clamp(17px,2vh,21px)] font-semibold text-text">资源管理器</div>
                 <button type="button" onClick={() => setWorkspaceMenuOpen((open) => !open)} className="truncate rounded px-1 py-0.5 text-[clamp(14px,1.5vh,16px)] text-text-muted hover:bg-card hover:text-text" title={workspacePath || workspaceName}>{workspaceName}</button>
               </div>
-            ) : (
-              <div>
-                <div className="text-[1.8vh] font-semibold text-text">会话</div>
-                <div className="text-[1.2vh] text-text-muted">{sessions.length} 条记录</div>
-              </div>
-            )}
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={onNewSession}
-                className={cn("h-9 w-9 items-center justify-center rounded-lg text-text-muted transition hover:bg-card hover:text-accent", activity === "sessions" ? "flex" : "hidden")}
-                aria-label="新会话"
-                title="新会话"
-              >
-                <Plus className="h-5 w-5" />
-              </button>
-            </div>
-            {activity === "files" && workspaceMenuOpen ? (
+            {workspaceMenuOpen ? (
               <div className="absolute left-4 top-[calc(100%-0.4rem)] z-40 w-52 rounded-xl border border-border bg-card p-1.5 text-sm shadow-xl">
                 <button type="button" onClick={() => { setWorkspaceMenuOpen(false); void openDesktopWorkspaceDirectory(workspacePath) }} disabled={!window.monAgentDesktop || !workspacePath} className="flex w-full rounded-lg px-3 py-2 text-left text-text hover:bg-bg disabled:opacity-40">在系统文件管理器中打开</button>
                 <button type="button" onClick={() => void chooseWorkspace()} disabled={!window.monAgentDesktop} className="flex w-full rounded-lg px-3 py-2 text-left text-text hover:bg-bg disabled:opacity-40">切换项目文件夹…</button>
               </div>
             ) : null}
-          </div>
+            </div>
+          ) : null}
 
-          {activity === "sessions" ? <><div className="border-b border-border p-3">
-            <label className="flex h-10 items-center gap-2 rounded-lg border border-border bg-card px-3 text-text-muted focus-within:border-accent/50 focus-within:text-text">
+          {activity === "sessions" ? <><div className="flex items-center gap-2 border-b border-border p-3">
+            <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-card px-3 text-text-muted focus-within:border-accent/50 focus-within:text-text">
               <Search className="h-4 w-4 shrink-0" />
               <input
                 value={query}
@@ -299,6 +283,15 @@ export function Sidebar({
                 className="min-w-0 flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-lighter"
               />
             </label>
+            <button
+              type="button"
+              onClick={onNewSession}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-text-muted transition hover:bg-card hover:text-accent"
+              aria-label="新会话"
+              title="新会话"
+            >
+              <Plus className="h-5 w-5" />
+            </button>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">

@@ -4,6 +4,7 @@ import test from "node:test"
 import {
   isAssistantMessageStreaming,
   isRuntimeSessionRunning,
+  reconcileRuntimeSessionStatus,
   runtimePartState,
 } from "../src/lib/session-stream-state.ts"
 
@@ -19,4 +20,16 @@ test("an unfinished assistant message remains streaming while the session is bus
 
   assert.equal(isAssistantMessageStreaming(running, true, true), true)
   assert.equal(runtimePartState(running, true), "streaming")
+})
+
+test("a stopping session remains active until the backend confirms idle", () => {
+  const running = isRuntimeSessionRunning("stopping")
+
+  assert.equal(isAssistantMessageStreaming(running, true, true), true)
+  assert.equal(runtimePartState(running, true), "streaming")
+})
+
+test("session hydration restores the backend runtime status after reconnect", () => {
+  assert.equal(reconcileRuntimeSessionStatus("idle", "busy"), "busy")
+  assert.equal(reconcileRuntimeSessionStatus("stopping", undefined), "stopping")
 })

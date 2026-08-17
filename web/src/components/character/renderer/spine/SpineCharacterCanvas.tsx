@@ -141,11 +141,12 @@ export function SpineCharacterCanvas({
     let diagnosticTicks = 0
     let diagnosticUpdateMs = 0
     let diagnosticStartedAt = performance.now()
+    const rendererResolution = Math.min(window.devicePixelRatio || 1, 2)
     const app = new Application({
       resizeTo: host,
       antialias: true,
       autoDensity: true,
-      resolution: Math.min(window.devicePixelRatio || 1, renderQuality === "preview" ? 1.25 : 2),
+      resolution: rendererResolution,
       backgroundAlpha: 0,
     })
     app.ticker.maxFPS = renderQuality === "preview" ? 15 : 24

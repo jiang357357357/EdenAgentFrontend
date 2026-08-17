@@ -19,6 +19,13 @@ test("the panel and collapsed icon are separate fixed native windows", () => {
   assert.match(mainSource, /const bounds = petWindowLayout\(\)\.collapsedBubble[\s\S]*?loadWebApp\(petBubbleIconWindow, "pet-icon"\)/)
 })
 
+test("the character has a higher native stacking level than independent chat surfaces", () => {
+  assert.doesNotMatch(mainSource, /parent: petWindow/)
+  assert.match(mainSource, /PET_CHARACTER_TOPMOST_LEVEL = "screen-saver"/)
+  assert.match(mainSource, /PET_INTERACTION_TOPMOST_LEVEL = "floating"/)
+  assert.match(mainSource, /targetWindow === petWindow[\s\S]*?PET_CHARACTER_TOPMOST_LEVEL[\s\S]*?PET_INTERACTION_TOPMOST_LEVEL/)
+})
+
 test("collapse switches fixed-window visibility without resizing or reconfiguring the HWND", () => {
   const collapseHandler = mainSource.match(
     /set_pet_bubble_collapsed: \(\{ sender, args \}\) => \{([\s\S]*?)set_pet_bubble_keyboard_focus:/,
@@ -58,6 +65,18 @@ test("dragging the collapsed icon moves the whole pet group without turning the 
   assert.match(stageSource, /endDesktopPetGroupDrag\(event\.screenX, event\.screenY\)/)
   assert.match(stageSource, /suppressIconClickUntilRef\.current = performance\.now\(\) \+ 250/)
   assert.match(mainSource, /begin_pet_group_drag: \(\{ sender, args \}\) =>/)
-  assert.match(mainSource, /targetWindow !== petBubbleIconWindow \|\| !petBubbleCollapsed/)
+  assert.match(mainSource, /draggingCollapsedIcon = targetWindow === petBubbleIconWindow && petBubbleCollapsed/)
+  assert.match(mainSource, /draggingCharacter = targetWindow === petWindow && petSettings\.characterDraggable/)
   assert.match(mainSource, /petSettings = normalizePetSettings\(\{ \.\.\.petSettings, windowX: position\.x, windowY: position\.y \}\)/)
+})
+
+test("the Linux character uses a stable shaped work-area host", () => {
+  assert.match(mainSource, /calculatePetWindowHostLayout\(layout\.character, layout\.workArea, process\.platform\)/)
+  assert.match(mainSource, /petWindow\.setShape\(hostLayout\.shape\)/)
+  assert.match(mainSource, /webContents\.send\("mon-agent-pet-character-viewport", petCharacterViewport\)/)
+  assert.match(preloadSource, /onPetCharacterViewport\(callback\)/)
+  assert.match(desktopWindowSource, /getDesktopPetCharacterViewport/)
+  assert.match(pageSource, /listenDesktopPetCharacterViewport/)
+  assert.match(stageSource, /workAreaHosted = characterOnly && characterViewport\.mode === "work-area"/)
+  assert.doesNotMatch(stageSource, /translate\(/)
 })

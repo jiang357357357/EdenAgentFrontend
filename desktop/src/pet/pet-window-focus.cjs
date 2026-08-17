@@ -2,20 +2,28 @@ function canControlWindow(targetWindow) {
   return Boolean(targetWindow && !targetWindow.isDestroyed())
 }
 
-function makeWindowNonActivating(targetWindow) {
+function makeWindowNonActivating(targetWindow, platform = process.platform) {
   if (!canControlWindow(targetWindow)) return false
   if (targetWindow.isFocused()) targetWindow.blur()
-  if (targetWindow.isFocusable()) targetWindow.setFocusable(false)
+  // On X11, changing an Electron window to non-focusable also makes it an
+  // override-redirect window. Cinnamon then stops managing its stacking
+  // state, so a later application can cover the character even when Electron
+  // still reports it as always-on-top. Keep the native window focusable on
+  // Linux and prevent activation by showing it inactive and immediately
+  // blurring any incidental focus instead.
+  if (platform !== "linux" && targetWindow.isFocusable()) {
+    targetWindow.setFocusable(false)
+  }
   return true
 }
 
-function reassertWindowTopmost(targetWindow, enabled) {
+function reassertWindowTopmost(targetWindow, enabled, level = "screen-saver") {
   if (!canControlWindow(targetWindow)) return false
   const topmost = Boolean(enabled)
   if (topmost) {
-    // Do not trust Electron's cached isAlwaysOnTop() value here. Windows can
-    // change the native Z-order when owned bubble windows are shown or focused.
-    targetWindow.setAlwaysOnTop(true, "screen-saver")
+    // Do not trust Electron's cached isAlwaysOnTop() value here. Showing or
+    // focusing another native surface can change the actual window-manager order.
+    targetWindow.setAlwaysOnTop(true, level)
     if (targetWindow.isVisible() && typeof targetWindow.moveTop === "function") {
       targetWindow.moveTop()
     }

@@ -8,13 +8,17 @@ import type { ActiveCharacterAction, CoreAssistant } from "../../lib/auth"
 import {
   DEFAULT_PET_ICON_PLACEMENT,
   DEFAULT_PET_SETTINGS,
+  DEFAULT_PET_CHARACTER_VIEWPORT,
   getDesktopPetIconPlacement,
   getDesktopPetSettings,
+  getDesktopPetCharacterViewport,
   listenDesktopPetIconPlacement,
   listenDesktopPetSettings,
+  listenDesktopPetCharacterViewport,
   setDesktopPetBubbleCollapsed,
   type PetIconPlacement,
   type PetSettings,
+  type PetCharacterViewport,
 } from "../../lib/desktop-window"
 import { resolveMonAgentUrl } from "../../lib/mon_agent_api"
 import { cn } from "../../lib/utils"
@@ -111,9 +115,14 @@ export function CharacterPage({
 }: CharacterPageProps) {
   const [petSettings, setPetSettings] = useState<PetSettings>(DEFAULT_PET_SETTINGS)
   const [petIconPlacement, setPetIconPlacement] = useState<PetIconPlacement>(DEFAULT_PET_ICON_PLACEMENT)
+  const [petCharacterViewport, setPetCharacterViewport] = useState<PetCharacterViewport>(
+    DEFAULT_PET_CHARACTER_VIEWPORT,
+  )
   const [combinedInputCollapsed, setCombinedInputCollapsed] = useState(false)
   const displayName = assistant?.name || assistant?.character?.name || "默认助手"
-  const petBackgroundClass = surface === "bubble" || surface === "icon" || petSettings.transparentWindow ? "!bg-transparent" : "bg-bg"
+  const petBackgroundClass = surface === "character" || surface === "bubble" || surface === "icon" || petSettings.transparentWindow
+    ? "!bg-transparent"
+    : "bg-bg"
   const noDragStyle = { WebkitAppRegion: "no-drag" } as CSSProperties
 
   useEffect(() => {
@@ -135,6 +144,25 @@ export function CharacterPage({
   }, [])
 
   useEffect(() => {
+    if (surface !== "character") return
+    let disposed = false
+    let unsubscribe: (() => void) | undefined
+    void getDesktopPetCharacterViewport().then((viewport) => {
+      if (!disposed) setPetCharacterViewport(viewport)
+    })
+    void listenDesktopPetCharacterViewport((viewport) => {
+      if (!disposed) setPetCharacterViewport(viewport)
+    }).then((cleanup) => {
+      unsubscribe = cleanup
+      if (disposed) cleanup?.()
+    })
+    return () => {
+      disposed = true
+      unsubscribe?.()
+    }
+  }, [surface])
+
+  useEffect(() => {
     if (surface !== "icon") return
     let disposed = false
     let unsubscribe: (() => void) | undefined
@@ -154,9 +182,12 @@ export function CharacterPage({
   }, [surface])
 
   useLayoutEffect(() => {
-    document.documentElement.classList.toggle("character-transparent", petSettings.transparentWindow)
+    document.documentElement.classList.toggle(
+      "character-transparent",
+      surface === "character" || petSettings.transparentWindow,
+    )
     return () => document.documentElement.classList.remove("character-transparent")
-  }, [petSettings.transparentWindow])
+  }, [petSettings.transparentWindow, surface])
 
   const resolvedInputCollapsed = surface === "icon" ? true : surface === "bubble" ? false : combinedInputCollapsed
   const handleInputCollapsedChange = (collapsed: boolean) => {
@@ -181,6 +212,7 @@ export function CharacterPage({
         settings={petSettings}
         surface={surface}
         iconPlacement={petIconPlacement}
+        characterViewport={surface === "character" ? petCharacterViewport : DEFAULT_PET_CHARACTER_VIEWPORT}
         inputCollapsed={resolvedInputCollapsed}
         onInputCollapsedChange={(collapsed) => void handleInputCollapsedChange(collapsed)}
         inputContent={

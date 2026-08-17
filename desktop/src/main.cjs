@@ -14,6 +14,12 @@ const { createPetGroupDrag, petGroupPositionAtPointer } = require("./pet/pet-gro
 const { createGlobalPointerObserver } = require("./pet/global-pointer-observer.cjs")
 const { calculatePetWindowBounds, calculatePetWindowLayout, petCoordinate } = require("./pet/pet-layout.cjs")
 const { createPetMousePassthroughController } = require("./pet/pet-mouse-passthrough.cjs")
+const {
+  calculatePetWindowHostLayout,
+  sameBounds,
+  sameCharacterViewport,
+  usesPetWorkAreaHost,
+} = require("./pet/pet-window-host.cjs")
 const { DEFAULT_PET_SETTINGS, normalizePetSettings } = require("./pet/pet-settings.cjs")
 const { createPetSettingsStore } = require("./pet/pet-settings-store.cjs")
 const { isInternalAppUrl, isSupportedExternalUrl } = require("./protocols/navigation-policy.cjs")
@@ -42,6 +48,8 @@ const DEFAULT_CORE_PORT = 40011
 const DEFAULT_WEB_PORT = 40091
 const SETTINGS_WINDOW_WIDTH_RATIO = 1
 const SETTINGS_WINDOW_HEIGHT_RATIO = 1
+const PET_CHARACTER_TOPMOST_LEVEL = "screen-saver"
+const PET_INTERACTION_TOPMOST_LEVEL = "floating"
 
 const workspaceContext = createWorkspaceContext({
   app,
@@ -96,12 +104,14 @@ let isQuitting = false
 let currentViewMode = "chatWithCharacter"
 let petSettings = petSettingsStore.read()
 let applyingPetBounds = false
+let petBoundsSettleTimer = null
 let savePetPositionTimer = null
 let petBubbleCollapsed = false
 let petBubbleKeyboardFocus = false
 let petBubbleBlurTimer = null
 let petGroupDrag = null
 let petIconPlacement = { anchor: "top-left", edge: "none" }
+let petCharacterViewport = { mode: "window", x: 0, y: 0, width: 1, height: 1 }
 let desktopEnvironmentBroadcastTimer = null
 let authSession = null
 let authVerification = null
@@ -170,7 +180,10 @@ const petMousePassthrough = createPetMousePassthroughController({
 })
 
 function applyPetTopmost(targetWindow) {
-  return reassertWindowTopmost(targetWindow, petSettings.alwaysOnTop)
+  const level = targetWindow === petWindow
+    ? PET_CHARACTER_TOPMOST_LEVEL
+    : PET_INTERACTION_TOPMOST_LEVEL
+  return reassertWindowTopmost(targetWindow, petSettings.alwaysOnTop, level)
 }
 
 function syncGlobalPointerObserver() {
@@ -334,11 +347,13 @@ function petWindowLayout() {
 
 function applyPetWindowAttributes() {
   if (petWindow && !petWindow.isDestroyed()) {
-    makeWindowNonActivating(petWindow)
+    petWindow.setSkipTaskbar(true)
+    makeWindowNonActivating(petWindow, process.platform)
     applyPetTopmost(petWindow)
     petWindow.setOpacity(1)
-    petWindow.setBackgroundColor(petSettings.transparentWindow ? "#00000000" : "#f5f5f4")
-    petWindow.setHasShadow(!petSettings.transparentWindow)
+    const workAreaHost = usesPetWorkAreaHost(process.platform)
+    petWindow.setBackgroundColor(workAreaHost || petSettings.transparentWindow ? "#00000000" : "#f5f5f4")
+    petWindow.setHasShadow(!workAreaHost && !petSettings.transparentWindow)
     petMousePassthrough.apply()
   }
   if (petBubbleWindow && !petBubbleWindow.isDestroyed()) {
@@ -361,8 +376,8 @@ function applyPetWindowAttributes() {
     petBubbleIconWindow.setHasShadow(false)
     applyPetBubbleKeyboardFocus(petBubbleIconWindow, false, true)
   }
-  // Windows keeps an owned window above its owner. Reassert the character
-  // owner last so making the panel/icon topmost cannot demote it below a game.
+  // Interaction surfaces are independent floating windows. Reassert the
+  // character's higher level last to keep it above both surfaces.
   applyPetTopmost(petWindow)
   syncGlobalPointerObserver()
 }
@@ -401,17 +416,34 @@ function applyPetBubbleVisibility() {
   applyPetTopmost(petWindow)
 }
 
+function syncPetCharacterViewport(nextViewport) {
+  if (!petWindow || petWindow.isDestroyed()) return
+  if (sameCharacterViewport(nextViewport, petCharacterViewport)) return
+  petCharacterViewport = nextViewport
+  if (!petWindow.webContents.isDestroyed()) {
+    petWindow.webContents.send("mon-agent-pet-character-viewport", petCharacterViewport)
+  }
+}
+
 function applyPetWindowBounds() {
   if (!petWindow || petWindow.isDestroyed()) return
 
   const layout = petWindowLayout()
+  const hostLayout = calculatePetWindowHostLayout(layout.character, layout.workArea, process.platform)
+  const hostBounds = hostLayout.hostBounds
   petWindow.setMinimumSize(1, 1)
   petWindow.setMaximumSize(100000, 100000)
   applyingPetBounds = true
-  petWindow.setBounds(layout.character, false)
+  if (!sameBounds(petWindow.getBounds(), hostBounds)) petWindow.setBounds(hostBounds, false)
+  syncPetCharacterViewport(hostLayout.characterViewport)
+  if (usesPetWorkAreaHost(process.platform) && typeof petWindow.setShape === "function") {
+    petWindow.setShape(hostLayout.shape)
+  }
   petMousePassthrough.reapplyAfterBoundsChange()
   applyPetBubbleBounds()
-  setTimeout(() => {
+  if (petBoundsSettleTimer) clearTimeout(petBoundsSettleTimer)
+  petBoundsSettleTimer = setTimeout(() => {
+    petBoundsSettleTimer = null
     applyingPetBounds = false
   }, 250)
 }
@@ -423,7 +455,7 @@ function applyPetWindowSettings() {
 }
 
 function savePetWindowPosition() {
-  if (!petWindow || applyingPetBounds || petGroupDrag) return
+  if (!petWindow || applyingPetBounds || petGroupDrag || usesPetWorkAreaHost(process.platform)) return
   const bounds = petWindow.getBounds()
   const layout = petWindowLayout()
   petSettings = normalizePetSettings({
@@ -724,22 +756,34 @@ async function createPetWindow() {
   }
 
   const preload = path.join(__dirname, "preload.cjs")
-  const bounds = petWindowLayout().character
+  const layout = petWindowLayout()
+  const hostLayout = calculatePetWindowHostLayout(layout.character, layout.workArea, process.platform)
+  const bounds = hostLayout.hostBounds
+  petCharacterViewport = hostLayout.characterViewport
   petWindow = new BrowserWindow({
     title: `${APP_WINDOW_TITLE} 桌宠角色`,
-    ...(process.platform === "linux" ? { type: "dock" } : {}),
     width: bounds.width,
     height: bounds.height,
     x: bounds.x,
     y: bounds.y,
     minWidth: 1,
     minHeight: 1,
+    resizable: !usesPetWorkAreaHost(process.platform),
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
     show: false,
     frame: false,
     titleBarStyle: "hidden",
     autoHideMenuBar: true,
     transparent: true,
-    focusable: false,
+    // A Linux `dock` or non-focusable BrowserWindow becomes unmanaged under
+    // X11/Cinnamon, which prevents always-on-top from surviving application
+    // switches. Keep a normal managed window there and suppress activation in
+    // the event handlers below.
+    focusable: process.platform === "linux",
+    skipTaskbar: true,
+    alwaysOnTop: petSettings.alwaysOnTop,
     backgroundColor: "#00000000",
     icon: resolveWindowIcon(),
     webPreferences: {
@@ -762,6 +806,11 @@ async function createPetWindow() {
     applyPetWindowAttributes()
     applyPetBubbleVisibility()
   })
+  petWindow.on("focus", () => {
+    if (process.platform !== "linux") return
+    petWindow?.blur()
+    applyPetTopmost(petWindow)
+  })
   petWindow.on("hide", () => {
     globalPointerObserver.setEnabled(false)
     petBubbleKeyboardFocus = false
@@ -772,6 +821,9 @@ async function createPetWindow() {
   petWindow.on("closed", () => {
     globalPointerObserver.setEnabled(false)
     petGroupDrag = null
+    if (petBoundsSettleTimer) clearTimeout(petBoundsSettleTimer)
+    petBoundsSettleTimer = null
+    petCharacterViewport = { mode: "window", x: 0, y: 0, width: 1, height: 1 }
     petMousePassthrough.cancelPending()
     petWindow = null
     if (petBubbleWindow && !petBubbleWindow.isDestroyed()) petBubbleWindow.destroy()
@@ -779,10 +831,12 @@ async function createPetWindow() {
     updateTray()
   })
   petWindow.on("move", () => {
-    savePetWindowPosition()
+    if (!usesPetWorkAreaHost(process.platform)) savePetWindowPosition()
     petMousePassthrough.reapplyAfterBoundsChange()
   })
-  petWindow.on("resize", () => petMousePassthrough.reapplyAfterBoundsChange())
+  petWindow.on("resize", () => {
+    petMousePassthrough.reapplyAfterBoundsChange()
+  })
   attachWindowActivityEvents(petWindow, "pet-character")
   loadWebApp(petWindow, "pet-character")
   createPetBubbleWindows()
@@ -801,7 +855,6 @@ function createPetBubblePanelWindow() {
   const bounds = petWindowLayout().expandedBubble
   petBubbleWindow = new BrowserWindow({
     title: `${APP_WINDOW_TITLE} 桌宠气泡`,
-    parent: petWindow ?? undefined,
     // The expanded bubble must remain an ordinary window on Linux. A `dock`
     // window may contain a focusable DOM input, but KWin intentionally keeps
     // keyboard focus on the previously active application.
@@ -879,8 +932,6 @@ function createPetBubbleIconWindow() {
   const bounds = petWindowLayout().collapsedBubble
   petBubbleIconWindow = new BrowserWindow({
     title: `${APP_WINDOW_TITLE} 桌宠气泡图标`,
-    parent: petWindow ?? undefined,
-    ...(process.platform === "linux" ? { type: "dock" } : {}),
     ...bounds,
     minWidth: 1,
     minHeight: 1,
@@ -892,7 +943,9 @@ function createPetBubbleIconWindow() {
     backgroundColor: "#00000000",
     hasShadow: false,
     skipTaskbar: true,
-    focusable: false,
+    // Like the character host, a non-focusable Linux window becomes
+    // override-redirect and escapes the explicit stacking hierarchy.
+    focusable: process.platform === "linux",
     alwaysOnTop: petSettings.alwaysOnTop,
     icon: resolveWindowIcon(),
     webPreferences: {
@@ -913,6 +966,12 @@ function createPetBubbleIconWindow() {
   })
   petBubbleIconWindow.on("show", () => {
     petBubbleIconWindow?.setSkipTaskbar(true)
+    applyPetTopmost(petBubbleIconWindow)
+    applyPetTopmost(petWindow)
+  })
+  petBubbleIconWindow.on("focus", () => {
+    if (process.platform !== "linux") return
+    petBubbleIconWindow?.blur()
     applyPetTopmost(petBubbleIconWindow)
     applyPetTopmost(petWindow)
   })
@@ -1054,6 +1113,7 @@ registerDesktopIpc({
     get_pet_settings: () => petSettings,
     get_pet_bubble_collapsed: () => petBubbleCollapsed,
     get_pet_icon_placement: () => petIconPlacement,
+    get_pet_character_viewport: () => petCharacterViewport,
     apply_pet_settings: ({ args }) => updatePetSettings(args.settings ?? {}),
     preview_pet_settings: ({ args }) => updatePetSettings(
       args.settings ?? {},
@@ -1083,7 +1143,9 @@ registerDesktopIpc({
     },
     begin_pet_group_drag: ({ sender, args }) => {
       const targetWindow = BrowserWindow.fromWebContents(sender)
-      if (targetWindow !== petBubbleIconWindow || !petBubbleCollapsed) return false
+      const draggingCollapsedIcon = targetWindow === petBubbleIconWindow && petBubbleCollapsed
+      const draggingCharacter = targetWindow === petWindow && petSettings.characterDraggable
+      if (!draggingCollapsedIcon && !draggingCharacter) return false
       const group = petWindowBounds()
       petGroupDrag = createPetGroupDrag({
         ownerId: sender.id,

@@ -48,9 +48,10 @@ test("character stages never use the profile avatar as a standee fallback", () =
   assert.doesNotMatch(desktopPetSource, /default_standing_image_url\s*\|\|\s*character\?\.avatar_url/)
 })
 
-test("assistant preview Spine uses a bounded resolution and frame rate", () => {
+test("assistant preview Spine keeps device-pixel clarity with a bounded frame rate", () => {
   assert.match(rendererSource, /renderQuality=\{renderQuality\}/)
-  assert.match(spineSource, /renderQuality === "preview" \? 1\.25 : 2/)
+  assert.match(spineSource, /Math\.min\(window\.devicePixelRatio \|\| 1, 2\)/)
+  assert.doesNotMatch(spineSource, /renderQuality === "preview" \? 1\.25 : 2/)
   assert.match(spineSource, /renderQuality === "preview" \? 15 : 24/)
 })
 

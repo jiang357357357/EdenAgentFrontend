@@ -34,6 +34,11 @@ contextBridge.exposeInMainWorld("monAgentDesktop", {
     ipcRenderer.on("mon-agent-pet-icon-placement", handler)
     return () => ipcRenderer.removeListener("mon-agent-pet-icon-placement", handler)
   },
+  onPetCharacterViewport(callback) {
+    const handler = (_event, viewport) => callback(viewport)
+    ipcRenderer.on("mon-agent-pet-character-viewport", handler)
+    return () => ipcRenderer.removeListener("mon-agent-pet-character-viewport", handler)
+  },
   onDesktopEnvironment(callback) {
     const handler = (_event, environment) => callback(environment)
     ipcRenderer.on("mon-agent-desktop-environment", handler)

@@ -9,6 +9,7 @@ import './index.css';
 // document's normal light background.
 const initialPage = new URLSearchParams(window.location.search).get('page');
 document.documentElement.classList.toggle('pet-bubble-surface', initialPage === 'pet-bubble' || initialPage === 'pet-icon');
+document.documentElement.classList.toggle('character-transparent', initialPage === 'pet-character');
 const isPetSurface = initialPage === 'pet' || initialPage === 'pet-character' || initialPage === 'pet-bubble' || initialPage === 'pet-icon';
 
 createRoot(document.getElementById('root')!).render(

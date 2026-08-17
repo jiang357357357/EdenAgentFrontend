@@ -158,6 +158,7 @@ function calculatePetWindowLayout(
     height: buttonSize + PET_ICON_PADDING * 2,
   }
   return {
+    workArea: { ...workArea },
     group,
     character,
     expandedBubble,

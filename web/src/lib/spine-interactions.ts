@@ -31,12 +31,12 @@ export interface SpineInteractionPair {
 
 export function resolveSpineBlinkPlayback(animationDurationSeconds: number) {
   const duration = Number.isFinite(animationDurationSeconds) ? Math.max(0, animationDurationSeconds) : 0
-  const minimumDurationSeconds = 0.16
+  const minimumDurationSeconds = 0.6
   return {
     timeScale: duration > 0 && duration < minimumDurationSeconds
       ? duration / minimumDurationSeconds
       : 1,
-    mixOutSeconds: 0.08,
+    mixOutSeconds: 0.2,
   }
 }
 

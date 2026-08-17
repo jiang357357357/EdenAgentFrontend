@@ -7,7 +7,7 @@ import { loadMonConfig } from "../../Script/Project/monconfig.mjs"
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 const monConfig = loadMonConfig(currentDir)
-const coreConfig = loadMonConfig(path.resolve(currentDir, "../../../Backend/Server"))
+const coreConfig = loadMonConfig(path.resolve(currentDir, "../../../Server"))
 const serverHost = monConfig.get("server", "HOST", "0.0.0.0") ?? "0.0.0.0"
 const serverProxyHost = serverHost === "0.0.0.0" || serverHost === "::" ? "127.0.0.1" : serverHost
 const serverPort = monConfig.number("server", "PORT", 40092)

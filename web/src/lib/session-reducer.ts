@@ -72,6 +72,7 @@ import {
   upsertOrchestratorRun,
 } from "./orchestrator-state"
 import { removeSessionState } from "./session-delete-state"
+import { reconcileRuntimeSessionStatus } from "./session-stream-state"
 
 type RuntimeAction =
   | { type: "reset" }
@@ -82,6 +83,7 @@ type RuntimeAction =
   | { type: "hydratePermissions"; permissions: PendingPermission[] }
   | { type: "hydrateQuestions"; questions: PendingQuestion[] }
   | { type: "setActiveSession"; sessionID?: string }
+  | { type: "setSessionStatus"; sessionID: string; status: RuntimeSession["status"] }
   | { type: "removeSession"; sessionID: string }
   | { type: "localUserMessage"; sessionID: string; content: string; attachments: PromptAttachment[] }
   | { type: "event"; event: ApiEvent }
@@ -174,6 +176,7 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
   const session: RuntimeSession = existing
     ? {
         ...existing,
+        status: reconcileRuntimeSessionStatus(existing.status, info.runtimeStatus),
         title: info.title || existing.title || "新会话",
         contextTokens: info.contextTokens ?? existing.contextTokens,
         tokenBreakdown: info.tokenBreakdown ?? existing.tokenBreakdown,
@@ -196,7 +199,7 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
         title: info.title || "新会话",
         contextTokens: info.contextTokens,
         tokenBreakdown: info.tokenBreakdown,
-        status: "idle",
+        status: info.runtimeStatus ?? "idle",
         messageOrder: [],
         messages: {},
         createdAt: info.time.created,
@@ -964,6 +967,12 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       next.activeSessionId = action.sessionID
       return next
 
+    case "setSessionStatus": {
+      const session = ensureSession(next, action.sessionID)
+      session.status = action.status
+      return next
+    }
+
     case "removeSession": {
       removeSessionState(next, action.sessionID)
       return next
@@ -1097,7 +1106,7 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       if (isSessionStatusEvent(event)) {
         const session = ensureSession(next, event.properties.sessionID)
         const status = event.properties.status.type
-        session.status = status === "busy" || status === "retry" ? status : "idle"
+        session.status = status === "busy" || status === "retry" || status === "stopping" ? status : "idle"
         if (session.status === "idle") {
           session.directorRun = completeCompanionDirectorRun(session.directorRun)
           upsertDirectorRun(session, session.directorRun)
@@ -1195,6 +1204,10 @@ export function hydratePendingQuestions(questions: PendingQuestion[]): RuntimeAc
 
 export function setActiveSession(sessionID?: string): RuntimeAction {
   return { type: "setActiveSession", sessionID }
+}
+
+export function setSessionStatus(sessionID: string, status: RuntimeSession["status"]): RuntimeAction {
+  return { type: "setSessionStatus", sessionID, status }
 }
 
 export function removeSession(sessionID: string): RuntimeAction {

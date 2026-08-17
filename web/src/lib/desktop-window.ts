@@ -24,9 +24,23 @@ export interface PetIconPlacement {
   anchor: PetIconAnchor;
   edge: PetIconEdge;
 }
+export interface PetCharacterViewport {
+  mode: 'window' | 'work-area';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 export const DEFAULT_PET_ICON_PLACEMENT: PetIconPlacement = {
   anchor: 'top-left',
   edge: 'none',
+};
+export const DEFAULT_PET_CHARACTER_VIEWPORT: PetCharacterViewport = {
+  mode: 'window',
+  x: 0,
+  y: 0,
+  width: 1,
+  height: 1,
 };
 export const MIN_PET_CHARACTER_HEIGHT = 120;
 export const MIN_PET_VISIBLE_SIZE = 64;
@@ -494,6 +508,48 @@ function normalizePetIconPlacement(placement?: Partial<PetIconPlacement> | null)
       ? placement!.edge as PetIconEdge
       : DEFAULT_PET_ICON_PLACEMENT.edge,
   };
+}
+
+function normalizePetCharacterViewport(
+  viewport?: Partial<PetCharacterViewport> | null,
+): PetCharacterViewport {
+  const x = Number(viewport?.x)
+  const y = Number(viewport?.y)
+  const width = Number(viewport?.width)
+  const height = Number(viewport?.height)
+  return {
+    mode: viewport?.mode === 'work-area' ? 'work-area' : 'window',
+    x: Number.isFinite(x) ? Math.round(x) : 0,
+    y: Number.isFinite(y) ? Math.round(y) : 0,
+    width: Number.isFinite(width) ? Math.max(1, Math.round(width)) : 1,
+    height: Number.isFinite(height) ? Math.max(1, Math.round(height)) : 1,
+  }
+}
+
+export async function getDesktopPetCharacterViewport() {
+  const bridge = getDesktopBridge()
+  if (!bridge) return DEFAULT_PET_CHARACTER_VIEWPORT
+  try {
+    return normalizePetCharacterViewport(
+      await bridge.invoke<Partial<PetCharacterViewport>>('get_pet_character_viewport'),
+    )
+  } catch {
+    return DEFAULT_PET_CHARACTER_VIEWPORT
+  }
+}
+
+export async function listenDesktopPetCharacterViewport(
+  onViewport: (viewport: PetCharacterViewport) => void,
+) {
+  const bridge = getDesktopBridge()
+  if (!bridge?.onPetCharacterViewport) return undefined
+  try {
+    return bridge.onPetCharacterViewport((viewport) => {
+      onViewport(normalizePetCharacterViewport(viewport))
+    })
+  } catch {
+    return undefined
+  }
 }
 
 export async function getDesktopPetIconPlacement() {

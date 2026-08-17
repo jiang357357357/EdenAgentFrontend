@@ -43,6 +43,7 @@ export type SessionParticipant = {
 export type ApiSession = {
   id: string
   title: string
+  runtimeStatus?: import("../types").SessionStatus
   contextTokens?: number
   tokenBreakdown?: import("../types").TokenBreakdown
   mode?: "companion" | "solo"

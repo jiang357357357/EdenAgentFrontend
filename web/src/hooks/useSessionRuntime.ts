@@ -36,6 +36,7 @@ import {
   removeSession,
   runtimeReducer,
   setActiveSession,
+  setSessionStatus,
   setConnectionState,
   setConnectionError,
   setLoadingOlderMessages,
@@ -296,11 +297,13 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       }
 
       sendingSessionIdsRef.current.add(sessionID);
+      dispatch(setSessionStatus(sessionID, 'busy'));
       dispatch(setConnectionError(undefined));
       try {
         await sendPromptAsync(sessionID, content, attachments);
       } catch (error) {
         sendingSessionIdsRef.current.delete(sessionID);
+        dispatch(setSessionStatus(sessionID, 'idle'));
         dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
         throw error;
       }
@@ -321,11 +324,13 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     }
 
     sendingSessionIdsRef.current.add(sessionID);
+    dispatch(setSessionStatus(sessionID, 'busy'));
     dispatch(setConnectionError(undefined));
     try {
       await compactSessionRaw(sessionID, instructions);
     } catch (error) {
       sendingSessionIdsRef.current.delete(sessionID);
+      dispatch(setSessionStatus(sessionID, 'idle'));
       dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
       throw error;
     }
@@ -341,13 +346,24 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     }
 
     dispatch(setConnectionError(undefined));
+    dispatch(setSessionStatus(sessionID, 'stopping'));
     try {
-      return await abortSessionRaw(sessionID);
+      const result = await abortSessionRaw(sessionID);
+      if (!result.aborted) {
+        dispatch(setSessionStatus(sessionID, 'idle'));
+        sendingSessionIdsRef.current.delete(sessionID);
+      }
+      return result;
     } catch (error) {
+      try {
+        await refreshSessions();
+      } catch {
+        // Preserve the abort error; the event stream can still reconcile state.
+      }
       dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
       throw error;
     }
-  }, [isRuntimeReady]);
+  }, [isRuntimeReady, refreshSessions]);
 
   const updateSessionParticipants = useCallback(async (assistantIDs: Array<number | string>) => {
     const sessionID = activeSessionIdRef.current;

@@ -1,23 +1,6 @@
 const fs = require("node:fs")
 const path = require("node:path")
-
-function parseMonConfigValue(contents, targetSection, targetKey) {
-  let section = "default"
-  for (const rawLine of String(contents || "").split(/\r?\n/)) {
-    const line = rawLine.trim()
-    if (!line || line.startsWith("#")) continue
-    if (line.startsWith("[") && line.endsWith("]")) {
-      section = line.slice(1, -1).trim().toLowerCase()
-      continue
-    }
-    const equalsIndex = line.indexOf("=")
-    if (equalsIndex < 0) continue
-    const key = line.slice(0, equalsIndex).trim().toUpperCase()
-    const value = line.slice(equalsIndex + 1).trim()
-    if (section === targetSection.toLowerCase() && key === targetKey.toUpperCase()) return value
-  }
-  return undefined
-}
+const { findMonWorkspaceRoot, parseMonConfigValue } = require("./monconfig.cjs")
 
 function createWorkspaceContext({
   app,
@@ -96,21 +79,13 @@ function createWorkspaceContext({
     return undefined
   }
 
-  function findMonRootFrom(start) {
-    let current = start
-    while (current && current !== pathApi.dirname(current)) {
-      if (fileSystem.existsSync(pathApi.join(current, "Backend", "Server", ".monconfig"))) return current
-      current = pathApi.dirname(current)
-    }
-    return undefined
-  }
-
   function resolveCoreBaseUrl() {
     const explicit = processObject.env.MONCORE_CORE_BASE_URL?.trim()
     if (explicit) return explicit.replace(/\/$/, "")
-    const root = findMonRootFrom(agentRoot) ?? findMonRootFrom(processObject.cwd())
-    if (!root) throw new Error("未找到 Mon 工作区根目录，无法定位 Backend/Server/.monconfig")
-    const configPath = pathApi.join(root, "Backend", "Server", ".monconfig")
+    const root = findMonWorkspaceRoot(agentRoot, { fileSystem, pathApi })
+      ?? findMonWorkspaceRoot(processObject.cwd(), { fileSystem, pathApi })
+    if (!root) throw new Error("未找到 Mon 工作区根目录，无法定位 Server/.monconfig")
+    const configPath = pathApi.join(root, "Server", ".monconfig")
     const contents = readText(configPath)
     if (!contents) throw new Error(`读取 MonCore 配置失败: ${configPath}`)
     const host = parseMonConfigValue(contents, "server", "HOST") ?? defaultCoreHost
