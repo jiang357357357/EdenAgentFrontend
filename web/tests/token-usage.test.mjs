@@ -5,6 +5,7 @@ import {
   DEFAULT_CONTEXT_WINDOW,
   estimateConversationTokens,
   estimateTextTokens,
+  formatPromptCacheState,
   formatTokenCount,
 } from "../src/lib/token-usage.ts"
 
@@ -49,4 +50,10 @@ test("a compaction event resets the visible-history estimate to the server conte
 test("token counts use the Chinese locale and share the runtime fallback", () => {
   assert.equal(formatTokenCount(128000), "128,000")
   assert.equal(DEFAULT_CONTEXT_WINDOW, 256_000)
+})
+
+test("prompt cache state uses readable Chinese generation and change labels", () => {
+  assert.equal(formatPromptCacheState(0, "stable"), "第 0 代 · 稳定")
+  assert.equal(formatPromptCacheState(2, "model,tools"), "第 2 代 · 模型变更、工具定义变更")
+  assert.equal(formatPromptCacheState(undefined, undefined), "第 0 代 · 未知")
 })

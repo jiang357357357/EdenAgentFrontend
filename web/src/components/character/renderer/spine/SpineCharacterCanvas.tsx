@@ -219,9 +219,19 @@ export function SpineCharacterCanvas({
     }
     app.ticker.add(updateSpine, undefined, UPDATE_PRIORITY.NORMAL)
 
+    const syncRendererToHost = () => {
+      const width = host.clientWidth
+      const height = host.clientHeight
+      if (width <= 0 || height <= 0) return false
+      if (app.screen.width !== width || app.screen.height !== height) {
+        app.renderer.resize(width, height)
+      }
+      return app.screen.width > 0 && app.screen.height > 0
+    }
+
     const fitModel = () => {
       const spine = loadedRef.current?.spine
-      if (!spine || app.screen.width <= 0 || app.screen.height <= 0) return false
+      if (!spine || !syncRendererToHost()) return false
       spine.scale.set(1)
       spine.update(0)
       const memoryLobby = layoutRef.current === "memory-lobby"
@@ -253,8 +263,21 @@ export function SpineCharacterCanvas({
       onReadyRef.current?.()
     }
 
+    const scheduleFitUntilReady = (attempt = 0) => {
+      if (disposed || readyReported) return
+      if (readyFitFrame !== undefined) window.cancelAnimationFrame(readyFitFrame)
+      readyFitFrame = window.requestAnimationFrame(() => {
+        readyFitFrame = undefined
+        fitUntilReady(attempt)
+      })
+    }
+
     const fitUntilReady = (attempt = 0) => {
       if (disposed || readyReported) return
+      // A zero-sized host is a normal transient state while Electron/React is
+      // mounting or animating the page. Wait for ResizeObserver instead of
+      // consuming the retry budget and permanently falling back.
+      if (!syncRendererToHost()) return
       if (fitModel()) {
         markReady()
         return
@@ -263,19 +286,21 @@ export function SpineCharacterCanvas({
       // animation/skin is installed. Retrying avoids leaving the preview as a
       // permanently transparent canvas because of that one-frame race.
       if (attempt < 30) {
-        readyFitFrame = window.requestAnimationFrame(() => fitUntilReady(attempt + 1))
+        scheduleFitUntilReady(attempt + 1)
         return
       }
       onErrorRef.current?.(new Error("Spine 角色边界在初始化后仍不可用"))
     }
 
     const observer = new ResizeObserver(() => {
-      if (host.clientWidth <= 0 || host.clientHeight <= 0) return
-      app.renderer.resize(host.clientWidth, host.clientHeight)
-      requestAnimationFrame(() => {
-        if (readyReported) fitModel()
-        else fitUntilReady()
-      })
+      if (!syncRendererToHost()) return
+      if (readyReported) {
+        window.requestAnimationFrame(() => {
+          if (!disposed) fitModel()
+        })
+      } else {
+        scheduleFitUntilReady()
+      }
     })
     observer.observe(host)
 
@@ -406,7 +431,7 @@ export function SpineCharacterCanvas({
         if (layoutRef.current === "memory-lobby") {
           if (interactionAnimationsRef.current.rareIdle) scheduleRareIdle()
         }
-        readyFitFrame = window.requestAnimationFrame(() => fitUntilReady())
+        scheduleFitUntilReady()
       })
       .catch((error: unknown) => {
         if (disposed || abortController.signal.aborted) return

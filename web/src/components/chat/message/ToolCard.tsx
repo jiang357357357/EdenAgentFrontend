@@ -71,7 +71,7 @@ type WorkspaceDiffDetails = {
 }
 
 function commandDetails(tool: ToolCall): CommandDetails | undefined {
-  if (tool.name !== "bash" && tool.name !== "write_stdin") return undefined
+  if (tool.name !== "bash" && tool.name !== "powershell" && tool.name !== "write_stdin") return undefined
   if (!tool.details || typeof tool.details !== "object" || Array.isArray(tool.details)) return undefined
   return tool.details as CommandDetails
 }

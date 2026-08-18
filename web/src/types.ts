@@ -191,6 +191,11 @@ export interface TokenBreakdown {
   tools?: number
   history?: number
   cacheRead?: number
+  cacheMiss?: number
+  cacheHitRate?: number
+  promptCacheFingerprint?: string
+  promptCacheEpoch?: number
+  promptCacheInvalidationReason?: string
   tokenizer?: string
   tokenizerModel?: string
 }

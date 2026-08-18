@@ -28,6 +28,27 @@ const EMOJI_CHARACTER = /\p{Extended_Pictographic}/u
 
 export const DEFAULT_CONTEXT_WINDOW = 256_000
 
+const PROMPT_CACHE_REASON_LABELS: Record<string, string> = {
+  initial: "初始",
+  stable: "稳定",
+  provider: "供应商变更",
+  model: "模型变更",
+  api: "接口变更",
+  reasoning: "推理级别变更",
+  system: "系统提示词变更",
+  tools: "工具定义变更",
+  fingerprint: "前缀变更",
+}
+
+export function formatPromptCacheState(epoch = 0, reason?: string): string {
+  const labels = String(reason || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => PROMPT_CACHE_REASON_LABELS[item] ?? item)
+  return `第 ${Math.max(0, Math.trunc(epoch))} 代 · ${labels.join("、") || "未知"}`
+}
+
 export function estimateTextTokens(value: string): number {
   const text = value.normalize("NFC")
   if (!text.trim()) return 0

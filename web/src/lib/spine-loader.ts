@@ -3,6 +3,7 @@ import {
   AtlasAttachmentLoader,
   SkeletonBinary,
   SkeletonJson,
+  SkinsAndAnimationBoundsProvider,
   Spine,
   SpineTexture,
   TextureAtlas,
@@ -118,13 +119,30 @@ export async function loadSpineAsset(asset: CoreCharacterSpineAsset, signal: Abo
       )
     }
 
+    const animations = skeletonData.animations.map((animation) => animation.name)
+    const skins = skeletonData.skins.map((skin) => skin.name)
+    const boundsAnimation = (
+      asset.idle_animation && animations.includes(asset.idle_animation)
+        ? asset.idle_animation
+        : animations.find((name) => name.toLowerCase() === "idle_01")
+          ?? animations.find((name) => name.toLowerCase().includes("idle"))
+          ?? null
+    )
+    const boundsSkins = asset.default_skin && skins.includes(asset.default_skin)
+      ? [asset.default_skin]
+      : []
+
+    // Stable skeleton-derived bounds do not depend on Pixi having completed
+    // its first mesh transform/render pass. This prevents an early mount from
+    // observing a temporary empty child-mesh boundary.
+    const boundsProvider = new SkinsAndAnimationBoundsProvider(boundsAnimation, boundsSkins)
     // The canvas owns the ticker so it can apply pointer-driven bone targets
     // after the animation state and before rendering.
-    const spine = new Spine({ skeletonData, autoUpdate: false })
+    const spine = new Spine({ skeletonData, autoUpdate: false, boundsProvider })
     return {
       spine,
-      animations: skeletonData.animations.map((animation) => animation.name),
-      skins: skeletonData.skins.map((skin) => skin.name),
+      animations,
+      skins,
       version,
       dispose: () => {
         spine.destroy({ children: true })
