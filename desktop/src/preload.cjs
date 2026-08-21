@@ -6,6 +6,9 @@ function convertFileSrc(filePath) {
 }
 
 contextBridge.exposeInMainWorld("monAgentDesktop", {
+  getAgentCapability() {
+    return ipcRenderer.invoke("mon-agent:capability")
+  },
   invoke(command, args) {
     return ipcRenderer.invoke("mon-agent:invoke", command, args ?? {})
   },

@@ -1,7 +1,7 @@
 import {
   replyCameraCapture,
   type PendingCameraCapture,
-} from "./mon_agent_api"
+} from "./agent-client"
 import { cameraErrorMessage, captureCameraFrame } from "./camera-frame"
 
 const handledRequests = new Set<string>()

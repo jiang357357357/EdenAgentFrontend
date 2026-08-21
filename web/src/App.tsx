@@ -43,7 +43,7 @@ import {
   setDesktopWindowAppearance,
   startDesktopWindowDrag,
 } from "./lib/desktop-window"
-import { getToolStatus, type CharacterActionChangedEvent, type ToolStatus } from "./lib/mon_agent_api"
+import { getToolStatus, type CharacterActionChangedEvent, type ToolStatus } from "./lib/agent-client"
 
 const screenTransition = {
   duration: 0.28,
@@ -181,6 +181,7 @@ export default function App() {
     connectionError,
     createSession: createRuntimeSession,
     deleteSession: deleteRuntimeSession,
+    renameSession: renameRuntimeSession,
     draftParticipantIDs,
     dismissQuestion,
     followupSubagent,
@@ -200,7 +201,10 @@ export default function App() {
     sessions,
     updatePermissionMode,
     updateSessionParticipants,
-  } = useSessionRuntime(authStatus === "authenticated", { onEvent: handleRuntimeEvent })
+  } = useSessionRuntime(authStatus === "authenticated", {
+    onEvent: handleRuntimeEvent,
+    defaultParticipantID: currentAssistant?.id,
+  })
 
   const latestSessionId = sessions[0]?.id
   useEffect(() => {
@@ -755,6 +759,15 @@ export default function App() {
     }
   }
 
+  const handleRenameSession = async (sessionID: string, title: string) => {
+    try {
+      await renameRuntimeSession(sessionID, title)
+    } catch (error) {
+      console.error("[Runtime] rename session failed", error)
+      window.alert(getErrorMessage(error, "重命名会话失败。"))
+    }
+  }
+
   const conversationAssistantID = draftParticipantIDs[0] ?? activeSession?.participants?.[0]?.assistantID
   const conversationAssistant = resolveConversationAssistant(
     currentAssistant,
@@ -949,6 +962,7 @@ export default function App() {
                 onLoadOlderMessages={handleLoadOlderMessages}
                 onSelectSession={selectRuntimeSession}
                 onDeleteSession={handleDeleteSession}
+                onRenameSession={handleRenameSession}
                 onNewSession={handleNewSession}
                 onSendMessage={handleSendMessage}
                 onCompact={handleCompactSession}

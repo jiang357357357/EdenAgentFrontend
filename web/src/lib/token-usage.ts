@@ -60,7 +60,7 @@ export function estimateTextTokens(value: string): number {
   for (const character of Array.from(text)) {
     if (CJK_CHARACTER.test(character) || EMOJI_CHARACTER.test(character)) {
       directTokens += 1
-    } else if (/\s|[\x00-\x7F]/u.test(character)) {
+    } else if (/\s/u.test(character) || (character.codePointAt(0) ?? 128) <= 127) {
       latinLikeCharacters += 1
     } else {
       otherCharacters += 1

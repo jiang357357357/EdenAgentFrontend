@@ -57,7 +57,7 @@ test("resolves the MonCore URL from the workspace and normalizes wildcard hosts"
     "D:\\Mon\\.monconfig": "[workspace]\nNAME=Mon",
     "D:\\Mon\\.monworkspace": "{}",
     "D:\\Mon\\Agent\\.monconfig": "SERVICE_ID=monagent",
-    "D:\\Mon\\Server\\.monconfig": "[server]\nHOST=0.0.0.0\nPORT=40111",
+    "D:\\Mon\\Core\\.monconfig": "[server]\nHOST=0.0.0.0\nPORT=40111",
   })
   assert.equal(context.resolveCoreBaseUrl(), "http://127.0.0.1:40111")
 })

@@ -13,6 +13,7 @@ interface RealtimeVoiceInputOptions {
   overlay: boolean
   surface?: "chat-overlay" | "main-chat" | "pet-bubble"
   setInput: Dispatch<SetStateAction<string>>
+  sessionId?: string
   sttConfigId?: number | null
   voiceInputEnabled: boolean
 }
@@ -27,6 +28,7 @@ export function useRealtimeVoiceInput({
   overlay,
   surface,
   setInput,
+  sessionId,
   sttConfigId,
   voiceInputEnabled,
 }: RealtimeVoiceInputOptions) {
@@ -155,6 +157,10 @@ export function useRealtimeVoiceInput({
       || voiceStatus !== "idle"
       || voiceServiceRef.current
     ) return
+    if (!sessionId) {
+      setVoiceError("当前会话尚未就绪，无法启动语音识别")
+      return
+    }
     if (typeof sttConfigId !== "number") {
       setVoiceError("当前角色尚未关联语音识别服务")
       halfDuplexActiveRef.current = false
@@ -211,7 +217,7 @@ export function useRealtimeVoiceInput({
     })
     voiceServiceRef.current = service
     try {
-      await service.start({ configId: sttConfigId })
+      await service.start({ sessionId, configId: sttConfigId })
     } catch {
       if (voiceGenerationRef.current === generation && voiceServiceRef.current === service) {
         voiceStartedAtRef.current = null
@@ -258,7 +264,7 @@ export function useRealtimeVoiceInput({
       return
     }
     if (voiceStatus === "idle" && !voiceServiceRef.current) void startVoiceInput()
-  }, [disabled, halfDuplexActive, halfDuplexOutputActive, halfDuplexPaused, halfDuplexWaiting, sttConfigId, voiceStatus])
+  }, [disabled, halfDuplexActive, halfDuplexOutputActive, halfDuplexPaused, halfDuplexWaiting, sessionId, sttConfigId, voiceStatus])
 
   const voiceElapsedLabel = `${String(Math.floor(voiceElapsedSeconds / 60)).padStart(2, "0")}:${String(voiceElapsedSeconds % 60).padStart(2, "0")}`
 

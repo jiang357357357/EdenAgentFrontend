@@ -1,4 +1,4 @@
-import { resolveMonAgentUrl } from "../../../lib/mon_agent_api"
+import { resolveMonAgentUrl } from "../../../lib/agent-client"
 import { cn } from "../../../lib/utils"
 import { MarkdownContent } from "../message/MarkdownContent"
 import type { DialogSegment } from "./types"

@@ -8,6 +8,7 @@ import {
   FileText,
   MessageSquare,
   Plus,
+  Pencil,
   Search,
   Settings,
   Sparkles,
@@ -17,7 +18,7 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { resolveCoreAssetUrl } from "../../lib/auth"
-import { getWorkspace, listWorkspaceDirectory, switchWorkspace, type WorkspaceEntry } from "../../lib/mon_agent_api"
+import { getWorkspace, listWorkspaceDirectory, switchWorkspace, type WorkspaceEntry } from "../../lib/agent-client"
 import { openDesktopWorkspaceDirectory, selectDesktopWorkspaceDirectory } from "../../lib/desktop-window"
 import { cn } from "../../lib/utils"
 import type { Session } from "../../types"
@@ -27,6 +28,7 @@ interface SidebarProps {
   activeId: string
   onSelect: (id: string) => void
   onDelete: (id: string) => Promise<void> | void
+  onRename: (id: string, title: string) => Promise<void> | void
   onNewSession: () => void
   onOpenParticipants: () => void
   onOpenDutyAssistant: () => void
@@ -85,22 +87,23 @@ function sessionAvatarUrl(session: Session) {
 
 function SessionAvatar({ session, active }: { session: Session; active: boolean }) {
   const avatarUrl = sessionAvatarUrl(session)
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
+  const showAvatar = Boolean(avatarUrl && failedAvatarUrl !== avatarUrl)
 
   return (
-    <span className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-card">
-      <MessageSquare className={cn("h-4 w-4", active && "text-accent")} />
-      {avatarUrl ? (
+    <span className="relative flex h-[4.2vh] w-[4.2vh] shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-card">
+      {showAvatar ? (
         <img
           key={avatarUrl}
-          src={avatarUrl}
+          src={avatarUrl!}
           alt=""
-          className="absolute inset-0 h-full w-full object-cover object-top"
+          className="h-full w-full object-cover object-top"
           loading="lazy"
-          onError={(event) => {
-            event.currentTarget.style.display = "none"
-          }}
+          onError={() => setFailedAvatarUrl(avatarUrl!)}
         />
-      ) : null}
+      ) : (
+        <MessageSquare className={cn("h-[2.6vh] w-[2.6vh]", active && "text-accent")} />
+      )}
     </span>
   )
 }
@@ -174,6 +177,7 @@ export function Sidebar({
   activeId,
   onSelect,
   onDelete,
+  onRename,
   onNewSession,
   onOpenParticipants,
   onOpenDutyAssistant,
@@ -194,6 +198,7 @@ export function Sidebar({
   const [workspaceError, setWorkspaceError] = useState("")
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false)
+  const [workspacePending, setWorkspacePending] = useState("")
   const filteredSessions = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase()
     if (!normalized) return sessions
@@ -206,7 +211,12 @@ export function Sidebar({
     setWorkspaceLoading(true)
     setWorkspaceError("")
     void Promise.all([getWorkspace(), listWorkspaceDirectory()])
-      .then(([workspace, result]) => { setWorkspaceName(workspace.name); setWorkspacePath(workspace.path); setWorkspaceEntries(result.entries) })
+      .then(([workspace, result]) => {
+        setWorkspaceName(workspace.name)
+        setWorkspacePath(workspace.path)
+        setWorkspacePending(workspace.pendingPath ?? "")
+        setWorkspaceEntries(result.entries)
+      })
       .catch((error) => setWorkspaceError(error instanceof Error ? error.message : "读取工作区失败"))
       .finally(() => { setWorkspaceLoading(false); setWorkspaceLoaded(true) })
   }, [activity, workspaceLoaded, workspaceLoading])
@@ -215,29 +225,28 @@ export function Sidebar({
     const refreshWorkspace = () => {
       setWorkspaceEntries([])
       setWorkspaceError("")
+      setWorkspacePending("")
       setWorkspaceLoaded(false)
+      onWorkspaceChanged()
     }
     window.addEventListener("monagent:workspace-changed", refreshWorkspace)
     return () => window.removeEventListener("monagent:workspace-changed", refreshWorkspace)
-  }, [])
+  }, [onWorkspaceChanged])
 
   const chooseWorkspace = async () => {
     setWorkspaceMenuOpen(false)
+    if (!activeId) {
+      setWorkspaceError("请先打开一个会话，再切换工作区")
+      return
+    }
     const selected = await selectDesktopWorkspaceDirectory(workspacePath)
     if (!selected) return
-    setWorkspaceLoading(true)
-    setWorkspaceError("")
     try {
-      const workspace = await switchWorkspace(selected)
-      setWorkspaceName(workspace.name)
-      setWorkspacePath(workspace.path)
-      setWorkspaceEntries([])
-      setWorkspaceLoaded(false)
-      onWorkspaceChanged()
+      const result = await switchWorkspace(activeId, selected)
+      setWorkspacePending(result.pendingPath ?? selected)
+      setWorkspaceError("")
     } catch (error) {
-      setWorkspaceError(error instanceof Error ? error.message : "切换项目文件夹失败")
-    } finally {
-      setWorkspaceLoading(false)
+      setWorkspaceError(error instanceof Error ? error.message : "工作区切换失败")
     }
   }
 
@@ -267,7 +276,8 @@ export function Sidebar({
             {workspaceMenuOpen ? (
               <div className="absolute left-4 top-[calc(100%-0.4rem)] z-40 w-52 rounded-xl border border-border bg-card p-1.5 text-sm shadow-xl">
                 <button type="button" onClick={() => { setWorkspaceMenuOpen(false); void openDesktopWorkspaceDirectory(workspacePath) }} disabled={!window.monAgentDesktop || !workspacePath} className="flex w-full rounded-lg px-3 py-2 text-left text-text hover:bg-bg disabled:opacity-40">在系统文件管理器中打开</button>
-                <button type="button" onClick={() => void chooseWorkspace()} disabled={!window.monAgentDesktop} className="flex w-full rounded-lg px-3 py-2 text-left text-text hover:bg-bg disabled:opacity-40">切换项目文件夹…</button>
+                <button type="button" onClick={() => void chooseWorkspace()} disabled={!window.monAgentDesktop || !activeId} className="flex w-full rounded-lg px-3 py-2 text-left text-text hover:bg-bg disabled:opacity-40">切换工作区…</button>
+                <div className="px-3 py-2 text-xs text-text-muted">{workspacePending ? `等待当前任务结束后切换到 ${workspacePending}` : "切换会在当前任务全部结束后生效"}</div>
               </div>
             ) : null}
             </div>
@@ -298,14 +308,16 @@ export function Sidebar({
             {sessionGroups.length ? sessionGroups.map((group) => (
               <section key={group.label} className="mb-3">
                 <h2 className="px-2 pb-1 pt-2 text-[1.2vh] font-medium text-text-muted">{group.label}</h2>
-                <ul className="space-y-0.5">
+                <ul className="space-y-[0.5vh]">
                   {group.sessions.map((session) => (
                     <li key={session.id} className="group relative focus-within:z-10">
                       <button
                         type="button"
                         onClick={() => onSelect(session.id)}
+                        title={session.title}
+                        aria-label={`打开会话：${session.title}`}
                         className={cn(
-                          "flex h-10 w-full items-center gap-2 rounded-md border-l-2 px-2 pr-10 text-left text-sm transition-colors",
+                          "flex h-[7vh] w-full items-center gap-[0.8vw] rounded-[0.9vh] border-l-2 px-[0.75vw] pr-[4.6vw] text-left text-[1.7vh] transition-colors",
                           activeId === session.id
                             ? "border-accent bg-accent/8 text-text"
                             : "border-transparent text-text-muted hover:bg-card hover:text-text",
@@ -313,7 +325,21 @@ export function Sidebar({
                       >
                         <SessionAvatar session={session} active={activeId === session.id} />
                         <span className="min-w-0 flex-1 truncate">{session.title}</span>
-                        <span className="shrink-0 text-[11px] text-text-lighter">{session.date}</span>
+                        <span className="shrink-0 text-[1.35vh] text-text-lighter">{session.date}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          const title = window.prompt("重命名会话", session.title)?.trim()
+                          if (!title || title === session.title) return
+                          void onRename(session.id, title)
+                        }}
+                        className="absolute right-[2.55vw] top-1/2 flex h-[4.2vh] w-[4.2vh] -translate-y-1/2 items-center justify-center rounded-[0.6vh] text-text-muted opacity-0 transition hover:bg-accent/10 hover:text-accent focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                        aria-label={`重命名会话：${session.title}`}
+                        title="重命名会话"
+                      >
+                        <Pencil className="h-[2vh] w-[2vh]" />
                       </button>
                       <button
                         type="button"
@@ -322,11 +348,11 @@ export function Sidebar({
                           if (!window.confirm(`永久删除会话“${session.title}”？删除后无法恢复。`)) return
                           void onDelete(session.id)
                         }}
-                        className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-text-muted opacity-0 transition hover:bg-red-500/10 hover:text-red-500 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                        className="absolute right-[0.35vw] top-1/2 flex h-[4.2vh] w-[4.2vh] -translate-y-1/2 items-center justify-center rounded-[0.6vh] text-text-muted opacity-0 transition hover:bg-red-500/10 hover:text-red-500 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
                         aria-label={`永久删除会话：${session.title}`}
                         title="永久删除会话"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="h-[2vh] w-[2vh]" />
                       </button>
                     </li>
                   ))}

@@ -19,7 +19,7 @@ function createFakeTimers() {
       callbacks.delete(id)
     },
     runAll() {
-      for (const [id, callback] of [...callbacks]) {
+      for (const [id, callback] of callbacks) {
         callbacks.delete(id)
         callback()
       }

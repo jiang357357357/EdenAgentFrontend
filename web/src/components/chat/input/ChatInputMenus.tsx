@@ -1,6 +1,6 @@
 import { ShieldAlert } from "lucide-react"
 
-import type { RuntimeModelConfig, RuntimeModelOption } from "../../../lib/mon_agent_api"
+import type { RuntimeModelConfig, RuntimeModelOption } from "../../../lib/agent-client"
 import { cn } from "../../../lib/utils"
 import type { PermissionMode } from "../../../types"
 

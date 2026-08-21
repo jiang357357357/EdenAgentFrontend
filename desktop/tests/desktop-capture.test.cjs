@@ -47,6 +47,24 @@ test("desktop capture prefers a detected game window in auto mode", async () => 
   assert.deepEqual(requests[0].types, ["window"])
 })
 
+test("desktop capture recognizes a Victoria 3 window", async () => {
+  const desktopCapturer = {
+    async getSources() {
+      return [{ id: "window:9", name: "Victoria 3", thumbnail: thumbnail() }]
+    },
+  }
+  const screen = {
+    getCursorScreenPoint: () => ({ x: 10, y: 20 }),
+    getDisplayNearestPoint: () => ({ id: 1, scaleFactor: 1, size: { width: 1920, height: 1080 } }),
+  }
+  const capture = createDesktopCapture({ app: { isReady: () => true }, desktopCapturer, screen })
+
+  const result = await capture.captureDesktopScreen("game")
+
+  assert.equal(result.source, "game")
+  assert.equal(result.sourceName, "Victoria 3")
+})
+
 test("desktop capture falls back to the current display", async () => {
   const desktopCapturer = {
     async getSources(options) {

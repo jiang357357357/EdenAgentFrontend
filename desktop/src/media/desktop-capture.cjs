@@ -26,7 +26,7 @@ function createDesktopCapture({ app, desktopCapturer, screen }) {
       fetchWindowIcons: false,
     })
     const excluded = /monagent|visual studio code|vscode|electron devtools|terminal|konsole|设置/i
-    const strongGameHint = /vtu|gamescope|steam game|game preview|游戏|proton|wine/i
+    const strongGameHint = /victoria\s*3|vtu|gamescope|steam game|game preview|游戏|proton|wine/i
     const candidates = sources.filter(
       (item) => item?.name && !excluded.test(item.name) && !item.thumbnail.isEmpty(),
     )

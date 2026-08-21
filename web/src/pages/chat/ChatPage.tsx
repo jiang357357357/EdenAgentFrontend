@@ -18,7 +18,7 @@ import { useTTSSpeech, type SpeechSegment } from "../../hooks/useTTSSpeech"
 import { usePerformanceDiagnostics } from "../../hooks/usePerformanceDiagnostics"
 import { startCompanionDirectorRun } from "../../lib/companion-director-state"
 import { estimateConversationTokens } from "../../lib/token-usage"
-import { readWorkspaceFile, type WorkspaceEntry, type WorkspaceFileContent } from "../../lib/mon_agent_api"
+import { readWorkspaceFile, type WorkspaceEntry, type WorkspaceFileContent } from "../../lib/agent-client"
 import { messageGroupPosition, messageRenderKey } from "../../lib/message-grouping"
 import { buildRunReviewIndex } from "../../lib/run-review"
 import { cn } from "../../lib/utils"
@@ -73,6 +73,7 @@ interface ChatPageProps {
   onLoadOlderMessages: () => Promise<void>
   onSelectSession: (id: string) => void
   onDeleteSession: (id: string) => Promise<void>
+  onRenameSession: (id: string, title: string) => Promise<void>
   onNewSession: () => void
   onSendMessage: (content: string, attachments: PromptAttachment[]) => Promise<void>
   onCompact: (instructions?: string) => Promise<void>
@@ -113,6 +114,7 @@ export function ChatPage({
   onLoadOlderMessages,
   onSelectSession,
   onDeleteSession,
+  onRenameSession,
   onNewSession,
   onSendMessage,
   onCompact,
@@ -124,10 +126,8 @@ export function ChatPage({
   permissionMode,
   onPermissionModeChange,
   onPreviewImage,
-  onLogout,
   onOpenAssistantSwitcher,
   onOpenDutyAssistantSwitcher,
-  onOpenSessionAssistantSwitcher,
   onOpenSettings,
   onOpenSelfAwake,
   onOpenMemo,
@@ -297,6 +297,9 @@ export function ChatPage({
   }, [activeSession?.directorRun, isThinking, lastUserMessageID, participantCount])
   const visibleTokenEstimate = useMemo(() => estimateConversationTokens(messages), [messages])
   const contextTokenEstimate = activeSession?.contextTokens ?? visibleTokenEstimate
+  const soloTTSConfigId = participantCount === 1
+    ? activeSession?.participants?.[0]?.ttsConfigID
+    : undefined
   const messageSpeechSegments = (message?: MessageData): SpeechSegment[] => {
     if (!message) return []
     if (message.segments?.length) {
@@ -309,7 +312,9 @@ export function ChatPage({
                 messageId: message.id,
                 text: segment.content,
                 state: segment.state,
-                configId: message.speaker?.ttsConfigID,
+                streamEpoch: message.speechEpoch ?? 0,
+                streamResetReason: message.speechResetReason,
+                configId: message.speaker?.ttsConfigID ?? soloTTSConfigId,
               },
             ]
           : []
@@ -322,7 +327,9 @@ export function ChatPage({
         messageId: message.id,
         text: message.content,
         state: message.isStreaming ? "streaming" : "done",
-        configId: message.speaker?.ttsConfigID,
+        streamEpoch: message.speechEpoch ?? 0,
+        streamResetReason: message.speechResetReason,
+        configId: message.speaker?.ttsConfigID ?? soloTTSConfigId,
       },
     ]
   }
@@ -359,13 +366,16 @@ export function ChatPage({
       if (fallbackSession && fallbackSession !== activeSessionId) onSelectSession(fallbackSession)
     }
   }
-  const activeSpeechSegments = useMemo(
+  const activeSpeechMessages = useMemo(
     () =>
       messages
         .slice(Math.max(lastUserMessageIndex + 1, 0))
-        .filter((message) => message.role === "assistant")
-        .flatMap(messageSpeechSegments),
+        .filter((message) => message.role === "assistant"),
     [lastUserMessageIndex, messages],
+  )
+  const activeSpeechSegments = useMemo(
+    () => activeSpeechMessages.flatMap(messageSpeechSegments),
+    [activeSpeechMessages],
   )
   const speech = useTTSSpeech({
     sessionId: activeSessionId,
@@ -373,6 +383,11 @@ export function ChatPage({
     isThinking,
     segments: speechSegments,
     activeSegments: activeSpeechSegments,
+    messageRevisions: activeSpeechMessages.map((message) => ({
+      messageId: message.id,
+      epoch: message.speechEpoch ?? 0,
+      reason: message.speechResetReason,
+    })),
   })
   const latestStreamingAssistantIndex = messages.reduce(
     (latestIndex, message, index) => (message.role === "assistant" && message.isStreaming ? index : latestIndex),
@@ -410,6 +425,7 @@ export function ChatPage({
         activeId={activeSessionId}
         onSelect={openWorkspaceSession}
         onDelete={onDeleteSession}
+        onRename={onRenameSession}
         onNewSession={onNewSession}
         onOpenParticipants={onOpenAssistantSwitcher}
         onOpenDutyAssistant={onOpenDutyAssistantSwitcher}
@@ -734,6 +750,7 @@ export function ChatPage({
             <div className="shrink-0 overflow-visible px-[3vw]">
               <div className="mx-auto w-[95%]">
                 <ChatInput
+                  sessionId={activeSessionId || undefined}
                   onSend={onSendMessage}
                   onNewSession={onNewSession}
                   onOpenSettings={onOpenSettings}
@@ -741,11 +758,14 @@ export function ChatPage({
                   onOpenSkills={onOpenSkills}
                   onOpenSelfAwake={onOpenSelfAwake}
                   disabled={taskRunning}
+                  allowFollowUp={taskRunning}
                   assistantName={assistantName}
                   permissionMode={permissionMode}
                   onPermissionModeChange={onPermissionModeChange}
                   voiceInputEnabled={petSettings.voiceInputEnabled}
-                  sttConfigId={assistant?.character?.stt_config_id}
+                  sttConfigId={participantCount === 1
+                    ? activeSession?.participants?.[0]?.sttConfigID ?? assistant?.character?.stt_config_id
+                    : assistant?.character?.stt_config_id}
                   halfDuplexOutputActive={taskRunning || speech.autoPlaybackPending}
                   contextTokenEstimate={contextTokenEstimate}
                   tokenBreakdown={activeSession?.tokenBreakdown}

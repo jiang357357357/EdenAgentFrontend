@@ -33,7 +33,7 @@ test("does not expose a Django debug HTML response", async () => {
   assert.doesNotMatch(message, /SECRET_API_KEY/)
 })
 
-test("does not expose a plain-text Python traceback", async () => {
+test("does not expose a plain-text backend traceback", async () => {
   const message = await parseCoreError(response({
     contentType: "text/plain",
     body: "Traceback (most recent call last):\nSECRET_TOKEN=unsafe",

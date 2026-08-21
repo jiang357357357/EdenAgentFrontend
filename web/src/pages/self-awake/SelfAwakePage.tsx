@@ -24,7 +24,7 @@ import {
   type ApiSelfAwakeDiary,
   type ApiSelfAwakeRun,
   type ToolStatus,
-} from "../../lib/mon_agent_api"
+} from "../../lib/agent-client"
 import { formatLocalMonthDayTime, formatLocalWeekday } from "../../lib/time"
 
 const screenMotion = {
@@ -73,6 +73,7 @@ type DiaryYearGroup = {
 }
 
 const statusMeta: Record<string, { label: string; tone: StatusTone }> = {
+  completed: { label: "完成", tone: "ok" },
   succeeded: { label: "完成", tone: "ok" },
   failed: { label: "失败", tone: "danger" },
   running: { label: "运行中", tone: "warn" },
@@ -266,7 +267,7 @@ function runAuthorName(run?: ApiSelfAwakeRun, fallback = "未知角色") {
 
 export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
   const [runs, setRuns] = useState<ApiSelfAwakeRun[]>([])
-  const [selectedRunId, setSelectedRunId] = useState<number | undefined>()
+  const [selectedRunId, setSelectedRunId] = useState<string | undefined>()
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalRuns, setTotalRuns] = useState(0)

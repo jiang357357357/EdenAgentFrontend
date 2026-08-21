@@ -6,6 +6,7 @@ import { cn } from "../../../lib/utils"
 import { SendButton, StopButton, TokenMeter } from "./ChatInputControls"
 
 interface ChatComposerFooterProps {
+  allowFollowUp: boolean
   canSend: boolean
   contextTokens: number
   contextWindow: number
@@ -46,6 +47,7 @@ interface ChatComposerFooterProps {
 }
 
 export function ChatComposerFooter({
+  allowFollowUp,
   canSend,
   contextTokens,
   contextWindow,
@@ -77,7 +79,6 @@ export function ChatComposerFooter({
   overlay,
   permissionLabel,
   permissionMenuOpen,
-  voiceBusy,
   voiceError,
   voiceInputEnabled,
   voiceLevel,
@@ -91,7 +92,7 @@ export function ChatComposerFooter({
       {!voicePanelVisible && (
         <div className={cn("absolute z-20 flex h-[5.4vh] items-center justify-between gap-[1.4vh]", overlay ? "inset-x-[2.4vh] bottom-[1.6vh]" : "bottom-[1.7vh] left-[2.4vh] right-[9.1vh]") }>
           <div className="flex min-w-0 items-center gap-[1.6vh]">
-            <button type="button" onClick={onFilePick} disabled={isDialogMode} className={cn("flex h-[4.2vh] w-[4.2vh] flex-shrink-0 items-center justify-center rounded-[1.2vh] transition-colors disabled:cursor-not-allowed disabled:opacity-35", overlay ? "text-stone-200/85 hover:bg-white/10 hover:text-white" : "text-text-muted hover:bg-bg hover:text-text")} aria-label="添加附件" title="添加附件">
+            <button type="button" onClick={onFilePick} disabled={isDialogMode || Boolean(disabled)} className={cn("flex h-[4.2vh] w-[4.2vh] flex-shrink-0 items-center justify-center rounded-[1.2vh] transition-colors disabled:cursor-not-allowed disabled:opacity-35", overlay ? "text-stone-200/85 hover:bg-white/10 hover:text-white" : "text-text-muted hover:bg-bg hover:text-text")} aria-label="添加附件" title={disabled ? "当前回合中只能排队文字消息" : "添加附件"}>
               <Plus className="h-[2.8vh] w-[2.8vh]" />
             </button>
             <button type="button" onClick={onTogglePermissionMenu} className={cn("flex min-w-0 items-center gap-[0.8vh] rounded-[1.2vh] border border-transparent px-[1.15vh] py-[0.8vh] font-medium transition-colors", overlay ? "bg-black/15 text-[#ffd21f] hover:bg-yellow-300/10" : "bg-transparent text-[#d99a00] hover:bg-[#fff8df]")} aria-expanded={permissionMenuOpen} aria-haspopup="menu" aria-label={`当前权限: ${permissionLabel}`} title={`当前权限: ${permissionLabel}`}>
@@ -124,15 +125,19 @@ export function ChatComposerFooter({
                 <button type="button" onPointerDown={onDragPointerDown} onPointerUp={onDragPointerCancel} onPointerLeave={onDragPointerCancel} onPointerCancel={onDragPointerCancel} onContextMenu={(event) => event.preventDefault()} className="hidden h-[4.2vh] w-[4.2vh] items-center justify-center rounded-[1.2vh] text-stone-200/85 transition-colors hover:bg-white/10 hover:text-white sm:flex" aria-label="长按移动窗口" title="长按移动窗口"><Move className="h-[2.1vh] w-[2.1vh]" /></button>
               </>
             )}
-            {overlay ? disabled && onAbort ? <StopButton overlay onStop={() => void onAbort()} /> : <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay onSend={onSend} /> : null}
+            {overlay ? disabled && onAbort ? <><SendButton canSend={canSend} disabled={!allowFollowUp} dialogMode={isDialogMode} overlay onSend={onSend} /><StopButton overlay onStop={() => void onAbort()} /></> : <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay onSend={onSend} /> : null}
           </div>
         </div>
       )}
 
       {!overlay && !voicePanelVisible ? (
-        <div className="absolute bottom-[1.5vh] right-[2.4vh] z-30 flex flex-col items-center gap-[0.9vh]">
-          <TokenMeter inputTokens={inputTokens} contextTokens={contextTokens} contextWindow={contextWindow} breakdown={tokenBreakdown} />
-          {disabled && onAbort ? <StopButton overlay={false} onStop={() => void onAbort()} /> : <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay={false} onSend={onSend} />}
+        <div className="absolute bottom-[1.5vh] right-[-6.2vh] z-30 flex items-end gap-[3.9vh]">
+          <div className="flex flex-col items-center gap-[0.9vh]">
+            {disabled && onAbort ? <><SendButton canSend={canSend} disabled={!allowFollowUp} dialogMode={isDialogMode} overlay={false} onSend={onSend} /><StopButton overlay={false} onStop={() => void onAbort()} /></> : <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay={false} onSend={onSend} />}
+          </div>
+          <div className="mb-[0.25vh]">
+            <TokenMeter inputTokens={inputTokens} contextTokens={contextTokens} contextWindow={contextWindow} breakdown={tokenBreakdown} />
+          </div>
         </div>
       ) : null}
     </>

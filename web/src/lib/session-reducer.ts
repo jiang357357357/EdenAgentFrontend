@@ -1,19 +1,10 @@
 import type {
   ApiEvent,
-  ApiAgentPart,
-  ApiCompactionPart,
   ApiMessage,
   ApiMessageInfo,
-  ApiPatchPart,
   ApiPart,
-  ApiRetryPart,
   ApiSession,
-  ApiSnapshotPart,
-  ApiStickerPart,
-  ApiStepFinishPart,
-  ApiStepStartPart,
-  ApiSubtaskPart,
-} from "./mon_agent_api"
+} from "./agent-client"
 import {
   isApiAgentPart,
   isApiCompactionPart,
@@ -28,7 +19,7 @@ import {
   isApiSubtaskPart,
   isApiTextPart,
   isApiToolPart,
-} from "./mon_agent_api"
+} from "./agent-client"
 import {
   applyCompanionSpeakerEvent,
   completeCompanionDirectorRun,
@@ -61,23 +52,18 @@ import type {
   RuntimeSubtaskPart,
   SubagentThread,
   CoordinationBatch,
+  CompanionDirectorRun,
   RuntimeTextPart,
   RuntimeToolPart,
   RuntimeUnknownPart,
 } from "../types"
-import {
-  latestOrchestratorRun,
-  localOrchestratorRun,
-  reduceOrchestratorRun,
-  upsertOrchestratorRun,
-} from "./orchestrator-state"
 import { removeSessionState } from "./session-delete-state"
 import { reconcileRuntimeSessionStatus } from "./session-stream-state"
 
 type RuntimeAction =
   | { type: "reset" }
   | { type: "hydrateSessions"; sessions: ApiSession[] }
-  | { type: "hydrateMessages"; sessionID: string; messages: ApiMessage[]; hasMore: boolean; nextCursor?: string | null }
+  | { type: "hydrateMessages"; sessionID: string; messages: ApiMessage[]; hasMore: boolean; nextCursor?: string | null; directorRuns?: CompanionDirectorRun[] }
   | { type: "prependMessages"; sessionID: string; messages: ApiMessage[]; hasMore: boolean; nextCursor?: string | null }
   | { type: "loadingOlderMessages"; sessionID: string; loading: boolean }
   | { type: "hydratePermissions"; permissions: PendingPermission[] }
@@ -161,18 +147,10 @@ function replaceQuestions(state: RuntimeState, questions: PendingQuestion[]) {
 function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
   const existing = state.sessions[info.id]
   const persistedDirectorRun = latestCompanionDirectorRun(info.directorRuns)
-  const persistedOrchestratorRun = latestOrchestratorRun(info.orchestratorRuns)
   const restoredDirectorRun =
     existing?.directorRun?.status === "planning"
       ? existing.directorRun
       : persistedDirectorRun ?? existing?.directorRun
-  const existingOrchestratorActive =
-    existing?.orchestratorRun?.status === "planning" || existing?.orchestratorRun?.status === "running"
-  const persistedMatchesActiveTurn = Boolean(
-    existingOrchestratorActive &&
-      persistedOrchestratorRun?.userMessageID &&
-      persistedOrchestratorRun.userMessageID === existing?.orchestratorRun?.userMessageID,
-  )
   const session: RuntimeSession = existing
     ? {
         ...existing,
@@ -188,11 +166,6 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
         directorRun: restoredDirectorRun,
         directorRuns: info.directorRuns ?? existing.directorRuns,
         agentThreads: info.agentThreads ?? existing.agentThreads,
-        orchestratorRun:
-          existingOrchestratorActive && !persistedMatchesActiveTurn
-            ? existing.orchestratorRun
-            : persistedOrchestratorRun ?? existing.orchestratorRun,
-        orchestratorRuns: info.orchestratorRuns ?? existing.orchestratorRuns,
       }
     : {
         id: info.id,
@@ -213,8 +186,6 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
         directorRun: restoredDirectorRun,
         directorRuns: info.directorRuns ?? [],
         agentThreads: info.agentThreads ?? [],
-        orchestratorRun: persistedOrchestratorRun,
-        orchestratorRuns: info.orchestratorRuns ?? [],
       }
   state.sessions[info.id] = session
   if (!state.sessionOrder.includes(info.id)) {
@@ -316,6 +287,15 @@ function upsertPart(message: RuntimeMessage, part: RuntimePart) {
     if (isTerminalToolState(existing.state.status) && !isTerminalToolState(part.state.status)) {
       return
     }
+    const input = part.state.input === undefined ? existing.state.input : part.state.input
+    const time = { ...existing.state.time, ...part.state.time }
+    message.parts[part.id] = {
+      ...existing,
+      ...part,
+      state: { ...existing.state, ...part.state, input, time } as RuntimeToolPart["state"],
+    }
+    if (!message.partOrder.includes(part.id)) message.partOrder.push(part.id)
+    return
   }
   message.parts[part.id] = part
   if (!message.partOrder.includes(part.id)) {
@@ -561,7 +541,7 @@ function reconcileOptimisticUsers(session: RuntimeSession) {
 
   if (serverBySignature.size === 0) return
 
-  for (const messageID of [...session.messageOrder]) {
+  for (const messageID of session.messageOrder) {
     const message = session.messages[messageID]
     if (!message?.localOnly || message.role !== "user") continue
     const signature = userMessageSignature(message)
@@ -574,7 +554,7 @@ function reconcileOptimisticUsers(session: RuntimeSession) {
 function removeOptimisticMatch(session: RuntimeSession, serverMessageID: string, text: string) {
   const normalized = text.trim()
   if (!normalized) return
-  for (const messageID of [...session.messageOrder]) {
+  for (const messageID of session.messageOrder) {
     if (messageID === serverMessageID) continue
     const message = session.messages[messageID]
     if (!message?.localOnly || message.role !== "user") continue
@@ -698,19 +678,43 @@ function isMessagePartRemovedEvent(event: ApiEvent): event is Extract<ApiEvent, 
   )
 }
 
-function isSessionStatusEvent(event: ApiEvent): event is Extract<ApiEvent, { type: "session.status" }> {
-  return event.type === "session.status" && !!event.properties && typeof event.properties.sessionID === "string"
+function isSessionTitleUpdatedEvent(event: ApiEvent): event is ApiEvent & {
+  type: "session.title_updated"
+  properties: { sessionID: string; title: string; updatedAt: number }
+} {
+  return event.type === "session.title_updated" &&
+    typeof event.properties?.sessionID === "string" &&
+    typeof event.properties.title === "string"
 }
 
-function isOrchestratorEvent(
+function isSessionParticipantsUpdatedEvent(
   event: ApiEvent,
-): event is Extract<ApiEvent, { type: "orchestrator.started" | "orchestrator.activity" | "orchestrator.completed" | "orchestrator.failed" }> {
+): event is Extract<ApiEvent, { type: "session.participants_updated" }> {
+  return event.type === "session.participants_updated" &&
+    typeof event.properties?.sessionID === "string" &&
+    Array.isArray(event.properties.participants)
+}
+
+function isSessionAssistantHandoffEvent(
+  event: ApiEvent,
+): event is Extract<ApiEvent, { type: "session.assistant_handoff" }> {
+  return event.type === "session.assistant_handoff" &&
+    typeof event.properties?.sessionID === "string" &&
+    typeof event.properties.status === "string" &&
+    ["scheduled", "completed", "failed"].includes(event.properties.status)
+}
+
+function isMessageStreamResetEvent(event: ApiEvent): event is Extract<ApiEvent, { type: "message.stream_reset" }> {
   return (
-    event.type.startsWith("orchestrator.") &&
+    event.type === "message.stream_reset" &&
     !!event.properties &&
-    "sessionID" in event.properties &&
-    typeof event.properties.sessionID === "string"
+    typeof (event.properties as { sessionID?: unknown }).sessionID === "string" &&
+    typeof (event.properties as { messageID?: unknown }).messageID === "string"
   )
+}
+
+function isSessionStatusEvent(event: ApiEvent): event is Extract<ApiEvent, { type: "session.status" }> {
+  return event.type === "session.status" && !!event.properties && typeof event.properties.sessionID === "string"
 }
 
 function isCompanionDirectorStartedEvent(
@@ -734,6 +738,37 @@ function isCompanionSpeakerEvent(
     (event.type === "companion.speaker.started" || event.type === "companion.speaker.finished") &&
     typeof event.properties.sessionID === "string" &&
     typeof event.properties.beatIndex === "number"
+  )
+}
+
+function sessionContextUsageFromEvent(event: ApiEvent): {
+  sessionID: string
+  contextTokens: number
+  tokenBreakdown: import("../types").TokenBreakdown
+} | undefined {
+  if (event.type !== "session.context_usage") return undefined
+  const properties = event.properties as Record<string, unknown> | undefined
+  if (
+    typeof properties?.sessionID !== "string" ||
+    typeof properties.contextTokens !== "number" ||
+    !Number.isFinite(properties.contextTokens) ||
+    !properties.tokenBreakdown ||
+    typeof properties.tokenBreakdown !== "object"
+  ) return undefined
+  return {
+    sessionID: properties.sessionID,
+    contextTokens: Math.max(0, properties.contextTokens),
+    tokenBreakdown: properties.tokenBreakdown as import("../types").TokenBreakdown,
+  }
+}
+
+function isCompanionDirectorFinishedEvent(
+  event: ApiEvent,
+): event is Extract<ApiEvent, { type: "companion.director.completed" | "companion.director.failed" }> {
+  return (
+    (event.type === "companion.director.completed" || event.type === "companion.director.failed") &&
+    typeof event.properties.sessionID === "string" &&
+    typeof event.properties.planID === "string"
   )
 }
 
@@ -930,6 +965,12 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
     case "hydrateMessages": {
       const session = ensureSession(next, action.sessionID)
       replaceSessionMessages(session, action.messages)
+      if (action.directorRuns) {
+        session.directorRuns = action.directorRuns
+        if (session.directorRun?.status !== "planning") {
+          session.directorRun = latestCompanionDirectorRun(action.directorRuns)
+        }
+      }
       session.hasMoreMessages = action.hasMore
       session.messageCursor = action.nextCursor ?? undefined
       session.updatedAt = Math.max(
@@ -987,8 +1028,6 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       sortSessionsByActivity(next)
       session.status = "busy"
       session.error = undefined
-      session.orchestratorRun = localOrchestratorRun(message.id)
-      session.orchestratorRuns = upsertOrchestratorRun(session.orchestratorRuns, session.orchestratorRun)
       const participantCount = session.participants?.length ?? 0
       session.directorRun = directorRunForLocalPrompt(participantCount, message.id)
       next.connectionError = undefined
@@ -1016,12 +1055,6 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
         removeSessionState(next, event.properties.sessionID)
         return next
       }
-      if (isOrchestratorEvent(event)) {
-        const session = ensureSession(next, event.properties.sessionID)
-        session.orchestratorRun = reduceOrchestratorRun(session.orchestratorRun, event)
-        session.orchestratorRuns = upsertOrchestratorRun(session.orchestratorRuns, session.orchestratorRun)
-        return next
-      }
       const batchUpdate = coordinationBatchFromEvent(event)
       if (batchUpdate) {
         const session = ensureSession(next, batchUpdate.sessionID)
@@ -1039,6 +1072,48 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       }
       if (isSessionEvent(event)) {
         upsertSession(next, event.properties.info)
+        return next
+      }
+      const contextUsage = sessionContextUsageFromEvent(event)
+      if (contextUsage) {
+        const session = ensureSession(next, contextUsage.sessionID)
+        session.contextTokens = contextUsage.contextTokens
+        session.tokenBreakdown = contextUsage.tokenBreakdown
+        return next
+      }
+      if (isSessionTitleUpdatedEvent(event)) {
+        const session = next.sessions[event.properties.sessionID]
+        if (session) {
+          session.title = event.properties.title
+          session.updatedAt = Math.max(session.updatedAt ?? 0, Number(event.properties.updatedAt ?? Date.now()))
+        }
+        return next
+      }
+      if (isSessionParticipantsUpdatedEvent(event)) {
+        const session = ensureSession(next, event.properties.sessionID)
+        session.participants = [...event.properties.participants]
+        session.mode = session.participants.length > 1 ? "companion" : "solo"
+        session.updatedAt = Math.max(
+          session.updatedAt ?? 0,
+          event.properties.updatedAt ?? Date.now(),
+        )
+        return next
+      }
+      if (isSessionAssistantHandoffEvent(event)) {
+        const session = ensureSession(next, event.properties.sessionID)
+        session.assistantHandoff = {
+          status: event.properties.status,
+          jobID: event.properties.jobID,
+          assistantID: event.properties.assistantID,
+          participant: event.properties.participant,
+          error: event.properties.error,
+          updatedAt: event.properties.updatedAt,
+        }
+        if (event.properties.status === "completed" && event.properties.participant) {
+          session.participants = [event.properties.participant]
+          session.mode = "solo"
+          session.error = undefined
+        }
         return next
       }
       if (isMessageUpdatedEvent(event)) {
@@ -1067,6 +1142,18 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
           const { [event.properties.partID]: _removed, ...rest } = message.parts
           message.parts = rest
           message.partOrder = message.partOrder.filter((partID) => partID !== event.properties.partID)
+        }
+        return next
+      }
+      if (isMessageStreamResetEvent(event)) {
+        const session = next.sessions[event.properties.sessionID]
+        const message = session?.messages[event.properties.messageID]
+        if (message) {
+          message.speechEpoch = (message.speechEpoch ?? 0) + 1
+          message.speechResetReason = event.properties.reason
+          message.parts = {}
+          message.partOrder = []
+          message.optimisticPartIDs = []
         }
         return next
       }
@@ -1103,6 +1190,24 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
         upsertDirectorRun(session, session.directorRun)
         return next
       }
+      if (isCompanionDirectorFinishedEvent(event)) {
+        const session = ensureSession(next, event.properties.sessionID)
+        const current = session.directorRun?.planID === event.properties.planID
+          ? session.directorRun
+          : session.directorRuns?.find((run) => run.planID === event.properties.planID)
+        if (current) {
+          session.directorRun = {
+            ...current,
+            status: event.type === "companion.director.completed" ? "completed" : "failed",
+            activeBeatIndex: undefined,
+            completedBeatIndexes: event.properties.completedBeatIndexes ?? current.completedBeatIndexes,
+            error: event.properties.error ?? current.error,
+            updatedAt: Date.now(),
+          }
+          upsertDirectorRun(session, session.directorRun)
+        }
+        return next
+      }
       if (isSessionStatusEvent(event)) {
         const session = ensureSession(next, event.properties.sessionID)
         const status = event.properties.status.type
@@ -1110,18 +1215,6 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
         if (session.status === "idle") {
           session.directorRun = completeCompanionDirectorRun(session.directorRun)
           upsertDirectorRun(session, session.directorRun)
-          if (
-            session.orchestratorRun &&
-            (session.orchestratorRun.status === "planning" || session.orchestratorRun.status === "running")
-          ) {
-            session.orchestratorRun = {
-              ...session.orchestratorRun,
-              status: "completed",
-              phase: "会话已结束（未收到处理完成事件）",
-              updatedAt: Date.now(),
-            }
-            session.orchestratorRuns = upsertOrchestratorRun(session.orchestratorRuns, session.orchestratorRun)
-          }
         }
         return next
       }
@@ -1157,11 +1250,14 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
 
 function isRuntimeStateEvent(event: ApiEvent): boolean {
   if (event.type === "session.deleted" && typeof event.properties?.sessionID === "string") return true
-  if (isOrchestratorEvent(event)) return true
   if (coordinationBatchFromEvent(event)) return true
   if (subagentFromEvent(event)) return true
+  if (sessionContextUsageFromEvent(event)) return true
   return (
     isSessionEvent(event) ||
+    isSessionTitleUpdatedEvent(event) ||
+    isSessionParticipantsUpdatedEvent(event) ||
+    isSessionAssistantHandoffEvent(event) ||
     isMessageUpdatedEvent(event) ||
     isMessagePartUpdatedEvent(event) ||
     isMessagePartDeltaEvent(event) ||
@@ -1169,6 +1265,7 @@ function isRuntimeStateEvent(event: ApiEvent): boolean {
     isCompanionDirectorStartedEvent(event) ||
     isCompanionPlanEvent(event) ||
     isCompanionSpeakerEvent(event) ||
+    isCompanionDirectorFinishedEvent(event) ||
     isSessionStatusEvent(event) ||
     isSessionErrorEvent(event) ||
     isPermissionAskedEvent(event) ||
@@ -1178,11 +1275,18 @@ function isRuntimeStateEvent(event: ApiEvent): boolean {
   )
 }
 
-export function hydrateSessionMessages(sessionID: string, page: import("./mon_agent_api").MessagePage): RuntimeAction {
-  return { type: "hydrateMessages", sessionID, messages: page.items, hasMore: page.hasMore, nextCursor: page.nextCursor }
+export function hydrateSessionMessages(sessionID: string, page: import("./agent-client").MessagePage): RuntimeAction {
+  return {
+    type: "hydrateMessages",
+    sessionID,
+    messages: page.items,
+    hasMore: page.hasMore,
+    nextCursor: page.nextCursor,
+    directorRuns: page.directorRuns,
+  }
 }
 
-export function prependSessionMessages(sessionID: string, page: import("./mon_agent_api").MessagePage): RuntimeAction {
+export function prependSessionMessages(sessionID: string, page: import("./agent-client").MessagePage): RuntimeAction {
   return { type: "prependMessages", sessionID, messages: page.items, hasMore: page.hasMore, nextCursor: page.nextCursor }
 }
 

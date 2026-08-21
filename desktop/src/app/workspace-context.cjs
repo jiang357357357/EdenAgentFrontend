@@ -84,8 +84,8 @@ function createWorkspaceContext({
     if (explicit) return explicit.replace(/\/$/, "")
     const root = findMonWorkspaceRoot(agentRoot, { fileSystem, pathApi })
       ?? findMonWorkspaceRoot(processObject.cwd(), { fileSystem, pathApi })
-    if (!root) throw new Error("未找到 Mon 工作区根目录，无法定位 Server/.monconfig")
-    const configPath = pathApi.join(root, "Server", ".monconfig")
+    if (!root) throw new Error("未找到 Mon 工作区根目录，无法定位 Core/.monconfig")
+    const configPath = pathApi.join(root, "Core", ".monconfig")
     const contents = readText(configPath)
     if (!contents) throw new Error(`读取 MonCore 配置失败: ${configPath}`)
     const host = parseMonConfigValue(contents, "server", "HOST") ?? defaultCoreHost

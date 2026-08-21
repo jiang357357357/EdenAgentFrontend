@@ -19,6 +19,7 @@ import type { DialogSegment } from "./types"
 interface ChatInputProps {
   onSend: (text: string, attachments: PromptAttachment[]) => void
   disabled?: boolean
+  allowFollowUp?: boolean
   overlay?: boolean
   onHistory?: () => void
   onStartWindowDrag?: () => void
@@ -50,11 +51,13 @@ interface ChatInputProps {
   onOpenMemo?: () => void
   onOpenSelfAwake?: () => void
   onOpenSkills?: () => void
+  sessionId?: string
 }
 
 export function ChatInput({
   onSend,
   disabled,
+  allowFollowUp = false,
   overlay = false,
   onHistory,
   onStartWindowDrag,
@@ -86,6 +89,7 @@ export function ChatInput({
   onOpenMemo,
   onOpenSelfAwake,
   onOpenSkills,
+  sessionId,
 }: ChatInputProps) {
   const [input, setInput] = useState("")
   const {
@@ -121,7 +125,7 @@ export function ChatInput({
     selectPermissionMode,
     toggleModelMenu,
     togglePermissionMenu,
-  } = useChatSettingsMenus({ hideComposerFooter, onPermissionModeChange, permissionMode })
+  } = useChatSettingsMenus({ hideComposerFooter, onPermissionModeChange, permissionMode, sessionId })
   const dragTimerRef = useRef<number | undefined>(undefined)
   const previousSegmentCountRef = useRef(0)
   const {
@@ -145,6 +149,7 @@ export function ChatInput({
     onStart: closeMenus,
     overlay,
     setInput,
+    sessionId,
     sttConfigId,
     voiceInputEnabled,
   })
@@ -169,10 +174,12 @@ export function ChatInput({
   const currentOutput = outputSegments[Math.min(outputIndex, Math.max(outputSegments.length - 1, 0))]
   const overlayFontRatio = Math.max(70, Math.min(140, overlayFontScale)) / 100
   const voicePanelVisible = !overlay && (halfDuplexActive || voiceBusy)
-  const canSend = Boolean(input.trim() || attachments.length > 0) && !voiceBusy
+  const canSend = Boolean(input.trim() || attachments.length > 0)
+    && !voiceBusy
+    && !(disabled && attachments.length > 0)
   const inputTokens = estimateTextTokens(input)
   const contextWindow = currentModel?.contextWindow ?? DEFAULT_CONTEXT_WINDOW
-  const contextTokens = Math.min(contextWindow, contextTokenEstimate + inputTokens)
+  const contextTokens = Math.max(0, contextTokenEstimate + inputTokens)
   const {
     commandError: slashCommandError,
     executeCommand: executeSlashCommand,
@@ -190,6 +197,7 @@ export function ChatInput({
     setSelectedIndex: setSlashSelectedIndex,
     textareaRef,
   } = useSlashCommandMenu({
+    allowTextWhileDisabled: allowFollowUp,
     attachments,
     clearAttachments,
     disabled,
@@ -412,6 +420,7 @@ export function ChatInput({
         )}
 
         <ChatComposerFooter
+          allowFollowUp={allowFollowUp}
           canSend={canSend}
           contextTokens={contextTokens}
           contextWindow={contextWindow}

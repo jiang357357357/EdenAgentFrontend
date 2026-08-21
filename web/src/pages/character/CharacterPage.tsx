@@ -20,7 +20,7 @@ import {
   type PetSettings,
   type PetCharacterViewport,
 } from "../../lib/desktop-window"
-import { resolveMonAgentUrl } from "../../lib/mon_agent_api"
+import { resolveMonAgentUrl } from "../../lib/agent-client"
 import { cn } from "../../lib/utils"
 import type { MessageData, PendingPermission, PendingQuestion, PermissionMode, PromptAttachment, Session, ToolCall } from "../../types"
 
@@ -261,6 +261,7 @@ export function CharacterPage({
               onCompact={activeSession?.id ? onCompact : undefined}
               onAbort={activeSession?.id ? onAbort : undefined}
               disabled={isThinking}
+              allowFollowUp={isThinking}
               overlay
               onHistory={() => {
                 onSetHistoryView("messages")

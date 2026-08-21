@@ -1,20 +1,46 @@
 import type { PetTTSMode } from "./desktop-window"
 
-const MAX_SPEECH_CHARS = 180
+const MAX_SPEECH_CHARS = 160
+const MIN_LENGTH_SPLIT_CHARS = 60
+const MIN_SEMICOLON_SPLIT_CHARS = 28
+
+const ENGLISH_ABBREVIATIONS = new Set([
+  "dr",
+  "e.g",
+  "etc",
+  "i.e",
+  "jr",
+  "mr",
+  "mrs",
+  "ms",
+  "prof",
+  "sr",
+  "st",
+  "vs",
+])
+
+export interface CommittedSpeechChunk {
+  start: number
+  end: number
+  text: string
+  fingerprint: string
+}
 
 export interface SpeechStreamCursor {
   speakableText: string
   consumed: number
   committedChunks: number
+  committed: CommittedSpeechChunk[]
 }
 
 export interface SpeechStreamUpdate {
   chunks: string[]
   cursor: SpeechStreamCursor
+  resetRequired: boolean
 }
 
-export function speechStreamKey(messageId: string, textSegmentIndex: number) {
-  return `${messageId}:speech:${Math.max(0, Math.trunc(textSegmentIndex))}`
+export function speechStreamKey(messageId: string, textSegmentIndex: number, streamEpoch = 0) {
+  return `${messageId}:speech:${Math.max(0, Math.trunc(textSegmentIndex))}:epoch:${Math.max(0, Math.trunc(streamEpoch))}`
 }
 
 function isMarkdownTableRow(line: string) {
@@ -107,32 +133,56 @@ export function textForTTS(text: string, mode: PetTTSMode) {
   return extractSpeakableText(text, mode)
 }
 
-function splitLongSentence(sentence: string) {
-  const chunks: string[] = []
-  let remaining = sentence.trim()
-  while (remaining.length > MAX_SPEECH_CHARS) {
-    const window = remaining.slice(0, MAX_SPEECH_CHARS + 1)
-    const candidates = [...window.matchAll(/[，、,:：]/g)]
-    const splitAt = [...candidates].reverse().find((match) => (match.index ?? 0) >= 60)?.index
-    const end = splitAt === undefined ? MAX_SPEECH_CHARS : splitAt + 1
-    chunks.push(remaining.slice(0, end).trim())
-    remaining = remaining.slice(end).trim()
+function speechFingerprint(text: string) {
+  let hash = 0x811c9dc5
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
   }
-  if (remaining) chunks.push(remaining)
-  return chunks
+  return `${text.length}:${(hash >>> 0).toString(16).padStart(8, "0")}`
 }
 
-function streamingBoundaryEnd(text: string, start: number) {
+function englishTokenBeforePeriod(text: string, start: number, periodIndex: number) {
+  return text.slice(start, periodIndex).match(/[A-Za-z](?:[A-Za-z.]*)$/)?.[0]?.toLowerCase() ?? ""
+}
+
+function isEnglishAbbreviation(text: string, start: number, periodIndex: number) {
+  const token = englishTokenBeforePeriod(text, start, periodIndex)
+  return (
+    ENGLISH_ABBREVIATIONS.has(token) ||
+    /^[a-z]$/i.test(token) ||
+    /^(?:[a-z]\.)+[a-z]$/i.test(token)
+  )
+}
+
+function absorbBoundarySuffix(text: string, start: number) {
+  let end = start
+  while (end < text.length && /[。！？!?；;.…"'”’）)\]]/.test(text[end])) end += 1
+  while (end < text.length && /[ \t]/.test(text[end])) end += 1
+  return end
+}
+
+function streamingBoundaryEnd(text: string, start: number, flush: boolean) {
   for (let index = start; index < text.length; index += 1) {
     const character = text[index]
     const isNewline = character === "\n"
-    const isTerminal = /[。！？!?；;]/.test(character)
-    const isEnglishPeriod = character === "." && (index === text.length - 1 || /\s/.test(text[index + 1]))
-    if (!isNewline && !isTerminal && !isEnglishPeriod) continue
+    const isStrongTerminal = /[。！？!?]/.test(character)
+    const isSemicolon = /[；;]/.test(character) && index - start + 1 >= MIN_SEMICOLON_SPLIT_CHARS
+    const isChineseEllipsis = character === "…" && text[index + 1] === "…"
+    const isAsciiEllipsis = character === "." && text.slice(index, index + 3) === "..."
+    let isEnglishPeriod = false
+    if (character === "." && !isAsciiEllipsis) {
+      const next = text[index + 1]
+      const hasBoundaryLookahead = next !== undefined && /[\s"'”’）)\]]/.test(next)
+      isEnglishPeriod = (flush && next === undefined) || (hasBoundaryLookahead && !isEnglishAbbreviation(text, start, index))
+    }
+    if (!isNewline && !isStrongTerminal && !isSemicolon && !isChineseEllipsis && !isAsciiEllipsis && !isEnglishPeriod) continue
 
-    let end = index + 1
-    while (end < text.length && /[。！？!?；;.\"'”’）)\]]/.test(text[end])) end += 1
-    while (end < text.length && /[ \t]/.test(text[end])) end += 1
+    const punctuationEnd = isChineseEllipsis ? index + 2 : isAsciiEllipsis ? index + 3 : index + 1
+    const end = absorbBoundarySuffix(text, punctuationEnd)
+    // A terminal at the current stream tail is still provisional: the next
+    // delta may turn `1.` into `1.8`, add a closing quote, or complete Markdown.
+    if (!flush && !isNewline && end >= text.length) return -1
     return end
   }
   return -1
@@ -142,8 +192,49 @@ function streamingLengthBoundary(text: string, start: number) {
   if (text.length - start < MAX_SPEECH_CHARS) return -1
   const window = text.slice(start, start + MAX_SPEECH_CHARS + 1)
   const candidates = [...window.matchAll(/[，、,:：]/g)]
-  const splitAt = [...candidates].reverse().find((match) => (match.index ?? 0) >= 60)?.index
+  const splitAt = [...candidates].reverse().find((match) => (match.index ?? 0) >= MIN_LENGTH_SPLIT_CHARS)?.index
   return start + (splitAt === undefined ? MAX_SPEECH_CHARS : splitAt + 1)
+}
+
+function planSpeechChunks(speakableText: string, flush: boolean) {
+  const planned: CommittedSpeechChunk[] = []
+  let consumed = 0
+
+  while (consumed < speakableText.length) {
+    while (consumed < speakableText.length && /[\s"'”’）)\]]/.test(speakableText[consumed])) consumed += 1
+    if (consumed >= speakableText.length) break
+    const start = consumed
+    const sentenceEnd = streamingBoundaryEnd(speakableText, start, flush)
+    const lengthEnd = streamingLengthBoundary(speakableText, start)
+    let end = -1
+    if (sentenceEnd >= 0 && lengthEnd >= 0) end = Math.min(sentenceEnd, lengthEnd)
+    else end = Math.max(sentenceEnd, lengthEnd)
+    if (end < 0) {
+      if (!flush) break
+      end = speakableText.length
+    }
+
+    const text = speakableText.slice(start, end).trim()
+    consumed = end
+    while (consumed < speakableText.length && /\s/.test(speakableText[consumed])) consumed += 1
+    if (text) planned.push({ start, end, text, fingerprint: speechFingerprint(text) })
+  }
+
+  return planned
+}
+
+function committedPrefixMatches(previous: readonly CommittedSpeechChunk[], next: readonly CommittedSpeechChunk[]) {
+  if (next.length < previous.length) return false
+  return previous.every((chunk, index) => {
+    const candidate = next[index]
+    return Boolean(
+      candidate &&
+      candidate.start === chunk.start &&
+      candidate.end === chunk.end &&
+      candidate.fingerprint === chunk.fingerprint &&
+      candidate.text === chunk.text
+    )
+  })
 }
 
 /**
@@ -157,44 +248,21 @@ export function consumeSpeechStream(
   flush = false,
 ): SpeechStreamUpdate {
   const speakableText = extractSpeakableText(text, mode)
-  const previousCommittedChunks = previous?.committedChunks ?? 0
-  const parsedChunks: string[] = []
-  let consumed = 0
-
-  while (consumed < speakableText.length) {
-    while (consumed < speakableText.length && /[\s\"'”’）)\]]/.test(speakableText[consumed])) consumed += 1
-    if (consumed >= speakableText.length) break
-    const sentenceEnd = streamingBoundaryEnd(speakableText, consumed)
-    const lengthEnd = streamingLengthBoundary(speakableText, consumed)
-    let end = -1
-    if (sentenceEnd >= 0 && lengthEnd >= 0) end = Math.min(sentenceEnd, lengthEnd)
-    else end = Math.max(sentenceEnd, lengthEnd)
-    if (end < 0) break
-
-    const chunk = speakableText.slice(consumed, end).trim()
-    consumed = end
-    while (consumed < speakableText.length && /\s/.test(speakableText[consumed])) consumed += 1
-    if (chunk) parsedChunks.push(chunk)
-  }
-
-  if (flush && consumed < speakableText.length) {
-    const remainder = speakableText.slice(consumed).trim()
-    if (remainder) parsedChunks.push(...splitLongSentence(remainder))
-    consumed = speakableText.length
-  }
-
-  // Treat the speech stream as an append-only sequence of logical units. The
-  // rendered text may be rewritten while Markdown or canonical message parts are
-  // completed, so byte offsets are not a safe deduplication key. Reparse the full
-  // value and commit only ordinals beyond the append-only frontier.
-  const chunks = parsedChunks.slice(previousCommittedChunks)
+  const committed = planSpeechChunks(speakableText, flush)
+  const previousCommitted = previous?.committed ?? []
+  const resetRequired = previousCommitted.length > 0 && !committedPrefixMatches(previousCommitted, committed)
+  const firstNewChunk = resetRequired ? 0 : previousCommitted.length
+  const chunks = committed.slice(firstNewChunk).map((chunk) => chunk.text)
+  const consumed = committed.at(-1)?.end ?? 0
 
   return {
     chunks,
+    resetRequired,
     cursor: {
       speakableText,
       consumed,
-      committedChunks: Math.max(previousCommittedChunks, parsedChunks.length),
+      committedChunks: committed.length,
+      committed,
     },
   }
 }

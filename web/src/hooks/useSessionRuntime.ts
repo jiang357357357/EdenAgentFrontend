@@ -4,7 +4,9 @@ import {
   compactSession as compactSessionRaw,
   createSessionRaw,
   deleteSession as deleteSessionRaw,
-  getPermissionMode,
+    getPermissionMode,
+    getRuntimeModelConfig,
+  followUpTurn,
   getSubagentThreadDetails as getSubagentThreadDetailsRaw,
   followupSubagent as followupSubagentRaw,
   interruptSubagent as interruptSubagentRaw,
@@ -15,14 +17,15 @@ import {
   listMessagesRaw,
   listSessionsRaw,
   rejectQuestion,
+  renameSession as renameSessionRaw,
   replyPermission,
   replyQuestion,
   sendPromptAsync,
   setPermissionMode as setPermissionModeRaw,
   updateSessionParticipants as updateSessionParticipantsRaw,
   subscribeEvents,
-} from '../lib/mon_agent_api';
-import type { ApiEvent, PendingCameraCapture, PendingScreenCapture } from '../lib/mon_agent_api';
+} from '../lib/agent-client';
+import type { ApiEvent, PendingCameraCapture, PendingScreenCapture } from '../lib/agent-client';
 import { getStoredToken } from '../lib/auth';
 import {
   applyRuntimeEvent,
@@ -48,6 +51,7 @@ import { handleCameraCaptureRequest } from '../lib/camera-capture';
 
 interface UseSessionRuntimeOptions {
   onEvent?: (event: ApiEvent) => void;
+  defaultParticipantID?: number | string;
 }
 
 export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOptions = {}) {
@@ -60,6 +64,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const sendingSessionIdsRef = useRef(new Set<string>());
   const hydratingSessionIdsRef = useRef(new Set<string>());
   const onEventRef = useRef(options.onEvent);
+  const defaultParticipantID = options.defaultParticipantID;
 
   const isRuntimeReady = useCallback(() => enabled && Boolean(getStoredToken()), [enabled]);
 
@@ -70,6 +75,11 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   useEffect(() => {
     onEventRef.current = options.onEvent;
   }, [options.onEvent]);
+
+  useEffect(() => {
+    if (activeSessionIdRef.current || defaultParticipantID === undefined || defaultParticipantID === null) return;
+    setDraftParticipantIDs((current) => current.length ? current : [defaultParticipantID]);
+  }, [defaultParticipantID]);
 
   useEffect(() => {
     for (const [sessionID, session] of Object.entries(state.sessions)) {
@@ -126,6 +136,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         if (cancelled) return;
         const firstSessionID = activeSessionIdRef.current ?? sessions[0]?.id;
         if (firstSessionID) {
+          await getRuntimeModelConfig(firstSessionID);
           await refreshSessionMessages(firstSessionID);
         }
         await refreshBlockers();
@@ -192,6 +203,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
           try {
             await Promise.all([refreshSessions(), refreshBlockers()]);
             if (sessionID) {
+              await getRuntimeModelConfig(sessionID);
               await refreshSessionMessages(sessionID);
             }
           } catch (error) {
@@ -263,15 +275,17 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const createSession = useCallback(async () => {
     if (!isRuntimeReady()) throw new Error('MonAgent runtime is not authenticated');
     activeSessionIdRef.current = undefined;
-    setDraftParticipantIDs([]);
+    setDraftParticipantIDs(defaultParticipantID === undefined || defaultParticipantID === null ? [] : [defaultParticipantID]);
     dispatch(setActiveSession(undefined));
-  }, [isRuntimeReady]);
+  }, [defaultParticipantID, isRuntimeReady]);
 
   const chooseSession = useCallback((sessionID?: string) => {
     activeSessionIdRef.current = sessionID;
-    if (sessionID) setDraftParticipantIDs([]);
+    setDraftParticipantIDs(sessionID || defaultParticipantID === undefined || defaultParticipantID === null
+      ? []
+      : [defaultParticipantID]);
     dispatch(setActiveSession(sessionID));
-  }, []);
+  }, [defaultParticipantID]);
 
   const sendMessage = useCallback(
     async (content: string, attachments: PromptAttachment[]) => {
@@ -293,6 +307,11 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         throw new Error('No active session');
       }
       if (sendingSessionIdsRef.current.has(sessionID)) {
+        if (attachments.length > 0) {
+          throw new Error('运行中的后续消息暂不支持附件，请等待当前回合结束。');
+        }
+        if (!content.trim()) return;
+        await followUpTurn(sessionID, content);
         return;
       }
 
@@ -391,10 +410,21 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     hydratingSessionIdsRef.current.delete(sessionID);
     if (activeSessionIdRef.current === sessionID) {
       activeSessionIdRef.current = nextSessionID;
-      if (!nextSessionID) setDraftParticipantIDs([]);
+      if (!nextSessionID) {
+        setDraftParticipantIDs(defaultParticipantID === undefined || defaultParticipantID === null ? [] : [defaultParticipantID]);
+      }
     }
     dispatch(removeSession(sessionID));
-  }, [isRuntimeReady, state.sessionOrder]);
+  }, [defaultParticipantID, isRuntimeReady, state.sessionOrder]);
+
+  const renameSession = useCallback(async (sessionID: string, title: string) => {
+    if (!isRuntimeReady()) throw new Error('MonAgent runtime is not authenticated');
+    const normalized = title.trim();
+    if (!normalized) throw new Error('会话标题不能为空。');
+    const session = await renameSessionRaw(sessionID, normalized);
+    dispatch(hydrateSessionList([session]));
+    return session;
+  }, [isRuntimeReady]);
 
   const interruptSubagent = useCallback(async (target: string) => {
     const sessionID = activeSessionIdRef.current;
@@ -465,6 +495,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     compactSession,
     createSession,
     deleteSession,
+    renameSession,
     draftParticipantIDs,
     dismissQuestion,
     followupSubagent,
@@ -478,7 +509,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     respondPermission,
     reset: () => {
       activeSessionIdRef.current = undefined;
-      setDraftParticipantIDs([]);
+      setDraftParticipantIDs(defaultParticipantID === undefined || defaultParticipantID === null ? [] : [defaultParticipantID]);
       dispatch(resetRuntime());
     },
     selectSession: chooseSession,

@@ -75,9 +75,17 @@ export function TokenMeter({
   contextWindow: number
   breakdown?: import("../../../types").TokenBreakdown
 }) {
-  const contextPercent = Math.min(100, (contextTokens / Math.max(1, contextWindow)) * 100)
+  const authoritativeContextTokens = contextTokens
+  const providerAdjustment = breakdown?.providerAdjustment ?? 0
+  const contextLabel = inputTokens > 0
+    ? "当前上下文（含输入估算）"
+    : breakdown?.contextMeasurement === "provider"
+      ? "当前上下文"
+      : "当前上下文（估算）"
+  const contextPercent = Math.min(100, (authoritativeContextTokens / Math.max(1, contextWindow)) * 100)
   const contextArcLength = Math.min(58, Math.max(0, contextPercent * 0.58))
   const warning = contextPercent >= 85
+  const contextOverage = Math.max(0, authoritativeContextTokens - contextWindow)
   const tooltipId = useId()
   const promptCacheState = formatPromptCacheState(
     breakdown?.promptCacheEpoch,
@@ -92,7 +100,7 @@ export function TokenMeter({
           "relative flex h-[4.7vh] w-[4.7vh] items-center justify-center rounded-full bg-card text-[1.65vh] font-medium tabular-nums outline-none transition-transform hover:scale-[1.04] focus-visible:scale-[1.04]",
           warning ? "text-red-600" : "text-text-muted",
         )}
-        aria-label={`本次输入约 ${inputTokens} tokens，角色人设约 ${breakdown?.character ?? 0}，技能约 ${breakdown?.skills ?? 0}，系统约 ${breakdown?.system ?? 0}，工具约 ${breakdown?.tools ?? 0}，对话历史约 ${breakdown?.history ?? contextTokens - inputTokens}，命中缓存 ${breakdown?.cacheRead ?? 0}，缓存前缀${promptCacheState}，当前上下文 ${contextTokens}，可用上限 ${contextWindow}`}
+        aria-label={`本次输入约 ${inputTokens} tokens，角色人设约 ${breakdown?.character ?? 0}，技能约 ${breakdown?.skills ?? 0}，系统约 ${breakdown?.system ?? 0}，工具约 ${breakdown?.tools ?? 0}，对话历史约 ${breakdown?.history ?? contextTokens - inputTokens}，供应商输入 ${breakdown?.providerInput ?? 0}，供应商输出 ${breakdown?.providerOutput ?? 0}，命中缓存 ${breakdown?.cacheRead ?? 0}，未命中缓存 ${breakdown?.cacheMiss ?? 0}，缓存前缀${promptCacheState}，当前上下文 ${authoritativeContextTokens}，可用上限 ${contextWindow}`}
         aria-describedby={tooltipId}
       >
         <Circle className="absolute inset-0 h-full w-full text-border" strokeWidth={1.7} aria-hidden="true" />
@@ -112,7 +120,7 @@ export function TokenMeter({
       <div
         id={tooltipId}
         role="tooltip"
-        className="pointer-events-none invisible absolute bottom-[calc(100%+1.25vh)] right-0 z-50 w-[20.5vh] translate-y-[0.35vh] rounded-[1.05vh] border border-border bg-card/98 px-[1.6vh] py-[1.15vh] text-[1.45vh] text-text opacity-0 shadow-lg backdrop-blur-md transition-[opacity,transform,visibility] duration-150 group-hover/token:visible group-hover/token:translate-y-0 group-hover/token:opacity-100 group-focus-within/token:visible group-focus-within/token:translate-y-0 group-focus-within/token:opacity-100"
+        className="pointer-events-none invisible absolute bottom-[calc(100%+1.25vh)] right-0 z-50 w-[22vh] translate-y-[0.35vh] rounded-[1.05vh] border border-border bg-card/98 px-[1.6vh] py-[1.15vh] text-[1.45vh] text-text opacity-0 shadow-lg backdrop-blur-md transition-[opacity,transform,visibility] duration-150 group-hover/token:visible group-hover/token:translate-y-0 group-hover/token:opacity-100 group-focus-within/token:visible group-focus-within/token:translate-y-0 group-focus-within/token:opacity-100"
       >
         <span className="absolute bottom-[-0.45vh] right-[1.95vh] h-[0.8vh] w-[0.8vh] rotate-45 border-b border-r border-border bg-card" aria-hidden="true" />
         <span className="grid grid-cols-[1fr_auto] gap-x-[1.3vh] gap-y-[0.65vh]">
@@ -128,18 +136,46 @@ export function TokenMeter({
           <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.tools ?? 0)}</strong>
           <span className="text-text-muted">对话历史</span>
           <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.history ?? Math.max(0, contextTokens - inputTokens))}</strong>
+          {breakdown?.providerInput != null && (
+            <>
+              <span className="text-text-muted">供应商输入</span>
+              <strong className="font-medium tabular-nums">{formatTokenCount(breakdown.providerInput)}</strong>
+            </>
+          )}
+          {breakdown?.providerOutput != null && (
+            <>
+              <span className="text-text-muted">供应商输出</span>
+              <strong className="font-medium tabular-nums">{formatTokenCount(breakdown.providerOutput)}</strong>
+            </>
+          )}
+          {providerAdjustment !== 0 && (
+            <>
+              <span className="text-text-muted">供应商校准</span>
+              <strong className="font-medium tabular-nums">
+                {providerAdjustment > 0 ? "+" : ""}{Math.round(providerAdjustment).toLocaleString("zh-CN")}
+              </strong>
+            </>
+          )}
           <span className="text-text-muted">命中缓存</span>
           <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.cacheRead ?? 0)}</strong>
+          <span className="text-text-muted">未命中缓存</span>
+          <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.cacheMiss ?? 0)}</strong>
           <span className="text-text-muted">缓存命中率</span>
           <strong className="font-medium tabular-nums">{Math.round((breakdown?.cacheHitRate ?? 0) * 100)}%</strong>
           <span className="text-text-muted">缓存前缀</span>
           <strong className="max-w-[10vh] truncate text-right font-medium" title={breakdown?.promptCacheFingerprint}>
             {promptCacheState}
           </strong>
-          <span className="text-text-muted">当前上下文</span>
-          <strong className="font-medium tabular-nums">{formatTokenCount(contextTokens)}</strong>
+          <span className="text-text-muted">{contextLabel}</span>
+          <strong className="font-medium tabular-nums">{formatTokenCount(authoritativeContextTokens)}</strong>
           <span className="text-text-muted">可用上限</span>
           <strong className="font-medium tabular-nums">{formatTokenCount(contextWindow)}</strong>
+          {contextOverage > 0 && (
+            <>
+              <span className="text-red-600">超出预算</span>
+              <strong className="font-medium tabular-nums text-red-600">+{formatTokenCount(contextOverage)}</strong>
+            </>
+          )}
         </span>
       </div>
     </div>

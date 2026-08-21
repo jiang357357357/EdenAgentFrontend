@@ -25,6 +25,7 @@ const { createPetSettingsStore } = require("./pet/pet-settings-store.cjs")
 const { isInternalAppUrl, isSupportedExternalUrl } = require("./protocols/navigation-policy.cjs")
 const { resolvePetBubbleSurfaceVisibility, setWindowVisibleWithoutActivation } = require("./pet/pet-bubble-surfaces.cjs")
 const { SpeechPlaybackCoordinator } = require("./speech/speech-playback-coordinator.cjs")
+const { createSpeechDiagnostics } = require("./speech/speech-diagnostics.cjs")
 const {
   applyBubbleKeyboardFocus,
   makeWindowNonActivating,
@@ -33,6 +34,7 @@ const {
 const { createDesktopCapture } = require("./media/desktop-capture.cjs")
 const { registerMediaPermissions } = require("./permissions/register-media-permissions.cjs")
 const { createProcessLifecycle } = require("./processes/process-lifecycle.cjs")
+const { createRustServerManager } = require("./processes/rust-server.cjs")
 const { createDesktopQuitFlagController } = require("./processes/desktop-quit-flag.cjs")
 const { registerFileProtocol } = require("./protocols/register-file-protocol.cjs")
 const { createWebAppLoader } = require("./windows/web-app-loader.cjs")
@@ -72,9 +74,13 @@ const quitFlagPath =
   process.env.MON_AGENT_DESKTOP_QUIT_FLAG?.trim() ||
   resolveMonConfigPath("desktop", "QUIT_FLAG", ".artifacts/desktop-quit.flag")
 const quitFlagController = createDesktopQuitFlagController({ quitFlagPath })
+const rustServer = createRustServerManager({ app, agentRoot })
+ipcMain.handle("mon-agent:capability", () => rustServer.capability())
 quitFlagController.clearStaleFlagForLaunch()
 const petSettingsPath = resolveMonConfigPath("desktop", "PET_SETTINGS", ".artifacts/desktop-pet-settings.json")
 const performanceLogPath = path.join(agentRoot, ".artifacts", "frontend-performance.jsonl")
+const speechLogPath = path.join(agentRoot, ".artifacts", "speech-playback.jsonl")
+const speechDiagnostics = createSpeechDiagnostics(speechLogPath)
 const petSettingsStore = createPetSettingsStore({
   filePath: petSettingsPath,
   defaults: DEFAULT_PET_SETTINGS,
@@ -173,7 +179,9 @@ function sendSpeechPlaybackControl(ownerId, control) {
   }
 }
 
-const speechPlaybackCoordinator = new SpeechPlaybackCoordinator(sendSpeechPlaybackControl)
+const speechPlaybackCoordinator = new SpeechPlaybackCoordinator(sendSpeechPlaybackControl, {
+  onEvent: (event, details) => speechDiagnostics.append("coordinator", event, details),
+})
 const petMousePassthrough = createPetMousePassthroughController({
   getWindow: () => petWindow,
   getClickThrough: () => petSettings.clickThrough,
@@ -535,7 +543,7 @@ function updatePetSettings(input, options = {}) {
   const persist = options.persist !== false
   const broadcast = options.broadcast !== false
   const previousSettings = petSettings
-  petSettings = normalizePetSettings({ ...petSettings, ...(input ?? {}) })
+  petSettings = normalizePetSettings({ ...petSettings, ...input })
   if (persist) petSettingsStore.write(petSettings)
   applyPetWindowAttributes()
   if (
@@ -606,16 +614,13 @@ function setWindowAppearance(mode, targetWindow = mainWindow) {
   return true
 }
 
-function sendViewMode(mode) {
-  currentViewMode = mode === "character" ? "character" : "chatWithCharacter"
-  mainWindow?.show()
-  mainWindow?.webContents.send("mon-agent-view-mode", currentViewMode)
-  updateTray()
-}
-
 function attachRendererDiagnostics(targetWindow, label) {
-  if (app.isPackaged) return
   const contents = targetWindow.webContents
+  contents.on("render-process-gone", (_event, details) => {
+    speechPlaybackCoordinator.revokeOwner(contents.id, "renderer-gone")
+    if (!app.isPackaged) report(`process gone: ${details.reason} (${details.exitCode})`)
+  })
+  if (app.isPackaged) return
   const report = (message) => {
     const line = `[${new Date().toISOString()}] [${label}] ${message}`
     console.error(`[MonAgent][Renderer] ${line}`)
@@ -630,9 +635,6 @@ function attachRendererDiagnostics(targetWindow, label) {
   contents.on("console-message", (event, ...args) => {
     const message = rendererConsoleError(event, args)
     if (message) report(message)
-  })
-  contents.on("render-process-gone", (_event, details) => {
-    report(`process gone: ${details.reason} (${details.exitCode})`)
   })
   contents.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
     if (!isMainFrame || code === -3) return
@@ -912,7 +914,12 @@ function createPetBubblePanelWindow() {
   const petBubbleContentsId = petBubbleWindow.webContents.id
   petBubbleWindow.on("hide", () => {
     petBubbleKeyboardFocus = false
-    speechPlaybackCoordinator.revokeOwner(petBubbleContentsId, "window-hidden")
+    // Hiding a renderer does not destroy its audio context. Let the current
+    // sentence finish; revoking here used to cut speech off mid-sentence.
+    speechDiagnostics.append("desktop", "pet-bubble-hidden", {
+      ownerId: petBubbleContentsId,
+      activeLease: speechPlaybackCoordinator.snapshot(),
+    })
   })
   petBubbleWindow.on("closed", () => {
     if (petBubbleBlurTimer) clearTimeout(petBubbleBlurTimer)
@@ -1090,7 +1097,19 @@ registerDesktopIpc({
       return Boolean(surface && surface === preferredAutomaticSpeechSurface())
     },
     release_speech_playback: ({ sender, args }) => {
-      return speechPlaybackCoordinator.release(sender.id, String(args.leaseId || ""))
+      return speechPlaybackCoordinator.release(
+        sender.id,
+        String(args.leaseId || ""),
+        args.outcome === "completed" ? "completed" : "interrupted",
+      )
+    },
+    report_speech_diagnostic: ({ sender, args }) => {
+      const surface = speechSurfaceForSender(sender) || "unsupported"
+      return speechDiagnostics.append("renderer", args.event, {
+        ownerId: sender.id,
+        surface,
+        ...(args.details && typeof args.details === "object" ? args.details : {}),
+      })
     },
     publish_activity_presence: () => publishActivityPresence(),
     set_window_size: ({ sender, args }) => {
@@ -1179,6 +1198,7 @@ app.on("second-instance", () => {
   })
 
   app.whenReady().then(() => {
+    rustServer.start()
     processLifecycle.startDevParentWatch()
     startActivityPresenceSystemEvents()
     Menu.setApplicationMenu(null)
@@ -1206,6 +1226,7 @@ app.on("second-instance", () => {
     globalPointerObserver.dispose()
     stopActivityPresence()
     processLifecycle.stopDevParentWatch()
+    rustServer.stop()
 
     stopDesktopEnvironmentMonitors()
   })

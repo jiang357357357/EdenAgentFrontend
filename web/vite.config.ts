@@ -7,10 +7,8 @@ import { loadMonConfig } from "../../Script/Project/monconfig.mjs"
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 const monConfig = loadMonConfig(currentDir)
-const coreConfig = loadMonConfig(path.resolve(currentDir, "../../../Server"))
+const coreConfig = loadMonConfig(path.resolve(currentDir, "../../../Core"))
 const serverHost = monConfig.get("server", "HOST", "0.0.0.0") ?? "0.0.0.0"
-const serverProxyHost = serverHost === "0.0.0.0" || serverHost === "::" ? "127.0.0.1" : serverHost
-const serverPort = monConfig.number("server", "PORT", 40092)
 const webPort = monConfig.number("server", "WEB_PORT", 40091)
 const coreHostRaw = process.env.CORE_SERVER_HOST ?? coreConfig.get("server", "HOST", "127.0.0.1") ?? "127.0.0.1"
 const coreHost = coreHostRaw === "0.0.0.0" ? "127.0.0.1" : coreHostRaw
@@ -30,10 +28,6 @@ export default defineConfig({
     port: webPort,
     strictPort: true,
     proxy: {
-      "/api": {
-        target: `http://${serverProxyHost}:${serverPort}`,
-        changeOrigin: true,
-      },
       "/core-api": {
         target: coreBaseUrl,
         changeOrigin: true,

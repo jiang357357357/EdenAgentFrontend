@@ -5,7 +5,7 @@ import {
   updateRuntimeModel,
   type RuntimeModelConfig,
   type RuntimeModelOption,
-} from "../../../../lib/mon_agent_api"
+} from "../../../../lib/agent-client"
 import type { PermissionMode } from "../../../../types"
 import { permissionOptions } from "../ChatInputMenus"
 
@@ -13,12 +13,14 @@ interface ChatSettingsMenusOptions {
   hideComposerFooter: boolean
   onPermissionModeChange?: (mode: PermissionMode) => Promise<void>
   permissionMode: PermissionMode
+  sessionId?: string
 }
 
 export function useChatSettingsMenus({
   hideComposerFooter,
   onPermissionModeChange,
   permissionMode,
+  sessionId,
 }: ChatSettingsMenusOptions) {
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false)
   const [permissionSubmitting, setPermissionSubmitting] = useState<PermissionMode | null>(null)
@@ -38,7 +40,7 @@ export function useChatSettingsMenus({
     setModelLoading(true)
     setModelError(null)
     try {
-      setModelConfig(await getRuntimeModelConfig())
+      setModelConfig(await getRuntimeModelConfig(sessionId))
     } catch (error) {
       setModelError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -51,7 +53,7 @@ export function useChatSettingsMenus({
     let active = true
     setModelLoading(true)
     setModelError(null)
-    getRuntimeModelConfig()
+    getRuntimeModelConfig(sessionId)
       .then((config) => {
         if (active) setModelConfig(config)
       })
@@ -64,7 +66,7 @@ export function useChatSettingsMenus({
     return () => {
       active = false
     }
-  }, [hideComposerFooter])
+  }, [hideComposerFooter, sessionId])
 
   const openPermissionMenu = () => {
     setPermissionMenuOpen(true)
@@ -113,7 +115,7 @@ export function useChatSettingsMenus({
     setModelSubmitting(option.id)
     setModelError(null)
     try {
-      setModelConfig(await updateRuntimeModel(option.aiEntityId))
+      setModelConfig(await updateRuntimeModel(option.aiEntityId, sessionId))
       setModelMenuOpen(false)
     } catch (error) {
       setModelError(error instanceof Error ? error.message : String(error))

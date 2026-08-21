@@ -348,7 +348,11 @@ export interface DesktopSpeechPlaybackControl {
   type: 'stop';
   leaseId: string;
   reason?: string;
+  replacementIntent?: DesktopSpeechIntent;
+  replacementSurface?: DesktopSpeechSurface;
 }
+
+export type DesktopSpeechPlaybackOutcome = 'completed' | 'interrupted';
 
 export async function getDesktopPetBubbleCollapsed() {
   const bridge = getDesktopBridge();
@@ -450,14 +454,23 @@ export async function authorizeAutomaticSpeechSynthesis(surface: DesktopSpeechSu
   }
 }
 
-export async function releaseDesktopSpeechPlayback(leaseId?: string | null) {
+export async function releaseDesktopSpeechPlayback(
+  leaseId?: string | null,
+  outcome: DesktopSpeechPlaybackOutcome = 'interrupted',
+) {
   const bridge = getDesktopBridge();
   if (!bridge || !leaseId || leaseId.startsWith('browser:')) return false;
   try {
-    return await bridge.invoke<boolean>('release_speech_playback', { leaseId });
+    return await bridge.invoke<boolean>('release_speech_playback', { leaseId, outcome });
   } catch {
     return false;
   }
+}
+
+export function reportSpeechDiagnostic(event: string, details: Record<string, unknown> = {}) {
+  const bridge = getDesktopBridge()
+  if (!bridge) return Promise.resolve(false)
+  return bridge.invoke<boolean>('report_speech_diagnostic', { event, details }).catch(() => false)
 }
 
 export async function listenDesktopSpeechPlaybackControl(

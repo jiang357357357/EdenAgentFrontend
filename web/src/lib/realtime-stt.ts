@@ -1,4 +1,4 @@
-import { getStoredToken, resolveCoreBaseUrl } from "./auth"
+import { createRealtimeSttSocket } from "./rpc-transport"
 import { realtimeSTTFinalization } from "./realtime-stt-finalization"
 
 export type RealtimeSTTStatus = "idle" | "connecting" | "recording" | "transcribing"
@@ -18,6 +18,7 @@ interface RealtimeSTTHandlers {
 }
 
 interface RealtimeSTTStartOptions {
+  sessionId: string
   configId?: number
   endSilenceMs?: number
 }
@@ -67,18 +68,6 @@ function estimateLevel(input: Float32Array) {
   return clamp(Math.sqrt(sum / input.length) * 6, 0, 1)
 }
 
-async function resolveRealtimeUrl() {
-  const token = getStoredToken()
-  if (!token) throw new Error("用户未登录，无法使用语音输入")
-
-  const baseUrl = new URL(`${await resolveCoreBaseUrl()}/`)
-  baseUrl.protocol = baseUrl.protocol === "https:" ? "wss:" : "ws:"
-  baseUrl.pathname = `${baseUrl.pathname.replace(/\/$/, "")}/ws/stt/realtime/`
-  baseUrl.search = ""
-  baseUrl.searchParams.set("token", token)
-  return baseUrl.toString()
-}
-
 export class RealtimeSTTService {
   private acceptingResults = false
   private audioContext?: AudioContext
@@ -102,14 +91,14 @@ export class RealtimeSTTService {
     return this.status
   }
 
-  async start(options: RealtimeSTTStartOptions = {}) {
+  async start(options: RealtimeSTTStartOptions) {
     if (this.status !== "idle") return
     this.acceptingResults = true
     this.latestTranscript = ""
     this.setStatus("connecting")
 
     try {
-      const socket = new WebSocket(await resolveRealtimeUrl())
+      const socket = await createRealtimeSttSocket(options.sessionId)
       this.socket = socket
       socket.addEventListener("message", (event) => this.handleSocketMessage(event.data))
       socket.addEventListener("close", () => {

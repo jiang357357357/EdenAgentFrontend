@@ -30,7 +30,7 @@ import {
   type ApiMemoKind,
   type ApiMemoPriority,
   type ApiMemoStatus,
-} from "../../lib/mon_agent_api"
+} from "../../lib/agent-client"
 import { cn } from "../../lib/utils"
 import { formatLocalMonthDayTime, fromDateTimeLocalInputValue, toDateTimeLocalInputValue } from "../../lib/time"
 import diaryPaperTexture from "../../assets/self-awake/diary-paper.png"

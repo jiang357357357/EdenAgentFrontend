@@ -2,7 +2,7 @@ import { Check, ChevronDown, LoaderCircle, Route } from "lucide-react"
 import { resolveCoreAssetUrl } from "../../../lib/auth"
 import { cn } from "../../../lib/utils"
 import type { CompanionDirectorRun } from "../../../types"
-import type { SessionParticipant } from "../../../lib/mon_agent_api"
+import type { SessionParticipant } from "../../../lib/agent-client"
 
 interface DirectorPlanCardProps {
   run: CompanionDirectorRun

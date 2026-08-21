@@ -24,7 +24,7 @@ import {
   type InstalledSkill,
   type SkillPreview,
   type ToolDefinition,
-} from "../../lib/mon_agent_api"
+} from "../../lib/agent-client"
 import { selectDesktopSkillDirectory } from "../../lib/desktop-window"
 
 type SourceType = "local" | "git"

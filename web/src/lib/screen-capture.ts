@@ -1,5 +1,5 @@
 import { captureDesktopScreen } from './desktop-window';
-import { replyScreenCapture, type PendingScreenCapture } from './mon_agent_api';
+import { replyScreenCapture, type PendingScreenCapture } from './agent-client';
 
 const handledRequests = new Set<string>();
 

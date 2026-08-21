@@ -13,6 +13,7 @@ import {
 import type { PromptAttachment } from "../../../../types"
 
 interface SlashCommandMenuOptions {
+  allowTextWhileDisabled?: boolean
   attachments: PromptAttachment[]
   clearAttachments: () => void
   disabled?: boolean
@@ -33,6 +34,7 @@ interface SlashCommandMenuOptions {
 }
 
 export function useSlashCommandMenu({
+  allowTextWhileDisabled,
   attachments,
   clearAttachments,
   disabled,
@@ -146,9 +148,14 @@ export function useSlashCommandMenu({
   }
 
   const handleSend = () => {
-    if ((!input.trim() && attachments.length === 0) || disabled || voiceBusy) return
+    if ((!input.trim() && attachments.length === 0) || voiceBusy) return
     const parsedCommand = parseSlashCommand(input)
     if (parsedCommand) {
+      if (disabled) {
+        setCommandError("智能体正在处理当前任务；此时只能排队普通文字消息。")
+        setDismissedFor(input)
+        return
+      }
       if (!parsedCommand.name) return
       if (parsedCommand.name.startsWith("skill:")) {
         onSend(input.trim(), attachments)
@@ -172,6 +179,12 @@ export function useSlashCommandMenu({
         return
       }
       executeCommand(command, parsedCommand.args)
+      return
+    }
+
+    if (disabled && !allowTextWhileDisabled) return
+    if (disabled && attachments.length > 0) {
+      setCommandError("运行中的后续消息暂不支持附件，请等待当前回合结束。")
       return
     }
 

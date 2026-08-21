@@ -15,6 +15,7 @@ export interface UserEnvironmentLocation {
   country?: string
   region?: string
   city?: string
+  district?: string
   latitude?: number
   longitude?: number
   accuracy?: number
@@ -381,6 +382,12 @@ async function request<T>(path: string, init?: RequestInit, token?: string): Pro
   }
 
   return data as T
+}
+
+export function requestCore<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getStoredToken()
+  if (!token) return Promise.reject(new Error("not_authenticated: Core token missing"))
+  return request<T>(path, init, token)
 }
 
 export function getStoredToken() {

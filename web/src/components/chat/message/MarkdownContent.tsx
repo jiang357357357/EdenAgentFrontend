@@ -1,7 +1,7 @@
 import { memo } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { resolveMonAgentUrl } from "../../../lib/mon_agent_api"
+import { resolveMonAgentUrl } from "../../../lib/agent-client"
 import { splitActionLines } from "../../../lib/message-actions"
 import { cn } from "../../../lib/utils"
 

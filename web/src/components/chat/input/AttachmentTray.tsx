@@ -1,7 +1,7 @@
 import { FileText, X } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 
-import { resolveMonAgentUrl } from "../../../lib/mon_agent_api"
+import { resolveMonAgentUrl } from "../../../lib/agent-client"
 import { cn } from "../../../lib/utils"
 import type { PromptAttachment } from "../../../types"
 

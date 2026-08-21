@@ -255,7 +255,7 @@ async function processCommandLine(pid) {
   }
 
   try {
-    return fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ").trim()
+    return fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").join(" ").trim()
   } catch {
     const result = await runCapture(["ps", "-p", String(pid), "-o", "command="], 3000).catch(() => ({
       stdout: "",
@@ -321,6 +321,8 @@ try {
   const desktop = start("desktop", ["--prefix", "desktop", "run", "dev"], {
     ELECTRON_RUN_AS_NODE: undefined,
     MON_AGENT_DEV_PARENT_PID: String(process.pid),
+    MON_AGENT_SERVER_MODE: "external",
+    MON_AGENT_TOKEN_FILE: process.env.MON_AGENT_TOKEN_FILE || path.join(agentRoot, "Data", "server-capability.token"),
   })
   desktop.on("exit", () => void shutdown(0))
 } catch (error) {

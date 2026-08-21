@@ -1,6 +1,6 @@
 import type { Spine, TrackEntry } from "@esotericsoftware/spine-pixi-v7"
 
-import type { ActiveCharacterAction, CoreSpineAction } from "../../../../lib/auth"
+import type { CoreSpineAction } from "../../../../lib/auth"
 import {
   resolveSpineBlinkPlayback,
   shouldLoopSpineAction,

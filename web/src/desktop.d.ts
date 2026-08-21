@@ -3,6 +3,7 @@ export {}
 declare global {
   interface Window {
     monAgentDesktop?: {
+      getAgentCapability?(): Promise<{ token: string }>
       invoke<T = unknown>(command: string, args?: Record<string, unknown>): Promise<T>
       onViewMode?(callback: (mode: "chatWithCharacter" | "character") => void): () => void
       onPetSettings?(callback: (settings: Record<string, unknown>) => void): () => void
@@ -29,6 +30,8 @@ declare global {
         type: "stop"
         leaseId: string
         reason?: string
+        replacementIntent?: import("./lib/desktop-window").DesktopSpeechIntent
+        replacementSurface?: import("./lib/desktop-window").DesktopSpeechSurface
       }) => void): () => void
       convertFileSrc?(filePath: string): string
     }

@@ -1,7 +1,9 @@
+import type { RpcMethodMap } from "./generated/mon-agent-rpc"
+
 export type Role = "user" | "assistant"
 export type SessionStatus = "idle" | "busy" | "retry" | "stopping"
 export type ConnectionState = "connecting" | "connected" | "disconnected"
-export type PermissionMode = "restricted" | "full_access" | "takeover"
+export type PermissionMode = RpcMethodMap["permission.mode.get"]["result"]["mode"]
 
 export interface ToolCall {
   id: string
@@ -66,6 +68,8 @@ export interface MessageData {
   id: string
   kind?: string
   renderKey?: string
+  speechEpoch?: number
+  speechResetReason?: string
   runID?: string
   role: Role
   content: string
@@ -175,13 +179,12 @@ export interface Session {
   hasMoreMessages?: boolean
   loadingOlderMessages?: boolean
   mode?: "companion" | "solo"
-  participants?: import("./lib/mon_agent_api").SessionParticipant[]
+  participants?: import("./lib/agent-client").SessionParticipant[]
+  assistantHandoff?: AssistantHandoffState
   directorRun?: CompanionDirectorRun
   directorRuns?: CompanionDirectorRun[]
   agentThreads?: SubagentThread[]
   coordinationBatches?: CoordinationBatch[]
-  orchestratorRun?: OrchestratorRun
-  orchestratorRuns?: OrchestratorRun[]
 }
 
 export interface TokenBreakdown {
@@ -193,23 +196,15 @@ export interface TokenBreakdown {
   cacheRead?: number
   cacheMiss?: number
   cacheHitRate?: number
+  providerInput?: number
+  providerOutput?: number
+  providerAdjustment?: number
+  contextMeasurement?: "provider" | "estimated"
   promptCacheFingerprint?: string
   promptCacheEpoch?: number
   promptCacheInvalidationReason?: string
   tokenizer?: string
   tokenizerModel?: string
-}
-
-export interface OrchestratorRun {
-  orchestrationID: string
-  userMessageID?: string
-  status: "planning" | "running" | "completed" | "failed"
-  phase?: string
-  toolName?: string
-  summary?: string
-  error?: string
-  createdAt?: number
-  updatedAt?: number
 }
 
 export type SubagentStatus =
@@ -301,17 +296,17 @@ export interface CompanionDirectorBeat {
 }
 
 export interface CompanionDirectorScene {
-  domain: "social" | "coding" | "game" | "daily" | "research" | "mixed" | "general"
-  interactionType: "conversation" | "task" | "mixed"
+  domain: string
+  interactionType: string
   confidence: number
   summary: string
 }
 
 export interface CompanionDirectorExecution {
-  mode: "solo" | "lead_support" | "ensemble"
+  mode: string
   leadAssistantID?: number | string | null
   toolOwnerAssistantID?: number | string | null
-  observationStrategy: "none" | "on_demand" | "shared" | "independent"
+  observationStrategy: string
 }
 
 export interface CompanionDirectorRun {
@@ -504,6 +499,8 @@ export interface RuntimeMessage {
   id: string
   kind?: string
   renderKey?: string
+  speechEpoch?: number
+  speechResetReason?: string
   sessionID: string
   runID?: string
   role: Role
@@ -517,7 +514,7 @@ export interface RuntimeMessage {
   providerID?: string
   completionState?: "provisional" | "final"
   coordinationBatchID?: string | null
-  speaker?: import("./lib/mon_agent_api").SessionParticipant & { turnIndex?: number; beatIndex?: number }
+  speaker?: import("./lib/agent-client").SessionParticipant & { turnIndex?: number; beatIndex?: number }
   orchestration?: {
     planID?: string
     directorSource?: string
@@ -558,14 +555,22 @@ export interface RuntimeSession {
   loadingOlderMessages: boolean
   error?: string
   mode?: "companion" | "solo"
-  participants?: import("./lib/mon_agent_api").SessionParticipant[]
+  participants?: import("./lib/agent-client").SessionParticipant[]
+  assistantHandoff?: AssistantHandoffState
   directorPolicy?: Record<string, unknown>
   directorRun?: CompanionDirectorRun
   directorRuns?: CompanionDirectorRun[]
   agentThreads?: SubagentThread[]
   coordinationBatches?: CoordinationBatch[]
-  orchestratorRun?: OrchestratorRun
-  orchestratorRuns?: OrchestratorRun[]
+}
+
+export interface AssistantHandoffState {
+  status: "scheduled" | "completed" | "failed"
+  jobID?: string
+  assistantID?: number | string
+  participant?: import("./lib/agent-client").SessionParticipant
+  error?: string
+  updatedAt?: number
 }
 
 export interface RuntimeState {

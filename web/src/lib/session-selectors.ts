@@ -335,6 +335,8 @@ function mapMessage(message: RuntimeMessage, sessionIsRunning: boolean): Message
     id: message.id,
     kind: message.kind,
     renderKey: message.renderKey ?? message.id,
+    speechEpoch: message.speechEpoch ?? 0,
+    speechResetReason: message.speechResetReason,
     runID: message.runID,
     role: message.role,
     content,
@@ -418,12 +420,11 @@ function mapSession(session: RuntimeSession): Session {
     loadingOlderMessages: session.loadingOlderMessages,
     mode: session.mode,
     participants: session.participants,
+    assistantHandoff: session.assistantHandoff,
     directorRun: session.directorRun ?? inferredDirectorRun,
     directorRuns,
     agentThreads: session.agentThreads,
     coordinationBatches: session.coordinationBatches,
-    orchestratorRun: session.orchestratorRun,
-    orchestratorRuns: session.orchestratorRuns,
   }
 }
 
