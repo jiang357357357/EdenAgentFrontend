@@ -7,7 +7,7 @@ function createDesktopCommandRouter(handlers) {
   }
 }
 
-function registerDesktopIpc({ ipcMain, handlers, channel = "mon-agent:invoke" } = {}) {
+function registerDesktopIpc({ ipcMain, handlers, channel = "eden-agent:invoke" } = {}) {
   if (!ipcMain?.handle) throw new TypeError("ipcMain.handle is required")
   const router = createDesktopCommandRouter(handlers)
   ipcMain.handle(channel, router)

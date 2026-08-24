@@ -73,7 +73,7 @@ const {
   resolveWindowIcon,
 } = workspaceContext
 const quitFlagPath =
-  process.env.MON_AGENT_DESKTOP_QUIT_FLAG?.trim() ||
+  process.env.EDEN_AGENT_DESKTOP_QUIT_FLAG?.trim() ||
   resolveMonConfigPath("desktop", "QUIT_FLAG", ".artifacts/desktop-quit.flag")
 const quitFlagController = createDesktopQuitFlagController({ quitFlagPath })
 const localRuntimeConfig = createLocalRuntimeConfigStore({ app, agentRoot })
@@ -87,7 +87,7 @@ const localRuntimeService = createLocalRuntimeService({
   rustServer,
   serverHealthUrl: `http://127.0.0.1:${getAgentConfig("server", "PORT", "40092")}/healthz`,
 })
-ipcMain.handle("mon-agent:capability", () => rustServer.capability())
+ipcMain.handle("eden-agent:capability", () => rustServer.capability())
 quitFlagController.clearStaleFlagForLaunch()
 const petSettingsPath = resolveMonConfigPath("desktop", "PET_SETTINGS", ".artifacts/desktop-pet-settings.json")
 const performanceLogPath = path.join(agentRoot, ".artifacts", "frontend-performance.jsonl")
@@ -135,10 +135,10 @@ let authSession = null
 let authVerification = null
 const AUTH_VERIFICATION_TTL_MS = 30_000
 const pointerObserverExecutablePath =
-  process.env.MON_AGENT_POINTER_OBSERVER?.trim() ||
+  process.env.EDEN_AGENT_POINTER_OBSERVER?.trim() ||
   (app.isPackaged
-    ? path.join(process.resourcesPath, "monagent-pointer-observer.exe")
-    : path.resolve(__dirname, "..", "native", "win32-pointer-observer", "bin", "monagent-pointer-observer.exe"))
+    ? path.join(process.resourcesPath, "edenagent-pointer-observer.exe")
+    : path.resolve(__dirname, "..", "native", "win32-pointer-observer", "bin", "edenagent-pointer-observer.exe"))
 const globalPointerObserver = createGlobalPointerObserver({
   platform: process.platform,
   executablePath: pointerObserverExecutablePath,
@@ -187,7 +187,7 @@ function sendSpeechPlaybackControl(ownerId, control) {
     (candidate) => !candidate.isDestroyed() && candidate.webContents.id === ownerId,
   )
   if (ownerWindow && !ownerWindow.webContents.isDestroyed()) {
-    ownerWindow.webContents.send("mon-agent-speech-playback-control", control)
+    ownerWindow.webContents.send("eden-agent-speech-playback-control", control)
   }
 }
 
@@ -244,7 +244,7 @@ function preferredAutomaticSpeechSurface() {
 
 function broadcastAuthState(state) {
   for (const targetWindow of BrowserWindow.getAllWindows()) {
-    if (!targetWindow.isDestroyed()) targetWindow.webContents.send("mon-agent-auth-state", state)
+    if (!targetWindow.isDestroyed()) targetWindow.webContents.send("eden-agent-auth-state", state)
   }
 }
 
@@ -265,12 +265,12 @@ processLifecycle.registerOutputErrorHandlers()
 app.setName("Eden Agent")
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required")
 if (process.platform === "win32") {
-  app.setAppUserModelId("com.mon.monagent")
+  app.setAppUserModelId("com.mon.edenagent")
 }
 
 protocol.registerSchemesAsPrivileged([
   {
-    scheme: "monagent-file",
+    scheme: "edenagent-file",
     privileges: {
       standard: true,
       secure: true,
@@ -284,12 +284,12 @@ async function coreRequest(endpoint, init = {}) {
   const baseUrl = resolveCoreBaseUrl()
   const started = Date.now()
   const response = await fetch(`${baseUrl}${endpoint}`, init).catch((error) => {
-    console.error(`[MonAgent][CoreBridge][ERROR] ${init.method ?? "GET"} ${endpoint} failed: ${error}`)
+    console.error(`[Eden Agent][CoreBridge][ERROR] ${init.method ?? "GET"} ${endpoint} failed: ${error}`)
     throw new Error(`请求 MonCore 接口失败: ${error.message || error}`)
   })
 
   console.log(
-    `[MonAgent][CoreBridge][INFO] ${init.method ?? "GET"} ${endpoint} -> ${response.status} ${Date.now() - started}ms`,
+    `[Eden Agent][CoreBridge][INFO] ${init.method ?? "GET"} ${endpoint} -> ${response.status} ${Date.now() - started}ms`,
   )
 
   if (!response.ok) {
@@ -410,7 +410,7 @@ function applyPetBubbleBounds() {
   if (petBubbleIconWindow && !petBubbleIconWindow.isDestroyed()) {
     petBubbleIconWindow.setBounds(layout.collapsedBubble, false)
     if (!petBubbleIconWindow.webContents.isDestroyed()) {
-      petBubbleIconWindow.webContents.send("mon-agent-pet-icon-placement", layout.iconPlacement)
+      petBubbleIconWindow.webContents.send("eden-agent-pet-icon-placement", layout.iconPlacement)
     }
   }
 }
@@ -441,7 +441,7 @@ function syncPetCharacterViewport(nextViewport) {
   if (sameCharacterViewport(nextViewport, petCharacterViewport)) return
   petCharacterViewport = nextViewport
   if (!petWindow.webContents.isDestroyed()) {
-    petWindow.webContents.send("mon-agent-pet-character-viewport", petCharacterViewport)
+    petWindow.webContents.send("eden-agent-pet-character-viewport", petCharacterViewport)
   }
 }
 
@@ -495,11 +495,11 @@ function savePetWindowPosition() {
 }
 
 function broadcastPetSettings() {
-  mainWindow?.webContents.send("mon-agent-pet-settings", petSettings)
-  petWindow?.webContents.send("mon-agent-pet-settings", petSettings)
-  petBubbleWindow?.webContents.send("mon-agent-pet-settings", petSettings)
-  petBubbleIconWindow?.webContents.send("mon-agent-pet-settings", petSettings)
-  settingsWindow?.webContents.send("mon-agent-pet-settings", petSettings)
+  mainWindow?.webContents.send("eden-agent-pet-settings", petSettings)
+  petWindow?.webContents.send("eden-agent-pet-settings", petSettings)
+  petBubbleWindow?.webContents.send("eden-agent-pet-settings", petSettings)
+  petBubbleIconWindow?.webContents.send("eden-agent-pet-settings", petSettings)
+  settingsWindow?.webContents.send("eden-agent-pet-settings", petSettings)
 }
 
 function updatePetGroupDrag(sender, args = {}) {
@@ -524,7 +524,7 @@ function finishPetGroupDrag(sender, args = {}) {
 function broadcastPetBubbleCollapsed() {
   for (const targetWindow of [mainWindow, petWindow, petBubbleWindow, petBubbleIconWindow, settingsWindow]) {
     if (targetWindow && !targetWindow.isDestroyed()) {
-      targetWindow.webContents.send("mon-agent-pet-bubble-collapsed", petBubbleCollapsed)
+      targetWindow.webContents.send("eden-agent-pet-bubble-collapsed", petBubbleCollapsed)
     }
   }
 }
@@ -534,7 +534,7 @@ async function broadcastDesktopEnvironment() {
   const display = displayForPetSettings(settingsWindow)
   const environment = await desktopEnvironmentService.read(display)
   if (!settingsWindow || settingsWindow.isDestroyed()) return
-  settingsWindow.webContents.send("mon-agent-desktop-environment", environment)
+  settingsWindow.webContents.send("eden-agent-desktop-environment", environment)
 }
 
 function scheduleDesktopEnvironmentBroadcast() {
@@ -635,13 +635,13 @@ function attachRendererDiagnostics(targetWindow, label) {
   if (app.isPackaged) return
   const report = (message) => {
     const line = `[${new Date().toISOString()}] [${label}] ${message}`
-    console.error(`[MonAgent][Renderer] ${line}`)
+    console.error(`[Eden Agent][Renderer] ${line}`)
     try {
       const diagnosticsDir = path.join(agentRoot, ".artifacts")
       fs.mkdirSync(diagnosticsDir, { recursive: true })
       fs.appendFileSync(path.join(diagnosticsDir, "renderer-diagnostics.log"), `${line}\n`, "utf8")
     } catch (error) {
-      console.error(`[MonAgent][Renderer] unable to write diagnostics: ${error.message || error}`)
+      console.error(`[Eden Agent][Renderer] unable to write diagnostics: ${error.message || error}`)
     }
   }
   contents.on("console-message", (event, ...args) => {
@@ -691,7 +691,7 @@ function createWindow() {
   })
   attachRendererDiagnostics(mainWindow, "main")
   attachWindowActivityEvents(mainWindow, "main")
-  if (!app.isPackaged && process.env.MON_AGENT_OPEN_DEVTOOLS === "1") {
+  if (!app.isPackaged && process.env.EDEN_AGENT_OPEN_DEVTOOLS === "1") {
     mainWindow.webContents.once("did-finish-load", () => {
       mainWindow?.webContents.openDevTools({ mode: "detach", activate: true })
     })
@@ -1102,7 +1102,7 @@ registerDesktopIpc({
       }
       fs.mkdirSync(path.dirname(performanceLogPath), { recursive: true })
       fs.appendFile(performanceLogPath, `${JSON.stringify(entry)}\n`, "utf8", (error) => {
-        if (error) console.warn("[MonAgent][Performance] 写入诊断日志失败", error)
+        if (error) console.warn("[Eden Agent][Performance] 写入诊断日志失败", error)
       })
       return true
     },
@@ -1210,7 +1210,7 @@ registerDesktopIpc({
   },
 })
 
-const allowMultipleInstances = process.env.MON_AGENT_ALLOW_MULTIPLE_INSTANCES === "true"
+const allowMultipleInstances = process.env.EDEN_AGENT_ALLOW_MULTIPLE_INSTANCES === "true"
 
 if (!allowMultipleInstances && !app.requestSingleInstanceLock()) {
   app.quit()
@@ -1238,9 +1238,9 @@ app.on("second-instance", () => {
     desktopEnvironmentService.startMonitors()
     createWindow()
     createQuestionWindow()
-    if (process.env.MON_AGENT_DESKTOP_START_PAGE === "settings") {
+    if (process.env.EDEN_AGENT_DESKTOP_START_PAGE === "settings") {
       void createSettingsWindow()
-    } else if (process.env.MON_AGENT_DESKTOP_START_PAGE === "pet") {
+    } else if (process.env.EDEN_AGENT_DESKTOP_START_PAGE === "pet") {
       void createPetWindow()
     }
     createTray()

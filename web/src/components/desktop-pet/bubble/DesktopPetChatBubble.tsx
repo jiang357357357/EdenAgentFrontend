@@ -345,7 +345,7 @@ export function DesktopPetChatBubble({
               value={input}
               readOnly={voiceBusy}
               onPointerDown={(event) => {
-                if (!window.monAgentDesktop || voiceBusy) return
+                if (!window.edenAgentDesktop || voiceBusy) return
                 event.preventDefault()
                 void setDesktopPetBubbleKeyboardFocus(true).then((granted) => {
                   if (granted) inputRef.current?.focus({ preventScroll: true })

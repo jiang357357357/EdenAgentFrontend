@@ -287,8 +287,8 @@ export function Sidebar({
       setWorkspaceLoaded(false)
       onWorkspaceChanged()
     }
-    window.addEventListener("monagent:workspace-changed", refreshWorkspace)
-    return () => window.removeEventListener("monagent:workspace-changed", refreshWorkspace)
+    window.addEventListener("edenagent:workspace-changed", refreshWorkspace)
+    return () => window.removeEventListener("edenagent:workspace-changed", refreshWorkspace)
   }, [onWorkspaceChanged])
 
   const chooseWorkspace = async () => {
@@ -341,8 +341,8 @@ export function Sidebar({
               </div>
             {workspaceMenuOpen ? (
               <div className="absolute left-4 top-[calc(100%-0.4rem)] z-40 w-52 rounded-xl border border-border bg-card p-1.5 text-sm shadow-xl">
-                <button type="button" onClick={() => { setWorkspaceMenuOpen(false); void openDesktopWorkspaceDirectory(workspacePath) }} disabled={!window.monAgentDesktop || !workspacePath} className="flex w-full rounded-lg px-3 py-2 text-left text-text hover:bg-bg disabled:opacity-40">在系统文件管理器中打开</button>
-                <button type="button" onClick={() => void chooseWorkspace()} disabled={!window.monAgentDesktop || workspaceSwitching || Boolean(workspacePending)} className="flex w-full rounded-lg px-3 py-2 text-left text-text hover:bg-bg disabled:opacity-40">{workspaceSwitching ? "正在选择…" : workspacePending ? "等待切换…" : "切换工作区…"}</button>
+                <button type="button" onClick={() => { setWorkspaceMenuOpen(false); void openDesktopWorkspaceDirectory(workspacePath) }} disabled={!window.edenAgentDesktop || !workspacePath} className="flex w-full rounded-lg px-3 py-2 text-left text-text hover:bg-bg disabled:opacity-40">在系统文件管理器中打开</button>
+                <button type="button" onClick={() => void chooseWorkspace()} disabled={!window.edenAgentDesktop || workspaceSwitching || Boolean(workspacePending)} className="flex w-full rounded-lg px-3 py-2 text-left text-text hover:bg-bg disabled:opacity-40">{workspaceSwitching ? "正在选择…" : workspacePending ? "等待切换…" : "切换工作区…"}</button>
                 <div className="px-3 py-2 text-xs text-text-muted">{workspacePending ? `等待当前任务结束后切换到 ${workspacePending}` : "选择项目文件夹；没有会话时会自动保存当前空白会话"}</div>
               </div>
             ) : null}

@@ -1,5 +1,5 @@
 {
-  "name": "mon-agent-frontend",
+  "name": "eden-agent-frontend",
   "private": true,
   "version": "1.8.0",
   "license": "PolyForm-Noncommercial-1.0.0",
@@ -14,12 +14,12 @@
     "dev:shell": "npm --prefix desktop run dev",
     "dev:desktop": "npm run dev",
     "build": "npm --prefix web run build",
-    "build:dist": "MON_AGENT_AUTH_MODE=production npm run build",
+    "build:dist": "EDEN_AGENT_AUTH_MODE=production npm run build",
     "build:pointer-observer:win": "npm --prefix desktop run build:pointer-observer",
-    "package:linux": "electron-packager . mon-agent --platform=linux --arch=x64 --out=dist/app --overwrite --electron-version=42.4.0 --icon=desktop/assets/icon.png --extra-resource=../target/release/mon-agent-server --extra-resource=../Server/skills --ignore=^/dist/app --ignore=^/.git --ignore=^/node_modules --ignore=^/Script --ignore=^/web/node_modules --ignore=^/web/src --ignore=^/web/public --ignore=^/web/tsconfig\\.json$ --ignore=^/web/vite\\.config\\.ts$",
-    "package:win": "npm run build:pointer-observer:win && electron-packager . mon-agent --platform=win32 --arch=x64 --out=dist/app --overwrite --electron-version=42.4.0 --icon=desktop/assets/icon.ico --extra-resource=../target/release/mon-agent-server.exe --extra-resource=../Server/skills --extra-resource=desktop/native/win32-pointer-observer/bin/monagent-pointer-observer.exe --ignore=^/dist/app --ignore=^/.git --ignore=^/node_modules --ignore=^/Script --ignore=^/desktop/native/win32-pointer-observer/target --ignore=^/desktop/native/win32-pointer-observer/bin --ignore=^/web/node_modules --ignore=^/web/src --ignore=^/web/public --ignore=^/web/tsconfig\\.json$ --ignore=^/web/vite\\.config\\.ts$",
+    "package:linux": "electron-packager . eden-agent --platform=linux --arch=x64 --out=dist/app --overwrite --electron-version=42.4.0 --icon=desktop/assets/icon.png --extra-resource=../target/release/eden-agent-server --extra-resource=../Server/skills --ignore=^/dist/app --ignore=^/.git --ignore=^/node_modules --ignore=^/Script --ignore=^/web/node_modules --ignore=^/web/src --ignore=^/web/public --ignore=^/web/tsconfig\\.json$ --ignore=^/web/vite\\.config\\.ts$",
+    "package:win": "npm run build:pointer-observer:win && electron-packager . eden-agent --platform=win32 --arch=x64 --out=dist/app --overwrite --electron-version=42.4.0 --icon=desktop/assets/icon.ico --extra-resource=../target/release/eden-agent-server.exe --extra-resource=../Server/skills --extra-resource=desktop/native/win32-pointer-observer/bin/edenagent-pointer-observer.exe --ignore=^/dist/app --ignore=^/.git --ignore=^/node_modules --ignore=^/Script --ignore=^/desktop/native/win32-pointer-observer/target --ignore=^/desktop/native/win32-pointer-observer/bin --ignore=^/web/node_modules --ignore=^/web/src --ignore=^/web/public --ignore=^/web/tsconfig\\.json$ --ignore=^/web/vite\\.config\\.ts$",
     "dist:linux": "npm run build:dist && npm run package:linux",
-    "dist:win": "set MON_AGENT_AUTH_MODE=production&& npm run build && npm run package:win",
+    "dist:win": "set EDEN_AGENT_AUTH_MODE=production&& npm run build && npm run package:win",
     "typecheck": "npm --prefix web run typecheck",
     "preview": "npm --prefix web run preview",
     "start": "npm run dev"

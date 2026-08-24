@@ -49,7 +49,7 @@ import {
 } from "../../lib/desktop-window"
 import { cn } from "../../lib/utils"
 import { listPlugins } from "../../lib/agent-client"
-import type { PluginUiContributionInfo } from "../../generated/mon-agent-rpc"
+import type { PluginUiContributionInfo } from "../../generated/eden-agent-rpc"
 
 const screenMotion = {
   initial: { opacity: 0, x: 12 },

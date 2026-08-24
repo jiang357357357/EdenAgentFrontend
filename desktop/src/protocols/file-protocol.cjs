@@ -2,7 +2,7 @@ const path = require("node:path")
 
 function desktopFileUrl(filePath) {
   if (!filePath) return ""
-  return `monagent-file://local/file?path=${encodeURIComponent(String(filePath))}`
+  return `edenagent-file://local/file?path=${encodeURIComponent(String(filePath))}`
 }
 
 function resolveBundledWebAssetPath(filePath, { preloadDirectory, isPackaged, pathApi = path }) {

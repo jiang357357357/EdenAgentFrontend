@@ -9,9 +9,9 @@ if (process.platform !== "win32") {
 
 const crateRoot = path.resolve(__dirname, "..", "native", "win32-pointer-observer")
 const manifestPath = path.join(crateRoot, "Cargo.toml")
-const sourcePath = path.join(crateRoot, "target", "release", "monagent-pointer-observer.exe")
+const sourcePath = path.join(crateRoot, "target", "release", "edenagent-pointer-observer.exe")
 const outputDir = path.join(crateRoot, "bin")
-const outputPath = path.join(outputDir, "monagent-pointer-observer.exe")
+const outputPath = path.join(outputDir, "edenagent-pointer-observer.exe")
 
 console.log("[pointer-observer] building Windows global pointer observer")
 execFileSync("cargo", ["build", "--release", "--locked", "--manifest-path", manifestPath], {

@@ -22,7 +22,7 @@ function createContext(files, env = {}) {
     app: { isPackaged: false },
     moduleDir: "D:\\Mon\\Agent\\frontend\\desktop\\src",
     processObject: {
-      env: { MON_AGENT_ROOT: "D:\\Mon\\Agent", ...env },
+      env: { EDEN_AGENT_ROOT: "D:\\Mon\\Agent", ...env },
       platform: "win32",
       execPath: "D:\\Mon\\Agent\\frontend\\electron.exe",
       resourcesPath: "D:\\resources",
@@ -56,8 +56,8 @@ test("prefers private environment variables for the development account", () => 
   const context = createContext({
     "D:\\Mon\\Agent\\.monconfig": "[auth_dev]\nUSERNAME=\nPASSWORD=",
   }, {
-    MON_AGENT_DEV_USERNAME: "local-dev",
-    MON_AGENT_DEV_PASSWORD: "private-secret",
+    EDEN_AGENT_DEV_USERNAME: "local-dev",
+    EDEN_AGENT_DEV_PASSWORD: "private-secret",
   })
 
   assert.deepEqual(context.getDevAccount(), {
@@ -70,7 +70,7 @@ test("resolves the MonCore URL from the workspace and normalizes wildcard hosts"
   const context = createContext({
     "D:\\Mon\\.monconfig": "[workspace]\nNAME=Mon",
     "D:\\Mon\\.monworkspace": "{}",
-    "D:\\Mon\\Agent\\.monconfig": "SERVICE_ID=monagent",
+    "D:\\Mon\\Agent\\.monconfig": "SERVICE_ID=edenagent",
     "D:\\Mon\\Core\\.monconfig": "[server]\nHOST=0.0.0.0\nPORT=40111",
   })
   assert.equal(context.resolveCoreBaseUrl(), "http://127.0.0.1:40111")

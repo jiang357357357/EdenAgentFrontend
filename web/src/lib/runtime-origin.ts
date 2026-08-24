@@ -15,7 +15,7 @@ export function getStoredRuntimeOrigin(): RuntimeOrigin | null {
 export function saveRuntimeOrigin(origin: RuntimeOrigin) {
   window.localStorage.setItem(RUNTIME_ORIGIN_STORAGE_KEY, origin)
   document.documentElement.dataset.runtimeOrigin = origin
-  window.dispatchEvent(new CustomEvent("monagent:runtime-origin-changed", { detail: { origin } }))
+  window.dispatchEvent(new CustomEvent("edenagent:runtime-origin-changed", { detail: { origin } }))
 }
 
 export function clearRuntimeOrigin() {

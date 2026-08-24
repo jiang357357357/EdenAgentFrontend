@@ -17,7 +17,7 @@ test("voice calls stay behind the Rust Agent Server boundary", () => {
   assert.match(clientSource, /voice\.tts\.synthesize/)
   assert.match(clientSource, /voice\.tts\.list_segments/)
   assert.match(transportSource, /\/voice\/stt\/realtime/)
-  assert.match(transportSource, /MON_AGENT_TOKEN_PROTOCOL_PREFIX/)
+  assert.match(transportSource, /EDEN_AGENT_TOKEN_PROTOCOL_PREFIX/)
   assert.match(transportSource, /\/blobs\/\$\{encodeURIComponent\(blobId\)\}/)
   assert.doesNotMatch(speechSource, /resolveCoreAssetUrl/)
   assert.match(speechSource, /resolveVoiceBlobUrl/)

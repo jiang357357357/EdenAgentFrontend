@@ -123,8 +123,8 @@ export function SkillPage({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     void refresh()
     const handleChanged = () => void refresh()
-    window.addEventListener("monagent:skills-changed", handleChanged)
-    return () => window.removeEventListener("monagent:skills-changed", handleChanged)
+    window.addEventListener("edenagent:skills-changed", handleChanged)
+    return () => window.removeEventListener("edenagent:skills-changed", handleChanged)
   }, [refresh])
 
   useEffect(() => {

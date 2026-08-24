@@ -30,7 +30,7 @@ import type {
   PluginMarketReleaseInfo,
   PluginMarketSourceInfo,
   ToolInfo,
-} from "../generated/mon-agent-rpc"
+} from "../generated/eden-agent-rpc"
 import { getStoredRuntimeOrigin, LOCAL_ASSISTANT_ID } from "./runtime-origin"
 import { getStoredLocalCharacter, localCharacterParticipantProfile } from "./local-character"
 import { resolveDesktopFileUrl } from "./desktop-window"
@@ -44,11 +44,11 @@ const env = (
   import.meta as unknown as {
     env?: {
       DEV?: boolean
-      VITE_MON_AGENT_BASE_URL?: string
+      VITE_EDEN_AGENT_BASE_URL?: string
     }
   }
 ).env
-const agentBaseUrl = (env?.VITE_MON_AGENT_BASE_URL ?? "http://127.0.0.1:40092").replace(/\/$/, "")
+const agentBaseUrl = (env?.VITE_EDEN_AGENT_BASE_URL ?? "http://127.0.0.1:40092").replace(/\/$/, "")
 
 export type SessionParticipant = {
   assistantID: number | string
@@ -1177,17 +1177,17 @@ function stringify(value: unknown) {
   }
 }
 
-export function resolveMonAgentUrl(url: string) {
+export function resolveEdenAgentUrl(url: string) {
   if (!url) return url
   if (/^(data:|blob:|https?:\/\/)/i.test(url)) return url
   if (url.startsWith("file://")) {
-    if (!window.monAgentDesktop?.convertFileSrc) return url
+    if (!window.edenAgentDesktop?.convertFileSrc) return url
 
     try {
       const fileUrl = new URL(url)
       const pathname = decodeURIComponent(fileUrl.pathname)
       const filePath = pathname.replace(/^\/([A-Za-z]:\/)/, "$1").replace(/\//g, "\\")
-      return window.monAgentDesktop.convertFileSrc(filePath)
+      return window.edenAgentDesktop.convertFileSrc(filePath)
     } catch {
       return url
     }
@@ -1513,7 +1513,7 @@ function mapDirectorRunForView(run: DirectorRunInfo): CompanionDirectorRun {
 }
 
 async function listAllSessionEvents(sessionID: string, maximum = 10_000) {
-  const events: import("../generated/mon-agent-rpc").SessionEvent[] = []
+  const events: import("../generated/eden-agent-rpc").SessionEvent[] = []
   let afterSeq = 0n
   while (events.length < maximum) {
     const page = await rpcRequest("event.list", { sessionId: sessionID, afterSeq, limit: 500 })
@@ -1829,7 +1829,7 @@ export async function updateRuntimeModel(aiEntityId: number | string, sessionId?
   if (getStoredRuntimeOrigin() === "local") {
     const config = await getRuntimeModelConfig(sessionId)
     if (String(config.current?.aiEntityId) !== String(aiEntityId)) {
-      throw new Error("本地模式的模型由 MON_AGENT_MODEL 配置；修改后请重启 Agent Server。")
+      throw new Error("本地模式的模型由 EDEN_AGENT_MODEL 配置；修改后请重启 Agent Server。")
     }
     return config
   }
@@ -1977,7 +1977,7 @@ function mapSelfAwakeRunForView(run: SelfAwakeRunInfo): ApiSelfAwakeRun {
       character_id: characterId ?? null,
       character_name: optionalText(author.characterName) ?? "",
     },
-    source_service: "mon-agent-server",
+    source_service: "eden-agent-server",
     external_run_id: run.id,
     event_type: optionalText(trigger.type) ?? "scheduled",
     event_source: optionalText(trigger.source) ?? "self_awake_runtime",

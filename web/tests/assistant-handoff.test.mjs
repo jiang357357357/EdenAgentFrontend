@@ -12,11 +12,11 @@ after(async () => {
 })
 
 const transport = readFileSync(new URL("../src/lib/rpc-transport.ts", import.meta.url), "utf8")
-const host = readFileSync(new URL("../../../Server/crates/mon-agent-host/src/core_tools.rs", import.meta.url), "utf8")
-const appRuntime = readFileSync(new URL("../../../Server/crates/mon-agent-app/src/runtime/mod.rs", import.meta.url), "utf8")
-const appMessage = readFileSync(new URL("../../../Server/crates/mon-agent-app/src/runtime/message.rs", import.meta.url), "utf8")
+const host = readFileSync(new URL("../../../Server/crates/eden-agent-host/src/core_tools.rs", import.meta.url), "utf8")
+const appRuntime = readFileSync(new URL("../../../Server/crates/eden-agent-app/src/runtime/mod.rs", import.meta.url), "utf8")
+const appMessage = readFileSync(new URL("../../../Server/crates/eden-agent-app/src/runtime/message.rs", import.meta.url), "utf8")
 const server = readFileSync(new URL("../../../Server/rust/main.rs", import.meta.url), "utf8")
-const store = readFileSync(new URL("../../../Server/crates/mon-agent-store/src/lib.rs", import.meta.url), "utf8")
+const store = readFileSync(new URL("../../../Server/crates/eden-agent-store/src/lib.rs", import.meta.url), "utf8")
 
 test("assistant switching is a durable next-root-run handoff", () => {
   assert.match(host, /schedule_assistant_handoff/)

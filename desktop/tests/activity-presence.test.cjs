@@ -111,12 +111,12 @@ test("collects Electron window, input and renderer facts", async () => {
 
   const payload = await service.collectActivityPresenceFacts()
   assert.equal(payload.system_input.idle_seconds, 12)
-  assert.equal(payload.monagent.main_window_visible, true)
-  assert.equal(payload.monagent.main_window_focused, true)
-  assert.equal(payload.monagent.pet_visible, true)
-  assert.equal(payload.monagent.bubble_visible, true)
-  assert.equal(payload.monagent.chat_input_focused, true)
-  assert.equal(payload.recent_events[0].type, "monagent_interaction_updated")
+  assert.equal(payload.edenagent.main_window_visible, true)
+  assert.equal(payload.edenagent.main_window_focused, true)
+  assert.equal(payload.edenagent.pet_visible, true)
+  assert.equal(payload.edenagent.bubble_visible, true)
+  assert.equal(payload.edenagent.chat_input_focused, true)
+  assert.equal(payload.recent_events[0].type, "edenagent_interaction_updated")
 })
 
 test("starting activity presence schedules and publishes authenticated updates", async () => {

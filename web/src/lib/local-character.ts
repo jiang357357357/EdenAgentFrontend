@@ -1,5 +1,5 @@
 import type { CoreAssistant } from "./auth"
-import type { JsonValue } from "../generated/mon-agent-rpc"
+import type { JsonValue } from "../generated/eden-agent-rpc"
 import { resolveDesktopFileUrl, type LocalCharacterConfig } from "./desktop-window"
 import { LOCAL_ASSISTANT_ID } from "./runtime-origin"
 
@@ -160,7 +160,7 @@ function migrateStoredCharacter(value: Partial<LocalCharacterConfig>, version: n
   })
   const description = value.description?.trim() || ""
   const hasLegacyIdentity = !name || name === "本地助手"
-  const hasLegacyDescription = !description || description === "运行于本地 MonAgent Server 的默认助手。"
+  const hasLegacyDescription = !description || description === "运行于本地 Eden Agent Server 的默认助手。"
   const hasLegacyEnums = (!value.initiativeLevel || value.initiativeLevel === "balanced")
     && (!value.responseLength || value.responseLength === "balanced")
     && (!value.formality || value.formality === "balanced")

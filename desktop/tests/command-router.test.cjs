@@ -27,6 +27,6 @@ test("registerDesktopIpc installs the router on the desktop channel", () => {
     ipcMain: { handle: (...args) => registrations.push(args) },
     handlers: { ping: () => true },
   })
-  assert.equal(registrations[0][0], "mon-agent:invoke")
+  assert.equal(registrations[0][0], "eden-agent:invoke")
   assert.equal(registrations[0][1], router)
 })

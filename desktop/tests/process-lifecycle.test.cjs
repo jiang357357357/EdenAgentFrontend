@@ -16,7 +16,7 @@ test("a missing development parent stops the watcher and quits once", () => {
   let clearedTimer = null
   const timer = { unrefCalled: false, unref() { this.unrefCalled = true } }
   const processObject = {
-    env: { MON_AGENT_DEV_PARENT_PID: "321" },
+    env: { EDEN_AGENT_DEV_PARENT_PID: "321" },
     kill(pid, signal) {
       assert.equal(pid, 321)
       assert.equal(signal, 0)

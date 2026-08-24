@@ -33,7 +33,7 @@ test("a standalone launch removes a stale quit flag", () => {
 
 test("an externally managed launch with an explicit quit flag preserves it", () => {
   const controller = controllerFor(
-    { MON_AGENT_DESKTOP_QUIT_FLAG: "/dev-runner/desktop-quit.flag" },
+    { EDEN_AGENT_DESKTOP_QUIT_FLAG: "/dev-runner/desktop-quit.flag" },
     { [FLAG_PATH]: "stale" },
   )
   assert.equal(controller.isExternallyManaged(), true)
@@ -42,7 +42,7 @@ test("an externally managed launch with an explicit quit flag preserves it", () 
 })
 
 test("an externally managed launch identified by dev parent pid preserves the flag", () => {
-  const controller = controllerFor({ MON_AGENT_DEV_PARENT_PID: "321" }, { [FLAG_PATH]: "stale" })
+  const controller = controllerFor({ EDEN_AGENT_DEV_PARENT_PID: "321" }, { [FLAG_PATH]: "stale" })
   assert.equal(controller.isExternallyManaged(), true)
   assert.equal(controller.clearStaleFlagForLaunch(), false)
   assert.equal(controller.hasQuitFlag(), true)
@@ -56,7 +56,7 @@ test("a standalone quit does not write the quit flag", () => {
 
 test("an externally managed quit writes the coordination flag", () => {
   const controller = controllerFor(
-    { MON_AGENT_DESKTOP_QUIT_FLAG: "/dev-runner/desktop-quit.flag" },
+    { EDEN_AGENT_DESKTOP_QUIT_FLAG: "/dev-runner/desktop-quit.flag" },
   )
   assert.equal(controller.signalQuit(), true)
   assert.equal(controller.hasQuitFlag(), true)

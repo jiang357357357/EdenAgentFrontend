@@ -12,7 +12,7 @@ const agentRoot = path.resolve(frontendRoot, "..")
 const configPath = path.join(agentRoot, ".monconfig")
 const smokeWebOnly = process.argv.includes("--smoke-web")
 
-const webPort = Number(process.env.MON_AGENT_WEB_PORT ?? readMonConfigValue("server", "WEB_PORT", "40091"))
+const webPort = Number(process.env.EDEN_AGENT_WEB_PORT ?? readMonConfigValue("server", "WEB_PORT", "40091"))
 const quitFlag = resolveAgentPath(readMonConfigValue("desktop", "QUIT_FLAG", ".artifacts/desktop-quit.flag"))
 const children = []
 let shuttingDown = false
@@ -320,9 +320,9 @@ try {
   console.log("[dev] start desktop shell")
   const desktop = start("desktop", ["--prefix", "desktop", "run", "dev"], {
     ELECTRON_RUN_AS_NODE: undefined,
-    MON_AGENT_DEV_PARENT_PID: String(process.pid),
-    MON_AGENT_SERVER_MODE: "external",
-    MON_AGENT_TOKEN_FILE: process.env.MON_AGENT_TOKEN_FILE || path.join(agentRoot, "Data", "server-capability.token"),
+    EDEN_AGENT_DEV_PARENT_PID: String(process.pid),
+    EDEN_AGENT_SERVER_MODE: "external",
+    EDEN_AGENT_TOKEN_FILE: process.env.EDEN_AGENT_TOKEN_FILE || path.join(agentRoot, "Data", "server-capability.token"),
   })
   desktop.on("exit", () => void shutdown(0))
 } catch (error) {

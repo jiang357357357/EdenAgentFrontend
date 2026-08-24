@@ -9,7 +9,7 @@ const [appSource, pageSource, authSource, runtimeHookSource, transportSource, cl
   readFile(new URL("../src/hooks/useSessionRuntime.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/lib/rpc-transport.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/lib/agent-client.ts", import.meta.url), "utf8"),
-  readFile(new URL("../src/generated/mon-agent-rpc.ts", import.meta.url), "utf8"),
+  readFile(new URL("../src/generated/eden-agent-rpc.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/components/layout/Sidebar.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/chat/ChatPage.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/configuration/ConfigurationPage.tsx", import.meta.url), "utf8"),
@@ -63,7 +63,7 @@ test("local mode uses the environment model and local identity without Core look
   assert.match(appSource, /if \(runtimeOrigin === "local"\)[\s\S]*?setCurrentAssistant\(localAssistant\)/)
   assert.match(clientSource, /getStoredRuntimeOrigin\(\) === "local"[\s\S]*?assistantName: localCharacter\.name/)
   assert.match(clientSource, /getStoredRuntimeOrigin\(\) === "local"[\s\S]*?rpcRequest\("model\.read"/)
-  assert.match(clientSource, /本地模式的模型由 MON_AGENT_MODEL 配置/)
+  assert.match(clientSource, /本地模式的模型由 EDEN_AGENT_MODEL 配置/)
   assert.match(clientSource, /profile: localCharacterParticipantProfile\(localCharacter\)/)
   assert.match(localCharacterSource, /system_prompt: normalized\.systemPrompt/)
   assert.match(appSource, /updateSessionParticipants\(\[LOCAL_ASSISTANT_ID\]\)/)

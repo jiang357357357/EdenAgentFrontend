@@ -1,11 +1,11 @@
 # Commercial licensing
 
-MonAgent Frontend is offered under two licensing paths:
+Eden Agent Frontend is offered under two licensing paths:
 
 1. Noncommercial use under the [PolyForm Noncommercial License 1.0.0](LICENSE).
 2. Commercial use under a separate written agreement signed by the applicable copyright holders.
 
-No commercial rights are granted by this notice. To request commercial licensing, contact the owner through the official [MonAgent Frontend repository](https://gitcode.com/zz357357357/MonAgentFrontend) profile and describe the intended product, organization, deployment model and distribution method.
+No commercial rights are granted by this notice. To request commercial licensing, contact the owner through the official [Eden Agent Frontend repository](https://gitcode.com/zz357357357/EdenAgentFrontend) profile and describe the intended product, organization, deployment model and distribution method.
 
 This model applies to versions first distributed with this notice on or after 2026-08-24. Copies previously received under MIT remain governed by the MIT terms that accompanied those copies.
 

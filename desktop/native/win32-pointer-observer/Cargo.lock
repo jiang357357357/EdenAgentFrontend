@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "monagent-pointer-observer"
+name = "edenagent-pointer-observer"
 version = "0.1.0"
 dependencies = [
  "windows-sys",

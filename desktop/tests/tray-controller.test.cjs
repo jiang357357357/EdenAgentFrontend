@@ -38,7 +38,7 @@ test("tray controller builds menus from current window state", async () => {
     Tray: FakeTray,
     nativeImage: { createFromPath: () => nativeIcon },
     platform: "win32",
-    title: "MonAgent",
+    title: "Eden Agent",
     resolveDesktopIconPath: () => "D:\\Mon\\icon.ico",
     getMainWindow: () => mainWindow,
     getPetWindow: () => petWindow,
@@ -50,7 +50,7 @@ test("tray controller builds menus from current window state", async () => {
 
   const tray = controller.createTray()
   assert.equal(tray.icon, nativeIcon)
-  assert.equal(tray.tooltip, "MonAgent")
+  assert.equal(tray.tooltip, "Eden Agent")
   assert.equal(menuTemplate[3].label, "隐藏桌宠")
   tray.handlers.get("click")()
   menuTemplate[0].click()

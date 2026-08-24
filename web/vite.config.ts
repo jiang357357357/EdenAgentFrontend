@@ -15,7 +15,7 @@ const coreHost = coreHostRaw === "0.0.0.0" ? "127.0.0.1" : coreHostRaw
 const corePort = Number(process.env.CORE_SERVER_PORT ?? coreConfig.number("server", "PORT", 40011))
 const coreBaseUrl = `http://${coreHost}:${corePort}`
 
-const authMode = process.env.MON_AGENT_AUTH_MODE ?? monConfig.get("auth", "MODE", "production") ?? "production"
+const authMode = process.env.EDEN_AGENT_AUTH_MODE ?? monConfig.get("auth", "MODE", "production") ?? "production"
 
 export default defineConfig({
   base: "./",

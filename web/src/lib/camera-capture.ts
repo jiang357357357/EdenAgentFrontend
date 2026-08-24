@@ -33,7 +33,7 @@ export async function handleCameraCaptureRequest(request: PendingCameraCapture) 
     return
   }
   await lockManager.request(
-    `monagent-camera-capture:${request.id}`,
+    `edenagent-camera-capture:${request.id}`,
     { ifAvailable: true },
     async (lock) => {
       if (!lock) return

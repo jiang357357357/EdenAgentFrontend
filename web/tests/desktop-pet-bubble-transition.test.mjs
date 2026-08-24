@@ -73,7 +73,7 @@ test("dragging the collapsed icon moves the whole pet group without turning the 
 test("the Linux character uses a stable shaped work-area host", () => {
   assert.match(mainSource, /calculatePetWindowHostLayout\(layout\.character, layout\.workArea, process\.platform\)/)
   assert.match(mainSource, /petWindow\.setShape\(hostLayout\.shape\)/)
-  assert.match(mainSource, /webContents\.send\("mon-agent-pet-character-viewport", petCharacterViewport\)/)
+  assert.match(mainSource, /webContents\.send\("eden-agent-pet-character-viewport", petCharacterViewport\)/)
   assert.match(preloadSource, /onPetCharacterViewport\(callback\)/)
   assert.match(desktopWindowSource, /getDesktopPetCharacterViewport/)
   assert.match(pageSource, /listenDesktopPetCharacterViewport/)

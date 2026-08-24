@@ -7,9 +7,9 @@ function createRustServerManager({ app, agentRoot, processObject = process, file
   if (!app?.getPath) throw new TypeError("app.getPath is required")
   const effectivePathApi = pathApi ?? (processObject.platform === "win32" ? path.win32 : path)
   let child = null
-  const configuredToken = processObject.env.MON_AGENT_CAPABILITY_TOKEN?.trim()
-  const serverMode = processObject.env.MON_AGENT_SERVER_MODE?.trim().toLowerCase()
-  const externallyManaged = serverMode === "external" || Boolean(processObject.env.MON_AGENT_DEV_PARENT_PID)
+  const configuredToken = processObject.env.EDEN_AGENT_CAPABILITY_TOKEN?.trim()
+  const serverMode = processObject.env.EDEN_AGENT_SERVER_MODE?.trim().toLowerCase()
+  const externallyManaged = serverMode === "external" || Boolean(processObject.env.EDEN_AGENT_DEV_PARENT_PID)
   const managedToken = configuredToken || (externallyManaged ? null : crypto.randomBytes(32).toString("hex"))
 
   function externalRestartScriptPath() {
@@ -23,7 +23,7 @@ function createRustServerManager({ app, agentRoot, processObject = process, file
   }
 
   function tokenFilePath() {
-    const configured = processObject.env.MON_AGENT_TOKEN_FILE?.trim()
+    const configured = processObject.env.EDEN_AGENT_TOKEN_FILE?.trim()
     if (configured) return effectivePathApi.resolve(agentRoot, configured)
     if (externallyManaged) return effectivePathApi.join(agentRoot, "Data", "server-capability.token")
     return effectivePathApi.join(app.getPath("userData"), "server", "capability.token")
@@ -47,9 +47,9 @@ function createRustServerManager({ app, agentRoot, processObject = process, file
   }
 
   function executablePath() {
-    const configured = processObject.env.MON_AGENT_SERVER_PATH?.trim()
+    const configured = processObject.env.EDEN_AGENT_SERVER_PATH?.trim()
     if (configured) return configured
-    const name = processObject.platform === "win32" ? "mon-agent-server.exe" : "mon-agent-server"
+    const name = processObject.platform === "win32" ? "eden-agent-server.exe" : "eden-agent-server"
     if (app.isPackaged) return effectivePathApi.join(processObject.resourcesPath, name)
     return effectivePathApi.join(agentRoot, "target", "debug", name)
   }
@@ -69,15 +69,15 @@ function createRustServerManager({ app, agentRoot, processObject = process, file
       env: {
         ...processObject.env,
         ...getRuntimeEnvironment(processObject.env),
-        MON_AGENT_CAPABILITY_TOKEN: capabilityToken(),
-        MON_AGENT_DATABASE: effectivePathApi.join(dataRoot, "mon-agent.db"),
-        MON_AGENT_BLOB_ROOT: effectivePathApi.join(dataRoot, "blobs"),
-        MON_AGENT_LOG_DIRECTORY: effectivePathApi.join(dataRoot, "logs"),
-        MON_AGENT_TOKEN_FILE: tokenFilePath(),
-        MON_AGENT_SKILL_ROOTS: app.isPackaged
+        EDEN_AGENT_CAPABILITY_TOKEN: capabilityToken(),
+        EDEN_AGENT_DATABASE: effectivePathApi.join(dataRoot, "eden-agent.db"),
+        EDEN_AGENT_BLOB_ROOT: effectivePathApi.join(dataRoot, "blobs"),
+        EDEN_AGENT_LOG_DIRECTORY: effectivePathApi.join(dataRoot, "logs"),
+        EDEN_AGENT_TOKEN_FILE: tokenFilePath(),
+        EDEN_AGENT_SKILL_ROOTS: app.isPackaged
           ? effectivePathApi.join(processObject.resourcesPath, "skills", "builtin")
           : `${effectivePathApi.join(agentRoot, "Server", "skills", "builtin")},${effectivePathApi.join(agentRoot, ".agents", "skills")}`,
-        MON_AGENT_SKILL_INSTALL_ROOT: effectivePathApi.join(dataRoot, "skills"),
+        EDEN_AGENT_SKILL_INSTALL_ROOT: effectivePathApi.join(dataRoot, "skills"),
       },
     })
     child.stdout?.on("data", (chunk) => processObject.stdout?.write?.(`[rust-server] ${chunk}`))

@@ -22,7 +22,7 @@ function createWorkspaceContext({
   function isAgentRoot(candidate) {
     if (!candidate) return false
     const contents = readText(pathApi.join(candidate, ".monconfig"))
-    return contents.includes("MonAgent") || contents.includes("SERVICE_ID=monagent")
+    return contents.includes("Eden Agent") || contents.includes("SERVICE_ID=edenagent")
   }
 
   function findAgentRootFrom(start) {
@@ -45,7 +45,7 @@ function createWorkspaceContext({
   const frontendRoot = resolveFrontendRoot()
 
   function resolveAgentRoot() {
-    const explicit = processObject.env.MON_AGENT_ROOT?.trim()
+    const explicit = processObject.env.EDEN_AGENT_ROOT?.trim()
     if (explicit) return explicit
     return (
       findAgentRootFrom(pathApi.resolve(frontendRoot, "..")) ??
@@ -70,8 +70,8 @@ function createWorkspaceContext({
 
   function resolveDesktopIconPath() {
     const candidates = processObject.platform === "win32"
-      ? ["icon.ico", "icon.png", "monagent-m-icon-v2.png"]
-      : ["icon.png", "monagent-m-icon-v2.png", "icon.ico"]
+      ? ["icon.ico", "icon.png", "edenagent-m-icon-v2.png"]
+      : ["icon.png", "edenagent-m-icon-v2.png", "icon.ico"]
     for (const filename of candidates) {
       const candidate = pathApi.join(desktopAssetsDir, filename)
       if (fileSystem.existsSync(candidate)) return candidate
@@ -95,9 +95,9 @@ function createWorkspaceContext({
   }
 
   function getDevAccount() {
-    const username = processObject.env.MON_AGENT_DEV_USERNAME?.trim()
+    const username = processObject.env.EDEN_AGENT_DEV_USERNAME?.trim()
       || getAgentConfig("auth_dev", "USERNAME", "")
-    const password = processObject.env.MON_AGENT_DEV_PASSWORD?.trim()
+    const password = processObject.env.EDEN_AGENT_DEV_PASSWORD?.trim()
       || getAgentConfig("auth_dev", "PASSWORD", "")
     if (!username || !password) return null
     return { username, password }

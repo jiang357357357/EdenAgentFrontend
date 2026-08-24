@@ -1,20 +1,20 @@
 # 更新日志
 
-本文件记录 MonAgentFrontend 桌面客户端的显著变化。
+本文件记录 EdenAgentFrontend 桌面客户端的显著变化。
 
 ## [Unreleased]
 
 ### Changed
 
 - 自 2026-08-24 起，当前版本改用 PolyForm Noncommercial 1.0.0 非商业许可，并提供单独商业授权；历史 MIT 版本的既有授权不追溯撤销。
-- 客户端用户可见品牌更新为 Eden Agent，保留 `MonAgent` 协议、包名和运行时标识兼容。
+- 客户端用户可见品牌更新为 Eden Agent，保留 `Eden Agent` 协议、包名和运行时标识兼容。
 - 桌面端工作区上下文改为从根目录 `Core/.monconfig` 读取 MonCore 地址。
 - 助手切换页新增按助手保存的服装与普通立绘/记忆大厅选择，预览和主角色栏严格按所选“服装 + 展示模式”组合渲染。
 - Spine 资源和动作选择改为先匹配后端声明的默认服装，再匹配 `standee` / `memory-lobby` 布局，支持同一角色多套服装且不再混用不同服装的动画映射。
 
 ### Fixed
 
-- 修复独立打包客户端因遗留的 `.artifacts/desktop-quit.flag` 退出标记而在每次启动时立即退出的问题；独立启动前清理陈旧的退出标记，独立模式下用户选择退出不再写入持久标记，仅外部管理启动（显式 `MON_AGENT_DESKTOP_QUIT_FLAG` 或开发父进程 `MON_AGENT_DEV_PARENT_PID`）继续以退出标记作为协调信号。
+- 修复独立打包客户端因遗留的 `.artifacts/desktop-quit.flag` 退出标记而在每次启动时立即退出的问题；独立启动前清理陈旧的退出标记，独立模式下用户选择退出不再写入持久标记，仅外部管理启动（显式 `EDEN_AGENT_DESKTOP_QUIT_FLAG` 或开发父进程 `EDEN_AGENT_DEV_PARENT_PID`）继续以退出标记作为协调信号。
 
 ## [1.8.0] - 2026-08-05
 

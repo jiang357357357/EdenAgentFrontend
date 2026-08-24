@@ -164,7 +164,7 @@ function createActivityPresenceService({
         camera_in_use: null,
         error: "系统媒体会话采集器尚未接入",
       },
-      monagent: {
+      edenagent: {
         main_window_visible: usableWindow(windows.mainWindow) && windows.mainWindow.isVisible(),
         main_window_focused: usableWindow(windows.mainWindow) && windows.mainWindow.isFocused(),
         pet_visible: usableWindow(windows.petWindow) && windows.petWindow.isVisible(),
@@ -180,7 +180,7 @@ function createActivityPresenceService({
         system_input: "electron.powerMonitor",
         session: "electron.powerMonitor",
         foreground_window: platform === "linux" ? "linux.x11.xprop" : `electron.${platform}`,
-        monagent: "electron",
+        edenagent: "electron",
         media: "unavailable",
       },
       collection_errors: collectionErrors,
@@ -207,7 +207,7 @@ function createActivityPresenceService({
       })
       return true
     } catch (error) {
-      if (!isQuitting()) logger.warn(`[MonAgent][ActivityPresence][WARN] 上报失败: ${error?.message || error}`)
+      if (!isQuitting()) logger.warn(`[Eden Agent][ActivityPresence][WARN] 上报失败: ${error?.message || error}`)
       return false
     } finally {
       publishInFlight = false
@@ -245,7 +245,7 @@ function createActivityPresenceService({
       next.last_user_interaction_at = input.last_user_interaction_at
     }
     rendererActivityFacts.set(webContents.id, next)
-    recordActivityEvent("monagent_interaction_updated", {
+    recordActivityEvent("edenagent_interaction_updated", {
       surface: String(input?.surface || "unknown"),
       changed_fields: Object.keys(input || {}).filter((key) => key !== "surface"),
     })

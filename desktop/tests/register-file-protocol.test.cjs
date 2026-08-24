@@ -3,7 +3,7 @@ const test = require("node:test")
 
 const { registerFileProtocol } = require("../src/protocols/register-file-protocol.cjs")
 
-test("registerFileProtocol maps monagent-file requests to net.fetch", async () => {
+test("registerFileProtocol maps edenagent-file requests to net.fetch", async () => {
   let scheme = null
   let handler = null
   const protocol = {
@@ -21,9 +21,9 @@ test("registerFileProtocol maps monagent-file requests to net.fetch", async () =
   }
 
   registerFileProtocol({ protocol, net })
-  const result = handler({ url: "monagent-file:///D:/Mon/example.png" })
+  const result = handler({ url: "edenagent-file:///D:/Mon/example.png" })
 
-  assert.equal(scheme, "monagent-file")
+  assert.equal(scheme, "edenagent-file")
   assert.deepEqual(result, { ok: true })
   assert.equal(fetched.length, 1)
   assert.match(fetched[0], /^file:\/\/\/D:\/Mon\/example\.png$/i)

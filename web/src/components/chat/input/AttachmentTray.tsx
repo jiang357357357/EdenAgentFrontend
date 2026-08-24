@@ -1,7 +1,7 @@
 import { FileText, X } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 
-import { resolveMonAgentUrl } from "../../../lib/agent-client"
+import { resolveEdenAgentUrl } from "../../../lib/agent-client"
 import { cn } from "../../../lib/utils"
 import type { PromptAttachment } from "../../../types"
 
@@ -29,7 +29,7 @@ export function AttachmentTray({ attachments, onRemove, overlay }: AttachmentTra
           {attachments.map((attachment, index) => (
             <div key={`${attachment.filename ?? "attachment"}-${index}`} className="relative group flex-shrink-0">
               {attachment.mime.startsWith("image/") ? (
-                <img src={resolveMonAgentUrl(attachment.url)} alt={attachment.filename ?? "附件预览"} className="h-[10vh] w-[10vh] rounded-[1.4vh] border border-border object-cover" />
+                <img src={resolveEdenAgentUrl(attachment.url)} alt={attachment.filename ?? "附件预览"} className="h-[10vh] w-[10vh] rounded-[1.4vh] border border-border object-cover" />
               ) : (
                 <div className="flex h-[10vh] w-[24vw] items-center gap-[1vw] rounded-[1.4vh] border border-border bg-card px-[1.8vw] text-[1.8vh] text-text">
                   <FileText className="h-[2.6vh] w-[2.6vh] flex-shrink-0 text-text-muted" />

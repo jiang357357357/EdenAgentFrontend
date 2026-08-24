@@ -1,22 +1,22 @@
 <div align="center">
 
-# MonAgent Frontend
+# Eden Agent Frontend
 
 **The React/Vite client and Electron desktop shell for Eden Agent**
 
-[![Integration CI](https://github.com/jiang357357357/MonAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/jiang357357357/MonAgent/actions/workflows/ci.yml)
+[![Integration CI](https://github.com/jiang357357357/EdenAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/jiang357357357/EdenAgent/actions/workflows/ci.yml)
 ![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=black)
 ![Vite](https://img.shields.io/badge/Vite-7-646cff?logo=vite&logoColor=white)
 ![Electron](https://img.shields.io/badge/Electron-42-47848f?logo=electron&logoColor=white)
 ![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)
 
-[简体中文](README.md) · **English** · [Main repository](https://github.com/jiang357357357/MonAgent)
+[简体中文](README.md) · **English** · [Main repository](https://github.com/jiang357357357/EdenAgent)
 
 </div>
 
 ## Overview
 
-This repository contains the MonAgent user interface and desktop host:
+This repository contains the Eden Agent user interface and desktop host:
 
 - `web`: the React, TypeScript, and Vite client.
 - `desktop`: the Electron main process, preload bridge, and desktop lifecycle management.
@@ -37,20 +37,20 @@ The frontend does not access databases, model providers, or the local filesystem
 
 ## Development
 
-Requirements: Node.js 22+, npm, and an available `mon-agent-server`.
+Requirements: Node.js 22+, npm, and an available `eden-agent-server`.
 
 ```bash
-git clone https://github.com/jiang357357357/MonAgentFrontend.git
-cd MonAgentFrontend
+git clone https://github.com/jiang357357357/EdenAgentFrontend.git
+cd EdenAgentFrontend
 npm ci
 npm run dev
 ```
 
-Running from the complete MonAgent workspace is usually more convenient:
+Running from the complete Eden Agent workspace is usually more convenient:
 
 ```bash
-git clone --recurse-submodules https://github.com/jiang357357357/MonAgent.git
-cd MonAgent
+git clone --recurse-submodules https://github.com/jiang357357357/EdenAgent.git
+cd EdenAgent
 npm ci
 npm --prefix frontend ci
 npm run dev
@@ -72,7 +72,7 @@ npm run dev
 
 Character binaries are intentionally excluded from this repository. `web/public/characters/` is ignored and must not be used for distributable character assets. Import static art or Spine files from a separate local asset repository through the desktop configuration page.
 
-Third-party characters, reaction art, Spine, voice, model, game, and trademark material are not licensed by the MonAgent software license. Spine Runtime is also subject to separate licensing terms; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Third-party characters, reaction art, Spine, voice, model, game, and trademark material are not licensed by the Eden Agent software license. Spine Runtime is also subject to separate licensing terms; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## License
 

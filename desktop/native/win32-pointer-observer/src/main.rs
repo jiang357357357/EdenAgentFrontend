@@ -1,6 +1,6 @@
 #[cfg(not(target_os = "windows"))]
 fn main() {
-    eprintln!("monagent-pointer-observer is only supported on Windows");
+    eprintln!("edenagent-pointer-observer is only supported on Windows");
     std::process::exit(1);
 }
 

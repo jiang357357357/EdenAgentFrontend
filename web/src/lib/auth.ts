@@ -341,11 +341,11 @@ export function isAuthExpiredError(error: unknown) {
 }
 
 function isDesktopRuntime() {
-  return Boolean(window.monAgentDesktop)
+  return Boolean(window.edenAgentDesktop)
 }
 
 async function invokeDesktop<T>(command: string, args?: Record<string, unknown>) {
-  const bridge = window.monAgentDesktop
+  const bridge = window.edenAgentDesktop
   if (!bridge) {
     throw new Error("Eden Agent 桌面桥接不可用")
   }

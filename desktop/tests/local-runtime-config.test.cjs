@@ -59,9 +59,9 @@ test("normalizes and exports the local GSV synthesis configuration", () => {
   })
   store.save({ voice })
   const environment = store.environment({})
-  assert.equal(environment.MON_AGENT_TTS_SERVICE_URL, "http://127.0.0.1:40302")
-  assert.equal(environment.MON_AGENT_TTS_ROLE, "阿罗娜")
-  assert.equal(environment.MON_AGENT_TTS_ROLE_ID, "42")
+  assert.equal(environment.EDEN_AGENT_TTS_SERVICE_URL, "http://127.0.0.1:40302")
+  assert.equal(environment.EDEN_AGENT_TTS_ROLE, "阿罗娜")
+  assert.equal(environment.EDEN_AGENT_TTS_ROLE_ID, "42")
 })
 
 test("normalizes and exports the complete local GSV transcription configuration", () => {
@@ -90,10 +90,10 @@ test("normalizes and exports the complete local GSV transcription configuration"
   })
   store.save({ transcription })
   const environment = store.environment({})
-  assert.equal(environment.MON_AGENT_STT_SERVICE_URL, "http://127.0.0.1:40302")
-  assert.equal(environment.MON_AGENT_STT_MODEL_TYPE, "funasr")
-  assert.equal(environment.MON_AGENT_STT_END_SILENCE_MS, "300")
-  assert.equal(environment.MON_AGENT_STT_AUTO_FINISH, "true")
+  assert.equal(environment.EDEN_AGENT_STT_SERVICE_URL, "http://127.0.0.1:40302")
+  assert.equal(environment.EDEN_AGENT_STT_MODEL_TYPE, "funasr")
+  assert.equal(environment.EDEN_AGENT_STT_END_SILENCE_MS, "300")
+  assert.equal(environment.EDEN_AGENT_STT_AUTO_FINISH, "true")
 })
 
 test("normalizes the local character profile with bounded text", () => {
@@ -217,7 +217,7 @@ test("migrates the untouched legacy default to Arona without discarding visual r
       baseUrl: "https://api.openai.com/v1",
       character: {
         name: "本地助手",
-        description: "运行于本地 MonAgent Server 的默认助手。",
+        description: "运行于本地 Eden Agent Server 的默认助手。",
         initiativeLevel: "balanced",
         responseLength: "balanced",
         formality: "balanced",

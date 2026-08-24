@@ -139,7 +139,7 @@ export function useSlashCommandMenu({
       "self-awake": () => onOpenSelfAwake?.(),
       skills: () => onOpenSkills?.(),
     }
-    window.dispatchEvent(new CustomEvent("monagent:slash-command-executed", {
+    window.dispatchEvent(new CustomEvent("edenagent:slash-command-executed", {
       detail: { command: `/${command.name}${args ? ` ${args}` : ""}` },
     }))
     Promise.resolve(actions[command.name]()).catch((error) => {

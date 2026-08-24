@@ -166,11 +166,11 @@ export default function App() {
   const modeSwitchTokenRef = useRef(0)
   const handleRuntimeEvent = useCallback((event: { type: string; properties?: unknown }) => {
     if (event.type === "workspace.changed") {
-      window.dispatchEvent(new CustomEvent("monagent:workspace-changed", { detail: event.properties }))
+      window.dispatchEvent(new CustomEvent("edenagent:workspace-changed", { detail: event.properties }))
       return
     }
     if (event.type === "tools.changed") {
-      window.dispatchEvent(new CustomEvent("monagent:skills-changed", { detail: event.properties }))
+      window.dispatchEvent(new CustomEvent("edenagent:skills-changed", { detail: event.properties }))
       return
     }
     if (event.type !== "character.action.changed") return
@@ -472,7 +472,7 @@ export default function App() {
             return loginWithCore(devAccount.username, devAccount.password)
           }
           const response = navigator.locks
-            ? await navigator.locks.request("mon-agent-bootstrap-auth", loginOrReuse)
+            ? await navigator.locks.request("eden-agent-bootstrap-auth", loginOrReuse)
             : await loginOrReuse()
           if (cancelled) return
           console.log("[bootstrapAuth] dev login success, user:", response.user.username)
@@ -496,7 +496,7 @@ export default function App() {
   }, [runtimeOrigin])
 
   useEffect(() => {
-    const unsubscribe = window.monAgentDesktop?.onAuthState?.((state) => {
+    const unsubscribe = window.edenAgentDesktop?.onAuthState?.((state) => {
       if (runtimeOrigin === "local") return
       if (state.type === "authenticated" && state.token && state.response?.user) {
         saveAuth({
@@ -958,7 +958,7 @@ export default function App() {
         transition={{ duration: modeContentVisible ? 0.22 : 0.18, ease: [0.16, 1, 0.3, 1] }}
         className="fixed inset-0"
       >
-        <LayoutGroup id="mon-agent-mode-switch">
+        <LayoutGroup id="eden-agent-mode-switch">
           <AnimatePresence mode="wait" initial={false}>
             {isQuestionWindow ? (
               <div className="fixed inset-0 bg-bg">
@@ -1167,7 +1167,7 @@ export default function App() {
         )}
       </AnimatePresence>
       <AnimatePresence>
-        {!window.monAgentDesktop && !isPetWindow && activePage !== "pet" && activePendingQuestions[0] && (
+        {!window.edenAgentDesktop && !isPetWindow && activePage !== "pet" && activePendingQuestions[0] && (
           <QuestionDecisionOverlay
             key={activePendingQuestions[0].id}
             request={activePendingQuestions[0]}

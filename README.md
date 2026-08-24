@@ -1,22 +1,22 @@
 <div align="center">
 
-# MonAgent Frontend
+# Eden Agent Frontend
 
 **Eden Agent 的 React/Vite 客户端与 Electron 桌面壳**
 
-[![Integration CI](https://github.com/jiang357357357/MonAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/jiang357357357/MonAgent/actions/workflows/ci.yml)
+[![Integration CI](https://github.com/jiang357357357/EdenAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/jiang357357357/EdenAgent/actions/workflows/ci.yml)
 ![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=black)
 ![Vite](https://img.shields.io/badge/Vite-7-646cff?logo=vite&logoColor=white)
 ![Electron](https://img.shields.io/badge/Electron-42-47848f?logo=electron&logoColor=white)
 ![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)
 
-**简体中文** · [English](README.en.md) · [主仓库](https://github.com/jiang357357357/MonAgent)
+**简体中文** · [English](README.en.md) · [主仓库](https://github.com/jiang357357357/EdenAgent)
 
 </div>
 
 ## 简介
 
-本仓库包含 MonAgent 的用户界面和桌面宿主：
+本仓库包含 Eden Agent 的用户界面和桌面宿主：
 
 - `web`：React、TypeScript 与 Vite 客户端。
 - `desktop`：Electron 主进程、preload 桥接和桌面生命周期管理。
@@ -37,20 +37,20 @@
 
 ## 开发
 
-环境要求：Node.js 22+、npm，以及可用的 `mon-agent-server`。
+环境要求：Node.js 22+、npm，以及可用的 `eden-agent-server`。
 
 ```bash
-git clone https://github.com/jiang357357357/MonAgentFrontend.git
-cd MonAgentFrontend
+git clone https://github.com/jiang357357357/EdenAgentFrontend.git
+cd EdenAgentFrontend
 npm ci
 npm run dev
 ```
 
-从完整 MonAgent 工作区启动更方便：
+从完整 Eden Agent 工作区启动更方便：
 
 ```bash
-git clone --recurse-submodules https://github.com/jiang357357357/MonAgent.git
-cd MonAgent
+git clone --recurse-submodules https://github.com/jiang357357357/EdenAgent.git
+cd EdenAgent
 npm ci
 npm --prefix frontend ci
 npm run dev

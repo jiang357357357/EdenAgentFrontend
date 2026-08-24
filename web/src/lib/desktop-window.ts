@@ -343,7 +343,7 @@ export const DEFAULT_PET_SETTINGS: PetSettings = {
 };
 
 function getDesktopBridge() {
-  return window.monAgentDesktop;
+  return window.edenAgentDesktop;
 }
 
 export async function resizeDesktopWindow(mode: DesktopWindowMode) {
@@ -657,7 +657,7 @@ export async function updateDesktopActivityFacts(facts: DesktopActivityFacts) {
 
 export function resolveDesktopFileUrl(filePath?: string | null) {
   if (!filePath) return '';
-  if (/^(?:https?:\/\/|data:|blob:|monagent-file:)/i.test(filePath)) return filePath;
+  if (/^(?:https?:\/\/|data:|blob:|edenagent-file:)/i.test(filePath)) return filePath;
   const bridge = getDesktopBridge();
   return bridge?.convertFileSrc?.(filePath) ?? filePath;
 }

@@ -2,7 +2,7 @@ export {}
 
 declare global {
   interface Window {
-    monAgentDesktop?: {
+    edenAgentDesktop?: {
       getAgentCapability?(): Promise<{ token: string }>
       invoke<T = unknown>(command: string, args?: Record<string, unknown>): Promise<T>
       onViewMode?(callback: (mode: "chatWithCharacter" | "character") => void): () => void

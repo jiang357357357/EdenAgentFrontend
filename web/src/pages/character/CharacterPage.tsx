@@ -20,7 +20,7 @@ import {
   type PetSettings,
   type PetCharacterViewport,
 } from "../../lib/desktop-window"
-import { resolveMonAgentUrl } from "../../lib/agent-client"
+import { resolveEdenAgentUrl } from "../../lib/agent-client"
 import { getStoredRuntimeOrigin } from "../../lib/runtime-origin"
 import { cn } from "../../lib/utils"
 import type { MessageData, PendingPermission, PendingQuestion, PermissionMode, PromptAttachment, Session, ToolCall } from "../../types"
@@ -385,9 +385,9 @@ export function CharacterPage({
                             {message.images.map((image, index) => (
                               <img
                                 key={`${message.id}-${index}`}
-                                src={resolveMonAgentUrl(image)}
+                                src={resolveEdenAgentUrl(image)}
                                 alt="历史图片"
-                                onClick={() => onPreviewImage(resolveMonAgentUrl(image), "历史图片")}
+                                onClick={() => onPreviewImage(resolveEdenAgentUrl(image), "历史图片")}
                                 className="max-h-28 max-w-full cursor-pointer rounded-lg border border-white/10 object-contain transition-opacity hover:opacity-85"
                               />
                             ))}

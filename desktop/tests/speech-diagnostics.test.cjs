@@ -7,7 +7,7 @@ const path = require("node:path")
 const { createSpeechDiagnostics } = require("../src/speech/speech-diagnostics.cjs")
 
 test("speech diagnostics persist bounded JSONL without raw oversized values", (context) => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "mon-agent-speech-"))
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "eden-agent-speech-"))
   context.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   const filePath = path.join(directory, "speech.jsonl")
   const diagnostics = createSpeechDiagnostics(filePath, {

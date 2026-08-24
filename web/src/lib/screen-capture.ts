@@ -4,7 +4,7 @@ import { replyScreenCapture, type PendingScreenCapture } from './agent-client';
 const handledRequests = new Set<string>();
 
 async function captureAndReply(request: PendingScreenCapture) {
-  if (handledRequests.has(request.id) || !window.monAgentDesktop) return;
+  if (handledRequests.has(request.id) || !window.edenAgentDesktop) return;
   handledRequests.add(request.id);
   let replied = false;
   try {
@@ -22,14 +22,14 @@ async function captureAndReply(request: PendingScreenCapture) {
 }
 
 export async function handleScreenCaptureRequest(request: PendingScreenCapture) {
-  if (!request?.id || !window.monAgentDesktop || handledRequests.has(request.id)) return;
+  if (!request?.id || !window.edenAgentDesktop || handledRequests.has(request.id)) return;
   const lockManager = navigator.locks;
   if (!lockManager) {
     await captureAndReply(request);
     return;
   }
   await lockManager.request(
-    `monagent-screen-capture:${request.id}`,
+    `edenagent-screen-capture:${request.id}`,
     { ifAvailable: true },
     async (lock) => {
       if (!lock) return;

@@ -1,4 +1,4 @@
-import { resolveMonAgentUrl } from "../../../lib/agent-client"
+import { resolveEdenAgentUrl } from "../../../lib/agent-client"
 import { cn } from "../../../lib/utils"
 import { MarkdownContent } from "../message/MarkdownContent"
 import type { DialogSegment } from "./types"
@@ -69,7 +69,7 @@ export function ChatDialogPanel({
           {currentOutput.images && currentOutput.images.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {currentOutput.images.map((image, index) => {
-                const src = resolveMonAgentUrl(image)
+                const src = resolveEdenAgentUrl(image)
                 return (
                   <img
                     key={`${image}-${index}`}

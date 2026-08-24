@@ -18,7 +18,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     if (this.props.petSurface) document.documentElement.classList.add("character-transparent")
-    console.error("[MonAgent] application render failed", error, info.componentStack)
+    console.error("[Eden Agent] application render failed", error, info.componentStack)
   }
 
   render() {

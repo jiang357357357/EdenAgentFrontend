@@ -1,13 +1,13 @@
 import {
-  MonAgentRpcClient,
-  MON_AGENT_TOKEN_PROTOCOL_PREFIX,
-  MON_AGENT_WEBSOCKET_PROTOCOL,
+  EdenAgentRpcClient,
+  EDEN_AGENT_TOKEN_PROTOCOL_PREFIX,
+  EDEN_AGENT_WEBSOCKET_PROTOCOL,
   uploadBlob,
   type AttachmentRef,
   type MemoInfo,
   type RpcMethodMap,
   type SessionEvent,
-} from "../generated/mon-agent-rpc"
+} from "../generated/eden-agent-rpc"
 import { getStoredRuntimeOrigin } from "./runtime-origin"
 import type {
   CompanionDirectorExecution,
@@ -30,18 +30,18 @@ import type {
 const env = (import.meta as unknown as {
   env?: {
     DEV?: boolean
-    VITE_MON_AGENT_BASE_URL?: string
-    VITE_MON_AGENT_CAPABILITY_TOKEN?: string
+    VITE_EDEN_AGENT_BASE_URL?: string
+    VITE_EDEN_AGENT_CAPABILITY_TOKEN?: string
   }
 }).env
 
 const httpBaseUrl = env?.DEV
   ? "http://127.0.0.1:40092"
-  : (env?.VITE_MON_AGENT_BASE_URL ?? "http://127.0.0.1:40092").replace(/\/$/, "")
+  : (env?.VITE_EDEN_AGENT_BASE_URL ?? "http://127.0.0.1:40092").replace(/\/$/, "")
 const websocketUrl = `${httpBaseUrl.replace(/^http/, "ws")}/rpc`
 
-let client: MonAgentRpcClient | undefined
-let connection: Promise<MonAgentRpcClient> | undefined
+let client: EdenAgentRpcClient | undefined
+let connection: Promise<EdenAgentRpcClient> | undefined
 let connectedOrigin: "mon" | "local" | undefined
 const eventListeners = new Set<(event: SessionEvent) => void>()
 const statusListeners = new Set<(connected: boolean, error?: string) => void>()
@@ -50,14 +50,14 @@ const reconnectMaxDelayMs = 10_000
 const voiceBlobUrls = new Map<string, Promise<string>>()
 
 async function capabilityToken(): Promise<string> {
-  const configured = env?.VITE_MON_AGENT_CAPABILITY_TOKEN?.trim()
+  const configured = env?.VITE_EDEN_AGENT_CAPABILITY_TOKEN?.trim()
   if (configured) return configured
-  const desktop = await window.monAgentDesktop?.getAgentCapability?.()
+  const desktop = await window.edenAgentDesktop?.getAgentCapability?.()
   if (desktop?.token) return desktop.token
   throw new Error("Eden Agent capability token is unavailable")
 }
 
-async function connectedClient(): Promise<MonAgentRpcClient> {
+async function connectedClient(): Promise<EdenAgentRpcClient> {
   const requestedOrigin = getStoredRuntimeOrigin() ?? "mon"
   if (client && connectedOrigin !== requestedOrigin) {
     client.close()
@@ -68,7 +68,7 @@ async function connectedClient(): Promise<MonAgentRpcClient> {
   if (client) return client
   if (connection) return connection
   connection = (async () => {
-    const next = new MonAgentRpcClient()
+    const next = new EdenAgentRpcClient()
     try {
       const token = await capabilityToken()
       const initialized = await next.connect(websocketUrl, token, "dev", requestedOrigin)
@@ -138,8 +138,8 @@ export async function createRealtimeSttSocket(sessionId: string): Promise<WebSoc
   const url = new URL(`${httpBaseUrl.replace(/^http/, "ws")}/voice/stt/realtime`)
   url.searchParams.set("session_id", sessionId)
   return new WebSocket(url, [
-    MON_AGENT_WEBSOCKET_PROTOCOL,
-    `${MON_AGENT_TOKEN_PROTOCOL_PREFIX}${token}`,
+    EDEN_AGENT_WEBSOCKET_PROTOCOL,
+    `${EDEN_AGENT_TOKEN_PROTOCOL_PREFIX}${token}`,
   ])
 }
 
@@ -277,7 +277,7 @@ function apiParticipants(value: unknown): SessionParticipant[] {
   })
 }
 
-export function apiSession(session: import("../generated/mon-agent-rpc").SessionSummary): ApiSession {
+export function apiSession(session: import("../generated/eden-agent-rpc").SessionSummary): ApiSession {
   const participants = apiParticipants(session.participants)
   return {
     id: session.id,
@@ -661,7 +661,7 @@ export function mapMemoForView(memo: MemoInfo): JsonObject {
   return {
     id: Number(memo.id), user: 0, title: memo.title, content: memo.content, kind: memo.kind,
     status: memo.status, priority: memo.priority, remind_at: iso(memo.remindAt), due_at: iso(memo.dueAt),
-    repeat_rule: memo.repeatRule, source: "monagent", related_session_id: memo.relatedSessionId,
+    repeat_rule: memo.repeatRule, source: "edenagent", related_session_id: memo.relatedSessionId,
     related_message_id: "", semantic_task_id: "", last_triggered_at: iso(memo.lastTriggeredAt),
     completed_at: iso(memo.completedAt), metadata: memo.metadata,
     created_at: iso(memo.createdAt), updated_at: iso(memo.updatedAt),

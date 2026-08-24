@@ -1,7 +1,7 @@
 import { memo } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { resolveMonAgentUrl } from "../../../lib/agent-client"
+import { resolveEdenAgentUrl } from "../../../lib/agent-client"
 import { splitActionLines } from "../../../lib/message-actions"
 import { cn } from "../../../lib/utils"
 
@@ -26,7 +26,7 @@ function MarkdownContentView({
       remarkPlugins={[remarkGfm]}
       components={{
         img: ({ src = "", alt = "" }) => (
-          <img src={resolveMonAgentUrl(src)} alt={alt} className={imageClassName} draggable={false} />
+          <img src={resolveEdenAgentUrl(src)} alt={alt} className={imageClassName} draggable={false} />
         ),
         a: ({ children, href }) => (
           <a href={href} target="_blank" rel="noopener noreferrer">

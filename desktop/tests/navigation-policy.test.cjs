@@ -16,7 +16,7 @@ test("development mode only treats the exact Web origin as internal", () => {
 })
 
 test("packaged mode only permits the bundled application entry", () => {
-  const appEntryFile = path.resolve("/opt/mon-agent/frontend/web/dist/index.html")
+  const appEntryFile = path.resolve("/opt/eden-agent/frontend/web/dist/index.html")
   const options = { isPackaged: true, appEntryFile }
   assert.equal(isInternalAppUrl(`${pathToFileURL(appEntryFile)}?page=settings`, options), true)
   assert.equal(isInternalAppUrl(pathToFileURL("/tmp/index.html").toString(), options), false)

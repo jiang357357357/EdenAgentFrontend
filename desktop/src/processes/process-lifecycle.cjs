@@ -44,7 +44,7 @@ function createProcessLifecycle({
   }
 
   function startDevParentWatch() {
-    const parentPid = Number(processObject.env?.MON_AGENT_DEV_PARENT_PID)
+    const parentPid = Number(processObject.env?.EDEN_AGENT_DEV_PARENT_PID)
     if (!Number.isSafeInteger(parentPid) || parentPid <= 1 || devParentWatchTimer) return false
     devParentWatchTimer = setIntervalFn(() => {
       try {

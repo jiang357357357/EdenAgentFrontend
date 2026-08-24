@@ -33,7 +33,7 @@ test("the browser fallback mirrors the complete Arona default profile", () => {
   assert.match(characterSource, /visualPreference: "static"/)
   assert.match(characterSource, /spine: null/)
   assert.match(characterSource, /removeLegacyBundledAssets/)
-  assert.match(desktopWindowSource, /https\?:\\\/\\\/\|data:\|blob:\|monagent-file:/)
+  assert.match(desktopWindowSource, /https\?:\\\/\\\/\|data:\|blob:\|edenagent-file:/)
   assert.match(desktopWindowSource, /bridge\?\.convertFileSrc\?\.\(filePath\) \?\? filePath/)
 })
 

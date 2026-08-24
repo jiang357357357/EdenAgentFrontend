@@ -1,4 +1,4 @@
-import type { RpcMethodMap } from "./generated/mon-agent-rpc"
+import type { RpcMethodMap } from "./generated/eden-agent-rpc"
 
 export type Role = "user" | "assistant"
 export type SessionStatus = "idle" | "busy" | "retry" | "stopping"

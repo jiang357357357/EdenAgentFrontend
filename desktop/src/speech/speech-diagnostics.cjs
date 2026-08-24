@@ -47,7 +47,7 @@ function createSpeechDiagnostics(filePath, options = {}) {
       fs.appendFileSync(filePath, `${JSON.stringify(entry)}\n`, "utf8")
       return true
     } catch (error) {
-      console.warn(`[MonAgent][Speech] unable to write diagnostics: ${error.message || error}`)
+      console.warn(`[Eden Agent][Speech] unable to write diagnostics: ${error.message || error}`)
       return false
     }
   }

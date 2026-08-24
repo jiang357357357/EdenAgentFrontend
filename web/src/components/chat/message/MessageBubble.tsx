@@ -3,7 +3,7 @@ import { ToolCard } from "./ToolCard"
 import { ThinkingBlock } from "./ThinkingBlock"
 import { MetaPartCard } from "./MetaPartCard"
 import { cn } from "../../../lib/utils"
-import { resolveMonAgentUrl } from "../../../lib/agent-client"
+import { resolveEdenAgentUrl } from "../../../lib/agent-client"
 import { resolveCoreAssetUrl } from "../../../lib/auth"
 import { User } from "lucide-react"
 import type { SpeechClip, SpeechProgress } from "../../../hooks/useTTSSpeech"
@@ -129,9 +129,9 @@ export function MessageBubble({
             {message.images.map((img, idx) => (
               <img
                 key={idx}
-                src={resolveMonAgentUrl(img)}
+                src={resolveEdenAgentUrl(img)}
                 alt="上传图片"
-                onClick={() => onPreviewImage?.(resolveMonAgentUrl(img), "上传图片")}
+                onClick={() => onPreviewImage?.(resolveEdenAgentUrl(img), "上传图片")}
                 className={cn(
                   "max-w-[32vh] cursor-pointer rounded-[1.35vh] border border-border object-cover shadow-sm transition-opacity hover:opacity-90",
                   isUser ? "h-[16vh] w-auto" : "w-[28vh] h-auto",
@@ -203,7 +203,7 @@ export function MessageBubble({
                 return <MetaPartCard key={segment.id} part={segment.part} />
               }
               if (segment.type === "image") {
-                const src = resolveMonAgentUrl(segment.url)
+                const src = resolveEdenAgentUrl(segment.url)
                 return (
                   <img
                     key={segment.id}
@@ -216,7 +216,7 @@ export function MessageBubble({
                 )
               }
               if (segment.type === "sticker") {
-                const src = resolveMonAgentUrl(segment.url)
+                const src = resolveEdenAgentUrl(segment.url)
                 return (
                   <img
                     key={segment.id}

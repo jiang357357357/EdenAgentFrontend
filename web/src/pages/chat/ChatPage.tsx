@@ -227,8 +227,8 @@ export function ChatPage({
       setFileError("")
       setActiveTab(activeSessionId ? `session:${activeSessionId}` : "")
     }
-    window.addEventListener("monagent:workspace-changed", resetWorkspaceFiles)
-    return () => window.removeEventListener("monagent:workspace-changed", resetWorkspaceFiles)
+    window.addEventListener("edenagent:workspace-changed", resetWorkspaceFiles)
+    return () => window.removeEventListener("edenagent:workspace-changed", resetWorkspaceFiles)
   }, [activeSessionId])
 
   usePerformanceDiagnostics({
@@ -249,8 +249,8 @@ export function ChatPage({
         { id: Date.now(), sessionID: activeSessionId, command, afterMessageID: messages.at(-1)?.id },
       ])
     }
-    window.addEventListener("monagent:slash-command-executed", handleSlashCommand)
-    return () => window.removeEventListener("monagent:slash-command-executed", handleSlashCommand)
+    window.addEventListener("edenagent:slash-command-executed", handleSlashCommand)
+    return () => window.removeEventListener("edenagent:slash-command-executed", handleSlashCommand)
   }, [activeSessionId, messages])
 
   useEffect(() => {

@@ -1,8 +1,8 @@
 const fs = require("node:fs")
 const path = require("node:path")
 
-const QUIT_FLAG_ENV = "MON_AGENT_DESKTOP_QUIT_FLAG"
-const DEV_PARENT_PID_ENV = "MON_AGENT_DEV_PARENT_PID"
+const QUIT_FLAG_ENV = "EDEN_AGENT_DESKTOP_QUIT_FLAG"
+const DEV_PARENT_PID_ENV = "EDEN_AGENT_DEV_PARENT_PID"
 
 function envValue(environment, key) {
   return typeof environment?.[key] === "string" ? environment[key].trim() : ""

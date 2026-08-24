@@ -61,7 +61,7 @@ const PROVIDER_BASE_URLS = Object.freeze({
 
 const LOCAL_RUNTIME_CONFIG_VERSION = 8
 const LEGACY_LOCAL_CHARACTER_NAME = "本地助手"
-const LEGACY_LOCAL_CHARACTER_DESCRIPTION = "运行于本地 MonAgent Server 的默认助手。"
+const LEGACY_LOCAL_CHARACTER_DESCRIPTION = "运行于本地 Eden Agent Server 的默认助手。"
 
 const DEFAULT_LOCAL_CHARACTER = Object.freeze({
   name: "阿罗娜",
@@ -439,14 +439,14 @@ function createLocalRuntimeConfigStore({ app, agentRoot, fileSystem = fs, pathAp
     try {
       return { ...parseStored(fileSystem.readFileSync(filePath, "utf8")), persisted: true }
     } catch (error) {
-      if (error?.code !== "ENOENT") console.warn("[MonAgent] 读取尘世配置失败", error)
+      if (error?.code !== "ENOENT") console.warn("[Eden Agent] 读取尘世配置失败", error)
       return { ...DEFAULT_LOCAL_RUNTIME_CONFIG, apiKey: "", voice: { ...DEFAULT_LOCAL_GSV_CONFIG }, transcription: { ...DEFAULT_LOCAL_GSV_STT_CONFIG }, character: { ...DEFAULT_LOCAL_CHARACTER }, persisted: false }
     }
   }
 
   function read(processEnvironment = process.env) {
     const stored = readStored()
-    const environmentModel = trimmed(processEnvironment.MON_AGENT_MODEL)
+    const environmentModel = trimmed(processEnvironment.EDEN_AGENT_MODEL)
     const effectiveModel = stored.persisted ? stored.model : environmentModel || stored.model
     const environmentProvider = effectiveModel.includes("/") ? effectiveModel.split("/", 1)[0] : ""
     const provider = environmentProvider || stored.provider
@@ -454,14 +454,14 @@ function createLocalRuntimeConfigStore({ app, agentRoot, fileSystem = fs, pathAp
     const config = normalizeConfig({
       provider,
       model: effectiveModel,
-      baseUrl: stored.persisted ? stored.baseUrl : processEnvironment.MON_AGENT_BASE_URL || processEnvironment.OPENAI_BASE_URL || stored.baseUrl,
-      contextWindow: stored.persisted ? stored.contextWindow : processEnvironment.MON_AGENT_CONTEXT_WINDOW || stored.contextWindow,
-      maxOutputTokens: stored.persisted ? stored.maxOutputTokens : processEnvironment.MON_AGENT_MAX_OUTPUT_TOKENS || stored.maxOutputTokens,
-      supportsImages: stored.persisted ? stored.supportsImages : processEnvironment.MON_AGENT_MODEL_SUPPORTS_IMAGES == null
+      baseUrl: stored.persisted ? stored.baseUrl : processEnvironment.EDEN_AGENT_BASE_URL || processEnvironment.OPENAI_BASE_URL || stored.baseUrl,
+      contextWindow: stored.persisted ? stored.contextWindow : processEnvironment.EDEN_AGENT_CONTEXT_WINDOW || stored.contextWindow,
+      maxOutputTokens: stored.persisted ? stored.maxOutputTokens : processEnvironment.EDEN_AGENT_MAX_OUTPUT_TOKENS || stored.maxOutputTokens,
+      supportsImages: stored.persisted ? stored.supportsImages : processEnvironment.EDEN_AGENT_MODEL_SUPPORTS_IMAGES == null
         ? stored.supportsImages
-        : String(processEnvironment.MON_AGENT_MODEL_SUPPORTS_IMAGES).toLowerCase() !== "false",
-      timeoutSeconds: stored.persisted ? stored.timeoutSeconds : processEnvironment.MON_AGENT_MODEL_TIMEOUT_SECONDS || stored.timeoutSeconds,
-      maxRetries: stored.persisted ? stored.maxRetries : processEnvironment.MON_AGENT_MODEL_MAX_RETRIES ?? stored.maxRetries,
+        : String(processEnvironment.EDEN_AGENT_MODEL_SUPPORTS_IMAGES).toLowerCase() !== "false",
+      timeoutSeconds: stored.persisted ? stored.timeoutSeconds : processEnvironment.EDEN_AGENT_MODEL_TIMEOUT_SECONDS || stored.timeoutSeconds,
+      maxRetries: stored.persisted ? stored.maxRetries : processEnvironment.EDEN_AGENT_MODEL_MAX_RETRIES ?? stored.maxRetries,
     }, DEFAULT_LOCAL_RUNTIME_CONFIG)
     return { ...config, apiKey, hasApiKey: Boolean(apiKey), voice: stored.voice, transcription: stored.transcription, character: stored.character, path: filePath }
   }
@@ -511,48 +511,48 @@ function createLocalRuntimeConfigStore({ app, agentRoot, fileSystem = fs, pathAp
   function environment(processEnvironment = process.env) {
     const config = read(processEnvironment)
     return {
-      MON_AGENT_MODEL: config.model,
-      MON_AGENT_BASE_URL: config.baseUrl,
-      MON_AGENT_CONTEXT_WINDOW: String(config.contextWindow),
-      MON_AGENT_MAX_OUTPUT_TOKENS: String(config.maxOutputTokens),
-      MON_AGENT_MODEL_SUPPORTS_IMAGES: String(config.supportsImages),
-      MON_AGENT_MODEL_TIMEOUT_SECONDS: String(config.timeoutSeconds),
-      MON_AGENT_MODEL_MAX_RETRIES: String(config.maxRetries),
-      MON_AGENT_TTS_PROVIDER: config.voice.provider,
-      MON_AGENT_TTS_SERVICE_URL: config.voice.serviceUrl,
-      MON_AGENT_TTS_VERSION: config.voice.version,
-      MON_AGENT_TTS_WORLD: config.voice.world,
-      MON_AGENT_TTS_ROLE: config.voice.role,
-      MON_AGENT_TTS_ROLE_ID: config.voice.roleId,
-      MON_AGENT_TTS_EMOTION: config.voice.emotion,
-      MON_AGENT_TTS_TEXT_LANGUAGE: config.voice.textLanguage,
-      MON_AGENT_TTS_SPEED: String(config.voice.speed),
-      MON_AGENT_TTS_TIMEOUT_SECONDS: String(config.voice.timeoutSeconds),
-      MON_AGENT_TTS_TOP_K: String(config.voice.topK),
-      MON_AGENT_TTS_TOP_P: String(config.voice.topP),
-      MON_AGENT_TTS_TEMPERATURE: String(config.voice.temperature),
-      MON_AGENT_TTS_SAMPLE_STEPS: String(config.voice.sampleSteps),
-      MON_AGENT_TTS_PAUSE_SECONDS: String(config.voice.pauseSeconds),
-      MON_AGENT_TTS_CUT_METHOD: config.voice.cutMethod,
-      MON_AGENT_TTS_SUPER_RESOLUTION: String(config.voice.superResolution),
-      MON_AGENT_TTS_REFERENCE_FREE: String(config.voice.referenceFree),
-      MON_AGENT_TTS_FREEZE: String(config.voice.freeze),
-      MON_AGENT_STT_PROVIDER: config.transcription.provider,
-      MON_AGENT_STT_SERVICE_URL: config.transcription.serviceUrl,
-      MON_AGENT_STT_LANGUAGE: config.transcription.language,
-      MON_AGENT_STT_MODEL_TYPE: config.transcription.modelType,
-      MON_AGENT_STT_MODEL_SIZE: config.transcription.modelSize,
-      MON_AGENT_STT_PRECISION: config.transcription.precision,
-      MON_AGENT_STT_TIMEOUT_SECONDS: String(config.transcription.timeoutSeconds),
-      MON_AGENT_STT_RETRY_COUNT: String(config.transcription.retryCount),
-      MON_AGENT_STT_END_SILENCE_MS: String(config.transcription.endSilenceMs),
-      MON_AGENT_STT_SESSION_END_SILENCE_MS: String(config.transcription.sessionEndSilenceMs),
-      MON_AGENT_STT_AUTO_FINISH: String(config.transcription.autoFinish),
-      MON_AGENT_STT_AUTO_SEND: String(config.transcription.autoSend),
-      MON_AGENT_STT_MIN_SPEECH_DURATION_MS: String(config.transcription.minSpeechDurationMs),
-      MON_AGENT_STT_SPEECH_NOISE_THRESHOLD: String(config.transcription.speechNoiseThreshold),
-      MON_AGENT_STT_PREROLL_MS: String(config.transcription.prerollMs),
-      MON_AGENT_STT_CHUNK_MS: String(config.transcription.chunkMs),
+      EDEN_AGENT_MODEL: config.model,
+      EDEN_AGENT_BASE_URL: config.baseUrl,
+      EDEN_AGENT_CONTEXT_WINDOW: String(config.contextWindow),
+      EDEN_AGENT_MAX_OUTPUT_TOKENS: String(config.maxOutputTokens),
+      EDEN_AGENT_MODEL_SUPPORTS_IMAGES: String(config.supportsImages),
+      EDEN_AGENT_MODEL_TIMEOUT_SECONDS: String(config.timeoutSeconds),
+      EDEN_AGENT_MODEL_MAX_RETRIES: String(config.maxRetries),
+      EDEN_AGENT_TTS_PROVIDER: config.voice.provider,
+      EDEN_AGENT_TTS_SERVICE_URL: config.voice.serviceUrl,
+      EDEN_AGENT_TTS_VERSION: config.voice.version,
+      EDEN_AGENT_TTS_WORLD: config.voice.world,
+      EDEN_AGENT_TTS_ROLE: config.voice.role,
+      EDEN_AGENT_TTS_ROLE_ID: config.voice.roleId,
+      EDEN_AGENT_TTS_EMOTION: config.voice.emotion,
+      EDEN_AGENT_TTS_TEXT_LANGUAGE: config.voice.textLanguage,
+      EDEN_AGENT_TTS_SPEED: String(config.voice.speed),
+      EDEN_AGENT_TTS_TIMEOUT_SECONDS: String(config.voice.timeoutSeconds),
+      EDEN_AGENT_TTS_TOP_K: String(config.voice.topK),
+      EDEN_AGENT_TTS_TOP_P: String(config.voice.topP),
+      EDEN_AGENT_TTS_TEMPERATURE: String(config.voice.temperature),
+      EDEN_AGENT_TTS_SAMPLE_STEPS: String(config.voice.sampleSteps),
+      EDEN_AGENT_TTS_PAUSE_SECONDS: String(config.voice.pauseSeconds),
+      EDEN_AGENT_TTS_CUT_METHOD: config.voice.cutMethod,
+      EDEN_AGENT_TTS_SUPER_RESOLUTION: String(config.voice.superResolution),
+      EDEN_AGENT_TTS_REFERENCE_FREE: String(config.voice.referenceFree),
+      EDEN_AGENT_TTS_FREEZE: String(config.voice.freeze),
+      EDEN_AGENT_STT_PROVIDER: config.transcription.provider,
+      EDEN_AGENT_STT_SERVICE_URL: config.transcription.serviceUrl,
+      EDEN_AGENT_STT_LANGUAGE: config.transcription.language,
+      EDEN_AGENT_STT_MODEL_TYPE: config.transcription.modelType,
+      EDEN_AGENT_STT_MODEL_SIZE: config.transcription.modelSize,
+      EDEN_AGENT_STT_PRECISION: config.transcription.precision,
+      EDEN_AGENT_STT_TIMEOUT_SECONDS: String(config.transcription.timeoutSeconds),
+      EDEN_AGENT_STT_RETRY_COUNT: String(config.transcription.retryCount),
+      EDEN_AGENT_STT_END_SILENCE_MS: String(config.transcription.endSilenceMs),
+      EDEN_AGENT_STT_SESSION_END_SILENCE_MS: String(config.transcription.sessionEndSilenceMs),
+      EDEN_AGENT_STT_AUTO_FINISH: String(config.transcription.autoFinish),
+      EDEN_AGENT_STT_AUTO_SEND: String(config.transcription.autoSend),
+      EDEN_AGENT_STT_MIN_SPEECH_DURATION_MS: String(config.transcription.minSpeechDurationMs),
+      EDEN_AGENT_STT_SPEECH_NOISE_THRESHOLD: String(config.transcription.speechNoiseThreshold),
+      EDEN_AGENT_STT_PREROLL_MS: String(config.transcription.prerollMs),
+      EDEN_AGENT_STT_CHUNK_MS: String(config.transcription.chunkMs),
       ...(config.apiKey ? { [providerKey(config.provider)]: config.apiKey } : {}),
     }
   }

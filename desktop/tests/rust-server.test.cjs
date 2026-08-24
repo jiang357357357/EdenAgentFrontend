@@ -15,17 +15,17 @@ test("packaged desktop starts one Rust server with private durable paths", () =>
     processObject: { platform: "win32", resourcesPath: "C:\\Resources", env: {}, stdout: {}, stderr: {} },
     fileSystem: { existsSync: () => true, mkdirSync: () => {} },
     spawnProcess: (executable, args, options) => { calls.push({ executable, args, options }); return child },
-    getRuntimeEnvironment: () => ({ MON_AGENT_MODEL: "ollama/qwen3", OLLAMA_API_KEY: "local" }),
+    getRuntimeEnvironment: () => ({ EDEN_AGENT_MODEL: "ollama/qwen3", OLLAMA_API_KEY: "local" }),
   })
   manager.start()
   manager.start()
   assert.equal(calls.length, 1)
-  assert.match(calls[0].executable, /mon-agent-server\.exe$/)
-  assert.equal(calls[0].options.env.MON_AGENT_CAPABILITY_TOKEN.length, 64)
-  assert.match(calls[0].options.env.MON_AGENT_DATABASE, /mon-agent\.db$/)
-  assert.match(calls[0].options.env.MON_AGENT_LOG_DIRECTORY, /server[\\/]logs$/)
-  assert.equal(calls[0].options.env.MON_AGENT_MODEL, "ollama/qwen3")
-  assert.equal(manager.capability().token, calls[0].options.env.MON_AGENT_CAPABILITY_TOKEN)
+  assert.match(calls[0].executable, /eden-agent-server\.exe$/)
+  assert.equal(calls[0].options.env.EDEN_AGENT_CAPABILITY_TOKEN.length, 64)
+  assert.match(calls[0].options.env.EDEN_AGENT_DATABASE, /eden-agent\.db$/)
+  assert.match(calls[0].options.env.EDEN_AGENT_LOG_DIRECTORY, /server[\\/]logs$/)
+  assert.equal(calls[0].options.env.EDEN_AGENT_MODEL, "ollama/qwen3")
+  assert.equal(manager.capability().token, calls[0].options.env.EDEN_AGENT_CAPABILITY_TOKEN)
 })
 
 test("managed desktop can restart the Rust server with refreshed configuration", async () => {
@@ -36,7 +36,7 @@ test("managed desktop can restart the Rust server with refreshed configuration",
     agentRoot: "C:\\Agent",
     processObject: { platform: "win32", resourcesPath: "C:\\Resources", env: {}, stdout: {}, stderr: {} },
     fileSystem: { existsSync: () => true, mkdirSync: () => {} },
-    getRuntimeEnvironment: () => ({ MON_AGENT_MODEL: model }),
+    getRuntimeEnvironment: () => ({ EDEN_AGENT_MODEL: model }),
     spawnProcess: (executable, args, options) => {
       const child = new EventEmitter()
       child.stdout = new EventEmitter()
@@ -51,7 +51,7 @@ test("managed desktop can restart the Rust server with refreshed configuration",
   const result = await manager.restart()
   assert.deepEqual(result, { restarted: true, externallyManaged: false })
   assert.equal(calls.length, 2)
-  assert.equal(calls[1].options.env.MON_AGENT_MODEL, "ollama/qwen3")
+  assert.equal(calls[1].options.env.EDEN_AGENT_MODEL, "ollama/qwen3")
 })
 
 test("externally managed desktop reads the server-owned capability token", () => {
@@ -62,7 +62,7 @@ test("externally managed desktop reads the server-owned capability token", () =>
     agentRoot: "C:\\Agent",
     processObject: {
       platform: "win32",
-      env: { MON_AGENT_SERVER_MODE: "external" },
+      env: { EDEN_AGENT_SERVER_MODE: "external" },
       stdout: {},
       stderr: {},
     },
@@ -89,7 +89,7 @@ test("externally managed Linux desktop restarts the MonPM server", async () => {
     agentRoot: "/workspace/Agent",
     processObject: {
       platform: "linux",
-      env: { MON_AGENT_SERVER_MODE: "external" },
+      env: { EDEN_AGENT_SERVER_MODE: "external" },
       stdout: {},
       stderr: {},
     },
@@ -120,7 +120,7 @@ test("externally managed desktop does not invent a token before the server is re
     agentRoot: "C:\\Agent",
     processObject: {
       platform: "win32",
-      env: { MON_AGENT_SERVER_MODE: "external" },
+      env: { EDEN_AGENT_SERVER_MODE: "external" },
       stdout: {},
       stderr: {},
     },

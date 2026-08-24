@@ -38,11 +38,11 @@ function createWebAppLoader({
 
   function openExternalNavigation(url) {
     if (!isSupportedExternalUrl(url)) {
-      logger.warn(`[MonAgent][Desktop] 已阻止不受支持的外部导航: ${url}`)
+      logger.warn(`[Eden Agent][Desktop] 已阻止不受支持的外部导航: ${url}`)
       return false
     }
     void shell.openExternal(url).catch((error) => {
-      logger.warn(`[MonAgent][Desktop] 无法使用系统浏览器打开链接: ${url}`, error)
+      logger.warn(`[Eden Agent][Desktop] 无法使用系统浏览器打开链接: ${url}`, error)
     })
     return true
   }

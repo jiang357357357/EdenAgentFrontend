@@ -1,6 +1,6 @@
 const fs = require("node:fs")
 
-const POINTER_EVENT_CHANNEL = "mon-agent-global-pet-pointer"
+const POINTER_EVENT_CHANNEL = "eden-agent-global-pet-pointer"
 
 function parseJsonLines(remainder, chunk) {
   const text = `${remainder || ""}${chunk || ""}`
@@ -130,7 +130,7 @@ function createGlobalPointerObserver(options = {}) {
     if (!executablePath || !fileExists(executablePath)) {
       if (!missingBinaryReported) {
         missingBinaryReported = true
-        logger.warn?.(`[MonAgent][PointerObserver] helper not found: ${executablePath || "unconfigured"}`)
+        logger.warn?.(`[Eden Agent][PointerObserver] helper not found: ${executablePath || "unconfigured"}`)
       }
       return false
     }
@@ -144,7 +144,7 @@ function createGlobalPointerObserver(options = {}) {
       })
     } catch (error) {
       child = null
-      logger.warn?.(`[MonAgent][PointerObserver] failed to start: ${error.message}`)
+      logger.warn?.(`[Eden Agent][PointerObserver] failed to start: ${error.message}`)
       scheduleRestart(childGeneration)
       return false
     }
@@ -158,17 +158,17 @@ function createGlobalPointerObserver(options = {}) {
     })
     child.stderr?.on?.("data", (chunk) => {
       const message = String(chunk).trim()
-      if (message) logger.warn?.(`[MonAgent][PointerObserver] ${message}`)
+      if (message) logger.warn?.(`[Eden Agent][PointerObserver] ${message}`)
     })
     child.on?.("error", (error) => {
-      logger.warn?.(`[MonAgent][PointerObserver] process error: ${error.message}`)
+      logger.warn?.(`[Eden Agent][PointerObserver] process error: ${error.message}`)
     })
     child.on?.("exit", (code, signal) => {
       if (childGeneration !== generation) return
       child = null
       cancelActivePointer()
       if (desired) {
-        logger.warn?.(`[MonAgent][PointerObserver] exited (${code ?? signal ?? "unknown"}); retrying`)
+        logger.warn?.(`[Eden Agent][PointerObserver] exited (${code ?? signal ?? "unknown"}); retrying`)
         scheduleRestart(childGeneration)
       }
     })
