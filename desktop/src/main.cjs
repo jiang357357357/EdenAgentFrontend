@@ -1082,11 +1082,6 @@ registerDesktopIpc({
     get_local_runtime_config: () => localRuntimeService.read(),
     test_local_runtime_config: ({ args }) => localRuntimeService.testConnection(args.config ?? {}),
     save_local_runtime_config: ({ args }) => localRuntimeService.saveAndRestart(args.config ?? {}),
-    inspect_local_gsv_config: ({ args }) => localRuntimeService.inspectGsv(args.config ?? {}, args.stage ?? "all"),
-    preview_local_gsv_voice: ({ args }) => localRuntimeService.previewGsv(args.config ?? {}, args.text ?? ""),
-    save_local_gsv_config: ({ args }) => localRuntimeService.saveVoice(args.config ?? {}),
-    test_local_gsv_stt_config: ({ args }) => localRuntimeService.testGsvStt(args.config ?? {}),
-    save_local_gsv_stt_config: ({ args }) => localRuntimeService.saveTranscription(args.config ?? {}),
     save_local_character_config: ({ args }) => localRuntimeService.saveCharacter(args.character ?? {}),
     open_local_runtime_config_directory: async () => {
       if (!shell?.openPath) return false

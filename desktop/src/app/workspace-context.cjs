@@ -70,8 +70,8 @@ function createWorkspaceContext({
 
   function resolveDesktopIconPath() {
     const candidates = processObject.platform === "win32"
-      ? ["icon.ico", "icon.png", "edenagent-m-icon-v2.png"]
-      : ["icon.png", "edenagent-m-icon-v2.png", "icon.ico"]
+      ? ["icon.ico", "icon.png", "eden-agent-girl-icon.png"]
+      : ["icon.png", "eden-agent-girl-icon.png", "icon.ico"]
     for (const filename of candidates) {
       const candidate = pathApi.join(desktopAssetsDir, filename)
       if (fileSystem.existsSync(candidate)) return candidate

@@ -23,21 +23,16 @@ import { ActivityRail } from "../../components/layout"
 import {
   getLocalRuntimeConfig,
   getDesktopPetSettings,
-  inspectLocalGsvConfig,
   applyDesktopPetSettings,
   DEFAULT_PET_SETTINGS,
   openLocalRuntimeConfigDirectory,
-  previewLocalGsvVoice,
   resolveDesktopFileUrl,
   saveLocalCharacterConfig,
-  saveLocalGsvConfig,
-  saveLocalGsvSttConfig,
   saveLocalRuntimeConfig,
   selectDesktopCharacterImage,
   selectDesktopCharacterSpineDirectory,
   selectDesktopCharacterStandingImage,
   testLocalRuntimeConfig,
-  testLocalGsvSttConfig,
   type LocalCharacterConfig,
   type LocalCharacterSpineConfig,
   type LocalGsvConfig,
@@ -47,6 +42,14 @@ import {
   type LocalRuntimeConfigInput,
   type PetSettings,
 } from "../../lib/desktop-window"
+import {
+  discoverGsv,
+  getVoiceRuntimeConfig,
+  previewGsv as previewGsvVoice,
+  testGsvStt,
+  updateGsvSttConfig,
+  updateGsvTtsConfig,
+} from "../../lib/agent-client"
 import { DEFAULT_LOCAL_CHARACTER, localCharacterAssistant, normalizeLocalCharacter } from "../../lib/local-character"
 import { CharacterVisualRenderer } from "../../components/character"
 import { cn } from "../../lib/utils"
@@ -289,14 +292,15 @@ export function ConfigurationPage({
     setLoading(true)
     setError("")
     try {
-      const [next, nextVoiceSettings] = await Promise.all([
+      const [next, nextVoiceSettings, nextVoiceRuntime] = await Promise.all([
         getLocalRuntimeConfig(),
         getDesktopPetSettings(),
+        getVoiceRuntimeConfig(),
       ])
       const nextCharacter = normalizeLocalCharacter(next.character)
       setConfig(next)
-      setGsvForm(next.voice)
-      setSttForm(next.transcription)
+      setGsvForm(nextVoiceRuntime.tts)
+      setSttForm(nextVoiceRuntime.stt)
       savedCharacterRef.current = JSON.stringify(nextCharacter)
       setCharacter(nextCharacter)
       setCharacterSaveState("saved")
@@ -378,7 +382,7 @@ export function ConfigurationPage({
     setGsvTesting(true)
     setVoiceError("")
     try {
-      return await inspectLocalGsvConfig(candidate, stage)
+      return await discoverGsv(candidate, stage)
     } catch (gsvError) {
       setVoiceError(messageOf(gsvError, "连接 GSV 服务失败。"))
       return null
@@ -448,9 +452,8 @@ export function ConfigurationPage({
       if (!gsvForm.version || !gsvForm.world || !gsvForm.roleId || !gsvForm.emotion) {
         throw new Error("请依次读取并选择版本、世界、角色和情感")
       }
-      const result = await saveLocalGsvConfig(gsvForm)
-      setConfig(result)
-      setGsvForm(result.voice)
+      const result = await updateGsvTtsConfig(gsvForm)
+      setGsvForm(result.tts)
       setGsvSaved(true)
     } catch (saveError) {
       setVoiceError(messageOf(saveError, "保存 GSV 配置失败。"))
@@ -464,7 +467,7 @@ export function ConfigurationPage({
     setGsvPreviewLatency(null)
     setVoiceError("")
     try {
-      const result = await previewLocalGsvVoice(gsvForm, gsvPreviewText)
+      const result = await previewGsvVoice(gsvForm, gsvPreviewText)
       previewAudioRef.current?.pause()
       const audio = new Audio(result.audioDataUrl)
       previewAudioRef.current = audio
@@ -494,7 +497,7 @@ export function ConfigurationPage({
     setSttTesting(true)
     setVoiceError("")
     try {
-      const result = await testLocalGsvSttConfig(sttForm)
+      const result = await testGsvStt(sttForm)
       setSttLatency(result.latencyMs)
       return true
     } catch (sttError) {
@@ -511,9 +514,8 @@ export function ConfigurationPage({
     setVoiceError("")
     try {
       if (!(await testStt())) return
-      const result = await saveLocalGsvSttConfig(sttForm)
-      setConfig(result)
-      setSttForm(result.transcription)
+      const result = await updateGsvSttConfig(sttForm)
+      setSttForm(result.stt)
       setSttSaved(true)
     } catch (saveError) {
       setVoiceError(messageOf(saveError, "保存 GSV 转录配置失败。"))

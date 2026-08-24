@@ -33,11 +33,17 @@ import type {
 } from "../generated/eden-agent-rpc"
 import { getStoredRuntimeOrigin, LOCAL_ASSISTANT_ID } from "./runtime-origin"
 import { getStoredLocalCharacter, localCharacterParticipantProfile } from "./local-character"
-import { resolveDesktopFileUrl } from "./desktop-window"
+import {
+  resolveDesktopFileUrl,
+  type LocalGsvConfig,
+  type LocalGsvDiscovery,
+  type LocalGsvPreview,
+  type LocalGsvSttConfig,
+} from "./desktop-window"
 import {
   apiMessage, apiSession, mapMemoForView, projectSessionEvent,
   mapAgentThreadForView, rpcRequest, rpcRequestWithTimeout, sessionEventMessageRole,
-  sessionEventToolResultCallID, subscribeRpcEvents, uploadAttachments,
+  resolveVoiceBlobUrl, sessionEventToolResultCallID, subscribeRpcEvents, uploadAttachments,
 } from "./rpc-transport"
 
 const env = (
@@ -1868,6 +1874,53 @@ export async function synthesizeSpeechSegment(input: {
     duration_ms: result.duration_ms == null ? result.duration_ms : Number(result.duration_ms),
     size_bytes: result.size_bytes == null ? result.size_bytes : Number(result.size_bytes),
   }
+}
+
+export async function getVoiceRuntimeConfig() {
+  const result = await rpcRequest("voice.config.read", {})
+  return {
+    tts: result.tts as LocalGsvConfig,
+    stt: result.stt as LocalGsvSttConfig,
+  }
+}
+
+export async function updateGsvTtsConfig(config: LocalGsvConfig) {
+  const result = await rpcRequest("voice.tts.config.update", config)
+  return {
+    tts: result.tts as LocalGsvConfig,
+    stt: result.stt as LocalGsvSttConfig,
+  }
+}
+
+export async function updateGsvSttConfig(config: LocalGsvSttConfig) {
+  const result = await rpcRequest("voice.stt.config.update", config)
+  return {
+    tts: result.tts as LocalGsvConfig,
+    stt: result.stt as LocalGsvSttConfig,
+  }
+}
+
+export async function discoverGsv(
+  config: LocalGsvConfig,
+  stage: "all" | "catalog" | "worlds" | "roles" | "emotions" = "all",
+): Promise<LocalGsvDiscovery> {
+  return rpcRequest("voice.gsv.discover", { config, stage }) as Promise<LocalGsvDiscovery>
+}
+
+export async function previewGsv(config: LocalGsvConfig, text: string): Promise<LocalGsvPreview> {
+  const result = await rpcRequest("voice.gsv.preview", { config, text })
+  return {
+    ok: result.ok as true,
+    audioDataUrl: await resolveVoiceBlobUrl(result.audioBlobId),
+    mime: result.mime,
+    duration: result.durationMs == null ? null : Number(result.durationMs) / 1000,
+    latencyMs: result.latencyMs,
+    roleId: result.roleId,
+  }
+}
+
+export function testGsvStt(config: LocalGsvSttConfig) {
+  return rpcRequest("voice.stt.test", { config })
 }
 
 export type PersistedSpeechSegment = {

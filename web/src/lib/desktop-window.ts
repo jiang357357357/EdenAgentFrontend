@@ -399,36 +399,6 @@ export async function saveLocalRuntimeConfig(config: LocalRuntimeConfigInput) {
   return bridge.invoke<LocalRuntimeSaveResult>("save_local_runtime_config", { config })
 }
 
-export async function inspectLocalGsvConfig(config: LocalGsvConfig, stage: "all" | "catalog" | "worlds" | "roles" | "emotions" = "all") {
-  const bridge = getDesktopBridge()
-  if (!bridge) throw new Error("GSV 配置仅可在 Eden Agent 桌面端使用。")
-  return bridge.invoke<LocalGsvDiscovery>("inspect_local_gsv_config", { config, stage })
-}
-
-export async function saveLocalGsvConfig(config: LocalGsvConfig) {
-  const bridge = getDesktopBridge()
-  if (!bridge) throw new Error("GSV 配置仅可在 Eden Agent 桌面端使用。")
-  return bridge.invoke<LocalRuntimeSaveResult>("save_local_gsv_config", { config })
-}
-
-export async function previewLocalGsvVoice(config: LocalGsvConfig, text: string) {
-  const bridge = getDesktopBridge()
-  if (!bridge) throw new Error("GSV 试听仅可在 Eden Agent 桌面端使用。")
-  return bridge.invoke<LocalGsvPreview>("preview_local_gsv_voice", { config, text })
-}
-
-export async function testLocalGsvSttConfig(config: LocalGsvSttConfig) {
-  const bridge = getDesktopBridge()
-  if (!bridge) throw new Error("GSV 转录配置仅可在 Eden Agent 桌面端使用。")
-  return bridge.invoke<{ ok: true; latencyMs: number }>("test_local_gsv_stt_config", { config })
-}
-
-export async function saveLocalGsvSttConfig(config: LocalGsvSttConfig) {
-  const bridge = getDesktopBridge()
-  if (!bridge) throw new Error("GSV 转录配置仅可在 Eden Agent 桌面端使用。")
-  return bridge.invoke<LocalRuntimeSaveResult>("save_local_gsv_stt_config", { config })
-}
-
 export async function saveLocalCharacterConfig(character: LocalCharacterConfig) {
   const bridge = getDesktopBridge()
   if (!bridge) throw new Error("角色配置仅可在 Eden Agent 桌面端使用。")

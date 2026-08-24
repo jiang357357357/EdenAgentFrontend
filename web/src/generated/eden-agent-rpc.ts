@@ -71,6 +71,28 @@ export type AttachmentRef = { blobId: BlobId, mime: string, filename?: string | 
 
 export type BlobInfo = { id: BlobId, sha256: string, mime: string, byteLength: bigint, createdAt: bigint, };
 
+export type GsvTtsConfig = { provider: string, serviceUrl: string, version: string, world: string, role: string, roleId: string, emotion: string, textLanguage: string, speed: number, timeoutSeconds: number, topK: number, topP: number, temperature: number, sampleSteps: number, pauseSeconds: number, cutMethod: string, superResolution: boolean, referenceFree: boolean, freeze: boolean, };
+
+export type GsvSttConfig = { provider: string, serviceUrl: string, language: string, modelType: string, modelSize: string, precision: string, timeoutSeconds: number, retryCount: number, endSilenceMs: number, sessionEndSilenceMs: number, autoFinish: boolean, autoSend: boolean, minSpeechDurationMs: number, speechNoiseThreshold: number, prerollMs: number, chunkMs: number, };
+
+export type VoiceRuntimeConfig = { tts: GsvTtsConfig, stt: GsvSttConfig, };
+
+export type GsvDiscoveryStage = "all" | "catalog" | "worlds" | "roles" | "emotions";
+
+export type GsvDiscoveryParams = { config: GsvTtsConfig, stage: GsvDiscoveryStage, };
+
+export type GsvOption = { id: string, label: string, value: string, };
+
+export type GsvDiscoveryResult = { ok: boolean, latencyMs: number, versions: Array<GsvOption>, worlds: Array<GsvOption>, roles: Array<GsvOption>, emotions: Array<GsvOption>, selectedRoleId: string, };
+
+export type GsvPreviewParams = { config: GsvTtsConfig, text: string, };
+
+export type GsvPreviewResult = { ok: boolean, audioBlobId: BlobId, mime: string, durationMs?: bigint | null, latencyMs: number, roleId: string, };
+
+export type GsvSttTestParams = { config: GsvSttConfig, };
+
+export type GsvConnectionTestResult = { ok: boolean, latencyMs: number, };
+
 export type ModelCatalogParams = { coreBaseUrl: string, coreToken: string, sessionId?: SessionId | null, };
 
 export type ModelReadParams = { sessionId?: SessionId | null, };
@@ -358,6 +380,12 @@ export interface RpcMethodMap {
   "model.select": { params: ModelSelectParams; result: RuntimeModelCatalogInfo }
   "media.list": { params: MediaListParams; result: MediaRequestInfo[] }
   "media.resolve": { params: MediaResolveParams; result: MediaRequestInfo }
+  "voice.config.read": { params: Record<string, never>; result: VoiceRuntimeConfig }
+  "voice.tts.config.update": { params: GsvTtsConfig; result: VoiceRuntimeConfig }
+  "voice.stt.config.update": { params: GsvSttConfig; result: VoiceRuntimeConfig }
+  "voice.gsv.discover": { params: GsvDiscoveryParams; result: GsvDiscoveryResult }
+  "voice.gsv.preview": { params: GsvPreviewParams; result: GsvPreviewResult }
+  "voice.stt.test": { params: GsvSttTestParams; result: GsvConnectionTestResult }
   "voice.tts.synthesize": { params: VoiceTtsSynthesizeParams; result: VoiceTtsSynthesizeResult }
   "voice.tts.list_segments": { params: VoiceSpeechSegmentListParams; result: VoiceSpeechSegmentInfo[] }
   "self_awake.list": { params: SelfAwakeListParams; result: SelfAwakePage }
