@@ -3,3 +3,7 @@ dist/
 build/
 .vite/
 *.log
+
+# Character visual packs are distributed from the separate AgentAssets repository.
+web/public/characters/
+web/public/character-reactions/*.png

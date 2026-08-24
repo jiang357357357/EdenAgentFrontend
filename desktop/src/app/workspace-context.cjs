@@ -84,7 +84,7 @@ function createWorkspaceContext({
     if (explicit) return explicit.replace(/\/$/, "")
     const root = findMonWorkspaceRoot(agentRoot, { fileSystem, pathApi })
       ?? findMonWorkspaceRoot(processObject.cwd(), { fileSystem, pathApi })
-    if (!root) throw new Error("未找到 Mon 工作区根目录，无法定位 Core/.monconfig")
+    if (!root) throw new Error("未找到 Eden 工作区根目录，无法定位 Core/.monconfig")
     const configPath = pathApi.join(root, "Core", ".monconfig")
     const contents = readText(configPath)
     if (!contents) throw new Error(`读取 MonCore 配置失败: ${configPath}`)
@@ -95,8 +95,10 @@ function createWorkspaceContext({
   }
 
   function getDevAccount() {
-    const username = getAgentConfig("auth_dev", "USERNAME", "")
-    const password = getAgentConfig("auth_dev", "PASSWORD", "")
+    const username = processObject.env.MON_AGENT_DEV_USERNAME?.trim()
+      || getAgentConfig("auth_dev", "USERNAME", "")
+    const password = processObject.env.MON_AGENT_DEV_PASSWORD?.trim()
+      || getAgentConfig("auth_dev", "PASSWORD", "")
     if (!username || !password) return null
     return { username, password }
   }

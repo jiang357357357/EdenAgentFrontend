@@ -9,6 +9,10 @@ export interface DesktopPetChatBubbleProps {
   ttsConfigId?: number | null
   voiceInputEnabled: boolean
   ttsMode: PetTTSMode
+  audioInputDeviceId?: string
+  audioOutputDeviceId?: string
+  speechVolume?: number
+  speechRate?: number
   latestAssistantMessage?: MessageData
   dialogSegments: PetDialogSegmentInput[]
   isThinking: boolean

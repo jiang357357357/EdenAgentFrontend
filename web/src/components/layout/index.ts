@@ -1,1 +1,2 @@
-export { Sidebar } from "./Sidebar"
+export { ActivityRail, Sidebar } from "./Sidebar"
+export type { ActivityRailProps } from "./Sidebar"

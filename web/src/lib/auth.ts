@@ -1,3 +1,5 @@
+import { clearRuntimeOrigin } from "./runtime-origin"
+
 export interface AuthUser {
   id: number
   username: string
@@ -345,7 +347,7 @@ function isDesktopRuntime() {
 async function invokeDesktop<T>(command: string, args?: Record<string, unknown>) {
   const bridge = window.monAgentDesktop
   if (!bridge) {
-    throw new Error("MonAgent 桌面桥接不可用")
+    throw new Error("Eden Agent 桌面桥接不可用")
   }
   return bridge.invoke<T>(command, args)
 }
@@ -428,11 +430,12 @@ export function getStoredUser() {
   }
 }
 
-export function clearAuth() {
+export function clearAuth(options: { preserveRuntimeOrigin?: boolean } = {}) {
   clearAssistantRequestCaches()
   window.localStorage.removeItem(TOKEN_KEY)
   window.localStorage.removeItem(USER_KEY)
   window.localStorage.removeItem(EXPIRES_KEY)
+  if (!options.preserveRuntimeOrigin) clearRuntimeOrigin()
 }
 
 export function saveAuth(payload: { token: string; user: AuthUser; expiresAt?: string }) {

@@ -35,9 +35,11 @@ export type RpcError = { code: number, message: string, data?: JsonValue | null,
 
 export type RpcNotification = { jsonrpc: string, method: string, params: JsonValue, };
 
-export type InitializeParams = { protocolVersion: number, clientName: string, clientVersion: string, capabilities: Array<string>, };
+export type RuntimeOrigin = "mon" | "local";
 
-export type InitializeResult = { protocolVersion: number, serverName: string, serverVersion: string, agentCoreVersion: string, capabilities: Array<string>, };
+export type InitializeParams = { protocolVersion: number, clientName: string, clientVersion: string, capabilities: Array<string>, runtimeOrigin: RuntimeOrigin, };
+
+export type InitializeResult = { protocolVersion: number, serverName: string, serverVersion: string, agentCoreVersion: string, capabilities: Array<string>, runtimeOrigin: RuntimeOrigin, };
 
 export type ReadyNotification = { connectionId: string, };
 
@@ -61,7 +63,7 @@ export type SessionListParams = { limit: number, includeClosed: boolean, };
 
 export type SessionStatus = "active" | "closed";
 
-export type SessionSummary = { id: SessionId, title: string, titleSource: string, status: SessionStatus, participants: Array<SessionParticipant>, environment?: SessionEnvironment | null, contextTokens?: bigint | null, tokenBreakdown?: TokenBreakdown | null, createdAt: bigint, updatedAt: bigint, };
+export type SessionSummary = { id: SessionId, title: string, titleSource: string, status: SessionStatus, runtimeOrigin: RuntimeOrigin, participants: Array<SessionParticipant>, environment?: SessionEnvironment | null, contextTokens?: bigint | null, tokenBreakdown?: TokenBreakdown | null, createdAt: bigint, updatedAt: bigint, };
 
 export type TokenBreakdown = { character: bigint, skills: bigint, system: bigint, tools: bigint, history: bigint, cacheRead: bigint, cacheMiss: bigint, cacheHitRate: number, providerInput?: bigint | null, providerOutput?: bigint | null, providerAdjustment: bigint, contextMeasurement?: string | null, promptCacheFingerprint?: string | null, promptCacheEpoch: bigint, promptCacheInvalidationReason?: string | null, tokenizer?: string | null, tokenizerModel?: string | null, };
 
@@ -100,6 +102,50 @@ export type SkillPreviewInstallParams = { previewId: string, };
 export type SkillPreviewSource = { type: string, uri: string, ref: string, subpath: string, };
 
 export type SkillPreviewInfo = { previewID: string, skillName: string, displayName: string, description: string, version: string, scope: string, source: SkillPreviewSource, tools: Array<string>, profiles: Array<string>, modelInvocable: boolean, contentHash: string, fileCount: bigint, totalBytes: bigint, expiresAt: bigint, };
+
+export type PluginListParams = Record<symbol, never>;
+
+export type PluginReadParams = { id: string, };
+
+export type PluginInspectParams = { sourceType: string, sourceUri: string, };
+
+export type PluginPreviewInstallParams = { previewID: string, activate: boolean, enabled: boolean, requireVerified: boolean, };
+
+export type PluginEnableParams = { id: string, enabled: boolean, };
+
+export type PluginActivateParams = { id: string, version: string, revision: string, };
+
+export type PluginUninstallResult = { id: string, deleted: boolean, removedVersions: bigint, cleanupErrors: Array<string>, };
+
+export type PluginComponentInfo = { id: string, kind: string, path: string, enabledByDefault: boolean, };
+
+export type PluginUiContributionInfo = { componentId: string, id: string, location: string, title: string, body: string, tone: string, };
+
+export type PluginPermissionInfo = { capability: string, resource: string, access: string, required: boolean, description: string, };
+
+export type PluginPermissionDecision = { capability: string, resource: string, access: string, decision: string, };
+
+export type PluginPermissionSetParams = { id: string, revision: string, decisions: Array<PluginPermissionDecision>, };
+
+export type PluginPermissionGrantInfo = { capability: string, resource: string, access: string, decision: string, manifestRevision: string, decidedAt: bigint, };
+
+export type PluginMarketSourceAddParams = { id: string, name: string, url: string, keyID: string, enabled: boolean, };
+
+export type PluginMarketSourceParams = { id: string, };
+
+export type PluginMarketListParams = { sourceID?: string | null, };
+
+export type PluginMarketInspectParams = { sourceID: string, pluginID: string, version: string, };
+
+export type PluginMarketSourceInfo = { id: string, name: string, url: string, keyID: string, enabled: boolean, indexRevision: string | null, lastRefreshedAt: bigint | null, lastError: string | null, };
+
+export type PluginMarketReleaseInfo = { sourceID: string, pluginID: string, name: string, description: string, version: string, revision: string, revoked: boolean, revocationReason: string | null, };
+
+export type PluginVersionInfo = { version: string, revision: string, active: boolean, trustState: string, sourceType: string, sourceUri: string, installedAt: bigint, };
+
+export type PluginInfo = { id: string, name: string, description: string, version: string, revision: string, enabled: boolean, trustState: string, sourceType: string, sourceUri: string, components: Array<PluginComponentInfo>, uiContributions: Array<PluginUiContributionInfo>, permissions: Array<PluginPermissionInfo>, permissionGrants: Array<PluginPermissionGrantInfo>, versions: Array<PluginVersionInfo>, manifest: JsonValue, createdAt: bigint, updatedAt: bigint, };
+
+export type PluginPreviewInfo = { previewID: string, id: string, name: string, description: string, version: string, revision: string, verified: boolean, sourceType: string, sourceUri: string, components: Array<PluginComponentInfo>, permissions: Array<PluginPermissionInfo>, expiresAt: bigint, };
 
 export type AgentListParams = { sessionId: SessionId, };
 
@@ -274,6 +320,20 @@ export interface RpcMethodMap {
   "skill.uninstall": { params: SkillReadParams; result: { deleted: boolean } }
   "skill.inspect": { params: SkillInspectParams; result: SkillPreviewInfo }
   "skill.install_preview": { params: SkillPreviewInstallParams; result: SkillInfo }
+  "plugin.list": { params: PluginListParams; result: PluginInfo[] }
+  "plugin.read": { params: PluginReadParams; result: PluginInfo }
+  "plugin.inspect": { params: PluginInspectParams; result: PluginPreviewInfo }
+  "plugin.install_preview": { params: PluginPreviewInstallParams; result: PluginInfo }
+  "plugin.enable": { params: PluginEnableParams; result: PluginInfo }
+  "plugin.activate": { params: PluginActivateParams; result: PluginInfo }
+  "plugin.uninstall": { params: PluginReadParams; result: PluginUninstallResult }
+  "plugin.permissions.set": { params: PluginPermissionSetParams; result: PluginInfo }
+  "plugin.market.source.list": { params: PluginListParams; result: PluginMarketSourceInfo[] }
+  "plugin.market.source.add": { params: PluginMarketSourceAddParams; result: PluginMarketSourceInfo }
+  "plugin.market.source.remove": { params: PluginMarketSourceParams; result: { deleted: boolean } }
+  "plugin.market.source.refresh": { params: PluginMarketSourceParams; result: PluginMarketSourceInfo }
+  "plugin.market.list": { params: PluginMarketListParams; result: PluginMarketReleaseInfo[] }
+  "plugin.market.inspect": { params: PluginMarketInspectParams; result: PluginPreviewInfo }
   "agent.list": { params: AgentListParams; result: AgentThreadInfo[] }
   "agent.read": { params: AgentReadParams; result: AgentThreadInfo }
   "agent.interrupt": { params: AgentReadParams; result: AgentThreadInfo }
@@ -336,7 +396,12 @@ export class MonAgentRpcClient {
   private listeners = new Map<string, Set<(params: unknown) => void>>()
   private closeListeners = new Set<() => void>()
 
-  async connect(url: string, capabilityToken: string, clientVersion = "dev"): Promise<InitializeResult> {
+  async connect(
+    url: string,
+    capabilityToken: string,
+    clientVersion = "dev",
+    runtimeOrigin: RuntimeOrigin = "mon",
+  ): Promise<InitializeResult> {
     if (this.socket) throw new Error("MonAgent RPC client is already connected")
     const socket = new WebSocket(url, [
       MON_AGENT_WEBSOCKET_PROTOCOL,
@@ -354,6 +419,7 @@ export class MonAgentRpcClient {
       clientName: "mon-agent-web",
       clientVersion,
       capabilities: ["session-events"],
+      runtimeOrigin,
     })
   }
 

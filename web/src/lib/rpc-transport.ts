@@ -8,6 +8,7 @@ import {
   type RpcMethodMap,
   type SessionEvent,
 } from "../generated/mon-agent-rpc"
+import { getStoredRuntimeOrigin } from "./runtime-origin"
 import type {
   CompanionDirectorExecution,
   CompanionDirectorScene,
@@ -41,6 +42,7 @@ const websocketUrl = `${httpBaseUrl.replace(/^http/, "ws")}/rpc`
 
 let client: MonAgentRpcClient | undefined
 let connection: Promise<MonAgentRpcClient> | undefined
+let connectedOrigin: "mon" | "local" | undefined
 const eventListeners = new Set<(event: SessionEvent) => void>()
 const statusListeners = new Set<(connected: boolean, error?: string) => void>()
 const reconnectInitialDelayMs = 500
@@ -52,17 +54,29 @@ async function capabilityToken(): Promise<string> {
   if (configured) return configured
   const desktop = await window.monAgentDesktop?.getAgentCapability?.()
   if (desktop?.token) return desktop.token
-  throw new Error("MonAgent capability token is unavailable")
+  throw new Error("Eden Agent capability token is unavailable")
 }
 
 async function connectedClient(): Promise<MonAgentRpcClient> {
+  const requestedOrigin = getStoredRuntimeOrigin() ?? "mon"
+  if (client && connectedOrigin !== requestedOrigin) {
+    client.close()
+    client = undefined
+    connection = undefined
+    connectedOrigin = undefined
+  }
   if (client) return client
   if (connection) return connection
   connection = (async () => {
     const next = new MonAgentRpcClient()
     try {
       const token = await capabilityToken()
-      await next.connect(websocketUrl, token)
+      const initialized = await next.connect(websocketUrl, token, "dev", requestedOrigin)
+      if (initialized.runtimeOrigin !== requestedOrigin) {
+        throw new Error(
+          `Eden Agent runtime origin mismatch: requested ${requestedOrigin}, received ${initialized.runtimeOrigin}`,
+        )
+      }
     } catch (error) {
       next.close()
       throw error
@@ -74,9 +88,11 @@ async function connectedClient(): Promise<MonAgentRpcClient> {
       if (client !== next) return
       client = undefined
       connection = undefined
-      for (const listener of statusListeners) listener(false, "MonAgent RPC connection closed")
+      connectedOrigin = undefined
+      for (const listener of statusListeners) listener(false, "Eden Agent RPC connection closed")
     })
     client = next
+    connectedOrigin = requestedOrigin
     for (const listener of statusListeners) listener(true)
     return next
   })().catch((error) => {
@@ -95,6 +111,26 @@ export async function rpcRequest<K extends keyof RpcMethodMap>(
 ): Promise<RpcMethodMap[K]["result"]> {
   const current = await connectedClient()
   return current.request(method, params)
+}
+
+export async function rpcRequestWithTimeout<K extends keyof RpcMethodMap>(
+  method: K,
+  params: RpcMethodMap[K]["params"],
+  timeoutMs: number,
+): Promise<RpcMethodMap[K]["result"]> {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      rpcRequest(method, params),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`请求 ${String(method)} 超时（${Math.ceil(timeoutMs / 1000)} 秒）`))
+        }, timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeout) clearTimeout(timeout)
+  }
 }
 
 export async function createRealtimeSttSocket(sessionId: string): Promise<WebSocket> {
@@ -246,6 +282,7 @@ export function apiSession(session: import("../generated/mon-agent-rpc").Session
   return {
     id: session.id,
     title: session.title,
+    runtimeOrigin: session.runtimeOrigin,
     runtimeStatus: "idle",
     ...(session.contextTokens == null ? {} : { contextTokens: Number(session.contextTokens) }),
     ...(session.tokenBreakdown == null ? {} : { tokenBreakdown: apiTokenBreakdown(session.tokenBreakdown) }),

@@ -21,6 +21,7 @@ import { estimateConversationTokens } from "../../lib/token-usage"
 import { readWorkspaceFile, type WorkspaceEntry, type WorkspaceFileContent } from "../../lib/agent-client"
 import { messageGroupPosition, messageRenderKey } from "../../lib/message-grouping"
 import { buildRunReviewIndex } from "../../lib/run-review"
+import { getStoredRuntimeOrigin } from "../../lib/runtime-origin"
 import { cn } from "../../lib/utils"
 import type {
   PendingPermission,
@@ -94,6 +95,7 @@ interface ChatPageProps {
   onOpenMemo: () => void
   onOpenSkills: () => void
   onOpenConnectors: () => void
+  onOpenConfiguration: () => void
 }
 
 export function ChatPage({
@@ -133,6 +135,7 @@ export function ChatPage({
   onOpenMemo,
   onOpenSkills,
   onOpenConnectors,
+  onOpenConfiguration,
 }: ChatPageProps) {
   const [slashCommandNotices, setSlashCommandNotices] = useState<
     Array<{ id: number; sessionID?: string; command: string; afterMessageID?: string }>
@@ -297,8 +300,10 @@ export function ChatPage({
   }, [activeSession?.directorRun, isThinking, lastUserMessageID, participantCount])
   const visibleTokenEstimate = useMemo(() => estimateConversationTokens(messages), [messages])
   const contextTokenEstimate = activeSession?.contextTokens ?? visibleTokenEstimate
+  const localTTSConfigId = getStoredRuntimeOrigin() === "local" ? 0 : undefined
+  const localSTTConfigId = getStoredRuntimeOrigin() === "local" ? 0 : undefined
   const soloTTSConfigId = participantCount === 1
-    ? activeSession?.participants?.[0]?.ttsConfigID
+    ? activeSession?.participants?.[0]?.ttsConfigID ?? localTTSConfigId
     : undefined
   const messageSpeechSegments = (message?: MessageData): SpeechSegment[] => {
     if (!message) return []
@@ -378,6 +383,7 @@ export function ChatPage({
     [activeSpeechMessages],
   )
   const speech = useTTSSpeech({
+    audioOutputDeviceId: petSettings.audioOutputDeviceId,
     sessionId: activeSessionId,
     mode: petSettings.ttsMode,
     isThinking,
@@ -388,6 +394,8 @@ export function ChatPage({
       epoch: message.speechEpoch ?? 0,
       reason: message.speechResetReason,
     })),
+    speechRate: petSettings.speechRate,
+    speechVolume: petSettings.speechVolume,
   })
   const latestStreamingAssistantIndex = messages.reduce(
     (latestIndex, message, index) => (message.role === "assistant" && message.isStreaming ? index : latestIndex),
@@ -433,6 +441,7 @@ export function ChatPage({
         onOpenMemo={onOpenMemo}
         onOpenSkills={onOpenSkills}
         onOpenConnectors={onOpenConnectors}
+        onOpenConfiguration={onOpenConfiguration}
         onOpenSettings={onOpenSettings}
         onOpenFile={openWorkspaceFile}
         onWorkspaceChanged={() => {
@@ -608,7 +617,7 @@ export function ChatPage({
                       后端离线
                     </div>
                     <p className="max-w-[46vw] text-[2.2vh] leading-relaxed text-text-muted">
-                      无法连接 MonAgent 服务：{connectionError}
+                      无法连接 Eden Agent 服务：{connectionError}
                     </p>
                   </div>
                 ) : messages.length === 0 ? (
@@ -763,9 +772,10 @@ export function ChatPage({
                   permissionMode={permissionMode}
                   onPermissionModeChange={onPermissionModeChange}
                   voiceInputEnabled={petSettings.voiceInputEnabled}
+                  audioInputDeviceId={petSettings.audioInputDeviceId}
                   sttConfigId={participantCount === 1
-                    ? activeSession?.participants?.[0]?.sttConfigID ?? assistant?.character?.stt_config_id
-                    : assistant?.character?.stt_config_id}
+                    ? activeSession?.participants?.[0]?.sttConfigID ?? assistant?.character?.stt_config_id ?? localSTTConfigId
+                    : assistant?.character?.stt_config_id ?? localSTTConfigId}
                   halfDuplexOutputActive={taskRunning || speech.autoPlaybackPending}
                   contextTokenEstimate={contextTokenEstimate}
                   tokenBreakdown={activeSession?.tokenBreakdown}

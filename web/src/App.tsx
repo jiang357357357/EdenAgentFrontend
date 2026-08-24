@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react"
 import { X } from "lucide-react"
 import { AnimatePresence, LayoutGroup, motion } from "motion/react"
 import { QuestionDecisionOverlay } from "./components/requests"
@@ -8,11 +8,14 @@ import { ChatPage } from "./pages/chat"
 import { CharacterPage } from "./pages/character"
 import { AssistantSwitcherPage } from "./pages/assistant-switcher"
 import { LoginPage } from "./pages/login"
+import { OriginSelectionPage } from "./pages/origin"
 import { MemoPage } from "./pages/memo"
 import { SelfAwakePage } from "./pages/self-awake"
 import { SettingsPage } from "./pages/settings"
 import { SkillPage } from "./pages/skills"
 import { ConnectorPage } from "./pages/connectors"
+import { PluginPage } from "./pages/plugins"
+import { ConfigurationPage } from "./pages/configuration"
 import { useSessionRuntime } from "./hooks/useSessionRuntime"
 import {
   clearAuth,
@@ -38,23 +41,37 @@ import {
 import { hasAssistantDetail, resolveConversationAssistant } from "./lib/assistant-detail"
 import type { MessageData, PromptAttachment } from "./types"
 import {
+  getLocalRuntimeConfig,
   listenDesktopOpenSettings,
   resizeDesktopWindow,
   setDesktopWindowAppearance,
   startDesktopWindowDrag,
+  type LocalCharacterConfig,
 } from "./lib/desktop-window"
 import { getToolStatus, type CharacterActionChangedEvent, type ToolStatus } from "./lib/agent-client"
+import {
+  getStoredRuntimeOrigin,
+  saveRuntimeOrigin,
+  clearRuntimeOrigin,
+  type RuntimeOrigin,
+  LOCAL_ASSISTANT_ID,
+} from "./lib/runtime-origin"
+import {
+  getStoredLocalCharacter,
+  localCharacterAssistant,
+  saveStoredLocalCharacter,
+} from "./lib/local-character"
 
 const screenTransition = {
   duration: 0.28,
   ease: [0.16, 1, 0.3, 1],
 } as const
 
-type AppPage = "chat" | "selfAwake" | "memo" | "skills" | "connectors" | "settings" | "assistant-switcher" | "pet" | "pet-character" | "pet-bubble" | "pet-icon" | "question"
+type AppPage = "chat" | "selfAwake" | "memo" | "skills" | "plugins" | "connectors" | "configuration" | "settings" | "assistant-switcher" | "pet" | "pet-character" | "pet-bubble" | "pet-icon" | "question"
 
 function initialPageFromLocation(): AppPage {
   const page = new URLSearchParams(window.location.search).get("page")
-  if (page === "settings" || page === "skills" || page === "connectors" || page === "assistant-switcher" || page === "pet" || page === "pet-character" || page === "pet-bubble" || page === "pet-icon" || page === "question") return page
+  if (page === "settings" || page === "skills" || page === "plugins" || page === "connectors" || page === "configuration" || page === "assistant-switcher" || page === "pet" || page === "pet-character" || page === "pet-bubble" || page === "pet-icon" || page === "question") return page
   return "chat"
 }
 
@@ -109,6 +126,9 @@ export default function App() {
   const [authError, setAuthError] = useState<string | undefined>()
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [currentUser, setCurrentUser] = useState(() => getStoredUser())
+  const [runtimeOrigin, setRuntimeOriginState] = useState<RuntimeOrigin | null>(() => getStoredRuntimeOrigin())
+  const [localCharacter, setLocalCharacter] = useState(() => getStoredLocalCharacter())
+  const localAssistant = useMemo(() => localCharacterAssistant(localCharacter), [localCharacter])
   const initialPage = initialPageFromLocation()
   const isSettingsWindow = initialPage === "settings"
   const isQuestionWindow = initialPage === "question"
@@ -120,6 +140,8 @@ export default function App() {
       : initialPage === "pet-icon"
         ? "icon"
         : "combined"
+  const isAuxiliaryWindow = isSettingsWindow || isQuestionWindow || isPetWindow
+  const runtimeReady = authStatus === "authenticated" && (isAuxiliaryWindow || runtimeOrigin !== null)
   const [activePage, setActivePage] = useState<AppPage>(() => initialPageFromLocation())
   const [assistantSwitcherMode, setAssistantSwitcherMode] = useState<"default" | "session" | "participants">(
     initialPage === "settings" ? "default" : "participants",
@@ -201,7 +223,7 @@ export default function App() {
     sessions,
     updatePermissionMode,
     updateSessionParticipants,
-  } = useSessionRuntime(authStatus === "authenticated", {
+  } = useSessionRuntime(runtimeReady, {
     onEvent: handleRuntimeEvent,
     defaultParticipantID: currentAssistant?.id,
   })
@@ -237,7 +259,7 @@ export default function App() {
   }
 
   function returnToLogin(message?: string) {
-    clearAuth()
+    clearAuth({ preserveRuntimeOrigin: true })
     setCurrentUser(null)
     resetRuntimeState()
     setAuthError(message)
@@ -380,6 +402,20 @@ export default function App() {
     let cancelled = false
 
     async function bootstrapAuth() {
+      if (runtimeOrigin === null) {
+        setCurrentUser(null)
+        setAuthError(undefined)
+        setAuthStatus("checking")
+        return
+      }
+
+      if (runtimeOrigin === "local") {
+        setCurrentUser(null)
+        setAuthError(undefined)
+        setAuthStatus("authenticated")
+        return
+      }
+
       const mode = getAuthMode()
       console.log("[bootstrapAuth] authMode:", mode)
 
@@ -399,7 +435,7 @@ export default function App() {
         } catch (error) {
           console.log("[bootstrapAuth] token invalid:", error)
           if (cancelled) return
-          clearAuth()
+          clearAuth({ preserveRuntimeOrigin: true })
           setCurrentUser(null)
           if (cancelled) return
           setAuthError(reportAuthError("verify-token", error, "登录已失效。"))
@@ -430,7 +466,7 @@ export default function App() {
               try {
                 return await verifyTokenWithCore(sharedToken)
               } catch {
-                clearAuth()
+                clearAuth({ preserveRuntimeOrigin: true })
               }
             }
             return loginWithCore(devAccount.username, devAccount.password)
@@ -457,10 +493,11 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [runtimeOrigin])
 
   useEffect(() => {
     const unsubscribe = window.monAgentDesktop?.onAuthState?.((state) => {
+      if (runtimeOrigin === "local") return
       if (state.type === "authenticated" && state.token && state.response?.user) {
         saveAuth({
           token: state.token,
@@ -468,16 +505,17 @@ export default function App() {
           expiresAt: state.response.token_info?.expires_at,
         })
         setCurrentUser(state.response.user)
+        setRuntimeOriginState(getStoredRuntimeOrigin())
         setAuthError(undefined)
         setAuthStatus("authenticated")
         return
       }
-      clearAuth()
+      clearAuth({ preserveRuntimeOrigin: true })
       setCurrentUser(null)
       setAuthStatus("unauthenticated")
     })
     return unsubscribe
-  }, [])
+  }, [runtimeOrigin])
 
   function scrollMessagesToBottom(behavior: ScrollBehavior = "smooth") {
     messagesEndRef.current?.scrollIntoView({ behavior, block: "end" })
@@ -538,8 +576,28 @@ export default function App() {
   }, [authStatus, isPetWindow, isQuestionWindow, isSettingsWindow])
 
   useEffect(() => {
-    if (authStatus !== "authenticated") {
+    if (runtimeOrigin !== "local") return
+    let cancelled = false
+    void getLocalRuntimeConfig()
+      .then((runtimeConfig) => {
+        if (cancelled) return
+        const character = saveStoredLocalCharacter(runtimeConfig.character)
+        setLocalCharacter(character)
+      })
+      .catch((error) => console.warn("[Local character] configuration unavailable", error))
+    return () => { cancelled = true }
+  }, [runtimeOrigin])
+
+  useEffect(() => {
+    if (!runtimeReady) {
       setCurrentAssistant(null)
+      setCurrentAssistantError(undefined)
+      return
+    }
+
+    if (runtimeOrigin === "local") {
+      setCurrentAssistant(localAssistant)
+      setAvailableAssistants([localAssistant])
       setCurrentAssistantError(undefined)
       return
     }
@@ -581,10 +639,10 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [authStatus, currentUser?.id])
+  }, [localAssistant, runtimeOrigin, runtimeReady, currentUser?.id])
 
   useEffect(() => {
-    if (authStatus !== "authenticated") return
+    if (runtimeOrigin !== "mon" || authStatus !== "authenticated") return
 
     if (isStoredTokenExpired(0)) {
       returnToLogin("登录已失效，请重新登录。")
@@ -609,10 +667,10 @@ export default function App() {
       window.clearTimeout(timeout)
       window.clearInterval(interval)
     }
-  }, [authStatus, currentUser?.id])
+  }, [authStatus, currentUser?.id, runtimeOrigin])
 
   useEffect(() => {
-    if (authStatus !== "authenticated") {
+    if (!runtimeReady) {
       setToolStatus(undefined)
       return
     }
@@ -647,7 +705,7 @@ export default function App() {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [authStatus])
+  }, [runtimeReady])
 
   useEffect(() => {
     if (isSettingsWindow || isPetWindow) return
@@ -684,7 +742,7 @@ export default function App() {
   }, [currentAssistant?.character?.id])
 
   useEffect(() => {
-    if (authStatus !== "authenticated") return
+    if (runtimeOrigin !== "mon" || authStatus !== "authenticated") return
     const text = `${connectionError ?? ""} ${activeSessionError ?? ""}`
     if (/authentication_expired|not_authenticated|core_authentication_expired/i.test(text)) {
       returnToLogin("登录已失效，请重新登录。")
@@ -693,7 +751,7 @@ export default function App() {
     if (connectionError) {
       void verifyAuthStillValid("connection-error")
     }
-  }, [activeSessionError, authStatus, connectionError])
+  }, [activeSessionError, authStatus, connectionError, runtimeOrigin])
 
   const handleLogin = async (username: string, password: string) => {
     if (!username || !password) {
@@ -722,15 +780,46 @@ export default function App() {
   const handleLogout = async () => {
     const token = getStoredToken()
     try {
-      await logoutWithCore(token)
+      if (runtimeOrigin === "mon") {
+        await logoutWithCore(token)
+      } else {
+        clearAuth()
+      }
     } catch (error) {
       console.warn("[Auth] logout request failed after local logout", error)
       clearAuth()
     } finally {
       setCurrentUser(null)
+      setRuntimeOriginState(null)
       resetRuntimeState()
       setAuthError(undefined)
       setAuthStatus("unauthenticated")
+    }
+  }
+
+  const handleRuntimeOriginSelect = (origin: RuntimeOrigin) => {
+    saveRuntimeOrigin(origin)
+    setRuntimeOriginState(origin)
+    setAuthError(undefined)
+    setAuthStatus(origin === "local" ? "authenticated" : "checking")
+  }
+
+  const handleOpenConfiguration = () => {
+    setActivePage("configuration")
+  }
+
+  const handleChangeRuntimeOrigin = () => {
+    clearRuntimeOrigin()
+    setRuntimeOriginState(null)
+    resetRuntimeState()
+    setAuthError(undefined)
+  }
+
+  const handleLocalCharacterSaved = async (character: LocalCharacterConfig) => {
+    const normalized = saveStoredLocalCharacter(character)
+    setLocalCharacter(normalized)
+    if (runtimeOrigin === "local" && activeSessionId) {
+      await updateSessionParticipants([LOCAL_ASSISTANT_ID])
     }
   }
 
@@ -822,6 +911,21 @@ export default function App() {
     await dismissQuestion(requestID)
   }
 
+  if (runtimeOrigin === null) {
+    if (isAuxiliaryWindow) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-bg px-6 text-center text-text-muted">
+          请在 Eden Agent 主窗口选择运行方式，此窗口会自动同步状态。
+        </div>
+      )
+    }
+    return (
+      <AnimatePresence mode="wait">
+        <OriginSelectionPage key="runtime-origin" onSelect={handleRuntimeOriginSelect} />
+      </AnimatePresence>
+    )
+  }
+
   if (authStatus === "checking") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-bg text-text">
@@ -837,7 +941,7 @@ export default function App() {
     if (isSettingsWindow || isPetWindow || isQuestionWindow) {
       return (
         <div className="flex min-h-screen items-center justify-center bg-bg px-6 text-center text-text-muted">
-          请在 MonAgent 主窗口完成登录，此窗口会自动同步登录状态。
+          请在 Eden Agent 主窗口完成登录，此窗口会自动同步登录状态。
         </div>
       )
     }
@@ -911,8 +1015,29 @@ export default function App() {
               <MemoPage onBack={() => setActivePage("chat")} />
             ) : activePage === "skills" ? (
               <SkillPage onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
+            ) : activePage === "plugins" ? (
+              <PluginPage onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
             ) : activePage === "connectors" ? (
               <ConnectorPage onBack={() => setActivePage("chat")} />
+            ) : activePage === "configuration" ? (
+              <ConfigurationPage
+                onBack={() => setActivePage("chat")}
+                onChangeOrigin={handleChangeRuntimeOrigin}
+                onOpenParticipants={() => {
+                  setAssistantSwitcherMode("participants")
+                  setActivePage("assistant-switcher")
+                }}
+                onOpenDutyAssistant={() => {
+                  setAssistantSwitcherMode("default")
+                  setActivePage("assistant-switcher")
+                }}
+                onOpenSelfAwake={() => setActivePage("selfAwake")}
+                onOpenMemo={() => setActivePage("memo")}
+                onOpenSkills={() => setActivePage("skills")}
+                onOpenConnectors={() => setActivePage("connectors")}
+                onOpenSettings={() => setActivePage("settings")}
+                onCharacterSaved={handleLocalCharacterSaved}
+              />
             ) : activePage === "assistant-switcher" ? (
               <AssistantSwitcherPage
                 currentAssistant={assistantSwitcherMode === "default" ? currentAssistant : conversationAssistant}
@@ -942,6 +1067,7 @@ export default function App() {
                   setActivePage("assistant-switcher")
                 }}
                 onOpenSkills={() => setActivePage("skills")}
+                onOpenPlugins={() => setActivePage("plugins")}
               />
             ) : (
               <ChatPage
@@ -1002,6 +1128,7 @@ export default function App() {
                 onOpenConnectors={() => {
                   setActivePage("connectors")
                 }}
+                onOpenConfiguration={handleOpenConfiguration}
               />
             )}
           </AnimatePresence>

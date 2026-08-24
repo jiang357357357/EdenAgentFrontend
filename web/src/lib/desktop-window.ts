@@ -72,6 +72,10 @@ export interface PetSettings {
   showInput: boolean;
   voiceInputEnabled: boolean;
   ttsMode: PetTTSMode;
+  audioInputDeviceId: string;
+  audioOutputDeviceId: string;
+  speechVolume: number;
+  speechRate: number;
   petScale: number;
   inputOpacity: number;
   dock: PetDock;
@@ -121,6 +125,183 @@ export interface DesktopActivityFacts {
   last_user_interaction_at?: string;
 }
 
+export interface LocalRuntimeConfig {
+  provider: string
+  model: string
+  baseUrl: string
+  apiKey: string
+  contextWindow: number
+  maxOutputTokens: number
+  supportsImages: boolean
+  timeoutSeconds: number
+  maxRetries: number
+  hasApiKey: boolean
+  configPath: string
+  voice: LocalGsvConfig
+  transcription: LocalGsvSttConfig
+  character: LocalCharacterConfig
+  server: {
+    online: boolean
+    externallyManaged: boolean
+    managed: boolean
+    running: boolean | null
+    restartSupported: boolean
+  }
+}
+
+export interface LocalGsvConfig {
+  provider: "gsv"
+  serviceUrl: string
+  version: string
+  world: string
+  role: string
+  roleId: string
+  emotion: string
+  textLanguage: string
+  speed: number
+  timeoutSeconds: number
+  topK: number
+  topP: number
+  temperature: number
+  sampleSteps: number
+  pauseSeconds: number
+  cutMethod: string
+  superResolution: boolean
+  referenceFree: boolean
+  freeze: boolean
+}
+
+export interface LocalGsvOption {
+  id: string
+  label: string
+  value: string
+}
+
+export interface LocalGsvDiscovery {
+  ok: true
+  latencyMs: number
+  versions: LocalGsvOption[]
+  worlds: LocalGsvOption[]
+  roles: LocalGsvOption[]
+  emotions: LocalGsvOption[]
+  selectedRoleId: string
+}
+
+export interface LocalGsvPreview {
+  ok: true
+  audioDataUrl: string
+  mime: string
+  duration: number | null
+  latencyMs: number
+  roleId: string
+}
+
+export interface LocalGsvSttConfig {
+  provider: "gsv"
+  serviceUrl: string
+  language: "auto" | "zh" | "en" | "ja" | "ko"
+  modelType: string
+  modelSize: string
+  precision: "float32" | "float16" | "int8"
+  timeoutSeconds: number
+  retryCount: number
+  endSilenceMs: number
+  sessionEndSilenceMs: number
+  autoFinish: boolean
+  autoSend: boolean
+  minSpeechDurationMs: number
+  speechNoiseThreshold: number
+  prerollMs: number
+  chunkMs: number
+}
+
+export interface LocalCharacterConfig {
+  name: string
+  aliases: string[]
+  pronouns: string
+  age: string
+  species: string
+  occupation: string
+  signature: string
+  description: string
+  background: string
+  appearance: string
+  worldNames: string[]
+  currentSituation: string
+  personality: string
+  values: string
+  likes: string
+  dislikes: string
+  strengths: string
+  weaknesses: string
+  fears: string
+  habits: string
+  emotionalStyle: string
+  userRelationship: string
+  userAddress: string
+  selfAddress: string
+  relationshipHistory: string
+  socialRelations: string
+  relationshipBoundaries: string
+  goals: string
+  responsibilities: string
+  decisionPrinciples: string
+  initiativeLevel: "reactive" | "balanced" | "proactive"
+  initiativeRules: string
+  autonomy: string
+  conflictStyle: string
+  memoryPreferences: string
+  behavioralRules: string
+  forbiddenBehaviors: string
+  speechStyle: string
+  languagePreference: string
+  responseLength: "concise" | "balanced" | "detailed"
+  formality: "casual" | "balanced" | "formal"
+  humorStyle: string
+  catchphrases: string
+  emojiUsage: "none" | "low" | "balanced" | "high"
+  exampleDialogue: string
+  forbiddenPhrases: string
+  voiceStyle: string
+  voiceEmotion: string
+  systemPrompt: string
+  avatarPath: string
+  visualPreference: "static" | "spine"
+  standingImagePath: string
+  spine: LocalCharacterSpineConfig | null
+}
+
+export interface LocalCharacterSpineConfig {
+  directory: string
+  skeletonPath: string
+  atlasPath: string
+  textures: Array<{ pageName: string; filePath: string }>
+  runtimeVersion: string
+  defaultSkin: string
+  idleAnimation: string
+  layout: "standee" | "memory-lobby"
+  scale: number
+  offsetX: number
+  offsetY: number
+}
+
+export interface LocalRuntimeConfigInput {
+  provider: string
+  model: string
+  baseUrl: string
+  apiKey?: string
+  contextWindow: number
+  maxOutputTokens: number
+  supportsImages: boolean
+  timeoutSeconds: number
+  maxRetries: number
+}
+
+export interface LocalRuntimeSaveResult extends LocalRuntimeConfig {
+  restarted: boolean
+  restartRequired: boolean
+}
+
 export interface DesktopPetPointerInput {
   phase: 'down' | 'move' | 'up' | 'cancel';
   pointerId: number;
@@ -146,6 +327,10 @@ export const DEFAULT_PET_SETTINGS: PetSettings = {
   showInput: true,
   voiceInputEnabled: true,
   ttsMode: 'none',
+  audioInputDeviceId: 'default',
+  audioOutputDeviceId: 'default',
+  speechVolume: 100,
+  speechRate: 1,
   petScale: 100,
   inputOpacity: 78,
   dock: 'center',
@@ -194,6 +379,84 @@ export async function openDesktopWorkspaceDirectory(path: string) {
   const bridge = getDesktopBridge()
   if (!bridge) return false
   return bridge.invoke<boolean>("open_workspace_directory", { path })
+}
+
+export async function getLocalRuntimeConfig() {
+  const bridge = getDesktopBridge()
+  if (!bridge) throw new Error("尘世配置仅可在 Eden Agent 桌面端使用。")
+  return bridge.invoke<LocalRuntimeConfig>("get_local_runtime_config")
+}
+
+export async function testLocalRuntimeConfig(config: LocalRuntimeConfigInput) {
+  const bridge = getDesktopBridge()
+  if (!bridge) throw new Error("尘世配置仅可在 Eden Agent 桌面端使用。")
+  return bridge.invoke<{ ok: true; latencyMs: number }>("test_local_runtime_config", { config })
+}
+
+export async function saveLocalRuntimeConfig(config: LocalRuntimeConfigInput) {
+  const bridge = getDesktopBridge()
+  if (!bridge) throw new Error("尘世配置仅可在 Eden Agent 桌面端使用。")
+  return bridge.invoke<LocalRuntimeSaveResult>("save_local_runtime_config", { config })
+}
+
+export async function inspectLocalGsvConfig(config: LocalGsvConfig, stage: "all" | "catalog" | "worlds" | "roles" | "emotions" = "all") {
+  const bridge = getDesktopBridge()
+  if (!bridge) throw new Error("GSV 配置仅可在 Eden Agent 桌面端使用。")
+  return bridge.invoke<LocalGsvDiscovery>("inspect_local_gsv_config", { config, stage })
+}
+
+export async function saveLocalGsvConfig(config: LocalGsvConfig) {
+  const bridge = getDesktopBridge()
+  if (!bridge) throw new Error("GSV 配置仅可在 Eden Agent 桌面端使用。")
+  return bridge.invoke<LocalRuntimeSaveResult>("save_local_gsv_config", { config })
+}
+
+export async function previewLocalGsvVoice(config: LocalGsvConfig, text: string) {
+  const bridge = getDesktopBridge()
+  if (!bridge) throw new Error("GSV 试听仅可在 Eden Agent 桌面端使用。")
+  return bridge.invoke<LocalGsvPreview>("preview_local_gsv_voice", { config, text })
+}
+
+export async function testLocalGsvSttConfig(config: LocalGsvSttConfig) {
+  const bridge = getDesktopBridge()
+  if (!bridge) throw new Error("GSV 转录配置仅可在 Eden Agent 桌面端使用。")
+  return bridge.invoke<{ ok: true; latencyMs: number }>("test_local_gsv_stt_config", { config })
+}
+
+export async function saveLocalGsvSttConfig(config: LocalGsvSttConfig) {
+  const bridge = getDesktopBridge()
+  if (!bridge) throw new Error("GSV 转录配置仅可在 Eden Agent 桌面端使用。")
+  return bridge.invoke<LocalRuntimeSaveResult>("save_local_gsv_stt_config", { config })
+}
+
+export async function saveLocalCharacterConfig(character: LocalCharacterConfig) {
+  const bridge = getDesktopBridge()
+  if (!bridge) throw new Error("角色配置仅可在 Eden Agent 桌面端使用。")
+  return bridge.invoke<LocalRuntimeConfig>("save_local_character_config", { character })
+}
+
+export async function selectDesktopCharacterImage() {
+  const bridge = getDesktopBridge()
+  if (!bridge) return null
+  return bridge.invoke<string | null>("select_character_image")
+}
+
+export async function selectDesktopCharacterStandingImage() {
+  const bridge = getDesktopBridge()
+  if (!bridge) return null
+  return bridge.invoke<string | null>("select_character_standing_image")
+}
+
+export async function selectDesktopCharacterSpineDirectory() {
+  const bridge = getDesktopBridge()
+  if (!bridge) return null
+  return bridge.invoke<LocalCharacterSpineConfig | null>("select_character_spine_directory")
+}
+
+export async function openLocalRuntimeConfigDirectory() {
+  const bridge = getDesktopBridge()
+  if (!bridge) return false
+  return bridge.invoke<boolean>("open_local_runtime_config_directory")
 }
 
 export async function setDesktopWindowAppearance(mode: DesktopWindowMode) {
@@ -378,7 +641,7 @@ export async function getDesktopEnvironmentPreview() {
 
 export async function captureDesktopScreen(source: DesktopScreenCaptureSource = 'auto') {
   const bridge = getDesktopBridge();
-  if (!bridge) throw new Error('当前不是 MonAgent 桌面客户端，无法截取屏幕');
+  if (!bridge) throw new Error('当前不是 Eden Agent 桌面客户端，无法截取屏幕');
   return await bridge.invoke<DesktopScreenCapture>('capture_screen', { source });
 }
 
@@ -394,6 +657,7 @@ export async function updateDesktopActivityFacts(facts: DesktopActivityFacts) {
 
 export function resolveDesktopFileUrl(filePath?: string | null) {
   if (!filePath) return '';
+  if (/^(?:https?:\/\/|data:|blob:|monagent-file:)/i.test(filePath)) return filePath;
   const bridge = getDesktopBridge();
   return bridge?.convertFileSrc?.(filePath) ?? filePath;
 }

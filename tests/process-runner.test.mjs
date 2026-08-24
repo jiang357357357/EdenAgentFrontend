@@ -61,6 +61,23 @@ test("POSIX can fall back to the executable npm shim", () => {
   })
 })
 
+test("POSIX discovers npm from the standard prefix lib directory", () => {
+  const execPath = "/opt/node/bin/node"
+  const expectedCli = "/opt/node/lib/node_modules/npm/bin/npm-cli.js"
+  const invocation = resolveNpmInvocation(["--version"], {
+    environment: {},
+    execPath,
+    platform: "linux",
+    fileExists: (candidate) => candidate === expectedCli,
+  })
+
+  assert.deepEqual(invocation, {
+    command: execPath,
+    args: [expectedCli, "--version"],
+    npmCli: expectedCli,
+  })
+})
+
 test("the active npm installation can be spawned without a shell", async () => {
   const child = spawnNpm(["--version"], {
     cwd: process.cwd(),

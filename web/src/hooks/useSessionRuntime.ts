@@ -26,7 +26,6 @@ import {
   subscribeEvents,
 } from '../lib/agent-client';
 import type { ApiEvent, PendingCameraCapture, PendingScreenCapture } from '../lib/agent-client';
-import { getStoredToken } from '../lib/auth';
 import {
   applyRuntimeEvent,
   hydratePendingPermissions,
@@ -66,7 +65,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const onEventRef = useRef(options.onEvent);
   const defaultParticipantID = options.defaultParticipantID;
 
-  const isRuntimeReady = useCallback(() => enabled && Boolean(getStoredToken()), [enabled]);
+  const isRuntimeReady = useCallback(() => enabled, [enabled]);
 
   useEffect(() => {
     activeSessionIdRef.current = state.activeSessionId;
@@ -273,7 +272,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   }, [isRuntimeReady, refreshBlockers, refreshSessionMessages, refreshSessions]);
 
   const createSession = useCallback(async () => {
-    if (!isRuntimeReady()) throw new Error('MonAgent runtime is not authenticated');
+    if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
     activeSessionIdRef.current = undefined;
     setDraftParticipantIDs(defaultParticipantID === undefined || defaultParticipantID === null ? [] : [defaultParticipantID]);
     dispatch(setActiveSession(undefined));
@@ -291,7 +290,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     async (content: string, attachments: PromptAttachment[]) => {
       let sessionID = activeSessionIdRef.current;
       if (!isRuntimeReady()) {
-        throw new Error('MonAgent runtime is not authenticated');
+        throw new Error('Eden Agent runtime is not authenticated');
       }
       if (!sessionID) {
         const session = await createSessionRaw(draftParticipantIDs, { content, attachments });
@@ -333,7 +332,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const compactSession = useCallback(async (instructions?: string) => {
     const sessionID = activeSessionIdRef.current;
     if (!isRuntimeReady()) {
-      throw new Error('MonAgent runtime is not authenticated');
+      throw new Error('Eden Agent runtime is not authenticated');
     }
     if (!sessionID) {
       throw new Error('当前没有可压缩的会话。');
@@ -358,7 +357,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const abortSession = useCallback(async () => {
     const sessionID = activeSessionIdRef.current;
     if (!isRuntimeReady()) {
-      throw new Error('MonAgent runtime is not authenticated');
+      throw new Error('Eden Agent runtime is not authenticated');
     }
     if (!sessionID) {
       throw new Error('当前没有可中止的会话。');
@@ -386,7 +385,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
   const updateSessionParticipants = useCallback(async (assistantIDs: Array<number | string>) => {
     const sessionID = activeSessionIdRef.current;
-    if (!isRuntimeReady()) throw new Error('MonAgent runtime is not authenticated');
+    if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
     if (!sessionID) {
       setDraftParticipantIDs([...assistantIDs]);
       return undefined;
@@ -400,7 +399,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   }, [isRuntimeReady]);
 
   const deleteSession = useCallback(async (sessionID: string) => {
-    if (!isRuntimeReady()) throw new Error('MonAgent runtime is not authenticated');
+    if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
     if (sendingSessionIdsRef.current.has(sessionID)) {
       throw new Error('智能体正在处理当前任务，请先停止任务再删除会话。');
     }
@@ -418,7 +417,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   }, [defaultParticipantID, isRuntimeReady, state.sessionOrder]);
 
   const renameSession = useCallback(async (sessionID: string, title: string) => {
-    if (!isRuntimeReady()) throw new Error('MonAgent runtime is not authenticated');
+    if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
     const normalized = title.trim();
     if (!normalized) throw new Error('会话标题不能为空。');
     const session = await renameSessionRaw(sessionID, normalized);

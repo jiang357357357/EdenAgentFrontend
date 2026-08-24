@@ -5,11 +5,14 @@ import type { PetTTSMode } from "../../../../lib/desktop-window"
 import type { MessageData } from "../../../../types"
 
 interface PetSpeechPlaybackOptions {
+  audioOutputDeviceId?: string
   isThinking: boolean
   latestAssistantMessage?: MessageData
   sessionId?: string
   ttsConfigId?: number | null
   ttsMode: PetTTSMode
+  speechVolume?: number
+  speechRate?: number
 }
 
 function messageSpeechSegments(message: MessageData | undefined, fallbackConfigId?: number | null): SpeechSegment[] {
@@ -43,17 +46,21 @@ function messageSpeechSegments(message: MessageData | undefined, fallbackConfigI
 }
 
 export function usePetSpeechPlayback({
+  audioOutputDeviceId,
   isThinking,
   latestAssistantMessage,
   sessionId,
   ttsConfigId,
   ttsMode,
+  speechVolume,
+  speechRate,
 }: PetSpeechPlaybackOptions) {
   const segments = useMemo(
     () => messageSpeechSegments(latestAssistantMessage, ttsConfigId),
     [latestAssistantMessage, ttsConfigId],
   )
   const speech = useTTSSpeech({
+    audioOutputDeviceId,
     sessionId,
     mode: ttsMode,
     isThinking,
@@ -67,6 +74,8 @@ export function usePetSpeechPlayback({
         }]
       : [],
     surface: "pet-bubble",
+    speechVolume,
+    speechRate,
   })
 
   return {

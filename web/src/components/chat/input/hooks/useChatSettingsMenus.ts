@@ -76,7 +76,7 @@ export function useChatSettingsMenus({
   const openModelMenu = () => {
     setModelMenuOpen(true)
     setPermissionMenuOpen(false)
-    if (!modelConfig && !modelLoading) void refreshModelConfig()
+    if (!modelLoading) void refreshModelConfig()
   }
 
   const togglePermissionMenu = () => {
@@ -85,9 +85,10 @@ export function useChatSettingsMenus({
   }
 
   const toggleModelMenu = () => {
-    setModelMenuOpen((open) => !open)
+    const next = !modelMenuOpen
+    setModelMenuOpen(next)
     setPermissionMenuOpen(false)
-    if (!modelConfig && !modelLoading) void refreshModelConfig()
+    if (next && !modelLoading) void refreshModelConfig()
   }
 
   const selectPermissionMode = async (mode: PermissionMode) => {

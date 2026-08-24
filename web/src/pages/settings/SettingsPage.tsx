@@ -48,6 +48,8 @@ import {
   type PetSettings,
 } from "../../lib/desktop-window"
 import { cn } from "../../lib/utils"
+import { listPlugins } from "../../lib/agent-client"
+import type { PluginUiContributionInfo } from "../../generated/mon-agent-rpc"
 
 const screenMotion = {
   initial: { opacity: 0, x: 12 },
@@ -70,6 +72,7 @@ interface SettingsPageProps {
   onBack?: () => void
   onOpenAssistantSwitcher?: () => void
   onOpenSkills?: () => void
+  onOpenPlugins?: () => void
 }
 
 interface ToggleRowProps {
@@ -355,12 +358,14 @@ export function SettingsPage({
   onBack,
   onOpenAssistantSwitcher,
   onOpenSkills,
+  onOpenPlugins,
 }: SettingsPageProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("pet")
   const [settings, setSettings] = useState<PetSettings>(DEFAULT_PET_SETTINGS)
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const [desktopEnvironment, setDesktopEnvironment] = useState<DesktopEnvironmentPreview | null>(null)
   const [previewDragging, setPreviewDragging] = useState(false)
+  const [pluginCards, setPluginCards] = useState<PluginUiContributionInfo[]>([])
   const hydratedRef = useRef(false)
   const remoteUpdateRef = useRef(false)
   const syncTokenRef = useRef(0)
@@ -418,6 +423,23 @@ export function SettingsPage({
     setSaveState("idle")
     setSettings((current) => ({ ...current, ...patch }))
   }
+
+  useEffect(() => {
+    let disposed = false
+    void listPlugins()
+      .then((plugins) => {
+        if (!disposed) {
+          setPluginCards(
+            plugins
+              .filter((plugin) => plugin.enabled)
+              .flatMap((plugin) => plugin.uiContributions)
+              .filter((item) => item.location === "settings"),
+          )
+        }
+      })
+      .catch(() => { if (!disposed) setPluginCards([]) })
+    return () => { disposed = true }
+  }, [])
 
   const patchPetScale = (value: number) => {
     patchSettings({ petScale: value })
@@ -805,6 +827,20 @@ export function SettingsPage({
                   <ChevronRight className="h-4 w-4 text-text-muted" />
                 </button>
 
+                <button
+                  type="button"
+                  onClick={onOpenPlugins}
+                  disabled={!onOpenPlugins}
+                  className="mb-5 flex w-full items-center gap-3 rounded-xl border border-border bg-[#fafaf9] px-4 py-3 text-left transition hover:border-accent/40 hover:bg-accent-dim disabled:opacity-50"
+                >
+                  <Package className="h-5 w-5 text-accent" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-text">插件管理</span>
+                    <span className="mt-0.5 block text-xs text-text-muted">审查权限、版本、签名与运行时</span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-text-muted" />
+                </button>
+
                 <div className="border-t border-border">
                   <RangeControl
                     label="角色缩放"
@@ -919,14 +955,20 @@ export function SettingsPage({
                   恢复默认
                 </button>
               </div>
+              {pluginCards.map((item) => (
+                <div key={`${item.componentId}:${item.id}`} className={`mt-3 rounded-xl border px-4 py-3 ${item.tone === "success" ? "border-emerald-200 bg-emerald-50" : item.tone === "warning" ? "border-amber-200 bg-amber-50" : "border-sky-200 bg-sky-50"}`}>
+                  <div className="text-sm font-medium text-text">{item.title}</div>
+                  <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-text-muted">{item.body}</p>
+                </div>
+              ))}
             </div>
           ) : null}
 
           {activeSection === "about" ? (
             <div className="flex h-full w-full items-center justify-center">
               <div className="w-full rounded-2xl border border-border bg-white px-8 py-10 text-center shadow-[0_0.75cqh_2.8cqh_rgba(41,37,36,0.04)]">
-                <img src="/favicon-256.png" alt="MonAgent" className="mx-auto h-20 w-20 object-contain" />
-                <h2 className="mt-5 text-2xl font-semibold text-text">MonAgent</h2>
+                <img src="/favicon-256.png" alt="Eden Agent" className="mx-auto h-20 w-20 object-contain" />
+                <h2 className="mt-5 text-2xl font-semibold text-text">Eden Agent</h2>
                 <p className="mt-2 text-sm text-text-muted">你的本地 AI 伙伴</p>
                 <div className="mx-auto mt-6 flex w-[72%] items-start gap-3 rounded-xl bg-[#fafaf9] p-4 text-left text-sm leading-6 text-text-muted">
                   <Bell className="mt-0.5 h-5 w-5 shrink-0 text-accent" />

@@ -11,7 +11,7 @@ import type {
   Session,
   ToolCall,
 } from "../types"
-import { getStoredToken, getStoredUser, requestCore, resolveCoreAssetUrl, resolveCoreBaseUrl } from "./auth"
+import { getStoredToken, getStoredUser, resolveCoreAssetUrl, resolveCoreBaseUrl } from "./auth"
 import type { CoreCharacterVisualAction, CoreCharacterVisualActionGroup } from "./auth"
 import { formatLocalTime } from "./time"
 import type {
@@ -22,14 +22,21 @@ import type {
   DirectorRunInfo,
   JsonValue,
   RuntimeModelCatalogInfo,
+  RuntimeModelInfo,
   SessionEvent as RpcSessionEvent,
   SelfAwakeRunInfo,
   SkillInfo,
+  PluginInfo,
+  PluginMarketReleaseInfo,
+  PluginMarketSourceInfo,
   ToolInfo,
 } from "../generated/mon-agent-rpc"
+import { getStoredRuntimeOrigin, LOCAL_ASSISTANT_ID } from "./runtime-origin"
+import { getStoredLocalCharacter, localCharacterParticipantProfile } from "./local-character"
+import { resolveDesktopFileUrl } from "./desktop-window"
 import {
   apiMessage, apiSession, mapMemoForView, projectSessionEvent,
-  mapAgentThreadForView, rpcRequest, sessionEventMessageRole,
+  mapAgentThreadForView, rpcRequest, rpcRequestWithTimeout, sessionEventMessageRole,
   sessionEventToolResultCallID, subscribeRpcEvents, uploadAttachments,
 } from "./rpc-transport"
 
@@ -59,6 +66,7 @@ export type SessionParticipant = {
 export type ApiSession = {
   id: string
   title: string
+  runtimeOrigin?: "mon" | "local"
   runtimeStatus?: import("../types").SessionStatus
   contextTokens?: number
   tokenBreakdown?: import("../types").TokenBreakdown
@@ -106,6 +114,72 @@ export type Connector = RpcConnectorInfo
 
 export type ConnectorCapability = RpcConnectorCapabilityInfo
 export type ConnectorCatalogEntry = RpcConnectorCatalogEntry
+export type Plugin = PluginInfo
+export type PluginMarketRelease = PluginMarketReleaseInfo
+export type PluginMarketSource = PluginMarketSourceInfo
+
+export function listPlugins() {
+  return rpcRequest("plugin.list", {})
+}
+
+export function inspectPlugin(sourceUri: string) {
+  return rpcRequest("plugin.inspect", { sourceType: "local", sourceUri })
+}
+
+export function installPlugin(previewID: string) {
+  return rpcRequest("plugin.install_preview", {
+    previewID,
+    activate: true,
+    enabled: false,
+    requireVerified: false,
+  })
+}
+
+export function enablePlugin(id: string, enabled: boolean) {
+  return rpcRequest("plugin.enable", { id, enabled })
+}
+
+export function setPluginPermissions(
+  id: string,
+  revision: string,
+  decisions: Array<{ capability: string; resource: string; access: string; decision: string }>,
+) {
+  return rpcRequest("plugin.permissions.set", { id, revision, decisions })
+}
+
+export function uninstallPlugin(id: string) {
+  return rpcRequest("plugin.uninstall", { id })
+}
+
+export function listPluginMarketSources() {
+  return rpcRequest("plugin.market.source.list", {})
+}
+
+export function addPluginMarketSource(input: {
+  id: string
+  name: string
+  url: string
+  keyID: string
+  enabled?: boolean
+}) {
+  return rpcRequest("plugin.market.source.add", { ...input, enabled: input.enabled ?? true })
+}
+
+export function removePluginMarketSource(id: string) {
+  return rpcRequest("plugin.market.source.remove", { id })
+}
+
+export function refreshPluginMarketSource(id: string) {
+  return rpcRequest("plugin.market.source.refresh", { id })
+}
+
+export function listPluginMarketReleases(sourceID?: string) {
+  return rpcRequest("plugin.market.list", sourceID ? { sourceID } : {})
+}
+
+export function inspectPluginMarketRelease(sourceID: string, pluginID: string, version: string) {
+  return rpcRequest("plugin.market.inspect", { sourceID, pluginID, version })
+}
 
 export async function listConnectors() {
   return rpcRequest("connector.list", {})
@@ -1205,7 +1279,10 @@ export async function createSessionRaw(
   assistantIDs: Array<number | string> = [],
   initialPrompt?: { content: string; attachments: Array<PromptAttachment | string> },
 ) {
-  const participants = await resolveParticipants(assistantIDs)
+  const participantIDs = getStoredRuntimeOrigin() === "local" && assistantIDs.length === 0
+    ? [LOCAL_ASSISTANT_ID]
+    : assistantIDs
+  const participants = await resolveParticipants(participantIDs)
   const environment = currentSessionEnvironment()
   const session = await rpcRequest("session.create", { title: "", participants, environment })
   await getRuntimeModelConfig(session.id).catch((error) => {
@@ -1226,6 +1303,24 @@ export async function updateSessionParticipants(sessionID: string, assistantIDs:
 }
 
 async function resolveParticipants(assistantIDs: Array<number | string>) {
+  if (getStoredRuntimeOrigin() === "local") {
+    const localCharacter = getStoredLocalCharacter()
+    const avatarUrl = resolveDesktopFileUrl(localCharacter.avatarPath)
+    const standingImageUrl = resolveDesktopFileUrl(localCharacter.standingImagePath)
+    return assistantIDs.map((_assistantID, position) => ({
+      assistantId: LOCAL_ASSISTANT_ID,
+      assistantName: localCharacter.name,
+      characterId: LOCAL_ASSISTANT_ID,
+      characterName: localCharacter.name,
+      signature: localCharacter.signature,
+      avatarUrl,
+      standingImageUrl,
+      ttsConfigId: null,
+      sttConfigId: null,
+      position: BigInt(position),
+      profile: localCharacterParticipantProfile(localCharacter),
+    }))
+  }
   return Promise.all(assistantIDs.map(async (assistantID, position) => {
     let assistant: Awaited<ReturnType<typeof import("./auth").fetchAssistant>> | undefined
     try {
@@ -1652,6 +1747,30 @@ function mapRuntimeModelCatalog(catalog: RuntimeModelCatalogInfo): RuntimeModelC
   }
 }
 
+function mapLocalRuntimeModel(info: RuntimeModelInfo): RuntimeModelConfig {
+  const aiEntityId = modelEntityId(info.aiEntityId ?? info.id) ?? info.id
+  const option: RuntimeModelOption = {
+    id: info.id,
+    aiEntityId,
+    label: info.label,
+    name: info.label,
+    provider: info.provider,
+    providerName: info.provider,
+    modelID: info.id,
+    status: info.available ? "available" : "unavailable",
+    isMultimodal: false,
+    contextWindow: info.contextWindow == null ? undefined : Number(info.contextWindow),
+    selected: true,
+  }
+  return {
+    source: info.source,
+    serviceType: "ai",
+    current: option,
+    vision: null,
+    options: [option],
+  }
+}
+
 export async function getToolStatus() {
   const definitions = (await rpcRequest("tool.list", {})).map(mapToolInfoForView)
   return { search: { status: "online", provider: "rust-host", mode: "embedded" },
@@ -1660,7 +1779,7 @@ export async function getToolStatus() {
 }
 
 export async function listWorkspaceDirectory(path = "") {
-  const directory = await rpcRequest("workspace.list", { path })
+  const directory = await rpcRequestWithTimeout("workspace.list", { path }, 8_000)
   return {
     root: directory.root,
     path: directory.path,
@@ -1679,14 +1798,24 @@ export async function readWorkspaceFile(path: string): Promise<WorkspaceFileCont
 }
 
 export async function getWorkspace() {
-  return rpcRequest("workspace.info", {})
+  return rpcRequestWithTimeout("workspace.info", {}, 8_000)
 }
 
-export async function switchWorkspace(sessionId: string, path: string) {
-  return rpcRequest("workspace.switch", { sessionId, path })
+export async function switchWorkspace(sessionId: string | undefined, path: string) {
+  // Workspace changes are durable audited events and therefore need a session
+  // in the server protocol. A pristine chat page has no session until its first
+  // message, so materialize that draft here instead of disabling the workspace
+  // picker and forcing the user to send a message first.
+  const createdAuditSession = !sessionId
+  const auditSessionId = sessionId || (await createSessionRaw()).id
+  const result = await rpcRequest("workspace.switch", { sessionId: auditSessionId, path })
+  return { ...result, auditSessionId, createdAuditSession }
 }
 
 export async function getRuntimeModelConfig(sessionId?: string) {
+  if (getStoredRuntimeOrigin() === "local") {
+    return mapLocalRuntimeModel(await rpcRequest("model.read", sessionId ? { sessionId } : {}))
+  }
   const coreToken = getStoredToken()
   if (!coreToken) throw new Error("not_authenticated: Core token missing")
   return mapRuntimeModelCatalog(await rpcRequest("model.catalog", {
@@ -1697,6 +1826,13 @@ export async function getRuntimeModelConfig(sessionId?: string) {
 }
 
 export async function updateRuntimeModel(aiEntityId: number | string, sessionId?: string): Promise<RuntimeModelConfig> {
+  if (getStoredRuntimeOrigin() === "local") {
+    const config = await getRuntimeModelConfig(sessionId)
+    if (String(config.current?.aiEntityId) !== String(aiEntityId)) {
+      throw new Error("本地模式的模型由 MON_AGENT_MODEL 配置；修改后请重启 Agent Server。")
+    }
+    return config
+  }
   const coreToken = getStoredToken()
   if (!coreToken) throw new Error("not_authenticated: Core token missing")
   return mapRuntimeModelCatalog(await rpcRequest("model.select", {
@@ -1948,7 +2084,7 @@ export async function subscribeEvents(handlers: SubscribeHandlers | ((event: Api
     },
     (connected, error) => {
       if (connected) normalizedRpc.onOpen?.()
-      else normalizedRpc.onError?.(error ?? "MonAgent RPC disconnected")
+      else normalizedRpc.onError?.(error ?? "Eden Agent RPC disconnected")
     },
   )
 }

@@ -21,6 +21,7 @@ interface RealtimeSTTStartOptions {
   sessionId: string
   configId?: number
   endSilenceMs?: number
+  audioInputDeviceId?: string
 }
 
 const TARGET_SAMPLE_RATE = 16_000
@@ -152,6 +153,9 @@ export class RealtimeSTTService {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
+          ...(options.audioInputDeviceId && options.audioInputDeviceId !== "default"
+            ? { deviceId: { exact: options.audioInputDeviceId } }
+            : {}),
           echoCancellation: true,
           noiseSuppression: true,
           sampleRate: TARGET_SAMPLE_RATE,

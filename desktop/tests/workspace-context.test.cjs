@@ -52,6 +52,20 @@ test("resolves frontend, agent configuration and desktop icons", () => {
   assert.equal(context.resolveDesktopIconPath(), "D:\\Mon\\Agent\\frontend\\desktop\\assets\\icon.ico")
 })
 
+test("prefers private environment variables for the development account", () => {
+  const context = createContext({
+    "D:\\Mon\\Agent\\.monconfig": "[auth_dev]\nUSERNAME=\nPASSWORD=",
+  }, {
+    MON_AGENT_DEV_USERNAME: "local-dev",
+    MON_AGENT_DEV_PASSWORD: "private-secret",
+  })
+
+  assert.deepEqual(context.getDevAccount(), {
+    username: "local-dev",
+    password: "private-secret",
+  })
+})
+
 test("resolves the MonCore URL from the workspace and normalizes wildcard hosts", () => {
   const context = createContext({
     "D:\\Mon\\.monconfig": "[workspace]\nNAME=Mon",

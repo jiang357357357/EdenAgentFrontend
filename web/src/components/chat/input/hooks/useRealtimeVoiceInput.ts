@@ -4,6 +4,7 @@ import { updateDesktopActivityFacts } from "../../../../lib/desktop-window"
 import { RealtimeSTTService, type RealtimeSTTStatus } from "../../../../lib/realtime-stt"
 
 interface RealtimeVoiceInputOptions {
+  audioInputDeviceId?: string
   autoSendOnFinish?: boolean
   disabled?: boolean
   halfDuplexOutputActive: boolean
@@ -19,6 +20,7 @@ interface RealtimeVoiceInputOptions {
 }
 
 export function useRealtimeVoiceInput({
+  audioInputDeviceId,
   autoSendOnFinish = false,
   disabled,
   halfDuplexOutputActive,
@@ -217,7 +219,7 @@ export function useRealtimeVoiceInput({
     })
     voiceServiceRef.current = service
     try {
-      await service.start({ sessionId, configId: sttConfigId })
+      await service.start({ sessionId, configId: sttConfigId, audioInputDeviceId })
     } catch {
       if (voiceGenerationRef.current === generation && voiceServiceRef.current === service) {
         voiceStartedAtRef.current = null

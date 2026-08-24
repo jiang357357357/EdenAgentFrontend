@@ -1,8 +1,11 @@
 const { contextBridge, ipcRenderer } = require("electron")
-const { desktopFileUrl } = require("./protocols/file-protocol.cjs")
+const { desktopFileUrl, resolveBundledWebAssetPath } = require("./protocols/file-protocol.cjs")
 
 function convertFileSrc(filePath) {
-  return desktopFileUrl(filePath)
+  return desktopFileUrl(resolveBundledWebAssetPath(filePath, {
+    preloadDirectory: __dirname,
+    isPackaged: !process.defaultApp,
+  }))
 }
 
 contextBridge.exposeInMainWorld("monAgentDesktop", {

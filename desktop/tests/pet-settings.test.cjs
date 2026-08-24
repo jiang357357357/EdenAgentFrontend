@@ -36,3 +36,16 @@ test("draggable characters cannot also be click-through", () => {
 test("legacy speech synthesis maps to text-only TTS", () => {
   assert.equal(normalizePetSettings({ speechSynthesisEnabled: true }).ttsMode, "text_only")
 })
+
+test("voice devices and playback controls are normalized", () => {
+  const settings = normalizePetSettings({
+    audioInputDeviceId: " microphone-1 ",
+    audioOutputDeviceId: "speaker-1",
+    speechVolume: 140,
+    speechRate: 0.2,
+  })
+  assert.equal(settings.audioInputDeviceId, "microphone-1")
+  assert.equal(settings.audioOutputDeviceId, "speaker-1")
+  assert.equal(settings.speechVolume, 100)
+  assert.equal(settings.speechRate, 0.5)
+})

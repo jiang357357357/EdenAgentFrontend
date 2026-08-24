@@ -40,6 +40,7 @@ interface ChatInputProps {
   permissionMode?: PermissionMode
   onPermissionModeChange?: (mode: PermissionMode) => Promise<void>
   voiceInputEnabled?: boolean
+  audioInputDeviceId?: string
   sttConfigId?: number | null
   halfDuplexOutputActive?: boolean
   contextTokenEstimate?: number
@@ -78,6 +79,7 @@ export function ChatInput({
   permissionMode = "restricted",
   onPermissionModeChange,
   voiceInputEnabled = false,
+  audioInputDeviceId = "default",
   sttConfigId,
   halfDuplexOutputActive = false,
   contextTokenEstimate = 0,
@@ -142,6 +144,7 @@ export function ChatInput({
     voiceLevel,
     voiceStatus,
   } = useRealtimeVoiceInput({
+    audioInputDeviceId,
     disabled,
     halfDuplexOutputActive,
     input,

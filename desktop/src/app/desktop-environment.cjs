@@ -68,11 +68,11 @@ function windowsBackgroundColor(value) {
 
 function cachedWallpaperPaths(appData, fileSystem) {
   if (!appData) return []
-  const cacheDir = path.join(appData, "Microsoft", "Windows", "Themes", "CachedFiles")
+  const cacheDir = path.win32.join(appData, "Microsoft", "Windows", "Themes", "CachedFiles")
   try {
     return fileSystem
       .readdirSync(cacheDir)
-      .map((name) => path.join(cacheDir, name))
+      .map((name) => path.win32.join(cacheDir, name))
       .filter((filePath) => fileSystem.statSync(filePath).isFile())
       .sort((left, right) => fileSystem.statSync(right).mtimeMs - fileSystem.statSync(left).mtimeMs)
   } catch {
@@ -83,7 +83,7 @@ function cachedWallpaperPaths(appData, fileSystem) {
 function resolveWindowsWallpaperPath(registryPath, appData, fileSystem = fs) {
   const candidates = [registryPath]
   if (appData) {
-    candidates.push(path.join(appData, "Microsoft", "Windows", "Themes", "TranscodedWallpaper"))
+    candidates.push(path.win32.join(appData, "Microsoft", "Windows", "Themes", "TranscodedWallpaper"))
     candidates.push(...cachedWallpaperPaths(appData, fileSystem))
   }
   return candidates.find((candidate) => candidate && fileSystem.existsSync(candidate)) ?? ""

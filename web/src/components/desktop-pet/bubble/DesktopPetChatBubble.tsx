@@ -18,6 +18,10 @@ export function DesktopPetChatBubble({
   ttsConfigId,
   voiceInputEnabled,
   ttsMode,
+  audioInputDeviceId,
+  audioOutputDeviceId,
+  speechVolume,
+  speechRate,
   latestAssistantMessage,
   dialogSegments,
   isThinking,
@@ -43,7 +47,16 @@ export function DesktopPetChatBubble({
     speechPaused,
     stopSpeechPlayback,
     toggleSpeechClip,
-  } = usePetSpeechPlayback({ isThinking, latestAssistantMessage, sessionId, ttsConfigId, ttsMode })
+  } = usePetSpeechPlayback({
+    audioOutputDeviceId,
+    isThinking,
+    latestAssistantMessage,
+    sessionId,
+    speechRate,
+    speechVolume,
+    ttsConfigId,
+    ttsMode,
+  })
   const {
     toggleVoiceInput,
     voiceBusy,
@@ -51,6 +64,7 @@ export function DesktopPetChatBubble({
     voiceLevel,
     voiceStatus,
   } = useRealtimeVoiceInput({
+    audioInputDeviceId,
     autoSendOnFinish: true,
     disabled: isThinking,
     halfDuplexOutputActive: speechOutputActive,

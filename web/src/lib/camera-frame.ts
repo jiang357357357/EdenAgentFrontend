@@ -3,7 +3,7 @@ const CAMERA_READY_TIMEOUT_MS = 15_000
 export function cameraErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return String(error)
   if (error.name === "NotAllowedError" || error.name === "SecurityError") {
-    return "摄像头权限被拒绝，请在系统或浏览器设置中允许 MonAgent 使用摄像头。"
+    return "摄像头权限被拒绝，请在系统或浏览器设置中允许 Eden Agent 使用摄像头。"
   }
   if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
     return "当前设备没有检测到可用摄像头。"

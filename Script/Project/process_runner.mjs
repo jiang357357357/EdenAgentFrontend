@@ -29,8 +29,13 @@ export function resolveNpmInvocation(args, runtime = {}) {
     }
   }
 
-  const bundledCli = pathApi.join(pathApi.dirname(execPath), "node_modules", "npm", "bin", "npm-cli.js")
-  if (fileExists(bundledCli)) {
+  const executableDirectory = pathApi.dirname(execPath)
+  const npmCliCandidates = [
+    pathApi.join(executableDirectory, "node_modules", "npm", "bin", "npm-cli.js"),
+    pathApi.join(pathApi.dirname(executableDirectory), "lib", "node_modules", "npm", "bin", "npm-cli.js"),
+  ]
+  const bundledCli = npmCliCandidates.find((candidate) => fileExists(candidate))
+  if (bundledCli) {
     return {
       command: execPath,
       args: [bundledCli, ...args],

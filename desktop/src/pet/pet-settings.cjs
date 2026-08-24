@@ -6,6 +6,10 @@ const DEFAULT_PET_SETTINGS = Object.freeze({
   showInput: true,
   voiceInputEnabled: true,
   ttsMode: "none",
+  audioInputDeviceId: "default",
+  audioOutputDeviceId: "default",
+  speechVolume: 100,
+  speechRate: 1,
   petScale: 100,
   inputOpacity: 78,
   dock: "center",
@@ -39,6 +43,14 @@ function normalizePetSettings(input = {}, defaults = DEFAULT_PET_SETTINGS) {
     showInput,
     voiceInputEnabled: Boolean(input.voiceInputEnabled ?? defaults.voiceInputEnabled),
     ttsMode,
+    audioInputDeviceId: typeof input.audioInputDeviceId === "string" && input.audioInputDeviceId.trim()
+      ? input.audioInputDeviceId.trim()
+      : defaults.audioInputDeviceId,
+    audioOutputDeviceId: typeof input.audioOutputDeviceId === "string" && input.audioOutputDeviceId.trim()
+      ? input.audioOutputDeviceId.trim()
+      : defaults.audioOutputDeviceId,
+    speechVolume: clampNumber(input.speechVolume, defaults.speechVolume, 0, 100),
+    speechRate: clampNumber(input.speechRate, defaults.speechRate, 0.5, 2),
     petScale: clampNumber(input.petScale, defaults.petScale, 70, 200),
     inputOpacity: clampNumber(input.inputOpacity, defaults.inputOpacity, 30, 100),
     dock: ["left", "center", "right"].includes(input.dock) ? input.dock : defaults.dock,

@@ -98,6 +98,7 @@ interface StopPlaybackOptions {
 }
 
 interface UseTTSSpeechOptions {
+  audioOutputDeviceId?: string
   sessionId?: string
   mode: PetTTSMode
   isThinking: boolean
@@ -105,6 +106,8 @@ interface UseTTSSpeechOptions {
   activeSegments: SpeechSegment[]
   messageRevisions: SpeechMessageRevision[]
   surface?: DesktopSpeechSurface
+  speechRate?: number
+  speechVolume?: number
 }
 
 async function speechTextHash(text: string) {
@@ -135,6 +138,7 @@ function waitForSpeechRetry(delayMs: number, signal: AbortSignal) {
 }
 
 export function useTTSSpeech({
+  audioOutputDeviceId = "default",
   sessionId,
   mode,
   isThinking,
@@ -142,6 +146,8 @@ export function useTTSSpeech({
   activeSegments,
   messageRevisions,
   surface = "main-chat",
+  speechRate = 1,
+  speechVolume = 100,
 }: UseTTSSpeechOptions) {
   const [clips, setClips] = useState<Record<string, SpeechClip>>({})
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null)
@@ -360,6 +366,16 @@ export function useTTSSpeech({
       return
     }
     const audio = new Audio(source)
+    audio.volume = Math.max(0, Math.min(1, speechVolume / 100))
+    audio.playbackRate = Math.max(0.5, Math.min(2, speechRate))
+    if (audioOutputDeviceId !== "default" && "setSinkId" in audio) {
+      void (audio as HTMLAudioElement & { setSinkId: (deviceId: string) => Promise<void> })
+        .setSinkId(audioOutputDeviceId)
+        .catch((error) => diagnose("playback-output-device-failed", {
+          deviceId: audioOutputDeviceId,
+          error: error instanceof Error ? error.message : String(error),
+        }))
+    }
     let settled = false
     let metadataTimeoutId: number | undefined
     let stallTimeoutId: number | undefined

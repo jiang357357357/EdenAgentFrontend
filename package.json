@@ -2,6 +2,7 @@
   "name": "mon-agent-frontend",
   "private": true,
   "version": "1.8.0",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "main": "desktop/src/main.cjs",
   "packageManager": "npm@10.9.7",

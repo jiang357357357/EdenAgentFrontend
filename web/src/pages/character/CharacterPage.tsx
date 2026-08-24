@@ -21,6 +21,7 @@ import {
   type PetCharacterViewport,
 } from "../../lib/desktop-window"
 import { resolveMonAgentUrl } from "../../lib/agent-client"
+import { getStoredRuntimeOrigin } from "../../lib/runtime-origin"
 import { cn } from "../../lib/utils"
 import type { MessageData, PendingPermission, PendingQuestion, PermissionMode, PromptAttachment, Session, ToolCall } from "../../types"
 
@@ -220,10 +221,14 @@ export function CharacterPage({
             <DesktopPetChatBubble
               assistantName={displayName}
               sessionId={activeSession?.id}
-              sttConfigId={assistant?.character?.stt_config_id}
-              ttsConfigId={activeReplyMessage?.speaker?.ttsConfigID ?? assistant?.character?.tts_config_id}
+              sttConfigId={assistant?.character?.stt_config_id ?? (getStoredRuntimeOrigin() === "local" ? 0 : undefined)}
+              ttsConfigId={activeReplyMessage?.speaker?.ttsConfigID ?? assistant?.character?.tts_config_id ?? (getStoredRuntimeOrigin() === "local" ? 0 : undefined)}
               voiceInputEnabled={petSettings.voiceInputEnabled}
               ttsMode={petSettings.ttsMode}
+              audioInputDeviceId={petSettings.audioInputDeviceId}
+              audioOutputDeviceId={petSettings.audioOutputDeviceId}
+              speechVolume={petSettings.speechVolume}
+              speechRate={petSettings.speechRate}
               latestAssistantMessage={activeReplyMessage}
               dialogSegments={dialogSegments}
               isThinking={isThinking}

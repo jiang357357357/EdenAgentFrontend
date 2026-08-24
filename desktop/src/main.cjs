@@ -4,6 +4,8 @@ const fs = require("node:fs")
 const path = require("node:path")
 const { promisify } = require("node:util")
 const { createDesktopEnvironmentService } = require("./app/desktop-environment.cjs")
+const { createLocalRuntimeConfigStore } = require("./app/local-runtime-config.cjs")
+const { createLocalRuntimeService } = require("./app/local-runtime-service.cjs")
 const { createWorkspaceContext } = require("./app/workspace-context.cjs")
 const { createActivityPresenceService } = require("./activity/activity-presence.cjs")
 const { registerDesktopIpc } = require("./ipc/command-router.cjs")
@@ -44,7 +46,7 @@ const { rendererConsoleError } = require("./windows/renderer-console-message.cjs
 const execFileAsync = promisify(execFile)
 const { captureDesktopScreen } = createDesktopCapture({ app, desktopCapturer, screen })
 
-const APP_WINDOW_TITLE = "MonAgent — AI 个人助手"
+const APP_WINDOW_TITLE = "Eden Agent — AI 个人助手"
 const DEFAULT_CORE_HOST = "127.0.0.1"
 const DEFAULT_CORE_PORT = 40011
 const DEFAULT_WEB_PORT = 40091
@@ -74,7 +76,17 @@ const quitFlagPath =
   process.env.MON_AGENT_DESKTOP_QUIT_FLAG?.trim() ||
   resolveMonConfigPath("desktop", "QUIT_FLAG", ".artifacts/desktop-quit.flag")
 const quitFlagController = createDesktopQuitFlagController({ quitFlagPath })
-const rustServer = createRustServerManager({ app, agentRoot })
+const localRuntimeConfig = createLocalRuntimeConfigStore({ app, agentRoot })
+const rustServer = createRustServerManager({
+  app,
+  agentRoot,
+  getRuntimeEnvironment: () => localRuntimeConfig.environment(),
+})
+const localRuntimeService = createLocalRuntimeService({
+  configStore: localRuntimeConfig,
+  rustServer,
+  serverHealthUrl: `http://127.0.0.1:${getAgentConfig("server", "PORT", "40092")}/healthz`,
+})
 ipcMain.handle("mon-agent:capability", () => rustServer.capability())
 quitFlagController.clearStaleFlagForLaunch()
 const petSettingsPath = resolveMonConfigPath("desktop", "PET_SETTINGS", ".artifacts/desktop-pet-settings.json")
@@ -250,7 +262,7 @@ const processLifecycle = createProcessLifecycle({
 })
 processLifecycle.registerOutputErrorHandlers()
 
-app.setName("MonAgent")
+app.setName("Eden Agent")
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required")
 if (process.platform === "win32") {
   app.setAppUserModelId("com.mon.monagent")
@@ -697,7 +709,7 @@ function createQuestionWindow() {
     height: Math.round(workArea.height * 0.72),
   }
   questionWindow = new BrowserWindow({
-    title: "MonAgent 用户决策",
+    title: "Eden Agent 用户决策",
     ...bounds,
     minWidth: Math.round(workArea.width * 0.28),
     minHeight: Math.round(workArea.height * 0.5),
@@ -1017,7 +1029,7 @@ async function createSettingsWindow() {
 
   const preload = path.join(__dirname, "preload.cjs")
   settingsWindow = new BrowserWindow({
-    title: "MonAgent 设置",
+    title: "Eden Agent 设置",
     ...bounds,
     show: false,
     frame: false,
@@ -1067,6 +1079,19 @@ registerDesktopIpc({
       stopActivityPresence,
     }),
     ...createWindowCommandHandlers({ BrowserWindow, dialog, shell, getMainWindow: () => mainWindow }),
+    get_local_runtime_config: () => localRuntimeService.read(),
+    test_local_runtime_config: ({ args }) => localRuntimeService.testConnection(args.config ?? {}),
+    save_local_runtime_config: ({ args }) => localRuntimeService.saveAndRestart(args.config ?? {}),
+    inspect_local_gsv_config: ({ args }) => localRuntimeService.inspectGsv(args.config ?? {}, args.stage ?? "all"),
+    preview_local_gsv_voice: ({ args }) => localRuntimeService.previewGsv(args.config ?? {}, args.text ?? ""),
+    save_local_gsv_config: ({ args }) => localRuntimeService.saveVoice(args.config ?? {}),
+    test_local_gsv_stt_config: ({ args }) => localRuntimeService.testGsvStt(args.config ?? {}),
+    save_local_gsv_stt_config: ({ args }) => localRuntimeService.saveTranscription(args.config ?? {}),
+    save_local_character_config: ({ args }) => localRuntimeService.saveCharacter(args.character ?? {}),
+    open_local_runtime_config_directory: async () => {
+      if (!shell?.openPath) return false
+      return (await shell.openPath(path.dirname(localRuntimeConfig.filePath))) === ""
+    },
     update_activity_facts: ({ sender, args }) => updateRendererActivityFacts(sender, args.facts ?? {}),
     report_performance_diagnostic: ({ sender, args }) => {
       const entry = {

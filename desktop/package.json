@@ -1,6 +1,7 @@
 {
   "name": "mon-agent-desktop",
   "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "main": "src/main.cjs",
   "scripts": {

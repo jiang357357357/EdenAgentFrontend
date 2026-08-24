@@ -7,8 +7,8 @@ const agentClient = readFileSync(new URL("../src/lib/agent-client.ts", import.me
 const rpcTransport = readFileSync(new URL("../src/lib/rpc-transport.ts", import.meta.url), "utf8")
 
 test("connector capability examples use the canonical camelCase tool contract", () => {
-  assert.match(connectorPage, /arguments:\s*\{ connectorId: connector\.id, query:/)
-  assert.match(connectorPage, /arguments:\s*\{ connectorId: connector\.id, action:/)
+  assert.match(connectorPage, /arguments:\s*\{\s*connectorId: connector\.id,\s*query:/)
+  assert.match(connectorPage, /arguments:\s*\{\s*connectorId: connector\.id,\s*action:/)
   assert.doesNotMatch(connectorPage, /connector_id/)
 })
 
