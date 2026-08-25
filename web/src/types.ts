@@ -83,6 +83,7 @@ export interface MessageData {
   metaParts?: MetaPartCard[]
   images?: string[]
   isStreaming?: boolean
+  deliveryState?: "sending" | "queued" | "failed"
   error?: MessageError
   completionState?: "provisional" | "final"
   coordinationBatchID?: string | null
@@ -509,6 +510,7 @@ export interface RuntimeMessage {
   createdAt?: number
   completedAt?: number
   localOnly?: boolean
+  deliveryState?: "sending" | "queued" | "failed"
   optimisticPartIDs?: string[]
   modelID?: string
   providerID?: string

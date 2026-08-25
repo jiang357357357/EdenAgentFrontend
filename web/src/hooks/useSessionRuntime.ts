@@ -27,12 +27,15 @@ import {
 } from '../lib/agent-client';
 import type { ApiEvent, PendingCameraCapture, PendingScreenCapture } from '../lib/agent-client';
 import {
+  acceptLocalUserMessage,
   applyRuntimeEvent,
+  failLocalUserMessage,
   hydratePendingPermissions,
   hydratePendingQuestions,
   hydrateSessionList,
   hydrateSessionMessages,
   prependSessionMessages,
+  pushLocalUserMessage,
   initialRuntimeState,
   resetRuntime,
   removeSession,
@@ -293,13 +296,25 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         throw new Error('Eden Agent runtime is not authenticated');
       }
       if (!sessionID) {
-        const session = await createSessionRaw(draftParticipantIDs, { content, attachments });
+        const session = await createSessionRaw(draftParticipantIDs);
         sessionID = session.id;
         activeSessionIdRef.current = session.id;
         setDraftParticipantIDs([]);
         sendingSessionIdsRef.current.add(session.id);
         dispatch(hydrateSessionList([session]));
         dispatch(setActiveSession(session.id));
+        const optimisticMessage = pushLocalUserMessage(session.id, content, attachments);
+        dispatch(optimisticMessage);
+        try {
+          await sendPromptAsync(session.id, content, attachments);
+          dispatch(acceptLocalUserMessage(session.id, optimisticMessage.messageID));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          sendingSessionIdsRef.current.delete(session.id);
+          dispatch(failLocalUserMessage(session.id, optimisticMessage.messageID, message));
+          dispatch(setConnectionError(message));
+          throw error;
+        }
         return;
       }
       if (!sessionID) {
@@ -310,19 +325,34 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
           throw new Error('运行中的后续消息暂不支持附件，请等待当前回合结束。');
         }
         if (!content.trim()) return;
-        await followUpTurn(sessionID, content);
+        const optimisticMessage = pushLocalUserMessage(sessionID, content, attachments, { followUp: true });
+        dispatch(optimisticMessage);
+        try {
+          await followUpTurn(sessionID, content);
+          dispatch(acceptLocalUserMessage(sessionID, optimisticMessage.messageID));
+        } catch (error) {
+          dispatch(failLocalUserMessage(
+            sessionID,
+            optimisticMessage.messageID,
+            error instanceof Error ? error.message : String(error),
+            { followUp: true },
+          ));
+          throw error;
+        }
         return;
       }
 
       sendingSessionIdsRef.current.add(sessionID);
-      dispatch(setSessionStatus(sessionID, 'busy'));
-      dispatch(setConnectionError(undefined));
+      const optimisticMessage = pushLocalUserMessage(sessionID, content, attachments);
+      dispatch(optimisticMessage);
       try {
         await sendPromptAsync(sessionID, content, attachments);
+        dispatch(acceptLocalUserMessage(sessionID, optimisticMessage.messageID));
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         sendingSessionIdsRef.current.delete(sessionID);
-        dispatch(setSessionStatus(sessionID, 'idle'));
-        dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
+        dispatch(failLocalUserMessage(sessionID, optimisticMessage.messageID, message));
+        dispatch(setConnectionError(message));
         throw error;
       }
     },

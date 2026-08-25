@@ -122,5 +122,8 @@ export function useChatAttachments() {
     handleFilePick,
     handlePaste,
     removeAttachment,
+    restoreAttachments: (submitted: PromptAttachment[]) => {
+      setAttachments((current) => current.length > 0 ? current : submitted)
+    },
   }
 }

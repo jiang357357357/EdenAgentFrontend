@@ -17,7 +17,7 @@ import { useSlashCommandMenu } from "./hooks/useSlashCommandMenu"
 import type { DialogSegment } from "./types"
 
 interface ChatInputProps {
-  onSend: (text: string, attachments: PromptAttachment[]) => void
+  onSend: (text: string, attachments: PromptAttachment[]) => void | Promise<void>
   disabled?: boolean
   allowFollowUp?: boolean
   overlay?: boolean
@@ -106,6 +106,7 @@ export function ChatInput({
     handleFilePick,
     handlePaste,
     removeAttachment,
+    restoreAttachments,
   } = useChatAttachments()
   const {
     activePermission,
@@ -216,6 +217,7 @@ export function ChatInput({
     onOpenSkills,
     onSend,
     overlay,
+    restoreAttachments,
     setInput,
     voiceBusy,
   })

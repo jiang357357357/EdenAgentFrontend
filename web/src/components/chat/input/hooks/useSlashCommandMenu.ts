@@ -27,8 +27,9 @@ interface SlashCommandMenuOptions {
   onOpenSelfAwake?: () => void
   onOpenSettings?: () => void
   onOpenSkills?: () => void
-  onSend: (text: string, attachments: PromptAttachment[]) => void
+  onSend: (text: string, attachments: PromptAttachment[]) => void | Promise<void>
   overlay: boolean
+  restoreAttachments: (attachments: PromptAttachment[]) => void
   setInput: Dispatch<SetStateAction<string>>
   voiceBusy: boolean
 }
@@ -50,6 +51,7 @@ export function useSlashCommandMenu({
   onOpenSkills,
   onSend,
   overlay,
+  restoreAttachments,
   setInput,
   voiceBusy,
 }: SlashCommandMenuOptions) {
@@ -147,6 +149,30 @@ export function useSlashCommandMenu({
     })
   }
 
+  const submitMessage = (submittedInput: string, submittedAttachments: PromptAttachment[]) => {
+    const restoreSubmission = (error: unknown) => {
+      setInput((current) => current.trim() ? current : submittedInput)
+      restoreAttachments(submittedAttachments)
+      setCommandError(error instanceof Error ? error.message : String(error))
+      window.requestAnimationFrame(() => textareaRef.current?.focus())
+    }
+
+    void updateDesktopActivityFacts({
+      surface: overlay ? "chat-overlay" : "main-chat",
+      last_user_interaction_at: new Date().toISOString(),
+    })
+    setInput("")
+    setCursor(0)
+    clearAttachments()
+    setCommandError("")
+
+    try {
+      void Promise.resolve(onSend(submittedInput, submittedAttachments)).catch(restoreSubmission)
+    } catch (error) {
+      restoreSubmission(error)
+    }
+  }
+
   const handleSend = () => {
     if ((!input.trim() && attachments.length === 0) || voiceBusy) return
     const parsedCommand = parseSlashCommand(input)
@@ -158,15 +184,7 @@ export function useSlashCommandMenu({
       }
       if (!parsedCommand.name) return
       if (parsedCommand.name.startsWith("skill:")) {
-        onSend(input.trim(), attachments)
-        void updateDesktopActivityFacts({
-          surface: overlay ? "chat-overlay" : "main-chat",
-          last_user_interaction_at: new Date().toISOString(),
-        })
-        setInput("")
-        setCursor(0)
-        clearAttachments()
-        setCommandError("")
+        submitMessage(input.trim(), [...attachments])
         return
       }
       const command = findSlashCommand(commands, parsedCommand.name)
@@ -188,15 +206,7 @@ export function useSlashCommandMenu({
       return
     }
 
-    onSend(input.trim(), attachments)
-    void updateDesktopActivityFacts({
-      surface: overlay ? "chat-overlay" : "main-chat",
-      last_user_interaction_at: new Date().toISOString(),
-    })
-    setInput("")
-    setCursor(0)
-    clearAttachments()
-    setCommandError("")
+    submitMessage(input.trim(), [...attachments])
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {

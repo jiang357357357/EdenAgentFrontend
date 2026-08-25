@@ -115,6 +115,22 @@ export function MessageBubble({
               {isUser ? "你" : messageAssistantName}
             </span>
             <span className="text-[1.45vh] text-text-muted/50">{message.timestamp}</span>
+            {isUser && message.deliveryState ? (
+              <span
+                className={cn(
+                  "rounded-full px-[0.55vh] py-[0.1vh] text-[1.25vh] font-medium",
+                  message.deliveryState === "failed"
+                    ? "bg-red-100 text-red-700"
+                    : "bg-accent/10 text-accent",
+                )}
+              >
+                {message.deliveryState === "sending"
+                  ? "发送中"
+                  : message.deliveryState === "queued"
+                    ? "已排队"
+                    : "发送失败"}
+              </span>
+            ) : null}
             {!isUser && message.completionState === "provisional" ? (
               <span className="rounded-full bg-amber-100 px-[0.55vh] py-[0.1vh] text-[1.25vh] font-medium text-amber-700">
                 阶段性回复 · 后台处理中
@@ -303,6 +319,12 @@ export function MessageBubble({
             {!isUser && !message.isStreaming && <RawOutput content={renderedContent} />}
           </>
         )}
+
+        {isUser && message.deliveryState === "failed" && message.error ? (
+          <div role="alert" className="px-[0.45vh] text-[1.45vh] text-red-600">
+            发送失败：{message.error.message || "未知错误"}
+          </div>
+        ) : null}
 
         {!isUser && message.error ? <MessageErrorCard error={message.error} /> : null}
 

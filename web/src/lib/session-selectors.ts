@@ -209,18 +209,21 @@ function userMessageSignature(message: RuntimeMessage) {
     .trim()
   const images = parts
     .filter((part): part is RuntimeFilePart => isRuntimeFilePart(part) && part.mime.startsWith("image/"))
-    .map((part) => `${part.filename ?? ""}:${part.url}`)
+    .map((part) => `${part.filename ?? ""}:${part.mime}`)
   if (!text && images.length === 0) return undefined
   return `${text}||${images.join("|")}`
 }
 
 function visibleMessages(session: RuntimeSession) {
-  const serverUserSignatures = new Set<string>()
+  const serverUsersBySignature = new Map<string, RuntimeMessage[]>()
   for (const messageID of session.messageOrder) {
     const message = session.messages[messageID]
     if (!message || message.localOnly || message.role !== "user") continue
     const signature = userMessageSignature(message)
-    if (signature) serverUserSignatures.add(signature)
+    if (!signature) continue
+    const matches = serverUsersBySignature.get(signature) ?? []
+    matches.push(message)
+    serverUsersBySignature.set(signature, matches)
   }
 
   return session.messageOrder
@@ -228,8 +231,19 @@ function visibleMessages(session: RuntimeSession) {
     .filter(Boolean)
     .filter((message) => {
       if (!message.localOnly || message.role !== "user") return true
+      if (message.deliveryState === "failed") return true
       const signature = userMessageSignature(message)
-      return !signature || !serverUserSignatures.has(signature)
+      if (!signature) return true
+      const matches = serverUsersBySignature.get(signature)
+      if (!matches?.length) return true
+      const serverIndex = matches.findIndex((candidate) =>
+        typeof candidate.createdAt !== "number" ||
+        typeof message.createdAt !== "number" ||
+        (candidate.createdAt >= message.createdAt && candidate.createdAt - message.createdAt < 30_000),
+      )
+      if (serverIndex < 0) return true
+      matches.splice(serverIndex, 1)
+      return false
     })
 }
 
@@ -350,8 +364,15 @@ function mapMessage(message: RuntimeMessage, sessionIsRunning: boolean): Message
     metaParts: metaParts.length ? metaParts : undefined,
     images: images.length ? images : undefined,
     isStreaming,
+    deliveryState: message.deliveryState,
     error: message.error
-      ? presentRuntimeError(message.error, message.providerID, message.modelID)
+      ? message.role === "user" && message.deliveryState === "failed"
+        ? {
+            title: "消息发送失败",
+            message: message.error.message || "消息未能提交，请稍后重试。",
+            detail: message.error.data?.message,
+          }
+        : presentRuntimeError(message.error, message.providerID, message.modelID)
       : undefined,
     completionState: message.completionState,
     coordinationBatchID: message.coordinationBatchID,

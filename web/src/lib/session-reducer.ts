@@ -60,6 +60,16 @@ import type {
 import { removeSessionState } from "./session-delete-state"
 import { reconcileRuntimeSessionStatus } from "./session-stream-state"
 
+interface LocalUserMessageAction {
+  type: "localUserMessage"
+  sessionID: string
+  messageID: string
+  createdAt: number
+  content: string
+  attachments: PromptAttachment[]
+  followUp: boolean
+}
+
 type RuntimeAction =
   | { type: "reset" }
   | { type: "hydrateSessions"; sessions: ApiSession[] }
@@ -71,7 +81,9 @@ type RuntimeAction =
   | { type: "setActiveSession"; sessionID?: string }
   | { type: "setSessionStatus"; sessionID: string; status: RuntimeSession["status"] }
   | { type: "removeSession"; sessionID: string }
-  | { type: "localUserMessage"; sessionID: string; content: string; attachments: PromptAttachment[] }
+  | LocalUserMessageAction
+  | { type: "localUserMessageAccepted"; sessionID: string; messageID: string }
+  | { type: "localUserMessageFailed"; sessionID: string; messageID: string; error: string; followUp: boolean }
   | { type: "event"; event: ApiEvent }
   | { type: "connectionState"; state: RuntimeState["connectionState"] }
   | { type: "connectionError"; error?: string }
@@ -225,6 +237,8 @@ function ensureSession(state: RuntimeState, sessionID: string): RuntimeSession {
 function optimisticTimestamp() {
   return Date.now()
 }
+
+let optimisticUserSequence = 0
 
 function ensureMessage(session: RuntimeSession, info: { id: string; role: Role; sessionID: string }): RuntimeMessage {
   const existing = session.messages[info.id]
@@ -459,11 +473,17 @@ function applyMessageInfo(message: RuntimeMessage, info: ApiMessageInfo) {
     message.error = info.error || undefined
     message.completionState = info.completionState
     message.coordinationBatchID = info.coordinationBatchID
+  } else {
+    message.error = undefined
+    message.deliveryState = undefined
   }
   message.localOnly = false
 }
 
 function replaceSessionMessages(session: RuntimeSession, messages: ApiMessage[]) {
+  const localMessages = session.messageOrder
+    .map((messageID) => session.messages[messageID])
+    .filter((message): message is RuntimeMessage => Boolean(message?.localOnly && message.role === "user"))
   session.messages = {}
   session.messageOrder = []
   for (const item of messages) {
@@ -477,6 +497,11 @@ function replaceSessionMessages(session: RuntimeSession, messages: ApiMessage[])
       upsertPart(message, mapPart(part))
     }
   }
+  for (const message of localMessages) {
+    session.messages[message.id] = message
+    session.messageOrder.push(message.id)
+  }
+  reconcileOptimisticUsers(session)
   session.hydrated = true
 }
 
@@ -517,7 +542,7 @@ function userMessageSignature(message: RuntimeMessage) {
           typeof part.url === "string",
       ),
     )
-    .map((part) => `${part.filename ?? ""}:${part.url}`)
+    .map((part) => `${part.filename ?? ""}:${part.mime}`)
 
   if (!text && images.length === 0) return
   return `${text}||${images.join("|")}`
@@ -529,24 +554,35 @@ function removeMessage(session: RuntimeSession, messageID: string) {
 }
 
 function reconcileOptimisticUsers(session: RuntimeSession) {
-  const serverBySignature = new Map<string, string>()
+  const serverBySignature = new Map<string, RuntimeMessage[]>()
 
   for (const messageID of session.messageOrder) {
     const message = session.messages[messageID]
     if (!message || message.localOnly || message.role !== "user") continue
     const signature = userMessageSignature(message)
     if (!signature) continue
-    serverBySignature.set(signature, message.id)
+    const matches = serverBySignature.get(signature) ?? []
+    matches.push(message)
+    serverBySignature.set(signature, matches)
   }
 
   if (serverBySignature.size === 0) return
 
-  for (const messageID of session.messageOrder) {
+  for (const messageID of [...session.messageOrder]) {
     const message = session.messages[messageID]
-    if (!message?.localOnly || message.role !== "user") continue
+    if (!message?.localOnly || message.role !== "user" || message.deliveryState === "failed") continue
     const signature = userMessageSignature(message)
     if (!signature) continue
-    if (!serverBySignature.has(signature)) continue
+    const matches = serverBySignature.get(signature)
+    if (!matches?.length) continue
+    const serverIndex = matches.findIndex((candidate) =>
+      typeof candidate.createdAt !== "number" ||
+      typeof message.createdAt !== "number" ||
+      (candidate.createdAt >= message.createdAt && candidate.createdAt - message.createdAt < 30_000),
+    )
+    if (serverIndex < 0) continue
+    const [serverMessage] = matches.splice(serverIndex, 1)
+    serverMessage.renderKey = message.renderKey ?? message.id
     removeMessage(session, messageID)
   }
 }
@@ -557,7 +593,7 @@ function removeOptimisticMatch(session: RuntimeSession, serverMessageID: string,
   for (const messageID of session.messageOrder) {
     if (messageID === serverMessageID) continue
     const message = session.messages[messageID]
-    if (!message?.localOnly || message.role !== "user") continue
+    if (!message?.localOnly || message.role !== "user" || message.deliveryState === "failed") continue
     const content = message.partOrder
       .map((partID) => message.parts[partID])
       .filter((part): part is RuntimeTextPart => Boolean(part && part.type === "text"))
@@ -588,7 +624,6 @@ function applyPartUpdate(state: RuntimeState, part: ApiPart) {
   if ((isApiTextPart(part) || isApiReasoningPart(part)) && message.role === "user") {
     removeOptimisticMatch(session, message.id, part.text)
   }
-  reconcileOptimisticUsers(session)
 }
 
 function applyPartDelta(state: RuntimeState, event: Extract<ApiEvent, { type: "message.part.delta" }>) {
@@ -873,35 +908,34 @@ function applyMessageUpdate(state: RuntimeState, sessionID: string, info: ApiMes
   const completedAt = "completed" in info.time ? info.time.completed : undefined
   session.updatedAt = Math.max(session.updatedAt ?? 0, completedAt ?? info.time.created)
   sortSessionsByActivity(state)
-  reconcileOptimisticUsers(session)
 }
 
-function createOptimisticUserMessage(sessionID: string, content: string, attachments: PromptAttachment[]): RuntimeMessage {
-  const createdAt = optimisticTimestamp()
+function createOptimisticUserMessage(action: LocalUserMessageAction): RuntimeMessage {
   const message: RuntimeMessage = {
-    id: `local-user-${createdAt}`,
-    renderKey: `user-turn-${createdAt}`,
-    sessionID,
+    id: action.messageID,
+    renderKey: `user-turn-${action.messageID}`,
+    sessionID: action.sessionID,
     role: "user",
-    createdAt,
+    createdAt: action.createdAt,
     localOnly: true,
+    deliveryState: "sending",
     partOrder: [],
     parts: {},
   }
 
-  if (content.trim()) {
+  if (action.content.trim()) {
     const textPart: RuntimeTextPart = {
-      id: `local-text-${createdAt}`,
+      id: `${action.messageID}-text`,
       type: "text",
-      text: content.trim(),
+      text: action.content.trim(),
       done: true,
     }
     upsertPart(message, textPart)
   }
 
-  attachments.forEach((attachment, index) => {
+  action.attachments.forEach((attachment, index) => {
     const filePart: RuntimeFilePart = {
-      id: `local-file-${createdAt}-${index}`,
+      id: `${action.messageID}-file-${index}`,
       type: "file",
       mime: attachment.mime,
       url: attachment.url,
@@ -1021,17 +1055,39 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
 
     case "localUserMessage": {
       const session = ensureSession(next, action.sessionID)
-      const message = createOptimisticUserMessage(action.sessionID, action.content, action.attachments)
+      const message = createOptimisticUserMessage(action)
       session.messages = { ...session.messages, [message.id]: message }
       session.messageOrder = [...session.messageOrder, message.id]
       session.updatedAt = message.createdAt
       sortSessionsByActivity(next)
-      session.status = "busy"
       session.error = undefined
-      const participantCount = session.participants?.length ?? 0
-      session.directorRun = directorRunForLocalPrompt(participantCount, message.id)
+      if (!action.followUp) {
+        session.status = "busy"
+        const participantCount = session.participants?.length ?? 0
+        session.directorRun = directorRunForLocalPrompt(participantCount, message.id)
+      }
       next.connectionError = undefined
-      reconcileOptimisticUsers(session)
+      return next
+    }
+
+    case "localUserMessageAccepted": {
+      const message = next.sessions[action.sessionID]?.messages[action.messageID]
+      if (message?.localOnly && message.deliveryState === "sending") {
+        message.deliveryState = "queued"
+      }
+      return next
+    }
+
+    case "localUserMessageFailed": {
+      const session = next.sessions[action.sessionID]
+      const message = session?.messages[action.messageID]
+      if (message?.localOnly) {
+        message.deliveryState = "failed"
+        message.error = { name: "MessageSendError", message: action.error }
+      }
+      if (session && !action.followUp) {
+        session.status = "idle"
+      }
       return next
     }
 
@@ -1322,8 +1378,38 @@ export function pushLocalUserMessage(
   sessionID: string,
   content: string,
   attachments: PromptAttachment[],
+  options: { followUp?: boolean; createdAt?: number } = {},
+): LocalUserMessageAction {
+  const createdAt = options.createdAt ?? optimisticTimestamp()
+  optimisticUserSequence += 1
+  return {
+    type: "localUserMessage",
+    sessionID,
+    messageID: `local-user-${createdAt}-${optimisticUserSequence}`,
+    createdAt,
+    content,
+    attachments,
+    followUp: options.followUp ?? false,
+  }
+}
+
+export function acceptLocalUserMessage(sessionID: string, messageID: string): RuntimeAction {
+  return { type: "localUserMessageAccepted", sessionID, messageID }
+}
+
+export function failLocalUserMessage(
+  sessionID: string,
+  messageID: string,
+  error: string,
+  options: { followUp?: boolean } = {},
 ): RuntimeAction {
-  return { type: "localUserMessage", sessionID, content, attachments }
+  return {
+    type: "localUserMessageFailed",
+    sessionID,
+    messageID,
+    error,
+    followUp: options.followUp ?? false,
+  }
 }
 
 export function applyRuntimeEvent(event: ApiEvent): RuntimeAction {

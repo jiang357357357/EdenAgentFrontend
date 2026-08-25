@@ -828,6 +828,7 @@ export default function App() {
       await sendRuntimeMessage(content, attachments)
     } catch (error) {
       console.error("[Runtime] send message failed", error)
+      throw error
     }
   }
 
