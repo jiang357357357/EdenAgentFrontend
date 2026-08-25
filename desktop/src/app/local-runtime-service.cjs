@@ -17,7 +17,7 @@ async function responseError(response) {
   }
 }
 
-function createLocalRuntimeService({ configStore, rustServer, fetchImpl = globalThis.fetch, serverHealthUrl = "http://127.0.0.1:40092/healthz" } = {}) {
+function createLocalRuntimeService({ configStore, rustServer, fetchImpl = globalThis.fetch, serverHealthUrl = "http://127.0.0.1:40093/healthz" } = {}) {
   if (!configStore || !rustServer) throw new TypeError("configStore and rustServer are required")
 
   async function serverOnline() {
@@ -33,7 +33,7 @@ function createLocalRuntimeService({ configStore, rustServer, fetchImpl = global
     return {
       ...configStore.publicConfig(),
       server: {
-        ...rustServer.status(),
+        ...rustServer.status("local"),
         online: await serverOnline(),
       },
     }
@@ -72,7 +72,7 @@ function createLocalRuntimeService({ configStore, rustServer, fetchImpl = global
 
   async function saveAndRestart(input = {}) {
     configStore.save(input)
-    const restart = await rustServer.restart()
+    const restart = await rustServer.restart("local")
     return {
       ...(await read()),
       restarted: restart.restarted,

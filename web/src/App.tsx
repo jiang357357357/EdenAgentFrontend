@@ -55,6 +55,7 @@ import {
   clearRuntimeOrigin,
   type RuntimeOrigin,
   LOCAL_ASSISTANT_ID,
+  RUNTIME_ORIGIN_STORAGE_KEY,
 } from "./lib/runtime-origin"
 import {
   getStoredLocalCharacter,
@@ -257,6 +258,26 @@ export default function App() {
     setHistoryView("messages")
     document.documentElement.classList.remove("character-transparent")
   }
+
+  useEffect(() => {
+    const synchronizeRuntimeOrigin = () => {
+      const nextOrigin = getStoredRuntimeOrigin()
+      if (nextOrigin === runtimeOrigin) return
+      resetRuntimeState()
+      setRuntimeOriginState(nextOrigin)
+      setAuthError(undefined)
+      setAuthStatus(nextOrigin === "local" ? "authenticated" : "checking")
+    }
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === RUNTIME_ORIGIN_STORAGE_KEY || event.key === null) synchronizeRuntimeOrigin()
+    }
+    window.addEventListener("storage", handleStorage)
+    window.addEventListener("edenagent:runtime-origin-changed", synchronizeRuntimeOrigin)
+    return () => {
+      window.removeEventListener("storage", handleStorage)
+      window.removeEventListener("edenagent:runtime-origin-changed", synchronizeRuntimeOrigin)
+    }
+  }, [runtimeOrigin])
 
   function returnToLogin(message?: string) {
     clearAuth({ preserveRuntimeOrigin: true })

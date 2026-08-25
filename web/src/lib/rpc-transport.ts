@@ -32,28 +32,49 @@ const env = (import.meta as unknown as {
     DEV?: boolean
     VITE_EDEN_AGENT_BASE_URL?: string
     VITE_EDEN_AGENT_CAPABILITY_TOKEN?: string
+    VITE_EDEN_AGENT_MON_BASE_URL?: string
+    VITE_EDEN_AGENT_LOCAL_BASE_URL?: string
+    VITE_EDEN_AGENT_MON_CAPABILITY_TOKEN?: string
+    VITE_EDEN_AGENT_LOCAL_CAPABILITY_TOKEN?: string
   }
 }).env
 
-const httpBaseUrl = env?.DEV
-  ? "http://127.0.0.1:40092"
-  : (env?.VITE_EDEN_AGENT_BASE_URL ?? "http://127.0.0.1:40092").replace(/\/$/, "")
-const websocketUrl = `${httpBaseUrl.replace(/^http/, "ws")}/rpc`
+type RuntimeOrigin = "mon" | "local"
+const desktopBaseUrls: Partial<Record<RuntimeOrigin, string>> = {}
+
+function currentRuntimeOrigin(): RuntimeOrigin {
+  return getStoredRuntimeOrigin() ?? "mon"
+}
+
+export function agentHttpBaseUrl(origin: RuntimeOrigin = currentRuntimeOrigin()): string {
+  const configured = origin === "local"
+    ? env?.VITE_EDEN_AGENT_LOCAL_BASE_URL
+    : env?.VITE_EDEN_AGENT_MON_BASE_URL ?? env?.VITE_EDEN_AGENT_BASE_URL
+  const fallback = origin === "local" ? "http://127.0.0.1:40093" : "http://127.0.0.1:40092"
+  return (configured ?? desktopBaseUrls[origin] ?? fallback).replace(/\/$/, "")
+}
 
 let client: EdenAgentRpcClient | undefined
 let connection: Promise<EdenAgentRpcClient> | undefined
 let connectedOrigin: "mon" | "local" | undefined
+let connectingOrigin: "mon" | "local" | undefined
+let connectionGeneration = 0
 const eventListeners = new Set<(event: SessionEvent) => void>()
 const statusListeners = new Set<(connected: boolean, error?: string) => void>()
 const reconnectInitialDelayMs = 500
 const reconnectMaxDelayMs = 10_000
 const voiceBlobUrls = new Map<string, Promise<string>>()
 
-async function capabilityToken(): Promise<string> {
-  const configured = env?.VITE_EDEN_AGENT_CAPABILITY_TOKEN?.trim()
+async function capabilityToken(origin: RuntimeOrigin = currentRuntimeOrigin()): Promise<string> {
+  const configured = (origin === "local"
+    ? env?.VITE_EDEN_AGENT_LOCAL_CAPABILITY_TOKEN
+    : env?.VITE_EDEN_AGENT_MON_CAPABILITY_TOKEN ?? env?.VITE_EDEN_AGENT_CAPABILITY_TOKEN)?.trim()
   if (configured) return configured
-  const desktop = await window.edenAgentDesktop?.getAgentCapability?.()
-  if (desktop?.token) return desktop.token
+  const desktop = await window.edenAgentDesktop?.getAgentCapability?.(origin)
+  if (desktop?.token) {
+    if (desktop.baseUrl) desktopBaseUrls[origin] = desktop.baseUrl
+    return desktop.token
+  }
   throw new Error("Eden Agent capability token is unavailable")
 }
 
@@ -65,17 +86,28 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
     connection = undefined
     connectedOrigin = undefined
   }
+  if (connection && connectingOrigin !== requestedOrigin) {
+    connectionGeneration += 1
+    connection = undefined
+    connectingOrigin = undefined
+  }
   if (client) return client
   if (connection) return connection
-  connection = (async () => {
+  const generation = ++connectionGeneration
+  connectingOrigin = requestedOrigin
+  const pending = (async () => {
     const next = new EdenAgentRpcClient()
     try {
-      const token = await capabilityToken()
+      const token = await capabilityToken(requestedOrigin)
+      const websocketUrl = `${agentHttpBaseUrl(requestedOrigin).replace(/^http/, "ws")}/rpc`
       const initialized = await next.connect(websocketUrl, token, "dev", requestedOrigin)
       if (initialized.runtimeOrigin !== requestedOrigin) {
         throw new Error(
           `Eden Agent runtime origin mismatch: requested ${requestedOrigin}, received ${initialized.runtimeOrigin}`,
         )
+      }
+      if (generation !== connectionGeneration || currentRuntimeOrigin() !== requestedOrigin) {
+        throw new Error("Eden Agent runtime changed while the connection was initializing")
       }
     } catch (error) {
       next.close()
@@ -89,19 +121,25 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
       client = undefined
       connection = undefined
       connectedOrigin = undefined
+      connectingOrigin = undefined
       for (const listener of statusListeners) listener(false, "Eden Agent RPC connection closed")
     })
     client = next
     connectedOrigin = requestedOrigin
+    connectingOrigin = undefined
     for (const listener of statusListeners) listener(true)
     return next
   })().catch((error) => {
-    connection = undefined
-    for (const listener of statusListeners) {
-      listener(false, error instanceof Error ? error.message : String(error))
+    if (generation === connectionGeneration) {
+      connection = undefined
+      connectingOrigin = undefined
+      for (const listener of statusListeners) {
+        listener(false, error instanceof Error ? error.message : String(error))
+      }
     }
     throw error
   })
+  connection = pending
   return connection
 }
 
@@ -134,8 +172,9 @@ export async function rpcRequestWithTimeout<K extends keyof RpcMethodMap>(
 }
 
 export async function createRealtimeSttSocket(sessionId: string): Promise<WebSocket> {
-  const token = await capabilityToken()
-  const url = new URL(`${httpBaseUrl.replace(/^http/, "ws")}/voice/stt/realtime`)
+  const origin = currentRuntimeOrigin()
+  const token = await capabilityToken(origin)
+  const url = new URL(`${agentHttpBaseUrl(origin).replace(/^http/, "ws")}/voice/stt/realtime`)
   url.searchParams.set("session_id", sessionId)
   return new WebSocket(url, [
     EDEN_AGENT_WEBSOCKET_PROTOCOL,
@@ -144,20 +183,22 @@ export async function createRealtimeSttSocket(sessionId: string): Promise<WebSoc
 }
 
 export function resolveVoiceBlobUrl(blobId: string): Promise<string> {
-  const existing = voiceBlobUrls.get(blobId)
+  const origin = currentRuntimeOrigin()
+  const cacheKey = `${origin}:${blobId}`
+  const existing = voiceBlobUrls.get(cacheKey)
   if (existing) return existing
   const pending = (async () => {
-    const token = await capabilityToken()
-    const response = await fetch(`${httpBaseUrl}/blobs/${encodeURIComponent(blobId)}`, {
+    const token = await capabilityToken(origin)
+    const response = await fetch(`${agentHttpBaseUrl(origin)}/blobs/${encodeURIComponent(blobId)}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!response.ok) throw new Error(`Unable to read speech audio: ${response.status}`)
     return URL.createObjectURL(await response.blob())
   })().catch((error) => {
-    voiceBlobUrls.delete(blobId)
+    voiceBlobUrls.delete(cacheKey)
     throw error
   })
-  voiceBlobUrls.set(blobId, pending)
+  voiceBlobUrls.set(cacheKey, pending)
   return pending
 }
 
@@ -241,10 +282,11 @@ async function attachmentBlob(attachment: PromptAttachment | string): Promise<{ 
 export async function uploadAttachments(
   attachments: Array<PromptAttachment | string>,
 ): Promise<AttachmentRef[]> {
-  const token = await capabilityToken()
+  const origin = currentRuntimeOrigin()
+  const token = await capabilityToken(origin)
   return Promise.all(attachments.map(async (attachment) => {
     const { blob, filename } = await attachmentBlob(attachment)
-    const info = await uploadBlob(httpBaseUrl, token, blob)
+    const info = await uploadBlob(agentHttpBaseUrl(origin), token, blob)
     return { blobId: info.id, mime: info.mime, ...(filename ? { filename } : {}) }
   }))
 }

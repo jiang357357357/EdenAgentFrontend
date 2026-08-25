@@ -9,8 +9,8 @@ function convertFileSrc(filePath) {
 }
 
 contextBridge.exposeInMainWorld("edenAgentDesktop", {
-  getAgentCapability() {
-    return ipcRenderer.invoke("eden-agent:capability")
+  getAgentCapability(origin) {
+    return ipcRenderer.invoke("eden-agent:capability", origin)
   },
   invoke(command, args) {
     return ipcRenderer.invoke("eden-agent:invoke", command, args ?? {})

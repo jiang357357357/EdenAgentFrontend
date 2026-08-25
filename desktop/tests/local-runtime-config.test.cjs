@@ -187,7 +187,7 @@ test("normalizes a complete Spine profile and rejects incomplete resources", () 
 })
 
 test("stores the API key in a private file and returns it to the configuration page", () => {
-  const filePath = path.posix.join("/agent", "Data", "local-runtime.json")
+  const filePath = path.posix.join("/agent", "Data", "realms", "local", "local-runtime.json")
   const fileSystem = memoryFileSystem()
   const store = createLocalRuntimeConfigStore({
     app: { isPackaged: false, getPath: () => "/user" },
@@ -208,9 +208,10 @@ test("stores the API key in a private file and returns it to the configuration p
 })
 
 test("migrates the untouched legacy default to Arona without discarding visual resources", () => {
-  const filePath = "/agent/Data/local-runtime.json"
+  const legacyFilePath = "/agent/Data/local-runtime.json"
+  const filePath = "/agent/Data/realms/local/local-runtime.json"
   const fileSystem = memoryFileSystem({
-    [filePath]: JSON.stringify({
+    [legacyFilePath]: JSON.stringify({
       version: 2,
       provider: "openai",
       model: "openai/gpt-4o-mini",
@@ -238,6 +239,7 @@ test("migrates the untouched legacy default to Arona without discarding visual r
 
   store.save({ character: migrated })
   assert.equal(JSON.parse(fileSystem.files.get(filePath)).version, LOCAL_RUNTIME_CONFIG_VERSION)
+  assert.equal(fileSystem.files.has(legacyFilePath), true)
 })
 
 test("removes obsolete bundled Arona paths from the previous profile version", () => {
@@ -262,7 +264,7 @@ test("removes obsolete bundled Arona paths from the previous profile version", (
 })
 
 test("model updates preserve the local character profile", () => {
-  const filePath = "/agent/Data/local-runtime.json"
+  const filePath = "/agent/Data/realms/local/local-runtime.json"
   const fileSystem = memoryFileSystem({
     [filePath]: JSON.stringify({ provider: "openai", model: "openai/gpt-4o-mini", baseUrl: "https://api.openai.com/v1", apiKey: "saved", character: { name: "小尘", personality: "沉稳" } }),
   })
@@ -274,7 +276,7 @@ test("model updates preserve the local character profile", () => {
 })
 
 test("an empty API key preserves the existing secret", () => {
-  const filePath = "/agent/Data/local-runtime.json"
+  const filePath = "/agent/Data/realms/local/local-runtime.json"
   const fileSystem = memoryFileSystem({
     [filePath]: JSON.stringify({ provider: "openai", model: "openai/gpt-4o-mini", baseUrl: "https://api.openai.com/v1", apiKey: "saved" }),
   })
@@ -289,7 +291,7 @@ test("an empty API key preserves the existing secret", () => {
 })
 
 test("changing providers never reuses the previous provider secret", () => {
-  const filePath = "/agent/Data/local-runtime.json"
+  const filePath = "/agent/Data/realms/local/local-runtime.json"
   const fileSystem = memoryFileSystem({
     [filePath]: JSON.stringify({ provider: "openai", model: "openai/gpt-4o-mini", baseUrl: "https://api.openai.com/v1", apiKey: "openai-secret" }),
   })

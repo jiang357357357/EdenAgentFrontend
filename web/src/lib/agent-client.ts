@@ -41,20 +41,10 @@ import {
   type LocalGsvSttConfig,
 } from "./desktop-window"
 import {
-  apiMessage, apiSession, mapMemoForView, projectSessionEvent,
+  agentHttpBaseUrl, apiMessage, apiSession, mapMemoForView, projectSessionEvent,
   mapAgentThreadForView, rpcRequest, rpcRequestWithTimeout, sessionEventMessageID, sessionEventMessageRole,
   resolveVoiceBlobUrl, sessionEventToolResultCallID, subscribeRpcEvents, uploadAttachments,
 } from "./rpc-transport"
-
-const env = (
-  import.meta as unknown as {
-    env?: {
-      DEV?: boolean
-      VITE_EDEN_AGENT_BASE_URL?: string
-    }
-  }
-).env
-const agentBaseUrl = (env?.VITE_EDEN_AGENT_BASE_URL ?? "http://127.0.0.1:40092").replace(/\/$/, "")
 
 export type SessionParticipant = {
   assistantID: number | string
@@ -1201,7 +1191,7 @@ export function resolveEdenAgentUrl(url: string) {
     }
   }
   if (url.startsWith("/api/")) return resolveCoreAssetUrl(url) ?? url
-  if (url.startsWith("/")) return `${agentBaseUrl}${url}`
+  if (url.startsWith("/")) return `${agentHttpBaseUrl()}${url}`
   return url
 }
 

@@ -85,9 +85,9 @@ const rustServer = createRustServerManager({
 const localRuntimeService = createLocalRuntimeService({
   configStore: localRuntimeConfig,
   rustServer,
-  serverHealthUrl: `http://127.0.0.1:${getAgentConfig("server", "PORT", "40092")}/healthz`,
+  serverHealthUrl: `http://127.0.0.1:${process.env.EDEN_AGENT_LOCAL_PORT || "40093"}/healthz`,
 })
-ipcMain.handle("eden-agent:capability", () => rustServer.capability())
+ipcMain.handle("eden-agent:capability", (_event, origin) => rustServer.capability(origin))
 quitFlagController.clearStaleFlagForLaunch()
 const petSettingsPath = resolveMonConfigPath("desktop", "PET_SETTINGS", ".artifacts/desktop-pet-settings.json")
 const performanceLogPath = path.join(agentRoot, ".artifacts", "frontend-performance.jsonl")

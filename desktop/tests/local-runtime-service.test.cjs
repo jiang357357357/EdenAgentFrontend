@@ -101,3 +101,21 @@ test("saving a character profile does not restart the Rust server", async () => 
   assert.equal(result.character.name, "小尘")
   assert.equal(restartCalls, 0)
 })
+
+test("model changes target only the local realm process", async () => {
+  const calls = []
+  const service = createLocalRuntimeService({
+    configStore: createStore(),
+    rustServer: {
+      status: (origin) => ({ origin, managed: true, restartSupported: true }),
+      restart: async (origin) => {
+        calls.push(origin)
+        return { restarted: true, externallyManaged: false, origin }
+      },
+    },
+    fetchImpl: async () => ({ ok: true }),
+  })
+  const result = await service.saveAndRestart({ model: "ollama/qwen3" })
+  assert.deepEqual(calls, ["local"])
+  assert.equal(result.server.origin, "local")
+})

@@ -55,6 +55,13 @@ test("the selected origin is negotiated with the Rust server", () => {
   assert.match(generatedSource, /runtimeOrigin: RuntimeOrigin = "mon"/)
   assert.match(transportSource, /next\.connect\(websocketUrl, token, "dev", requestedOrigin\)/)
   assert.match(transportSource, /connectedOrigin !== requestedOrigin/)
+  assert.match(transportSource, /VITE_EDEN_AGENT_MON_BASE_URL/)
+  assert.match(transportSource, /VITE_EDEN_AGENT_LOCAL_BASE_URL/)
+  assert.match(transportSource, /origin === "local" \? "http:\/\/127\.0\.0\.1:40093" : "http:\/\/127\.0\.0\.1:40092"/)
+  assert.match(transportSource, /connectionGeneration/)
+  assert.match(transportSource, /const cacheKey = `\$\{origin\}:\$\{blobId\}`/)
+  assert.match(appSource, /addEventListener\("storage", handleStorage\)/)
+  assert.match(appSource, /edenagent:runtime-origin-changed/)
 })
 
 test("local mode uses the environment model and local identity without Core lookups", () => {

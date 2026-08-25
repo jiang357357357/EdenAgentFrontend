@@ -431,17 +431,25 @@ function providerKey(provider) {
 
 function createLocalRuntimeConfigStore({ app, agentRoot, fileSystem = fs, pathApi = path } = {}) {
   if (!app?.getPath) throw new TypeError("app.getPath is required")
-  const filePath = app.isPackaged
+  const legacyFilePath = app.isPackaged
     ? pathApi.join(app.getPath("userData"), "server", "local-runtime.json")
     : pathApi.join(agentRoot, "Data", "local-runtime.json")
+  const filePath = app.isPackaged
+    ? pathApi.join(app.getPath("userData"), "server", "realms", "local", "local-runtime.json")
+    : pathApi.join(agentRoot, "Data", "realms", "local", "local-runtime.json")
 
   function readStored() {
-    try {
-      return { ...parseStored(fileSystem.readFileSync(filePath, "utf8")), persisted: true }
-    } catch (error) {
-      if (error?.code !== "ENOENT") console.warn("[Eden Agent] 读取尘世配置失败", error)
-      return { ...DEFAULT_LOCAL_RUNTIME_CONFIG, apiKey: "", voice: { ...DEFAULT_LOCAL_GSV_CONFIG }, transcription: { ...DEFAULT_LOCAL_GSV_STT_CONFIG }, character: { ...DEFAULT_LOCAL_CHARACTER }, persisted: false }
+    for (const candidate of [filePath, legacyFilePath]) {
+      try {
+        return { ...parseStored(fileSystem.readFileSync(candidate, "utf8")), persisted: true }
+      } catch (error) {
+        if (error?.code !== "ENOENT") {
+          console.warn("[Eden Agent] 读取尘世配置失败", error)
+          break
+        }
+      }
     }
+    return { ...DEFAULT_LOCAL_RUNTIME_CONFIG, apiKey: "", voice: { ...DEFAULT_LOCAL_GSV_CONFIG }, transcription: { ...DEFAULT_LOCAL_GSV_STT_CONFIG }, character: { ...DEFAULT_LOCAL_CHARACTER }, persisted: false }
   }
 
   function read(processEnvironment = process.env) {
