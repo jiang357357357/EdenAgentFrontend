@@ -66,6 +66,39 @@ test("renders a submitted user message immediately and marks it queued after RPC
   assert.equal(message.deliveryState, "queued")
 })
 
+test("the reducer stays pure when React StrictMode evaluates the same local action twice", () => {
+  const base = createState()
+  const action = pushLocalUserMessage(sessionID, "只插入一次", [], { createdAt: 2_000 })
+
+  const first = runtimeReducer(base, action)
+  const second = runtimeReducer(base, action)
+
+  assert.deepEqual(base.sessions[sessionID].messageOrder, [])
+  assert.deepEqual(first.sessions[sessionID].messageOrder, [action.messageID])
+  assert.deepEqual(second.sessions[sessionID].messageOrder, [action.messageID])
+  assert.notEqual(first.sessions[sessionID], base.sessions[sessionID])
+})
+
+test("selectors and the next reducer action repair duplicate ids left by older hot state", () => {
+  const action = pushLocalUserMessage(sessionID, "旧状态修复", [], { createdAt: 2_000 })
+  const state = runtimeReducer(createState(), action)
+  const corrupted = {
+    ...state,
+    sessions: {
+      ...state.sessions,
+      [sessionID]: {
+        ...state.sessions[sessionID],
+        messageOrder: [action.messageID, action.messageID],
+      },
+    },
+  }
+
+  assert.equal(selectSessions(corrupted)[0].messages.length, 1)
+
+  const repaired = runtimeReducer(corrupted, setSessionStatus(sessionID, "busy"))
+  assert.deepEqual(repaired.sessions[sessionID].messageOrder, [action.messageID])
+})
+
 test("keeps a failed message visible with its error and releases a normal turn", () => {
   const action = pushLocalUserMessage(sessionID, "不能丢失", [], { createdAt: 2_000 })
   let state = runtimeReducer(createState(), action)

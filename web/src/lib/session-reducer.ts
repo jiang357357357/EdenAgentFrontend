@@ -218,7 +218,15 @@ function upsertDirectorRun(session: RuntimeSession, run: import("../types").Comp
 
 function ensureSession(state: RuntimeState, sessionID: string): RuntimeSession {
   const existing = state.sessions[sessionID]
-  if (existing) return existing
+  if (existing) {
+    const session: RuntimeSession = {
+      ...existing,
+      messageOrder: [...new Set(existing.messageOrder)],
+      messages: { ...existing.messages },
+    }
+    state.sessions[sessionID] = session
+    return session
+  }
   const session: RuntimeSession = {
     id: sessionID,
     title: "新会话",
@@ -243,10 +251,17 @@ let optimisticUserSequence = 0
 function ensureMessage(session: RuntimeSession, info: { id: string; role: Role; sessionID: string }): RuntimeMessage {
   const existing = session.messages[info.id]
   if (existing) {
-    if (existing.role !== info.role) {
-      existing.role = info.role
+    const message: RuntimeMessage = {
+      ...existing,
+      role: info.role,
+      partOrder: [...existing.partOrder],
+      parts: Object.fromEntries(
+        Object.entries(existing.parts).map(([partID, part]) => [partID, { ...part }]),
+      ) as Record<string, RuntimePart>,
+      optimisticPartIDs: existing.optimisticPartIDs ? [...existing.optimisticPartIDs] : undefined,
     }
-    return existing
+    session.messages[info.id] = message
+    return message
   }
 
   const message: RuntimeMessage = {
@@ -590,7 +605,12 @@ function reconcileOptimisticUsers(session: RuntimeSession) {
     const serverMessage = exactServer ?? (serverIndex >= 0 ? matches?.[serverIndex] : undefined)
     if (!serverMessage) continue
     consumedServerIDs.add(serverMessage.id)
-    serverMessage.renderKey = message.renderKey ?? message.id
+    const mutableServerMessage = ensureMessage(session, {
+      id: serverMessage.id,
+      role: serverMessage.role,
+      sessionID: serverMessage.sessionID,
+    })
+    mutableServerMessage.renderKey = message.renderKey ?? message.id
     removeMessage(session, messageID)
   }
 }
@@ -1079,8 +1099,16 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
     }
 
     case "localUserMessageAccepted": {
-      const session = next.sessions[action.sessionID]
-      const message = session?.messages[action.messageID]
+      const existingSession = next.sessions[action.sessionID]
+      const session = existingSession ? ensureSession(next, action.sessionID) : undefined
+      const existingMessage = session?.messages[action.messageID]
+      const message = existingMessage
+        ? ensureMessage(session!, {
+            id: existingMessage.id,
+            role: existingMessage.role,
+            sessionID: existingMessage.sessionID,
+          })
+        : undefined
       if (message?.localOnly && message.deliveryState === "sending") {
         message.deliveryState = "queued"
         message.turnID = action.turnID
@@ -1090,8 +1118,16 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
     }
 
     case "localUserMessageFailed": {
-      const session = next.sessions[action.sessionID]
-      const message = session?.messages[action.messageID]
+      const existingSession = next.sessions[action.sessionID]
+      const session = existingSession ? ensureSession(next, action.sessionID) : undefined
+      const existingMessage = session?.messages[action.messageID]
+      const message = existingMessage
+        ? ensureMessage(session!, {
+            id: existingMessage.id,
+            role: existingMessage.role,
+            sessionID: existingMessage.sessionID,
+          })
+        : undefined
       if (message?.localOnly) {
         message.deliveryState = "failed"
         message.error = { name: "MessageSendError", message: action.error }
@@ -1150,6 +1186,8 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       }
       if (isSessionTitleUpdatedEvent(event)) {
         const session = next.sessions[event.properties.sessionID]
+          ? ensureSession(next, event.properties.sessionID)
+          : undefined
         if (session) {
           session.title = event.properties.title
           session.updatedAt = Math.max(session.updatedAt ?? 0, Number(event.properties.updatedAt ?? Date.now()))
@@ -1204,7 +1242,16 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       }
       if (isMessagePartRemovedEvent(event)) {
         const session = next.sessions[event.properties.sessionID]
-        const message = session?.messages[event.properties.messageID]
+          ? ensureSession(next, event.properties.sessionID)
+          : undefined
+        const existingMessage = session?.messages[event.properties.messageID]
+        const message = existingMessage
+          ? ensureMessage(session!, {
+              id: existingMessage.id,
+              role: existingMessage.role,
+              sessionID: existingMessage.sessionID,
+            })
+          : undefined
         if (message) {
           const { [event.properties.partID]: _removed, ...rest } = message.parts
           message.parts = rest
@@ -1214,7 +1261,16 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       }
       if (isMessageStreamResetEvent(event)) {
         const session = next.sessions[event.properties.sessionID]
-        const message = session?.messages[event.properties.messageID]
+          ? ensureSession(next, event.properties.sessionID)
+          : undefined
+        const existingMessage = session?.messages[event.properties.messageID]
+        const message = existingMessage
+          ? ensureMessage(session!, {
+              id: existingMessage.id,
+              role: existingMessage.role,
+              sessionID: existingMessage.sessionID,
+            })
+          : undefined
         if (message) {
           message.speechEpoch = (message.speechEpoch ?? 0) + 1
           message.speechResetReason = event.properties.reason

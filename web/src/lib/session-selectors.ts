@@ -215,7 +215,8 @@ function userMessageSignature(message: RuntimeMessage) {
 }
 
 function visibleMessages(session: RuntimeSession) {
-  const serverUsers = session.messageOrder
+  const uniqueMessageOrder = [...new Set(session.messageOrder)]
+  const serverUsers = uniqueMessageOrder
     .map((messageID) => session.messages[messageID])
     .filter((message): message is RuntimeMessage => Boolean(message && !message.localOnly && message.role === "user"))
   const availableServerUsers = serverUsers.filter((message) => !message.renderKey || message.renderKey === message.id)
@@ -229,7 +230,7 @@ function visibleMessages(session: RuntimeSession) {
   }
   const consumedServerIDs = new Set<string>()
 
-  return session.messageOrder
+  return uniqueMessageOrder
     .map((messageID) => session.messages[messageID])
     .filter(Boolean)
     .filter((message) => {
