@@ -306,8 +306,8 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         const optimisticMessage = pushLocalUserMessage(session.id, content, attachments);
         dispatch(optimisticMessage);
         try {
-          await sendPromptAsync(session.id, content, attachments);
-          dispatch(acceptLocalUserMessage(session.id, optimisticMessage.messageID));
+          const accepted = await sendPromptAsync(session.id, content, attachments);
+          dispatch(acceptLocalUserMessage(session.id, optimisticMessage.messageID, accepted.turnId));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           sendingSessionIdsRef.current.delete(session.id);
@@ -328,8 +328,8 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         const optimisticMessage = pushLocalUserMessage(sessionID, content, attachments, { followUp: true });
         dispatch(optimisticMessage);
         try {
-          await followUpTurn(sessionID, content);
-          dispatch(acceptLocalUserMessage(sessionID, optimisticMessage.messageID));
+          const accepted = await followUpTurn(sessionID, content);
+          dispatch(acceptLocalUserMessage(sessionID, optimisticMessage.messageID, accepted.turnId ?? undefined));
         } catch (error) {
           dispatch(failLocalUserMessage(
             sessionID,
@@ -346,8 +346,8 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       const optimisticMessage = pushLocalUserMessage(sessionID, content, attachments);
       dispatch(optimisticMessage);
       try {
-        await sendPromptAsync(sessionID, content, attachments);
-        dispatch(acceptLocalUserMessage(sessionID, optimisticMessage.messageID));
+        const accepted = await sendPromptAsync(sessionID, content, attachments);
+        dispatch(acceptLocalUserMessage(sessionID, optimisticMessage.messageID, accepted.turnId));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         sendingSessionIdsRef.current.delete(sessionID);

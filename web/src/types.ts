@@ -498,6 +498,7 @@ export type RuntimePart =
 
 export interface RuntimeMessage {
   id: string
+  turnID?: string
   kind?: string
   renderKey?: string
   speechEpoch?: number

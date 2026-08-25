@@ -215,16 +215,19 @@ function userMessageSignature(message: RuntimeMessage) {
 }
 
 function visibleMessages(session: RuntimeSession) {
+  const serverUsers = session.messageOrder
+    .map((messageID) => session.messages[messageID])
+    .filter((message): message is RuntimeMessage => Boolean(message && !message.localOnly && message.role === "user"))
+  const availableServerUsers = serverUsers.filter((message) => !message.renderKey || message.renderKey === message.id)
   const serverUsersBySignature = new Map<string, RuntimeMessage[]>()
-  for (const messageID of session.messageOrder) {
-    const message = session.messages[messageID]
-    if (!message || message.localOnly || message.role !== "user") continue
+  for (const message of availableServerUsers) {
     const signature = userMessageSignature(message)
     if (!signature) continue
     const matches = serverUsersBySignature.get(signature) ?? []
     matches.push(message)
     serverUsersBySignature.set(signature, matches)
   }
+  const consumedServerIDs = new Set<string>()
 
   return session.messageOrder
     .map((messageID) => session.messages[messageID])
@@ -232,17 +235,22 @@ function visibleMessages(session: RuntimeSession) {
     .filter((message) => {
       if (!message.localOnly || message.role !== "user") return true
       if (message.deliveryState === "failed") return true
+      const exactServer = message.turnID
+        ? availableServerUsers.find((candidate) => candidate.turnID === message.turnID && !consumedServerIDs.has(candidate.id))
+        : undefined
       const signature = userMessageSignature(message)
-      if (!signature) return true
-      const matches = serverUsersBySignature.get(signature)
-      if (!matches?.length) return true
-      const serverIndex = matches.findIndex((candidate) =>
-        typeof candidate.createdAt !== "number" ||
-        typeof message.createdAt !== "number" ||
-        (candidate.createdAt >= message.createdAt && candidate.createdAt - message.createdAt < 30_000),
-      )
-      if (serverIndex < 0) return true
-      matches.splice(serverIndex, 1)
+      if (!exactServer && (!signature || message.turnID)) return true
+      const matches = signature ? serverUsersBySignature.get(signature) : undefined
+      const serverIndex = exactServer ? -1 : matches?.findIndex((candidate) =>
+        !consumedServerIDs.has(candidate.id) && (
+          typeof candidate.createdAt !== "number" ||
+          typeof message.createdAt !== "number" ||
+          Math.abs(candidate.createdAt - message.createdAt) < 30_000
+        ),
+      ) ?? -1
+      const serverMessage = exactServer ?? (serverIndex >= 0 ? matches?.[serverIndex] : undefined)
+      if (!serverMessage) return true
+      consumedServerIDs.add(serverMessage.id)
       return false
     })
 }

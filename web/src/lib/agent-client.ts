@@ -381,6 +381,7 @@ export type ApiMessageInfo =
   | {
       id: string
       role: "user"
+      turnID?: string
       time: {
         created: number
       }
@@ -388,6 +389,7 @@ export type ApiMessageInfo =
   | {
       id: string
       role: "assistant"
+      turnID?: string
       kind?: string
       time: {
         created: number
@@ -1536,7 +1538,7 @@ export async function listMessages(sessionID: string) {
 }
 
 export async function sendPrompt(sessionID: string, content: string, attachments: Array<PromptAttachment | string>) {
-  await rpcRequest("turn.start", {
+  return rpcRequest("turn.start", {
     sessionId: sessionID,
     text: content,
     attachments: await uploadAttachments(attachments),
@@ -1545,7 +1547,7 @@ export async function sendPrompt(sessionID: string, content: string, attachments
 }
 
 export async function sendPromptAsync(sessionID: string, content: string, attachments: Array<PromptAttachment | string>) {
-  await sendPrompt(sessionID, content, attachments)
+  return sendPrompt(sessionID, content, attachments)
 }
 
 export async function compactSession(sessionID: string, instructions?: string) {

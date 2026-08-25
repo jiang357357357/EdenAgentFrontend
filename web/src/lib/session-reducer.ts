@@ -82,7 +82,7 @@ type RuntimeAction =
   | { type: "setSessionStatus"; sessionID: string; status: RuntimeSession["status"] }
   | { type: "removeSession"; sessionID: string }
   | LocalUserMessageAction
-  | { type: "localUserMessageAccepted"; sessionID: string; messageID: string }
+  | { type: "localUserMessageAccepted"; sessionID: string; messageID: string; turnID?: string }
   | { type: "localUserMessageFailed"; sessionID: string; messageID: string; error: string; followUp: boolean }
   | { type: "event"; event: ApiEvent }
   | { type: "connectionState"; state: RuntimeState["connectionState"] }
@@ -461,6 +461,7 @@ function mapPart(part: ApiPart): RuntimePart {
 
 function applyMessageInfo(message: RuntimeMessage, info: ApiMessageInfo) {
   message.role = info.role
+  message.turnID = info.turnID ?? message.turnID
   message.kind = "kind" in info ? info.kind : undefined
   message.createdAt = info.time.created
   if (info.role === "assistant") {
@@ -554,11 +555,12 @@ function removeMessage(session: RuntimeSession, messageID: string) {
 }
 
 function reconcileOptimisticUsers(session: RuntimeSession) {
+  const serverUsers = session.messageOrder
+    .map((messageID) => session.messages[messageID])
+    .filter((message): message is RuntimeMessage => Boolean(message && !message.localOnly && message.role === "user"))
   const serverBySignature = new Map<string, RuntimeMessage[]>()
 
-  for (const messageID of session.messageOrder) {
-    const message = session.messages[messageID]
-    if (!message || message.localOnly || message.role !== "user") continue
+  for (const message of serverUsers) {
     const signature = userMessageSignature(message)
     if (!signature) continue
     const matches = serverBySignature.get(signature) ?? []
@@ -566,22 +568,28 @@ function reconcileOptimisticUsers(session: RuntimeSession) {
     serverBySignature.set(signature, matches)
   }
 
-  if (serverBySignature.size === 0) return
+  if (serverUsers.length === 0) return
+  const consumedServerIDs = new Set<string>()
 
   for (const messageID of [...session.messageOrder]) {
     const message = session.messages[messageID]
     if (!message?.localOnly || message.role !== "user" || message.deliveryState === "failed") continue
+    const exactServer = message.turnID
+      ? serverUsers.find((candidate) => candidate.turnID === message.turnID && !consumedServerIDs.has(candidate.id))
+      : undefined
     const signature = userMessageSignature(message)
-    if (!signature) continue
-    const matches = serverBySignature.get(signature)
-    if (!matches?.length) continue
-    const serverIndex = matches.findIndex((candidate) =>
-      typeof candidate.createdAt !== "number" ||
-      typeof message.createdAt !== "number" ||
-      (candidate.createdAt >= message.createdAt && candidate.createdAt - message.createdAt < 30_000),
-    )
-    if (serverIndex < 0) continue
-    const [serverMessage] = matches.splice(serverIndex, 1)
+    if (!exactServer && (!signature || message.turnID)) continue
+    const matches = signature ? serverBySignature.get(signature) : undefined
+    const serverIndex = exactServer ? -1 : matches?.findIndex((candidate) =>
+      !consumedServerIDs.has(candidate.id) && (
+        typeof candidate.createdAt !== "number" ||
+        typeof message.createdAt !== "number" ||
+        Math.abs(candidate.createdAt - message.createdAt) < 30_000
+      ),
+    ) ?? -1
+    const serverMessage = exactServer ?? (serverIndex >= 0 ? matches?.[serverIndex] : undefined)
+    if (!serverMessage) continue
+    consumedServerIDs.add(serverMessage.id)
     serverMessage.renderKey = message.renderKey ?? message.id
     removeMessage(session, messageID)
   }
@@ -890,7 +898,7 @@ function isQuestionResolvedEvent(
 function applyMessageUpdate(state: RuntimeState, sessionID: string, info: ApiMessageInfo) {
   const session = ensureSession(state, sessionID)
   const optimisticUser = info.role === "user"
-    ? findOptimisticUserHandoff(session.messageOrder, session.messages, info.time.created)
+    ? findOptimisticUserHandoff(session.messageOrder, session.messages, info.time.created, info.turnID)
     : undefined
   const message = ensureMessage(session, {
     id: info.id,
@@ -1074,6 +1082,7 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       const message = next.sessions[action.sessionID]?.messages[action.messageID]
       if (message?.localOnly && message.deliveryState === "sending") {
         message.deliveryState = "queued"
+        message.turnID = action.turnID
       }
       return next
     }
@@ -1393,8 +1402,8 @@ export function pushLocalUserMessage(
   }
 }
 
-export function acceptLocalUserMessage(sessionID: string, messageID: string): RuntimeAction {
-  return { type: "localUserMessageAccepted", sessionID, messageID }
+export function acceptLocalUserMessage(sessionID: string, messageID: string, turnID?: string): RuntimeAction {
+  return { type: "localUserMessageAccepted", sessionID, messageID, turnID }
 }
 
 export function failLocalUserMessage(

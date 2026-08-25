@@ -39,3 +39,15 @@ test("does not hand a failed local turn to a later server message", () => {
     "pending",
   )
 })
+
+test("uses the accepted backend turn id instead of timestamp guessing", () => {
+  const messages = {
+    first: { id: "first", role: "user", turnID: "turn-1", createdAt: 10_000, localOnly: true, deliveryState: "queued" },
+    second: { id: "second", role: "user", turnID: "turn-2", createdAt: 20_000, localOnly: true, deliveryState: "queued" },
+  }
+
+  assert.equal(
+    findOptimisticUserHandoff(["first", "second"], messages, 100_000, "turn-2")?.id,
+    "second",
+  )
+})

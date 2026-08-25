@@ -35,9 +35,9 @@ function createState() {
   }]))
 }
 
-function textMessage(id, text, createdAt) {
+function textMessage(id, text, createdAt, turnID) {
   return {
-    info: { id, role: "user", time: { created: createdAt } },
+    info: { id, role: "user", ...(turnID ? { turnID } : {}), time: { created: createdAt } },
     parts: [{
       id: `${id}-text`,
       messageID: id,
@@ -96,17 +96,19 @@ test("server acknowledgement takes over the optimistic render key without a dupl
   const action = pushLocalUserMessage(sessionID, "交给服务端", [], { createdAt: 2_000 })
   let state = runtimeReducer(createState(), action)
   const renderKey = state.sessions[sessionID].messages[action.messageID].renderKey
+  state = runtimeReducer(state, acceptLocalUserMessage(sessionID, action.messageID, "turn-server-user"))
 
   state = runtimeReducer(state, applyRuntimeEvent({
     type: "message.updated",
     properties: {
       sessionID,
-      info: { id: "server-user", role: "user", time: { created: 2_010 } },
+      info: { id: "server-user", role: "user", turnID: "turn-server-user", time: { created: 100_000 } },
     },
   }))
 
   assert.deepEqual(state.sessions[sessionID].messageOrder, ["server-user"])
   assert.equal(state.sessions[sessionID].messages["server-user"].renderKey, renderKey)
+  assert.equal(state.sessions[sessionID].messages["server-user"].turnID, "turn-server-user")
   assert.equal(state.sessions[sessionID].messages["server-user"].localOnly, false)
   assert.equal(state.sessions[sessionID].messages["server-user"].deliveryState, undefined)
 
@@ -120,7 +122,7 @@ test("server acknowledgement takes over the optimistic render key without a dupl
         sessionID,
         type: "text",
         text: "交给服务端",
-        time: { start: 2_010, end: 2_010 },
+        time: { start: 100_000, end: 100_000 },
       },
     },
   }))
@@ -142,7 +144,7 @@ test("message hydration preserves pending turns and reconciles matching server r
   assert.deepEqual(state.sessions[sessionID].messageOrder, [first.messageID, second.messageID])
 
   state = runtimeReducer(state, hydrateSessionMessages(sessionID, {
-    items: [textMessage("server-first", "重复内容", 2_010)],
+    items: [textMessage("server-first", "重复内容", 1_990)],
     hasMore: false,
   }))
 

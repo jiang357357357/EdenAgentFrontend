@@ -631,13 +631,15 @@ export function apiMessage(event: SessionEvent, messageID = event.id): ApiMessag
   const role = message?.role
   if (role !== "user" && role !== "assistant") return undefined
   const created = Number(message.timestamp ?? event.createdAt)
+  const turnID = event.turnId == null ? undefined : String(event.turnId)
   const speaker = apiSpeaker(message.speaker)
   const orchestration = apiOrchestration(message.orchestration)
   const info: ApiMessageInfo = role === "user"
-    ? { id: messageID, role, time: { created } }
+    ? { id: messageID, role, ...(turnID ? { turnID } : {}), time: { created } }
     : {
         id: messageID,
         role,
+        ...(turnID ? { turnID } : {}),
         modelID: optionalString(message.model) ?? "",
         providerID: optionalString(message.provider) ?? "",
         ...(speaker ? { speaker } : {}),
