@@ -28,6 +28,7 @@ import {
   calculateSpinePlacement,
   MEMORY_LOBBY_CAMERA_SCALE,
   MEMORY_LOBBY_CAMERA_Y_BIAS,
+  normalizeSpineBounds,
   resolveMemoryLobbyCameraSlots,
   type SpineBounds,
   type SpineLayout,
@@ -49,6 +50,15 @@ function getLargestAttachmentBounds(model: Spine): SpineBounds | undefined {
     .map((slot) => getAttachmentBounds(model, slot.data.name))
     .filter((bounds): bounds is SpineBounds => bounds !== undefined)
     .sort((left, right) => right.width * right.height - left.width * left.height)[0]
+}
+
+function getProviderBounds(model: Spine): SpineBounds | undefined {
+  try {
+    return normalizeSpineBounds(model.boundsProvider?.calculateBounds(model))
+  } catch (error) {
+    console.warn("[SpineRenderer] 无法读取骨骼稳定边界，回退到 Pixi 动态边界", error)
+    return undefined
+  }
 }
 
 interface ViewportPoint {
@@ -97,6 +107,7 @@ export function SpineCharacterCanvas({
   const idleAnimationRef = useRef("")
   const layoutRef = useRef<SpineLayout>(asset.layout)
   const cameraBoundsRef = useRef<SpineBounds | undefined>(undefined)
+  const modelBoundsRef = useRef<SpineBounds | undefined>(undefined)
   const startupPendingRef = useRef(false)
   const animationNamesRef = useRef<Set<string>>(new Set())
   const interactionAnimationsRef = useRef<SpineInteractionAnimations>(resolveSpineInteractionAnimations([]))
@@ -235,7 +246,14 @@ export function SpineCharacterCanvas({
       spine.scale.set(1)
       spine.update(0)
       const memoryLobby = layoutRef.current === "memory-lobby"
-      const bounds = memoryLobby ? cameraBoundsRef.current ?? spine.getLocalBounds() : spine.getLocalBounds()
+      // spine-pixi-v7 can return an empty Rectangle from getLocalBounds() even
+      // when its SkinsAndAnimationBoundsProvider has calculated valid skeleton
+      // bounds. Read the provider directly once and use Pixi's dynamic bounds
+      // only as a compatibility fallback.
+      const bounds = memoryLobby
+        ? cameraBoundsRef.current ?? modelBoundsRef.current ?? normalizeSpineBounds(spine.getLocalBounds())
+        : modelBoundsRef.current ?? normalizeSpineBounds(spine.getLocalBounds())
+      if (!bounds) return false
       const padding = memoryLobby ? 0 : Math.min(app.screen.width, app.screen.height) * 0.025
       const placement = calculateSpinePlacement({
         bounds,
@@ -382,6 +400,7 @@ export function SpineCharacterCanvas({
           loaded.spine.skeleton.setSkinByName(asset.default_skin)
           loaded.spine.skeleton.setSlotsToSetupPose()
         }
+        modelBoundsRef.current = getProviderBounds(loaded.spine)
         const idleAnimation =
           (asset.idle_animation && loaded.animations.includes(asset.idle_animation) ? asset.idle_animation : "") ||
           loaded.animations.find((name) => name.toLowerCase() === "idle_01") ||
@@ -448,6 +467,7 @@ export function SpineCharacterCanvas({
       if (rareIdleTimer !== undefined) window.clearTimeout(rareIdleTimer)
       layoutRef.current = "standee"
       cameraBoundsRef.current = undefined
+      modelBoundsRef.current = undefined
       startupPendingRef.current = false
       observer.disconnect()
       visibilityObserver.disconnect()

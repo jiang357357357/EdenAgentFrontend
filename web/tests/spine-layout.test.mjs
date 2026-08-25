@@ -7,6 +7,7 @@ import {
   isMemoryLobbySpineAsset,
   MEMORY_LOBBY_CAMERA_SCALE,
   MEMORY_LOBBY_CAMERA_Y_BIAS,
+  normalizeSpineBounds,
   resolveMemoryLobbyCameraSlots,
   resolveSpineLayout,
   selectExactSpineAsset,
@@ -133,6 +134,12 @@ test("invalid attachment vertices do not produce a camera frame", () => {
 })
 
 test("invalid Spine bounds are ignored instead of producing a broken transform", () => {
+  assert.equal(normalizeSpineBounds({ x: 0, y: 0, width: 0, height: 1080 }), undefined)
+  assert.equal(normalizeSpineBounds({ x: Number.NaN, y: 0, width: 720, height: 1080 }), undefined)
+  assert.deepEqual(
+    normalizeSpineBounds({ x: -723, y: -1451, width: 1261, height: 2781 }),
+    { x: -723, y: -1451, width: 1261, height: 2781 },
+  )
   assert.equal(calculateSpinePlacement({
     bounds: { x: 0, y: 0, width: 0, height: 1080 },
     viewportWidth: 680,

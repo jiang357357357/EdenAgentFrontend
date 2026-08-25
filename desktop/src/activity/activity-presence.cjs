@@ -164,7 +164,10 @@ function createActivityPresenceService({
         camera_in_use: null,
         error: "系统媒体会话采集器尚未接入",
       },
-      edenagent: {
+      // Mon Core's activity-presence contract names the desktop-agent facts
+      // `monagent`. Keep this wire key stable even though the desktop product
+      // is branded Eden Agent.
+      monagent: {
         main_window_visible: usableWindow(windows.mainWindow) && windows.mainWindow.isVisible(),
         main_window_focused: usableWindow(windows.mainWindow) && windows.mainWindow.isFocused(),
         pet_visible: usableWindow(windows.petWindow) && windows.petWindow.isVisible(),
@@ -180,7 +183,7 @@ function createActivityPresenceService({
         system_input: "electron.powerMonitor",
         session: "electron.powerMonitor",
         foreground_window: platform === "linux" ? "linux.x11.xprop" : `electron.${platform}`,
-        edenagent: "electron",
+        monagent: "electron",
         media: "unavailable",
       },
       collection_errors: collectionErrors,

@@ -13,6 +13,9 @@ const [loaderSource, canvasSource] = await Promise.all([
 test("Spine uses skeleton-derived bounds instead of depending on the first Pixi mesh render", () => {
   assert.match(loaderSource, /new SkinsAndAnimationBoundsProvider\(boundsAnimation, boundsSkins\)/)
   assert.match(loaderSource, /new Spine\(\{ skeletonData, autoUpdate: false, boundsProvider \}\)/)
+  assert.match(canvasSource, /model\.boundsProvider\?\.calculateBounds\(model\)/)
+  assert.match(canvasSource, /modelBoundsRef\.current \?\? normalizeSpineBounds\(spine\.getLocalBounds\(\)\)/)
+  assert.match(canvasSource, /if \(!bounds\) return false/)
 })
 
 test("a zero-sized mount waits for ResizeObserver without exhausting the fit retry budget", () => {

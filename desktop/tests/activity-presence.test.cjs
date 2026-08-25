@@ -111,11 +111,13 @@ test("collects Electron window, input and renderer facts", async () => {
 
   const payload = await service.collectActivityPresenceFacts()
   assert.equal(payload.system_input.idle_seconds, 12)
-  assert.equal(payload.edenagent.main_window_visible, true)
-  assert.equal(payload.edenagent.main_window_focused, true)
-  assert.equal(payload.edenagent.pet_visible, true)
-  assert.equal(payload.edenagent.bubble_visible, true)
-  assert.equal(payload.edenagent.chat_input_focused, true)
+  assert.equal(payload.monagent.main_window_visible, true)
+  assert.equal(payload.monagent.main_window_focused, true)
+  assert.equal(payload.monagent.pet_visible, true)
+  assert.equal(payload.monagent.bubble_visible, true)
+  assert.equal(payload.monagent.chat_input_focused, true)
+  assert.equal(payload.sources.monagent, "electron")
+  assert.equal("edenagent" in payload, false)
   assert.equal(payload.recent_events[0].type, "edenagent_interaction_updated")
 })
 
@@ -131,6 +133,9 @@ test("starting activity presence schedules and publishes authenticated updates",
   assert.equal(requests[0][0], "/api/users/me/activity-presence/")
   assert.equal(requests[0][1].headers.Authorization, "Bearer token-1")
   assert.equal(requests[0][1].headers["X-MON-CLIENT-ID"], "client-1")
+  const payload = JSON.parse(requests[0][1].body)
+  assert.ok(payload.monagent)
+  assert.equal("edenagent" in payload, false)
 
   service.stopActivityPresence()
   assert.equal(await service.publishActivityPresence(), false)

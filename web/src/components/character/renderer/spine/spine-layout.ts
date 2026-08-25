@@ -116,6 +116,18 @@ export function calculateVertexBounds(vertices: ArrayLike<number>): SpineBounds 
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
 }
 
+export function normalizeSpineBounds(bounds: Partial<SpineBounds> | null | undefined): SpineBounds | undefined {
+  const { x, y, width, height } = bounds ?? {}
+  if (
+    typeof x !== "number" || !Number.isFinite(x) ||
+    typeof y !== "number" || !Number.isFinite(y) ||
+    typeof width !== "number" || !Number.isFinite(width) || width <= 0 ||
+    typeof height !== "number" || !Number.isFinite(height) || height <= 0
+  ) return undefined
+
+  return { x, y, width, height }
+}
+
 export function calculateSpinePlacement({
   bounds,
   viewportWidth,
