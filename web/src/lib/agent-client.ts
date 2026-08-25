@@ -42,7 +42,7 @@ import {
 } from "./desktop-window"
 import {
   apiMessage, apiSession, mapMemoForView, projectSessionEvent,
-  mapAgentThreadForView, rpcRequest, rpcRequestWithTimeout, sessionEventMessageRole,
+  mapAgentThreadForView, rpcRequest, rpcRequestWithTimeout, sessionEventMessageID, sessionEventMessageRole,
   resolveVoiceBlobUrl, sessionEventToolResultCallID, subscribeRpcEvents, uploadAttachments,
 } from "./rpc-transport"
 
@@ -2158,7 +2158,7 @@ export function createSessionEventProjector() {
     const toolCallID = sessionEventToolResultCallID(event)
     const ownerKey = toolCallID ? `${key}:${toolCallID}` : undefined
     const messageID = ownerKey ? toolOwners.get(ownerKey) : activeMessages.get(key)
-    const projected = projectSessionEvent(event, messageID ?? event.id) as ApiEvent[]
+    const projected = projectSessionEvent(event, messageID ?? sessionEventMessageID(event)) as ApiEvent[]
 
     for (const update of projected) {
       if (update.type !== "message.part.updated") continue

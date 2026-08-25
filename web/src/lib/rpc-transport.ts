@@ -333,6 +333,11 @@ export function sessionEventMessageRole(event: SessionEvent): string | undefined
   return optionalString(sessionEventMessage(event)?.role)
 }
 
+export function sessionEventMessageID(event: SessionEvent): string {
+  const payload = jsonObject(event.payload)
+  return optionalString(payload?.messageId) ?? optionalString(payload?.messageID) ?? event.id
+}
+
 export function sessionEventToolResultCallID(event: SessionEvent): string | undefined {
   const message = sessionEventMessage(event)
   return message?.role === "toolResult" ? optionalString(message.toolCallId) : undefined
@@ -624,7 +629,7 @@ function toolResultPart(event: SessionEvent, messageID: string): ApiToolPart | u
   return { id: toolCallID, messageID, sessionID: event.sessionId, type: "tool", tool, state }
 }
 
-export function apiMessage(event: SessionEvent, messageID = event.id): ApiMessage | undefined {
+export function apiMessage(event: SessionEvent, messageID = sessionEventMessageID(event)): ApiMessage | undefined {
   const payload = event.payload as JsonObject
   const message = payload.message as JsonObject | undefined
   if (message?.display === false || message?.internalHandoff === true) return undefined

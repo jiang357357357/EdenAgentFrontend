@@ -131,6 +131,26 @@ test("server acknowledgement takes over the optimistic render key without a dupl
   assert.equal(selectSessions(state)[0].messages[0].content, "交给服务端")
 })
 
+test("late turn acceptance reconciles a server user message that arrived before the RPC response", () => {
+  const action = pushLocalUserMessage(sessionID, "先到的事件", [], { createdAt: 2_000 })
+  let state = runtimeReducer(createState(), action)
+
+  state = runtimeReducer(state, applyRuntimeEvent({
+    type: "message.updated",
+    properties: {
+      sessionID,
+      info: { id: "server-user", role: "user", turnID: "turn-race", time: { created: 100_000 } },
+    },
+  }))
+  assert.deepEqual(state.sessions[sessionID].messageOrder, [action.messageID, "server-user"])
+
+  state = runtimeReducer(state, acceptLocalUserMessage(sessionID, action.messageID, "turn-race"))
+
+  assert.deepEqual(state.sessions[sessionID].messageOrder, ["server-user"])
+  assert.equal(state.sessions[sessionID].messages["server-user"].renderKey, `user-turn-${action.messageID}`)
+  assert.equal(selectSessions(state)[0].messages.length, 1)
+})
+
 test("message hydration preserves pending turns and reconciles matching server records one-to-one", () => {
   const first = pushLocalUserMessage(sessionID, "重复内容", [], { createdAt: 2_000 })
   const second = pushLocalUserMessage(sessionID, "重复内容", [], { createdAt: 2_020 })

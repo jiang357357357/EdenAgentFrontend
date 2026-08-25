@@ -1079,10 +1079,12 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
     }
 
     case "localUserMessageAccepted": {
-      const message = next.sessions[action.sessionID]?.messages[action.messageID]
+      const session = next.sessions[action.sessionID]
+      const message = session?.messages[action.messageID]
       if (message?.localOnly && message.deliveryState === "sending") {
         message.deliveryState = "queued"
         message.turnID = action.turnID
+        if (session && action.turnID) reconcileOptimisticUsers(session)
       }
       return next
     }
