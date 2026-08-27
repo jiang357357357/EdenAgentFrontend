@@ -148,6 +148,8 @@ function createRustServerManager({ app, agentRoot, processObject = process, file
     }
     if (app.isPackaged) {
       environment.EDEN_AGENT_CONNECTOR_MANIFEST_ROOT = effectivePathApi.join(processObject.resourcesPath, "manifests")
+      environment.EDEN_AGENT_ALLOWED_ORIGINS = processObject.env.EDEN_AGENT_ALLOWED_ORIGINS?.trim()
+        || "file://,null,edenagent://app"
     }
     if (realm === "mon") {
       for (const key of Object.keys(localRuntimeEnvironment)) delete environment[key]

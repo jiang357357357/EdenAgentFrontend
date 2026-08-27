@@ -52,6 +52,8 @@ test("packaged desktop starts physically isolated Mon and local Rust servers", (
   assert.match(local.options.env.EDEN_AGENT_CONNECTOR_DATA_ROOT, /realms[\\/]local[\\/]connectors[\\/]runtime$/)
   assert.equal(mon.options.env.EDEN_AGENT_CONNECTOR_MANIFEST_ROOT, "C:\\Resources\\manifests")
   assert.equal(local.options.env.EDEN_AGENT_CONNECTOR_MANIFEST_ROOT, "C:\\Resources\\manifests")
+  assert.equal(mon.options.env.EDEN_AGENT_ALLOWED_ORIGINS, "file://,null,edenagent://app")
+  assert.equal(local.options.env.EDEN_AGENT_ALLOWED_ORIGINS, "file://,null,edenagent://app")
   assert.match(mon.options.env.EDEN_AGENT_USER_AGENT_ROOT, /realms[\\/]mon[\\/]agents$/)
   assert.match(local.options.env.EDEN_AGENT_USER_AGENT_ROOT, /realms[\\/]local[\\/]agents$/)
   assert.equal(mon.options.env.EDEN_AGENT_MODEL, undefined)
