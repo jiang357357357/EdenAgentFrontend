@@ -146,6 +146,9 @@ function createRustServerManager({ app, agentRoot, processObject = process, file
       EDEN_AGENT_USER_AGENT_ROOT: effectivePathApi.join(dataRoot, "agents"),
       EDEN_AGENT_REALM_MIGRATION_MARKER: effectivePathApi.join(dataRoot, ".realm-migration-pending"),
     }
+    if (app.isPackaged) {
+      environment.EDEN_AGENT_CONNECTOR_MANIFEST_ROOT = effectivePathApi.join(processObject.resourcesPath, "manifests")
+    }
     if (realm === "mon") {
       for (const key of Object.keys(localRuntimeEnvironment)) delete environment[key]
       delete environment.OPENAI_API_KEY
