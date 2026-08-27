@@ -113,6 +113,30 @@ test("commits Chinese and ASCII ellipses only after lookahead", () => {
   assert.deepEqual(asciiContinued.chunks, ["Wait..."])
 })
 
+test("never emits punctuation-only chunks and keeps a leading ellipsis with its sentence", () => {
+  assert.deepEqual(speechChunksForTTS("……", "all"), [])
+  assert.deepEqual(speechChunksForTTS("……说起来，我也有过这样的时刻。", "all"), [
+    "……说起来，我也有过这样的时刻。",
+  ])
+  assert.deepEqual(speechChunksForTTS("前一句。\n\n……说起来，我也有过这样的时刻。", "all"), [
+    "前一句。",
+    "……说起来，我也有过这样的时刻。",
+  ])
+
+  const pending = consumeSpeechStream("……说起来，我也有过", "all", undefined)
+  assert.deepEqual(pending.chunks, [])
+  assert.equal(pending.cursor.consumed, 0)
+  const committed = consumeSpeechStream("……说起来，我也有过这样的时刻。下一句", "all", pending.cursor)
+  assert.deepEqual(committed.chunks, ["……说起来，我也有过这样的时刻。"])
+  assert.equal(committed.cursor.committed[0].start, 0)
+})
+
+test("never leaves an isolated punctuation boundary as its own chunk", () => {
+  const chunks = speechChunksForTTS("第一句。……第二句。", "all")
+  assert.deepEqual(chunks, ["第一句。……", "第二句。"])
+  assert.equal(chunks.every((chunk) => /[\p{L}\p{N}]/u.test(chunk)), true)
+})
+
 test("committed chunks carry stable offsets and fingerprints", () => {
   const first = consumeSpeechStream("第一句。第二句", "all", undefined)
   const second = consumeSpeechStream("第一句。第二句继续", "all", first.cursor)

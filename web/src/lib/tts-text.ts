@@ -142,6 +142,10 @@ function speechFingerprint(text: string) {
   return `${text.length}:${(hash >>> 0).toString(16).padStart(8, "0")}`
 }
 
+function hasSpeechContent(text: string) {
+  return /[\p{L}\p{N}]/u.test(text)
+}
+
 function englishTokenBeforePeriod(text: string, start: number, periodIndex: number) {
   return text.slice(start, periodIndex).match(/[A-Za-z](?:[A-Za-z.]*)$/)?.[0]?.toLowerCase() ?? ""
 }
@@ -199,6 +203,7 @@ function streamingLengthBoundary(text: string, start: number) {
 function planSpeechChunks(speakableText: string, flush: boolean) {
   const planned: CommittedSpeechChunk[] = []
   let consumed = 0
+  let pendingPrefixStart: number | null = null
 
   while (consumed < speakableText.length) {
     while (consumed < speakableText.length && /[\s"'”’）)\]]/.test(speakableText[consumed])) consumed += 1
@@ -217,7 +222,19 @@ function planSpeechChunks(speakableText: string, flush: boolean) {
     const text = speakableText.slice(start, end).trim()
     consumed = end
     while (consumed < speakableText.length && /\s/.test(speakableText[consumed])) consumed += 1
-    if (text) planned.push({ start, end, text, fingerprint: speechFingerprint(text) })
+    if (!hasSpeechContent(text)) {
+      pendingPrefixStart ??= start
+      continue
+    }
+    const committedStart = pendingPrefixStart ?? start
+    const committedText = speakableText.slice(committedStart, end).trim()
+    pendingPrefixStart = null
+    planned.push({
+      start: committedStart,
+      end,
+      text: committedText,
+      fingerprint: speechFingerprint(committedText),
+    })
   }
 
   return planned
