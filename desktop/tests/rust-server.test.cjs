@@ -167,3 +167,24 @@ test("external desktop never invents a missing realm token", () => {
   assert.throws(() => manager.capability("local"), /local capability token is not ready/)
   assert.throws(() => manager.capability("other"), /Unsupported Eden Agent runtime origin/)
 })
+
+test("workspace supervisor can own Mon while desktop still owns local realm", () => {
+  const { manager, calls } = packagedManager({
+    processObject: {
+      platform: "win32",
+      resourcesPath: "C:\\Resources",
+      env: {
+        EDEN_AGENT_EXTERNAL_ORIGINS: "mon",
+        EDEN_AGENT_MON_CAPABILITY_TOKEN: "a".repeat(64),
+      },
+      stdout: {},
+      stderr: {},
+    },
+  })
+  manager.start()
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].options.env.EDEN_AGENT_RUNTIME_ORIGIN, "local")
+  assert.equal(manager.status("mon").externallyManaged, true)
+  assert.equal(manager.status("local").externallyManaged, false)
+  assert.equal(manager.capability("mon").token, "a".repeat(64))
+})

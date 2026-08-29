@@ -1,7 +1,7 @@
 {
   "name": "eden-agent-frontend",
   "private": true,
-  "version": "1.9.0",
+  "version": "1.9.1",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "main": "desktop/src/main.cjs",

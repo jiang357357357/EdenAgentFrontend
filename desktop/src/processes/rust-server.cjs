@@ -15,7 +15,16 @@ function createRustServerManager({ app, agentRoot, processObject = process, file
   const effectivePathApi = pathApi ?? (processObject.platform === "win32" ? path.win32 : path)
   const children = { mon: null, local: null }
   const serverMode = processObject.env.EDEN_AGENT_SERVER_MODE?.trim().toLowerCase()
-  const externallyManaged = serverMode === "external" || Boolean(processObject.env.EDEN_AGENT_DEV_PARENT_PID)
+  const configuredExternalOrigins = new Set(
+    String(processObject.env.EDEN_AGENT_EXTERNAL_ORIGINS || "")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => RUNTIME_ORIGINS.includes(value)),
+  )
+  if (serverMode === "external" || processObject.env.EDEN_AGENT_DEV_PARENT_PID) {
+    for (const origin of RUNTIME_ORIGINS) configuredExternalOrigins.add(origin)
+  }
+  const externallyManaged = (origin) => configuredExternalOrigins.has(normalizeOrigin(origin))
   const ports = {
     mon: Number(processObject.env.EDEN_AGENT_MON_PORT || processObject.env.EDEN_AGENT_SERVER_PORT || 40092),
     local: Number(processObject.env.EDEN_AGENT_LOCAL_PORT || 40093),
@@ -27,12 +36,12 @@ function createRustServerManager({ app, agentRoot, processObject = process, file
   }
   const managedTokens = Object.fromEntries(RUNTIME_ORIGINS.map((origin) => [
     origin,
-    configuredTokens[origin] || (externallyManaged ? null : crypto.randomBytes(32).toString("hex")),
+    configuredTokens[origin] || (externallyManaged(origin) ? null : crypto.randomBytes(32).toString("hex")),
   ]))
 
   function realmDataRoot(origin) {
     const realm = normalizeOrigin(origin)
-    if (externallyManaged) return effectivePathApi.join(agentRoot, "Data", "realms", realm)
+    if (externallyManaged(realm)) return effectivePathApi.join(agentRoot, "Data", "realms", realm)
     return effectivePathApi.join(app.getPath("userData"), "server", "realms", realm)
   }
 
@@ -92,9 +101,9 @@ function createRustServerManager({ app, agentRoot, processObject = process, file
   }
 
   function prepareRealmData() {
-    if (externallyManaged) return
     const legacyRoot = effectivePathApi.join(app.getPath("userData"), "server")
     for (const origin of RUNTIME_ORIGINS) {
+      if (externallyManaged(origin)) continue
       const targetRoot = realmDataRoot(origin)
       fileSystem.mkdirSync(targetRoot, { recursive: true })
       for (const suffix of ["", "-wal", "-shm"]) {
@@ -166,7 +175,7 @@ function createRustServerManager({ app, agentRoot, processObject = process, file
 
   function startRealm(origin) {
     const realm = normalizeOrigin(origin)
-    if (children[realm] || externallyManaged) return children[realm]
+    if (children[realm] || externallyManaged(realm)) return children[realm]
     const executable = executablePath()
     if (!fileSystem.existsSync(executable)) throw new Error(`Rust server executable not found: ${executable}`)
     fileSystem.mkdirSync(realmDataRoot(realm), { recursive: true })
@@ -207,7 +216,7 @@ function createRustServerManager({ app, agentRoot, processObject = process, file
 
   async function restart(origin = "local") {
     const realm = normalizeOrigin(origin)
-    if (externallyManaged) return { restarted: false, externallyManaged: true, origin: realm }
+    if (externallyManaged(realm)) return { restarted: false, externallyManaged: true, origin: realm }
     const previous = children[realm]
     if (previous) {
       await new Promise((resolve) => {
@@ -230,12 +239,13 @@ function createRustServerManager({ app, agentRoot, processObject = process, file
 
   function status(origin = "local") {
     const realm = normalizeOrigin(origin)
+    const external = externallyManaged(realm)
     return {
       origin: realm,
-      externallyManaged,
-      managed: !externallyManaged,
-      running: externallyManaged ? null : Boolean(children[realm]),
-      restartSupported: !externallyManaged,
+      externallyManaged: external,
+      managed: !external,
+      running: external ? null : Boolean(children[realm]),
+      restartSupported: !external,
     }
   }
 
