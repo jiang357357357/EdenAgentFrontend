@@ -188,3 +188,36 @@ test("workspace supervisor can own Mon while desktop still owns local realm", ()
   assert.equal(manager.status("local").externallyManaged, false)
   assert.equal(manager.capability("mon").token, "a".repeat(64))
 })
+
+test("development parent controls lifecycle without implicitly externalizing both realms", () => {
+  const files = []
+  const { manager, calls } = packagedManager({
+    processObject: {
+      platform: "win32",
+      resourcesPath: "C:\\Resources",
+      env: {
+        EDEN_AGENT_DEV_PARENT_PID: "321",
+        EDEN_AGENT_EXTERNAL_ORIGINS: "mon",
+        EDEN_AGENT_MON_TOKEN_FILE: "C:\\Agent\\Data\\realms\\mon\\capability.token",
+        EDEN_AGENT_TOKEN_FILE: "C:\\Agent\\Data\\server-capability.token",
+      },
+      stdout: {},
+      stderr: {},
+    },
+    fileSystem: {
+      existsSync: () => true,
+      mkdirSync: () => {},
+      readFileSync: (filePath) => {
+        files.push(filePath)
+        return `${"a".repeat(64)}\n`
+      },
+    },
+  })
+  manager.start()
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].options.env.EDEN_AGENT_RUNTIME_ORIGIN, "local")
+  assert.equal(manager.status("mon").externallyManaged, true)
+  assert.equal(manager.status("local").externallyManaged, false)
+  assert.equal(manager.capability("mon").token, "a".repeat(64))
+  assert.deepEqual(files, ["C:\\Agent\\Data\\realms\\mon\\capability.token"])
+})

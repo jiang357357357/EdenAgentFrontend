@@ -21,7 +21,9 @@ function createRustServerManager({ app, agentRoot, processObject = process, file
       .map((value) => value.trim().toLowerCase())
       .filter((value) => RUNTIME_ORIGINS.includes(value)),
   )
-  if (serverMode === "external" || processObject.env.EDEN_AGENT_DEV_PARENT_PID) {
+  // Process lifetime and runtime ownership are separate contracts. A desktop
+  // may be tied to a development parent while still owning the local realm.
+  if (serverMode === "external") {
     for (const origin of RUNTIME_ORIGINS) configuredExternalOrigins.add(origin)
   }
   const externallyManaged = (origin) => configuredExternalOrigins.has(normalizeOrigin(origin))

@@ -3,8 +3,10 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { spawnExecutable, spawnNpm } from "./process_runner.mjs"
 import monconfig from "../../desktop/src/app/monconfig.cjs"
+import desktopRuntimeContract from "../../desktop/src/processes/desktop-runtime-contract.cjs"
 
 const { parseMonConfigValue } = monconfig
+const { createDesktopRuntimeEnvironment } = desktopRuntimeContract
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const frontendRoot = path.resolve(scriptDir, "../..")
@@ -318,12 +320,14 @@ try {
   }
 
   console.log("[dev] start desktop shell")
-  const desktop = start("desktop", ["--prefix", "desktop", "run", "dev"], {
-    ELECTRON_RUN_AS_NODE: undefined,
-    EDEN_AGENT_DEV_PARENT_PID: String(process.pid),
-    EDEN_AGENT_SERVER_MODE: "external",
-    EDEN_AGENT_TOKEN_FILE: process.env.EDEN_AGENT_TOKEN_FILE || path.join(agentRoot, "Data", "server-capability.token"),
+  const desktopEnvironment = createDesktopRuntimeEnvironment({
+    environment: process.env,
+    agentRoot,
+    parentPid: process.pid,
+    externalOrigins: "mon",
   })
+  desktopEnvironment.ELECTRON_RUN_AS_NODE = undefined
+  const desktop = start("desktop", ["--prefix", "desktop", "run", "dev"], desktopEnvironment)
   desktop.on("exit", () => void shutdown(0))
 } catch (error) {
   process.stderr.write(`[dev] ${error instanceof Error ? error.message : String(error)}\n`)
