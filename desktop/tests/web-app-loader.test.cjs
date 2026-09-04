@@ -55,14 +55,14 @@ test("development loading attaches guards and loads the local URL", () => {
   assert.equal(targetWindow.handlers.has("will-redirect"), true)
 })
 
-test("packaged loading uses the bundled entry and query options", () => {
+test("packaged loading uses the stable privileged application origin", () => {
   const { loader } = createLoader({ app: { isPackaged: true } })
   const targetWindow = createFakeWindow()
 
   loader.loadWebApp(targetWindow, "settings")
 
-  assert.deepEqual(targetWindow.loadFileCalls, [["C:\\Mon\\Agent\\frontend/web/dist/index.html", { query: { page: "settings" } }]])
-  assert.deepEqual(targetWindow.loadUrlCalls, [])
+  assert.deepEqual(targetWindow.loadFileCalls, [])
+  assert.deepEqual(targetWindow.loadUrlCalls, ["edenagent://app/index.html?page=settings"])
 })
 
 test("navigation guards deny new windows and externalize supported links", async () => {

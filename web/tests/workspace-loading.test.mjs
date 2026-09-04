@@ -34,3 +34,11 @@ test("workspace switching is available before the first chat session exists", ()
   assert.doesNotMatch(sidebarSource, /请先打开一个会话，再切换工作区/)
   assert.match(sidebarSource, /workspaceSwitching \|\| Boolean\(workspacePending\)/)
 })
+
+test("workspace switching refreshes after both events and missed-event reconciliation", () => {
+  assert.match(sidebarSource, /edenagent:workspace-switch-failed/)
+  assert.match(sidebarSource, /const reconcileWorkspace = async \(\) =>/)
+  assert.match(sidebarSource, /if \(workspace\.pendingPath\)/)
+  assert.match(sidebarSource, /setWorkspaceEntries\(directory\.entries\)/)
+  assert.match(sidebarSource, /sameWorkspacePath\(workspace\.path, requestedPath\)/)
+})

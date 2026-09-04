@@ -39,6 +39,7 @@ const { createProcessLifecycle } = require("./processes/process-lifecycle.cjs")
 const { createRustServerManager } = require("./processes/rust-server.cjs")
 const { createDesktopQuitFlagController } = require("./processes/desktop-quit-flag.cjs")
 const { registerFileProtocol } = require("./protocols/register-file-protocol.cjs")
+const { registerAppProtocol } = require("./protocols/app-protocol.cjs")
 const { createWebAppLoader } = require("./windows/web-app-loader.cjs")
 const { createTrayController } = require("./windows/tray-controller.cjs")
 const { rendererConsoleError } = require("./windows/renderer-console-message.cjs")
@@ -106,7 +107,6 @@ const petSettingsStore = createPetSettingsStore({
 const { loadWebApp } = createWebAppLoader({
   app,
   shell,
-  frontendRoot,
   getWebPort: () => getAgentConfig("server", "WEB_PORT", String(DEFAULT_WEB_PORT)),
   defaultWebPort: DEFAULT_WEB_PORT,
   isInternalAppUrl,
@@ -274,6 +274,15 @@ if (process.platform === "win32") {
 }
 
 protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "edenagent",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
   {
     scheme: "edenagent-file",
     privileges: {
@@ -1228,6 +1237,7 @@ app.on("second-instance", () => {
     startActivityPresenceSystemEvents()
     Menu.setApplicationMenu(null)
     watchQuitFlag()
+    registerAppProtocol({ protocol, net, appRoot: path.join(frontendRoot, "web", "dist") })
     registerFileProtocol({ protocol, net })
     registerMediaPermissions({
       defaultSession: session.defaultSession,

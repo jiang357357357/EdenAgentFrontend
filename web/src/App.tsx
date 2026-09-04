@@ -170,6 +170,10 @@ export default function App() {
       window.dispatchEvent(new CustomEvent("edenagent:workspace-changed", { detail: event.properties }))
       return
     }
+    if (event.type === "workspace.switch_failed") {
+      window.dispatchEvent(new CustomEvent("edenagent:workspace-switch-failed", { detail: event.properties }))
+      return
+    }
     if (event.type === "tools.changed") {
       window.dispatchEvent(new CustomEvent("edenagent:skills-changed", { detail: event.properties }))
       return

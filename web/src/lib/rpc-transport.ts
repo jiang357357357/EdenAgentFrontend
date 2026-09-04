@@ -724,6 +724,13 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
     return [{ type: "message.part.updated", properties: { sessionID, part: completedTool } }]
   }
   if (sessionEventMessageRole(event) === "toolResult") return []
+  if (
+    event.eventType === "workspace.changed" ||
+    event.eventType === "workspace.switch_failed" ||
+    event.eventType === "tools.changed"
+  ) {
+    return [{ type: event.eventType, properties: event.payload as JsonObject }]
+  }
   if (event.eventType === "character.action.changed") {
     const value = event.payload as JsonObject
     return [{ type: "character.action.changed", properties: {

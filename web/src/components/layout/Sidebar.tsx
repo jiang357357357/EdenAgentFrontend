@@ -49,6 +49,15 @@ function startOfDay(value: Date) {
   return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime()
 }
 
+function normalizedWorkspacePath(value: string) {
+  const normalized = value.trim().replace(/^\\\\\?\\/, "").replaceAll("\\", "/").replace(/\/+$/, "")
+  return /^[A-Za-z]:\//.test(normalized) ? normalized.toLocaleLowerCase() : normalized
+}
+
+function sameWorkspacePath(left: string, right: string) {
+  return normalizedWorkspacePath(left) === normalizedWorkspacePath(right)
+}
+
 function groupSessions(sessions: Session[]): SessionGroup[] {
   const now = new Date()
   const today = startOfDay(now)
@@ -287,9 +296,59 @@ export function Sidebar({
       setWorkspaceLoaded(false)
       onWorkspaceChanged()
     }
+    const failWorkspaceSwitch = (event: Event) => {
+      const detail = (event as CustomEvent<{ error?: string }>).detail
+      setWorkspacePending("")
+      setWorkspaceError(detail?.error || "工作区切换失败")
+      setWorkspaceLoaded(false)
+    }
     window.addEventListener("edenagent:workspace-changed", refreshWorkspace)
-    return () => window.removeEventListener("edenagent:workspace-changed", refreshWorkspace)
+    window.addEventListener("edenagent:workspace-switch-failed", failWorkspaceSwitch)
+    return () => {
+      window.removeEventListener("edenagent:workspace-changed", refreshWorkspace)
+      window.removeEventListener("edenagent:workspace-switch-failed", failWorkspaceSwitch)
+    }
   }, [onWorkspaceChanged])
+
+  useEffect(() => {
+    if (!workspacePending) return
+    const requestedPath = workspacePending
+    let disposed = false
+    let timer: number | undefined
+
+    const reconcileWorkspace = async () => {
+      try {
+        const workspace = await getWorkspace()
+        if (disposed) return
+        if (workspace.pendingPath) {
+          timer = window.setTimeout(() => void reconcileWorkspace(), 750)
+          return
+        }
+
+        const directory = await listWorkspaceDirectory()
+        if (disposed) return
+        setWorkspaceName(workspace.name)
+        setWorkspacePath(workspace.path)
+        setWorkspaceEntries(directory.entries)
+        setWorkspacePending("")
+        setWorkspaceLoaded(true)
+        if (!sameWorkspacePath(workspace.path, requestedPath)) {
+          setWorkspaceError(`工作区切换未生效，当前仍为 ${workspace.path}`)
+        } else {
+          setWorkspaceError("")
+        }
+        onWorkspaceChanged()
+      } catch {
+        if (!disposed) timer = window.setTimeout(() => void reconcileWorkspace(), 1_000)
+      }
+    }
+
+    timer = window.setTimeout(() => void reconcileWorkspace(), 750)
+    return () => {
+      disposed = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [onWorkspaceChanged, workspacePending])
 
   const chooseWorkspace = async () => {
     if (workspaceSwitching || workspacePending) return

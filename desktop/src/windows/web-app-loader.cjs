@@ -1,22 +1,17 @@
-const path = require("node:path")
+const { desktopAppUrl } = require("../protocols/app-protocol.cjs")
 
 function createWebAppLoader({
   app,
   shell,
-  frontendRoot,
   getWebPort,
   defaultWebPort,
   isInternalAppUrl,
   isSupportedExternalUrl,
   logger = console,
-  pathApi = path,
 } = {}) {
   if (!app) throw new TypeError("app is required")
   if (!shell?.openExternal) throw new TypeError("shell.openExternal is required")
-  if (!frontendRoot) throw new TypeError("frontendRoot is required")
   if (typeof getWebPort !== "function") throw new TypeError("getWebPort is required")
-
-  const appEntryFile = pathApi.join(frontendRoot, "web", "dist", "index.html")
 
   function resolveWebUrl(page) {
     const configuredPort = Number(getWebPort())
@@ -31,7 +26,6 @@ function createWebAppLoader({
   function navigationPolicyOptions() {
     return {
       isPackaged: app.isPackaged,
-      appEntryFile,
       devOrigin: new URL(resolveWebUrl()).origin,
     }
   }
@@ -68,8 +62,7 @@ function createWebAppLoader({
   function loadWebApp(targetWindow, page) {
     attachNavigationPolicy(targetWindow)
     if (app.isPackaged) {
-      const options = page ? { query: { page } } : undefined
-      targetWindow.loadFile(appEntryFile, options)
+      targetWindow.loadURL(desktopAppUrl(page))
     } else {
       targetWindow.loadURL(resolveWebUrl(page))
     }

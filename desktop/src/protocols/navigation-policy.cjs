@@ -1,6 +1,3 @@
-const path = require("node:path")
-const { fileURLToPath } = require("node:url")
-
 const EXTERNAL_PROTOCOLS = new Set(["http:", "https:", "mailto:"])
 
 function parseUrl(rawUrl) {
@@ -11,7 +8,7 @@ function parseUrl(rawUrl) {
   }
 }
 
-function isInternalAppUrl(rawUrl, { isPackaged, appEntryFile, devOrigin }) {
+function isInternalAppUrl(rawUrl, { isPackaged, devOrigin }) {
   const url = parseUrl(rawUrl)
   if (!url) return false
 
@@ -19,12 +16,7 @@ function isInternalAppUrl(rawUrl, { isPackaged, appEntryFile, devOrigin }) {
     return (url.protocol === "http:" || url.protocol === "https:") && url.origin === devOrigin
   }
 
-  if (url.protocol !== "file:" || !appEntryFile) return false
-  try {
-    return path.resolve(fileURLToPath(url)) === path.resolve(appEntryFile)
-  } catch {
-    return false
-  }
+  return url.protocol === "edenagent:" && url.host === "app" && url.pathname === "/index.html"
 }
 
 function isSupportedExternalUrl(rawUrl) {

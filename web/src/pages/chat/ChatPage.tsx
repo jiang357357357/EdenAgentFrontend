@@ -1,6 +1,6 @@
 import { File, Lock, LockOpen, MessageSquare, X } from "lucide-react"
 import { motion } from "motion/react"
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { CharacterPanel } from "../../components/character"
 import { ChatInput } from "../../components/chat/input"
@@ -219,17 +219,18 @@ export function ChatPage({
     moveConversationWindow("older")
   }, [anchoredTurnIndex, messages.length, visibleWindowStartID])
 
+  const resetWorkspaceFiles = useCallback(() => {
+    setOpenFiles([])
+    setFileContents({})
+    setFileLoadingPath("")
+    setFileError("")
+    setActiveTab(activeSessionId ? `session:${activeSessionId}` : "")
+  }, [activeSessionId])
+
   useEffect(() => {
-    const resetWorkspaceFiles = () => {
-      setOpenFiles([])
-      setFileContents({})
-      setFileLoadingPath("")
-      setFileError("")
-      setActiveTab(activeSessionId ? `session:${activeSessionId}` : "")
-    }
     window.addEventListener("edenagent:workspace-changed", resetWorkspaceFiles)
     return () => window.removeEventListener("edenagent:workspace-changed", resetWorkspaceFiles)
-  }, [activeSessionId])
+  }, [resetWorkspaceFiles])
 
   usePerformanceDiagnostics({
     messages: messages.length,
@@ -444,11 +445,7 @@ export function ChatPage({
         onOpenConfiguration={onOpenConfiguration}
         onOpenSettings={onOpenSettings}
         onOpenFile={openWorkspaceFile}
-        onWorkspaceChanged={() => {
-          setOpenFiles([])
-          setFileContents({})
-          setActiveTab(activeSessionId ? `session:${activeSessionId}` : "")
-        }}
+        onWorkspaceChanged={resetWorkspaceFiles}
       />
 
       <main

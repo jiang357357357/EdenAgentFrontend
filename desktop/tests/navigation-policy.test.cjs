@@ -1,5 +1,3 @@
-const path = require("node:path")
-const { pathToFileURL } = require("node:url")
 const test = require("node:test")
 const assert = require("node:assert/strict")
 
@@ -15,11 +13,12 @@ test("development mode only treats the exact Web origin as internal", () => {
   assert.equal(isInternalAppUrl("https://www.rust-lang.org/", options), false)
 })
 
-test("packaged mode only permits the bundled application entry", () => {
-  const appEntryFile = path.resolve("/opt/eden-agent/frontend/web/dist/index.html")
-  const options = { isPackaged: true, appEntryFile }
-  assert.equal(isInternalAppUrl(`${pathToFileURL(appEntryFile)}?page=settings`, options), true)
-  assert.equal(isInternalAppUrl(pathToFileURL("/tmp/index.html").toString(), options), false)
+test("packaged mode only permits the fixed privileged application entry", () => {
+  const options = { isPackaged: true }
+  assert.equal(isInternalAppUrl("edenagent://app/index.html?page=settings", options), true)
+  assert.equal(isInternalAppUrl("edenagent://app/assets/index.js", options), false)
+  assert.equal(isInternalAppUrl("edenagent://other/index.html", options), false)
+  assert.equal(isInternalAppUrl("file:///tmp/index.html", options), false)
 })
 
 test("external navigation is limited to browser and email protocols", () => {
