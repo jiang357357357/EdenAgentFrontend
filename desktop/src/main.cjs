@@ -64,6 +64,7 @@ const workspaceContext = createWorkspaceContext({
 const {
   agentRoot,
   frontendRoot,
+  workspaceRoot,
   getAgentConfig,
   getDevAccount,
   readText,
@@ -77,6 +78,10 @@ const quitFlagPath =
   resolveMonConfigPath("desktop", "QUIT_FLAG", ".artifacts/desktop-quit.flag")
 const quitFlagController = createDesktopQuitFlagController({ quitFlagPath })
 const localRuntimeConfig = createLocalRuntimeConfigStore({ app, agentRoot })
+if (app.isPackaged && workspaceRoot) {
+  process.env.EDEN_AGENT_EXTERNAL_ORIGINS ||= "mon"
+  process.env.EDEN_AGENT_MON_TOKEN_FILE ||= path.join(workspaceRoot, "Data", "Agent", "server-capability.token")
+}
 const rustServer = createRustServerManager({
   app,
   agentRoot,

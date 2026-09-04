@@ -76,6 +76,47 @@ test("resolves the MonCore URL from the workspace and normalizes wildcard hosts"
   assert.equal(context.resolveCoreBaseUrl(), "http://127.0.0.1:40111")
 })
 
+test("resolves the MonCore URL from a portable runtime layout", () => {
+  const context = createContext({
+    "D:\\Mon\\.monconfig": "[workspace]\nNAME=Mon",
+    "D:\\Mon\\.monworkspace": "{}",
+    "D:\\Mon\\Agent\\.monconfig": "SERVICE_ID=edenagent",
+    "D:\\Mon\\runtime\\core\\.monconfig": "[server]\nHOST=0.0.0.0\nPORT=40011",
+  })
+  assert.equal(context.resolveCoreBaseUrl(), "http://127.0.0.1:40011")
+})
+
+test("packaged desktop resolves the portable Agent runtime root", () => {
+  const files = {
+    "D:\\EDEN_win\\.monconfig": "[workspace]\nNAME=EDEN",
+    "D:\\EDEN_win\\.monworkspace": "{}",
+    "D:\\EDEN_win\\runtime\\agent\\.monconfig": "[service]\nNAME=Eden Agent",
+  }
+  const existing = new Set(Object.keys(files))
+  const context = createWorkspaceContext({
+    app: { isPackaged: true },
+    moduleDir: "D:\\EDEN_win\\apps\\eden-agent\\resources\\app\\desktop\\src",
+    processObject: {
+      env: {},
+      platform: "win32",
+      execPath: "D:\\EDEN_win\\apps\\eden-agent\\eden-agent.exe",
+      resourcesPath: "D:\\EDEN_win\\apps\\eden-agent\\resources",
+      cwd: () => "D:\\EDEN_win",
+    },
+    fileSystem: {
+      existsSync: (filePath) => existing.has(filePath),
+      readFileSync: (filePath) => {
+        if (!existing.has(filePath)) throw new Error("missing")
+        return files[filePath]
+      },
+    },
+    pathApi: path.win32,
+  })
+
+  assert.equal(context.workspaceRoot, "D:\\EDEN_win")
+  assert.equal(context.agentRoot, "D:\\EDEN_win\\runtime\\agent")
+})
+
 test("an explicit Core URL wins and loses its trailing slash", () => {
   const context = createContext({}, { MONCORE_CORE_BASE_URL: "https://core.example.test/" })
   assert.equal(context.resolveCoreBaseUrl(), "https://core.example.test")

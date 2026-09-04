@@ -47,6 +47,12 @@ function createWorkspaceContext({
   function resolveAgentRoot() {
     const explicit = processObject.env.EDEN_AGENT_ROOT?.trim()
     if (explicit) return explicit
+    for (const start of [processObject.cwd(), pathApi.dirname(processObject.execPath), frontendRoot]) {
+      const workspaceRoot = findMonWorkspaceRoot(start, { fileSystem, pathApi })
+      if (!workspaceRoot) continue
+      const portableAgentRoot = pathApi.join(workspaceRoot, "runtime", "agent")
+      if (isAgentRoot(portableAgentRoot)) return portableAgentRoot
+    }
     return (
       findAgentRootFrom(pathApi.resolve(frontendRoot, "..")) ??
       findAgentRootFrom(pathApi.dirname(processObject.execPath)) ??
@@ -56,6 +62,8 @@ function createWorkspaceContext({
   }
 
   const agentRoot = resolveAgentRoot()
+  const workspaceRoot = findMonWorkspaceRoot(agentRoot, { fileSystem, pathApi })
+    ?? findMonWorkspaceRoot(processObject.cwd(), { fileSystem, pathApi })
   const desktopAssetsDir = pathApi.join(frontendRoot, "desktop", "assets")
 
   function getAgentConfig(section, key, fallback) {
@@ -85,7 +93,14 @@ function createWorkspaceContext({
     const root = findMonWorkspaceRoot(agentRoot, { fileSystem, pathApi })
       ?? findMonWorkspaceRoot(processObject.cwd(), { fileSystem, pathApi })
     if (!root) throw new Error("未找到 Eden 工作区根目录，无法定位 Core/.monconfig")
-    const configPath = pathApi.join(root, "Core", ".monconfig")
+    const configCandidates = [
+      pathApi.join(root, "Core", ".monconfig"),
+      pathApi.join(root, "runtime", "core", ".monconfig"),
+    ]
+    const configPath = configCandidates.find((candidate) => fileSystem.existsSync(candidate))
+    if (!configPath) {
+      throw new Error(`读取 MonCore 配置失败: ${configCandidates.join(" 或 ")}`)
+    }
     const contents = readText(configPath)
     if (!contents) throw new Error(`读取 MonCore 配置失败: ${configPath}`)
     const host = parseMonConfigValue(contents, "server", "HOST") ?? defaultCoreHost
@@ -105,6 +120,7 @@ function createWorkspaceContext({
 
   return {
     agentRoot,
+    workspaceRoot,
     desktopAssetsDir,
     frontendRoot,
     getAgentConfig,

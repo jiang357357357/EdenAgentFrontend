@@ -37,6 +37,18 @@ test("runtime contract preserves explicit per-realm token and normalizes origins
   assert.equal(environment.EDEN_AGENT_MON_TOKEN_FILE, "/secure/mon.token")
 })
 
+test("portable desktop uses the MonPM-managed capability token", () => {
+  const environment = createDesktopRuntimeEnvironment({
+    environment: {},
+    agentRoot: "C:\\EDEN_win\\runtime\\agent",
+    workspaceRoot: "C:\\EDEN_win",
+    pathApi: path.win32,
+  })
+
+  assert.equal(environment.EDEN_AGENT_EXTERNAL_ORIGINS, "mon")
+  assert.equal(environment.EDEN_AGENT_MON_TOKEN_FILE, "C:\\EDEN_win\\Data\\Agent\\server-capability.token")
+})
+
 test("runtime contract rejects unknown origins instead of guessing", () => {
   assert.throws(() => normalizeExternalOrigins("mon,other"), /Unsupported externally managed/)
 })

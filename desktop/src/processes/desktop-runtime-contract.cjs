@@ -16,6 +16,7 @@ function normalizeExternalOrigins(value) {
 function createDesktopRuntimeEnvironment({
   environment = process.env,
   agentRoot,
+  workspaceRoot,
   parentPid,
   quitFlag,
   externalOrigins,
@@ -30,7 +31,9 @@ function createDesktopRuntimeEnvironment({
       externalOrigins ?? environment.EDEN_AGENT_EXTERNAL_ORIGINS ?? "mon",
     ),
     EDEN_AGENT_MON_TOKEN_FILE: String(environment.EDEN_AGENT_MON_TOKEN_FILE || "").trim()
-      || effectivePathApi.join(agentRoot, "Data", "realms", "mon", "capability.token"),
+      || (workspaceRoot
+        ? effectivePathApi.join(workspaceRoot, "Data", "Agent", "server-capability.token")
+        : effectivePathApi.join(agentRoot, "Data", "realms", "mon", "capability.token")),
     // Realm-aware launchers must not fall back to the legacy all-external mode
     // or to one token shared by multiple runtime origins.
     EDEN_AGENT_SERVER_MODE: "",
