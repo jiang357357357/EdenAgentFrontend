@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveVoiceBlobUrl } from "../lib/rpc-transport"
+import { ObjectUrlScope } from "../lib/object-url-scope"
 import {
   authorizeAutomaticSpeechSynthesis,
   claimDesktopSpeechPlayback,
@@ -155,6 +156,7 @@ export function useTTSSpeech({
   const [paused, setPaused] = useState(false)
   const progressRef = useRef<SpeechProgress | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const voiceUrlsRef = useRef(new ObjectUrlScope())
   const audioSegmentIdRef = useRef<string | null>(null)
   const finishAudioRef = useRef<((reason?: "seek" | "interrupted") => void) | null>(null)
   const timelineRef = useRef<SpeechTimeline | null>(null)
@@ -298,6 +300,8 @@ export function useTTSSpeech({
     timelineRef.current = null
     scrubStateRef.current = null
     if (clearClips) {
+      voiceUrlsRef.current.dispose()
+      voiceUrlsRef.current = new ObjectUrlScope()
       durationCacheRef.current.clear()
       setClips({})
     }
@@ -568,6 +572,7 @@ export function useTTSSpeech({
   }
 
   const synthesize = (segmentId: string, messageId: string, rawText: string, configId: number | null | undefined, autoPlay: boolean) => {
+    const voiceUrls = voiceUrlsRef.current
     const chunks = speechChunksForTTS(rawText, mode)
     if (!chunks.length || !sessionId || !messageId || typeof configId !== "number" || mode === "none") return
 
@@ -598,7 +603,7 @@ export function useTTSSpeech({
           throwIfSpeechTaskCancelled(signal)
           if (!result.success) throw new Error(result.error_message || `语音段 ${index + 1}/${chunks.length} 合成失败`)
           if (!result.audio_blob_id) throw new Error(`语音段 ${index + 1}/${chunks.length} 未返回音频`)
-          const resolved = await resolveVoiceBlobUrl(result.audio_blob_id)
+          const resolved = await resolveVoiceBlobUrl(result.audio_blob_id, voiceUrls)
           throwIfSpeechTaskCancelled(signal)
           return resolved
         })
@@ -669,6 +674,7 @@ export function useTTSSpeech({
     state: StreamingSpeechState,
   ) => {
     const configId = state.configId
+    const voiceUrls = voiceUrlsRef.current
     if (!sessionId || !messageId || mode === "none") return
     const generation = generationRef.current
     const messageGeneration = state.messageGeneration
@@ -733,7 +739,7 @@ export function useTTSSpeech({
       .then(async (result) => {
         if (!result) return null
         if (!result.audio_blob_id) throw new Error(`语音句子 ${chunkIndex + 1} 未返回音频`)
-        const source = await resolveVoiceBlobUrl(result.audio_blob_id)
+        const source = await resolveVoiceBlobUrl(result.audio_blob_id, voiceUrls)
         if (
           generation === generationRef.current &&
           isCurrentMessageGeneration(messageId, messageGeneration)
@@ -927,6 +933,8 @@ export function useTTSSpeech({
 
   useEffect(() => () => {
     stop(true, false, "hook-unmounted")
+    voiceUrlsRef.current.dispose()
+    voiceUrlsRef.current = new ObjectUrlScope()
     void updateDesktopActivityFacts({ surface, tts_playing: false })
   }, [])
 
@@ -974,6 +982,7 @@ export function useTTSSpeech({
     const restorationMessageGenerations = new Map(
       segments.map((segment) => [segment.messageId, currentMessageGeneration(segment.messageId)]),
     )
+    const voiceUrls = voiceUrlsRef.current
     void listMessageSpeechSegments(sessionId).then(async (persisted) => {
       const messageGroupIndexes = new Map<string, number>()
       for (const segment of segments) {
@@ -992,7 +1001,7 @@ export function useTTSSpeech({
         if (saved.some((item, index) => item.sequence !== index || item.text_hash !== hashes[index])) continue
         const blobIds = saved.map((item) => item.audio_blob_id).filter((id): id is string => Boolean(id))
         if (blobIds.length !== saved.length) continue
-        const sources = await Promise.all(blobIds.map(resolveVoiceBlobUrl))
+        const sources = await Promise.all(blobIds.map((id) => resolveVoiceBlobUrl(id, voiceUrls)))
         const messageGeneration = restorationMessageGenerations.get(segment.messageId) ?? 0
         if (
           sources.length !== saved.length ||

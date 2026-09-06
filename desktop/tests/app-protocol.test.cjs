@@ -48,5 +48,5 @@ test("registerAppProtocol serves bundled files through Electron net.fetch", () =
 
   assert.equal(scheme, "edenagent")
   assert.deepEqual(result, { ok: true })
-  assert.equal(fetched[0], new URL(`file:///${path.join(appRoot, "assets", "index.js").replaceAll("\\", "/")}`).toString())
+  assert.equal(require("node:url").fileURLToPath(fetched[0]), path.join(appRoot, "assets", "index.js"))
 })

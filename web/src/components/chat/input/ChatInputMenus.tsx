@@ -3,11 +3,12 @@ import { ShieldAlert } from "lucide-react"
 import type { RuntimeModelConfig, RuntimeModelOption } from "../../../lib/agent-client"
 import { cn } from "../../../lib/utils"
 import type { PermissionMode } from "../../../types"
+import { CommandExecutionSettings } from "./CommandExecutionSettings"
 
 export const permissionOptions: Array<{ mode: PermissionMode; label: string; description: string }> = [
-  { mode: "restricted", label: "受限", description: "写入、命令等操作前确认" },
-  { mode: "full_access", label: "完全访问", description: "自动允许工具，命令执行前确认" },
-  { mode: "takeover", label: "全面接管", description: "自动允许工具及工作区外写入" },
+  { mode: "restricted", label: "受限审批", description: "写入、命令等操作按授权规则确认" },
+  { mode: "full_access", label: "命令审批", description: "自动允许其他工具，终端命令按授权规则确认" },
+  { mode: "takeover", label: "自动批准", description: "自动允许工具；执行范围由下方执行边界决定" },
 ]
 
 interface ChatInputMenusProps {
@@ -46,7 +47,7 @@ export function ChatInputMenus({
           role="menu"
           className={cn(
             "absolute z-30 w-[17.5rem] overflow-y-auto rounded-lg border shadow-lg backdrop-blur-md",
-            hideComposerFooter ? "bottom-[2.2vh] left-[2.2vh] max-h-[calc(100%-4.4vh)]" : "bottom-[7.3vh] left-[7.6vh]",
+            hideComposerFooter ? "bottom-[2.2vh] left-[2.2vh] max-h-[calc(100%-4.4vh)]" : "bottom-[7.3vh] left-[7.6vh] max-h-[65vh]",
             overlay ? "border-white/12 bg-stone-950/88 text-stone-100" : "border-border bg-card text-text",
           )}
         >
@@ -76,6 +77,7 @@ export function ChatInputMenus({
               </button>
             )
           })}
+          <CommandExecutionSettings />
         </div>
       )}
 

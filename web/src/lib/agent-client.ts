@@ -1899,11 +1899,11 @@ export async function discoverGsv(
   return rpcRequest("voice.gsv.discover", { config, stage }) as Promise<LocalGsvDiscovery>
 }
 
-export async function previewGsv(config: LocalGsvConfig, text: string): Promise<LocalGsvPreview> {
+export async function previewGsv(config: LocalGsvConfig, text: string, scope: import("./object-url-scope").ObjectUrlScope): Promise<LocalGsvPreview> {
   const result = await rpcRequest("voice.gsv.preview", { config, text })
   return {
     ok: result.ok as true,
-    audioDataUrl: await resolveVoiceBlobUrl(result.audioBlobId),
+    audioDataUrl: await resolveVoiceBlobUrl(result.audioBlobId, scope),
     mime: result.mime,
     duration: result.durationMs == null ? null : Number(result.durationMs) / 1000,
     latencyMs: result.latencyMs,
@@ -2122,13 +2122,16 @@ export async function snoozeMemo(id: number, input: { until?: string | null; min
 
 export async function subscribeEvents(handlers: SubscribeHandlers | ((event: ApiEvent) => void)) {
   const normalizedRpc: SubscribeHandlers = typeof handlers === "function" ? { onEvent: handlers } : handlers
-  const projectEvent = createSessionEventProjector()
+  let projectEvent = createSessionEventProjector()
   return subscribeRpcEvents(
     (event) => {
       for (const projected of projectEvent(event)) normalizedRpc.onEvent(projected)
     },
     (connected, error) => {
-      if (connected) normalizedRpc.onOpen?.()
+      if (connected) {
+        projectEvent = createSessionEventProjector()
+        normalizedRpc.onOpen?.()
+      }
       else normalizedRpc.onError?.(error ?? "Eden Agent RPC disconnected")
     },
   )

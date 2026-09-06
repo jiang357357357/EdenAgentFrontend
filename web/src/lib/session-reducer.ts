@@ -72,6 +72,7 @@ interface LocalUserMessageAction {
 
 type RuntimeAction =
   | { type: "reset" }
+  | { type: "invalidateInactiveSessions" }
   | { type: "hydrateSessions"; sessions: ApiSession[] }
   | { type: "hydrateMessages"; sessionID: string; messages: ApiMessage[]; hasMore: boolean; nextCursor?: string | null; directorRuns?: CompanionDirectorRun[] }
   | { type: "prependMessages"; sessionID: string; messages: ApiMessage[]; hasMore: boolean; nextCursor?: string | null }
@@ -1010,6 +1011,13 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
   }
 
   switch (action.type) {
+    case "invalidateInactiveSessions": {
+      for (const [id, session] of Object.entries(next.sessions)) {
+        if (id !== next.activeSessionId) next.sessions[id] = { ...session, hydrated: false }
+      }
+      return next
+    }
+
     case "hydrateSessions": {
       for (const session of action.sessions) {
         upsertSession(next, session)
@@ -1419,6 +1427,10 @@ export function setLoadingOlderMessages(sessionID: string, loading: boolean): Ru
 
 export function hydrateSessionList(sessions: ApiSession[]): RuntimeAction {
   return { type: "hydrateSessions", sessions }
+}
+
+export function invalidateInactiveSessions(): RuntimeAction {
+  return { type: "invalidateInactiveSessions" }
 }
 
 export function hydratePendingPermissions(permissions: PendingPermission[]): RuntimeAction {

@@ -33,6 +33,7 @@ import {
   hydratePendingPermissions,
   hydratePendingQuestions,
   hydrateSessionList,
+  invalidateInactiveSessions,
   hydrateSessionMessages,
   prependSessionMessages,
   pushLocalUserMessage,
@@ -218,6 +219,9 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
           return;
         }
 
+        // The active session is refreshed now; other cached sessions must load
+        // a fresh snapshot when selected after missed stream notifications.
+        dispatch(invalidateInactiveSessions());
         void reconcile();
       },
       onError: (error) => {

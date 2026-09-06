@@ -117,7 +117,7 @@ test("voice configuration provides a real GSV synthesis service and local device
   assert.match(configurationSource, /loadGsvEmotions\(event\.target\.value\)/)
   assert.doesNotMatch(configurationSource, /测试并读取声线/)
   assert.match(configurationSource, /试听文本/)
-  assert.match(configurationSource, /previewGsvVoice\(gsvForm, gsvPreviewText\)/)
+  assert.match(configurationSource, /previewGsvVoice\(gsvForm, gsvPreviewText, scope\)/)
   assert.match(configurationSource, /合成并播放/)
   assert.match(configurationSource, /角色声线/)
   assert.match(configurationSource, /角色情感/)

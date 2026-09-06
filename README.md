@@ -22,7 +22,7 @@
 - `desktop`：Electron 主进程、preload 桥接和桌面生命周期管理。
 - `Script`：前端开发启动与冒烟测试工具。
 
-前端不直接访问数据库、模型供应商或本地文件系统。所有智能体能力都通过生成的 WebSocket JSON-RPC 客户端和 Blob 端点交给 Rust Server；桌面壳负责启动、监管 Server，并向渲染进程传递短期能力令牌。
+前端不直接访问数据库、模型供应商或本地文件系统。所有智能体能力都通过生成的 WebSocket JSON-RPC 客户端和 Blob 端点交给 Rust Server；桌面壳负责启动、监管 Server，并向渲染进程传递当前服务实例的能力令牌。
 
 ## 主要界面
 

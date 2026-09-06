@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { ObjectUrlScope } from "../../lib/object-url-scope"
 import {
   AlertCircle,
   ArrowLeft,
@@ -268,6 +269,7 @@ export function ConfigurationPage({
   const voiceSaveQueueRef = useRef<Promise<void>>(Promise.resolve())
   const voiceRevisionRef = useRef(0)
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
+  const previewUrlsRef = useRef<ObjectUrlScope | null>(null)
 
   currentCharacterRef.current = character
   voiceSettingsRef.current = voiceSettings
@@ -463,13 +465,20 @@ export function ConfigurationPage({
   }
 
   const previewGsv = async () => {
+    previewAudioRef.current?.pause()
+    previewAudioRef.current = null
+    previewUrlsRef.current?.dispose()
+    const scope = new ObjectUrlScope()
+    previewUrlsRef.current = scope
     setGsvPreviewing(true)
     setGsvPreviewLatency(null)
     setVoiceError("")
     try {
-      const result = await previewGsvVoice(gsvForm, gsvPreviewText)
-      previewAudioRef.current?.pause()
+      const result = await previewGsvVoice(gsvForm, gsvPreviewText, scope)
+      if (!mountedRef.current || previewUrlsRef.current !== scope) return
       const audio = new Audio(result.audioDataUrl)
+      audio.addEventListener("ended", () => scope.dispose(), { once: true })
+      audio.addEventListener("error", () => scope.dispose(), { once: true })
       previewAudioRef.current = audio
       audio.volume = Math.max(0, Math.min(1, voiceSettings.speechVolume / 100))
       audio.playbackRate = Math.max(0.5, Math.min(2, voiceSettings.speechRate))
@@ -477,12 +486,15 @@ export function ConfigurationPage({
       if (voiceSettings.audioOutputDeviceId !== "default" && sinkAudio.setSinkId) {
         await sinkAudio.setSinkId(voiceSettings.audioOutputDeviceId)
       }
+      if (!mountedRef.current || previewUrlsRef.current !== scope) return
       await audio.play()
-      setGsvPreviewLatency(result.latencyMs)
+      if (mountedRef.current && previewUrlsRef.current === scope) setGsvPreviewLatency(result.latencyMs)
     } catch (previewError) {
+      scope.dispose()
+      if (!mountedRef.current || previewUrlsRef.current !== scope) return
       setVoiceError(messageOf(previewError, "GSV 试听合成失败。"))
     } finally {
-      setGsvPreviewing(false)
+      if (mountedRef.current && previewUrlsRef.current === scope) setGsvPreviewing(false)
     }
   }
 
@@ -592,6 +604,8 @@ export function ConfigurationPage({
       mountedRef.current = false
       previewAudioRef.current?.pause()
       previewAudioRef.current = null
+      previewUrlsRef.current?.dispose()
+      previewUrlsRef.current = null
       if (characterSaveTimerRef.current !== null) {
         window.clearTimeout(characterSaveTimerRef.current)
         characterSaveTimerRef.current = null

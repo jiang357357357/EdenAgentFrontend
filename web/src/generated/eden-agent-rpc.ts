@@ -9,6 +9,12 @@ export const EDEN_AGENT_TOKEN_PROTOCOL_PREFIX = "eden-agent-token." as const
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 
+export type CommandExecutionMode = "sandbox" | "host";
+
+export type CommandExecutionInfo = { mode: CommandExecutionMode, networkAccess: boolean, writableRoots: Array<string>, available: boolean, sandboxAvailable: boolean, sandboxBackend: string, shell: string, detail: string, };
+
+export type CommandExecutionSetParams = { mode: CommandExecutionMode, confirmHostExecution: boolean, networkAccess: boolean, writableRoots: Array<string>, };
+
 export type SessionId = string;
 
 export type TurnId = string;
@@ -328,6 +334,8 @@ export interface RpcMethodMap {
   "message.list": { params: MessageListParams; result: EventPage }
   "permission.list": { params: PermissionListParams; result: PermissionRequestInfo[] }
   "permission.mode.get": { params: Record<string, never>; result: { mode: "restricted" | "full_access" | "takeover" } }
+  "command.execution.get": { params: Record<string, never>; result: CommandExecutionInfo }
+  "command.execution.set": { params: CommandExecutionSetParams; result: CommandExecutionInfo }
   "permission.mode.set": { params: { mode: "restricted" | "full_access" | "takeover" }; result: { mode: "restricted" | "full_access" | "takeover" } }
   "permission.resolve": { params: PermissionResolveParams; result: PermissionRequestInfo }
   "operation.list": { params: OperationListParams; result: OperationInfo[] }

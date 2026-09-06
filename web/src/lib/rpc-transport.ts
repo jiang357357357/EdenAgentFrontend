@@ -9,6 +9,7 @@ import {
   type SessionEvent,
 } from "../generated/eden-agent-rpc"
 import { getStoredRuntimeOrigin } from "./runtime-origin"
+import type { ObjectUrlScope } from "./object-url-scope"
 import type {
   CompanionDirectorExecution,
   CompanionDirectorScene,
@@ -63,7 +64,6 @@ const eventListeners = new Set<(event: SessionEvent) => void>()
 const statusListeners = new Set<(connected: boolean, error?: string) => void>()
 const reconnectInitialDelayMs = 500
 const reconnectMaxDelayMs = 10_000
-const voiceBlobUrls = new Map<string, Promise<string>>()
 
 async function capabilityToken(origin: RuntimeOrigin = currentRuntimeOrigin()): Promise<string> {
   const configured = (origin === "local"
@@ -113,8 +113,26 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
       next.close()
       throw error
     }
+    const lastSequences = new Map<string, bigint>()
     next.on("session.event", (event) => {
+      if (client !== next || currentRuntimeOrigin() !== requestedOrigin) return
+      const sequence = BigInt(event.seq)
+      const previous = lastSequences.get(event.sessionId)
+      if (previous !== undefined) {
+        if (sequence <= previous) return
+        if (sequence !== previous + 1n) {
+          // Reconnect to refresh durable snapshots, including pending interactions.
+          // Replaying historical notifications could repeat media side effects.
+          next.close()
+          return
+        }
+      }
+      lastSequences.set(event.sessionId, sequence)
       for (const listener of eventListeners) listener(event)
+    })
+    next.on("server.warning", (warning) => {
+      if (client !== next || currentRuntimeOrigin() !== requestedOrigin) return
+      if (warning.code === "event_stream_lagged") next.close()
     })
     next.onClose(() => {
       if (client !== next) return
@@ -182,24 +200,18 @@ export async function createRealtimeSttSocket(sessionId: string): Promise<WebSoc
   ])
 }
 
-export function resolveVoiceBlobUrl(blobId: string): Promise<string> {
+export function resolveVoiceBlobUrl(blobId: string, scope: ObjectUrlScope): Promise<string> {
   const origin = currentRuntimeOrigin()
   const cacheKey = `${origin}:${blobId}`
-  const existing = voiceBlobUrls.get(cacheKey)
-  if (existing) return existing
-  const pending = (async () => {
+  return scope.resolve(cacheKey, async (signal) => {
     const token = await capabilityToken(origin)
     const response = await fetch(`${agentHttpBaseUrl(origin)}/blobs/${encodeURIComponent(blobId)}`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal,
     })
     if (!response.ok) throw new Error(`Unable to read speech audio: ${response.status}`)
-    return URL.createObjectURL(await response.blob())
-  })().catch((error) => {
-    voiceBlobUrls.delete(cacheKey)
-    throw error
+    return response.blob()
   })
-  voiceBlobUrls.set(cacheKey, pending)
-  return pending
 }
 
 export async function subscribeRpcEvents(

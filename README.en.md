@@ -22,7 +22,7 @@ This repository contains the Eden Agent user interface and desktop host:
 - `desktop`: the Electron main process, preload bridge, and desktop lifecycle management.
 - `Script`: frontend development launchers and smoke-test utilities.
 
-The frontend does not access databases, model providers, or the local filesystem directly. All agent capabilities go through the generated WebSocket JSON-RPC client and Blob endpoints exposed by the Rust Server. The desktop shell launches and supervises the Server and passes a short-lived capability token to the renderer.
+The frontend does not access databases, model providers, or the local filesystem directly. All agent capabilities go through the generated WebSocket JSON-RPC client and Blob endpoints exposed by the Rust Server. The desktop shell launches and supervises the Server and passes the current server instance’s capability token to the renderer.
 
 ## Product areas
 
