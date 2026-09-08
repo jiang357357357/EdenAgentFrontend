@@ -149,3 +149,20 @@ test("power monitor events update suspended state", async () => {
   powerHandlers.get("resume")()
   assert.equal((await service.collectActivityPresenceFacts()).session.suspended, false)
 })
+
+
+test("inactive initialization is not activity and real transitions retain values", async () => {
+  const { service } = createService()
+  const renderer = { id: 7, isDestroyed: () => false }
+  const report = (voice_recording) => service.updateRendererActivityFacts(renderer, { surface: "main-chat", voice_recording })
+  report(false)
+  report(false)
+  assert.equal((await service.collectActivityPresenceFacts()).recent_events.length, 0)
+  report(true)
+  report(true)
+  report(false)
+  const events = (await service.collectActivityPresenceFacts()).recent_events
+  assert.equal(events.length, 2)
+  assert.deepEqual(events[0].changes.voice_recording, { from: false, to: true })
+  assert.deepEqual(events[1].changes.voice_recording, { from: true, to: false })
+})

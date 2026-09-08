@@ -291,7 +291,13 @@ export type SelfAwakeDiaryInfo = { id: string, runId: string, sessionId: Session
 
 export type SelfAwakeRunInfo = { id: string, jobId: string, sessionId: SessionId, schemaVersion: string, eventId: string, status: string, request: JsonValue, decision?: JsonValue | null, authorSnapshot: JsonValue, attempts: bigint, lastError?: string | null, startedAt?: bigint | null, completedAt?: bigint | null, createdAt: bigint, updatedAt: bigint, diaries: Array<SelfAwakeDiaryInfo>, };
 
-export type SelfAwakePage = { count: bigint, page: number, pageSize: number, totalPages: number, results: Array<SelfAwakeRunInfo>, };
+export type SelfAwakeScheduleInfo = { status: string, nextWakeAt: string | null, reason: string, };
+
+export type SelfAwakePage = { schedule: SelfAwakeScheduleInfo | null, count: bigint, page: number, pageSize: number, totalPages: number, results: Array<SelfAwakeRunInfo>, };
+
+export type SelfAwakeExecutionParams = { runId: string, };
+
+export type SelfAwakeExecutionInfo = { path: string, record: JsonValue, };
 
 export type DirectorListParams = { sessionId: SessionId, };
 
@@ -396,6 +402,7 @@ export interface RpcMethodMap {
   "voice.stt.test": { params: GsvSttTestParams; result: GsvConnectionTestResult }
   "voice.tts.synthesize": { params: VoiceTtsSynthesizeParams; result: VoiceTtsSynthesizeResult }
   "voice.tts.list_segments": { params: VoiceSpeechSegmentListParams; result: VoiceSpeechSegmentInfo[] }
+  "self_awake.execution": { params: SelfAwakeExecutionParams; result: SelfAwakeExecutionInfo }
   "self_awake.list": { params: SelfAwakeListParams; result: SelfAwakePage }
   "director.list": { params: DirectorListParams; result: DirectorRunInfo[] }
 }

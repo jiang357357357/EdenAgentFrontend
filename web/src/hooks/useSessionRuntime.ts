@@ -16,6 +16,7 @@ import {
   listScreenCaptureRequests,
   listMessagesRaw,
   listSessionsRaw,
+  isBackgroundSession,
   rejectQuestion,
   renameSession as renameSessionRaw,
   replyPermission,
@@ -62,6 +63,8 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const [permissionMode, setPermissionModeState] = useState<PermissionMode>('restricted');
   const [draftParticipantIDs, setDraftParticipantIDs] = useState<Array<number | string>>([]);
   const activeSessionIdRef = useRef<string | undefined>(state.activeSessionId);
+  const cachedSessionIdsRef = useRef<string[]>([]);
+  cachedSessionIdsRef.current = Object.keys(state.sessions);
   const hasOpenedStreamRef = useRef(false);
   const eventErrorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const sendingSessionIdsRef = useRef(new Set<string>());
@@ -103,6 +106,14 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const refreshSessions = useCallback(async () => {
     if (!isRuntimeReady()) return [];
     const sessions = await listSessionsRaw();
+    const visible = new Set(sessions.map((session) => session.id));
+    const hidden = await Promise.all(cachedSessionIdsRef.current.filter((id) => !visible.has(id))
+      .map(async (id) => await isBackgroundSession(id) ? id : undefined));
+    for (const id of hidden) {
+      if (!id) continue;
+      dispatch(removeSession(id));
+      if (activeSessionIdRef.current === id) activeSessionIdRef.current = undefined;
+    }
     dispatch(hydrateSessionList(sessions));
     return sessions;
   }, [isRuntimeReady]);

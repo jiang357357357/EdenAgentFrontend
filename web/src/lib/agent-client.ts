@@ -1264,6 +1264,17 @@ export function mapMessage(input: ApiMessage): MessageData {
   }
 }
 
+export async function isBackgroundSession(sessionId: string): Promise<boolean> {
+  try {
+    await rpcRequest("session.read", { sessionId })
+    return false
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("background_session:")) return true
+    // Missing rows and transient connection errors must not erase cached chats.
+    return false
+  }
+}
+
 export async function listSessionsRaw() {
   return (await rpcRequest("session.list", { limit: 50, includeClosed: false })).map(apiSession)
 }
@@ -1947,6 +1958,10 @@ export async function listSelfAwakeRuns(limit = 30) {
   return selfAwakeRuns(limit)
 }
 
+export function getSelfAwakeExecution(runId: string) {
+  return rpcRequest("self_awake.execution", { runId })
+}
+
 export async function listSelfAwakeRunsPage({
   page = 1,
   pageSize = 20,
@@ -1962,6 +1977,7 @@ export async function listSelfAwakeRunsPage({
     ...(q?.trim() ? { query: q.trim() } : {}),
   })
   return {
+    schedule: result.schedule,
     count: Number(result.count),
     next: result.page < result.totalPages ? String(result.page + 1) : null,
     previous: result.page > 1 ? String(result.page - 1) : null,

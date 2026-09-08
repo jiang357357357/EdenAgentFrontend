@@ -248,10 +248,20 @@ function createActivityPresenceService({
       next.last_user_interaction_at = input.last_user_interaction_at
     }
     rendererActivityFacts.set(webContents.id, next)
-    recordActivityEvent("edenagent_interaction_updated", {
-      surface: String(input?.surface || "unknown"),
-      changed_fields: Object.keys(input || {}).filter((key) => key !== "surface"),
-    })
+    const changes = {}
+    for (const key of ["chat_input_focused", "voice_recording", "tts_playing", "last_user_interaction_at"]) {
+      // Initial inactive reports and identical values are not user activity.
+      if (next[key] !== previous[key] && next[key] !== undefined && !(previous[key] === undefined && next[key] === false)) {
+        changes[key] = { from: previous[key] ?? null, to: next[key] }
+      }
+    }
+    if (Object.keys(changes).length) {
+      recordActivityEvent("edenagent_interaction_updated", {
+        surface: String(input?.surface || "unknown"),
+        changed_fields: Object.keys(changes),
+        changes,
+      })
+    }
     void publishActivityPresence()
     return true
   }

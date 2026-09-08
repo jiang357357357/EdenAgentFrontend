@@ -260,6 +260,17 @@ export function ChatPage({
     setActiveTab(`session:${activeSessionId}`)
   }, [activeSessionId])
 
+  useEffect(() => {
+    const available = new Set(sessions.map((session) => session.id))
+    setOpenSessionIds((current) => {
+      const next = current.filter((id) => available.has(id))
+      return next.length === current.length ? current : next
+    })
+    if (activeTab.startsWith("session:") && !available.has(activeTab.slice(8))) {
+      setActiveTab(activeSessionId && available.has(activeSessionId) ? `session:${activeSessionId}` : "")
+    }
+  }, [sessions, activeSessionId, activeTab])
+
   const activeFilePath = activeTab.startsWith("file:") ? activeTab.slice(5) : ""
   const activeFile = openFiles.find((file) => file.path === activeFilePath)
   const activeFileContent = activeFilePath ? fileContents[activeFilePath] : undefined

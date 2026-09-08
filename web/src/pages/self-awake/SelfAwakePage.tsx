@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Activity,
+  AlarmClock,
   AlertCircle,
   ArrowLeft,
   ArrowRight,
@@ -15,6 +16,7 @@ import {
   X,
 } from "lucide-react"
 import { motion } from "motion/react"
+import { SelfAwakeExecutionDialog } from "./SelfAwakeExecutionDialog"
 import journalWorkspaceBackground from "../../assets/self-awake/journal-workspace-bg.png"
 import type { AuthUser, CoreAssistant } from "../../lib/auth"
 import { getErrorMessage } from "../../lib/auth"
@@ -25,6 +27,8 @@ import {
   type ApiSelfAwakeRun,
   type ToolStatus,
 } from "../../lib/agent-client"
+import type { SelfAwakeScheduleInfo } from "../../generated/eden-agent-rpc"
+import { selfAwakeActivity, selfAwakeObservations } from "../../lib/self-awake-context"
 import { formatLocalMonthDayTime, formatLocalWeekday } from "../../lib/time"
 
 const screenMotion = {
@@ -84,6 +88,7 @@ const statusMeta: Record<string, { label: string; tone: StatusTone }> = {
 const actionLabels: Record<string, string> = {
   observe_only: "只观察",
   write_diary: "写日记",
+  chat_user: "主动聊天",
   remind_user: "提醒用户",
   create_task: "创建任务",
   ask_user: "询问用户",
@@ -266,6 +271,9 @@ function runAuthorName(run?: ApiSelfAwakeRun, fallback = "未知角色") {
 }
 
 export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
+  const [wakeSchedule, setWakeSchedule] = useState<SelfAwakeScheduleInfo | null>(null)
+  const [scheduleError, setScheduleError] = useState(false)
+  const [clockNow, setClockNow] = useState(Date.now())
   const [runs, setRuns] = useState<ApiSelfAwakeRun[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string | undefined>()
   const [currentPage, setCurrentPage] = useState(1)
@@ -277,6 +285,8 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
   const [expandedDiaryDates, setExpandedDiaryDates] = useState<string[]>([])
   const [expandedDiaryEntryDates, setExpandedDiaryEntryDates] = useState<string[]>([])
   const [diarySearch, setDiarySearch] = useState("")
+  const [executionRunId, setExecutionRunId] = useState<string | null>(null)
+  const closeExecution = useCallback(() => setExecutionRunId(null), [])
   const [rawDataExpanded, setRawDataExpanded] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -289,6 +299,8 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
     setError(undefined)
     try {
       const pageData = await listSelfAwakeRunsPage({ page, pageSize: selfAwakePageSize, q: searchQuery })
+      setWakeSchedule(pageData.schedule ?? null)
+      setScheduleError(false)
       setCurrentPage(pageData.current_page)
       setTotalPages(pageData.total_pages)
       setTotalRuns(pageData.count)
@@ -301,6 +313,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
         return nextRuns
       })
     } catch (loadError) {
+      setScheduleError(true)
       setError(getErrorMessage(loadError, "读取自醒记录失败。"))
     } finally {
       setLoading(false)
@@ -311,6 +324,31 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
   useEffect(() => {
     void loadRuns()
   }, [loadRuns])
+
+  useEffect(() => {
+    let disposed = false
+    const refreshSchedule = async () => {
+      try {
+        const page = await listSelfAwakeRunsPage({ page: 1, pageSize: 1 })
+        if (!disposed) { setWakeSchedule(page.schedule ?? null); setScheduleError(false) }
+      } catch { if (!disposed) setScheduleError(true) }
+    }
+    const timer = window.setInterval(() => {
+      setClockNow(Date.now())
+      if (document.visibilityState === "visible") void refreshSchedule()
+    }, 15_000)
+    const onFocus = () => { setClockNow(Date.now()); void refreshSchedule() }
+    window.addEventListener("focus", onFocus)
+    return () => { disposed = true; window.clearInterval(timer); window.removeEventListener("focus", onFocus) }
+  }, [])
+
+  const wakeTime = wakeSchedule?.nextWakeAt
+  const wakeLabel = scheduleError ? "时间读取失败"
+    : wakeSchedule?.status === "running" ? "正在自醒"
+    : wakeSchedule?.status === "disabled" ? "自醒已暂停"
+    : wakeSchedule?.status === "unscheduled" ? "尚未安排"
+    : wakeTime ? (Date.parse(wakeTime) <= clockNow ? "已到时间，等待唤醒" : formatDateTime(wakeTime))
+    : "时间暂不可用"
 
   const selectedRun = useMemo(() => runs.find((run) => run.id === selectedRunId) ?? runs[0], [runs, selectedRunId])
   const hasMoreRuns = currentPage < totalPages
@@ -333,7 +371,8 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
     }))
   }, [overviewRuns])
   const selectedContext = asRecord(selectedRun?.context_payload)
-  const selectedActivity = asRecord(selectedContext.user_activity)
+  const selectedActivity = selfAwakeActivity(selectedContext)
+  const selectedObservations = selfAwakeObservations(selectedRun?.decision_payload)
   const selectedSystemInput = asRecord(selectedActivity.system_input)
   const selectedSession = asRecord(selectedActivity.session)
   const selectedForeground = asRecord(selectedActivity.foreground_window)
@@ -468,6 +507,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
         backgroundImage: `linear-gradient(rgba(250, 250, 249, 0.88), rgba(250, 250, 249, 0.88)), url(${journalWorkspaceBackground})`,
       }}
     >
+      {executionRunId && <SelfAwakeExecutionDialog runId={executionRunId} onClose={closeExecution} />}
       <header className="flex h-[9.2vh] shrink-0 items-center justify-between border-b border-white/45 bg-bg/76 px-[3vw] shadow-sm backdrop-blur-xl">
         <div className="flex min-w-0 items-center gap-[1.2vw]">
           <button
@@ -488,6 +528,17 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
           </div>
         </div>
         <div className="flex items-center gap-[0.8vw]">
+          <div
+            className="flex min-w-0 items-center gap-[0.6vw] rounded-[0.75vh] border border-accent/20 bg-card px-[1.1vw] py-[0.65vh] text-accent shadow-sm"
+            title={scheduleError ? "无法读取最新调度，请稍后刷新" : [wakeTime ? formatDateTime(wakeTime) : "", wakeSchedule?.reason].filter(Boolean).join(" · ")}
+            role="status"
+          >
+            <AlarmClock aria-hidden="true" className="h-[2.4vh] w-[2.4vh] shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[1.25vh] text-text-muted">下次醒来</div>
+              <div className="truncate text-[1.65vh] tabular-nums">{wakeLabel}</div>
+            </div>
+          </div>
           <div className="flex overflow-hidden rounded-[0.75vh] border border-border bg-card shadow-sm">
             {[
               { key: "overview" as const, label: "概览" },
@@ -591,14 +642,23 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                     <div className="mt-[1vh] flex items-center gap-[0.5vw] text-[1.52vh] text-text-muted">
                       <UserRound className="h-[1.75vh] w-[1.75vh]" />
                       <span>{selectedAuthorName}</span>
+                      <button type="button" onClick={() => setExecutionRunId(selectedRun.id)} className="ml-auto rounded border border-border px-3 py-1 text-accent hover:bg-bg">执行记录</button>
                     </div>
 
                     <div className="mt-[2.4vh] flex min-h-0 flex-1 flex-col">
                       <h3 className="border-l-[0.22vw] border-accent pl-[0.8vw] font-serif text-[2.08vh] text-text">工作日记</h3>
                       <div className="mt-[1.8vh] min-h-0 flex-1 overflow-y-auto pr-[0.8vw]" style={{ scrollbarGutter: "stable" }}>
                         <p className="whitespace-pre-wrap font-serif text-[1.75vh] leading-[2.05] text-text">
-                          {trimText(selectedDiary?.content, "没有写入工作日记。")}
+                          {trimText(selectedDiary?.content, selectedAction?.action_type === "observe_only" ? "本轮仅观察，未写入工作日记。" : "本轮未写入工作日记。")}
                         </p>
+                        {selectedObservations.length > 0 ? (
+                          <section className="mt-[2.4vh]">
+                            <h3 className="border-l-[0.22vw] border-accent pl-[0.8vw] font-serif text-[2.08vh] text-text">本轮观察</h3>
+                            <ul className="mt-[1.4vh] list-disc space-y-[0.8vh] pl-[1.4vw] text-[1.65vh] leading-relaxed text-text">
+                              {selectedObservations.map((observation, index) => <li key={index}>{observation}</li>)}
+                            </ul>
+                          </section>
+                        ) : null}
                       </div>
                     </div>
 
@@ -866,6 +926,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                   <div className="min-w-0 pt-[1.25vh]">
                     <h2 className="font-serif text-[clamp(24px,1.75vw,30px)] leading-[1.18] tracking-[-0.02em] text-[#211e1b]">{selectedDiary.title || "一次自醒"}</h2>
                     <div className="mt-[1.2vh] text-[1.82vh] text-text-muted">{selectedAuthorName} 写于 {formatDateTime(selectedDiary.created_at ?? selectedRun.finished_at)}</div>
+                    <button type="button" onClick={() => setExecutionRunId(selectedRun.id)} className="mt-3 rounded border border-border px-3 py-1 text-accent">执行记录</button>
                   </div>
                 </header>
 

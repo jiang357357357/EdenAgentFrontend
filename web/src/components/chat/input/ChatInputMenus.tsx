@@ -3,12 +3,13 @@ import { ShieldAlert } from "lucide-react"
 import type { RuntimeModelConfig, RuntimeModelOption } from "../../../lib/agent-client"
 import { cn } from "../../../lib/utils"
 import type { PermissionMode } from "../../../types"
-import { CommandExecutionSettings } from "./CommandExecutionSettings"
+// 暂时隐藏执行边界设置；当前安装通过 command.execution.set 配置本机执行。
+// import { CommandExecutionSettings } from "./CommandExecutionSettings"
 
 export const permissionOptions: Array<{ mode: PermissionMode; label: string; description: string }> = [
   { mode: "restricted", label: "受限审批", description: "写入、命令等操作按授权规则确认" },
   { mode: "full_access", label: "命令审批", description: "自动允许其他工具，终端命令按授权规则确认" },
-  { mode: "takeover", label: "自动批准", description: "自动允许工具；执行范围由下方执行边界决定" },
+  { mode: "takeover", label: "完全访问", description: "自动允许工具和终端命令；本机执行时使用当前系统账号权限" },
 ]
 
 interface ChatInputMenusProps {
@@ -77,7 +78,7 @@ export function ChatInputMenus({
               </button>
             )
           })}
-          <CommandExecutionSettings />
+          {/* <CommandExecutionSettings /> */}
         </div>
       )}
 
