@@ -1,4 +1,5 @@
 import { LegacySyncReplay } from './LegacySyncReplay'
+import { ModelPricingPanel } from './ModelPricingPanel'
 import { LegacySyncReview } from './LegacySyncReview'
 import type { MonSyncResult as SyncStatus } from '@eden/api'
 import { useEffect, useState } from 'react'
@@ -34,6 +35,7 @@ function MonSyncSessionPanel({ sessionId }: { sessionId: string }) {
   }, [sessionId, open, before, legacyBefore, origin, revision])
   if (origin !== 'mon') return null
   return <section className="rounded-lg border p-3 text-sm">
+    <ModelPricingPanel sessionId={sessionId} />
     <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open}>Mon 同步记录</button>
     {open && <div className="mt-2 space-y-2">
       {error && <p role="alert">{error}</p>}
