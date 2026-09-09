@@ -1,3 +1,4 @@
+import { PluginRecovery } from "./PluginRecovery"
 import { PluginComponents } from "./PluginComponents"
 import { McpPanel } from '../../components/chat/McpPanel'
 import { PluginPackagePreview } from "./PluginPackagePreview"
@@ -58,6 +59,9 @@ export function PluginPage({ onBack }: { onBack: () => void }) {
     {previewDetails && <PluginPackagePreview preview={previewDetails} />}
     <PluginDevelopment onChanged={refresh} />
     <PluginMarketKeys onChanged={refresh} />
+    <PluginRecovery disabled={busy || Boolean(previewID)} onPreview={preview => {
+      setPreviewDetails(preview); setPreviewID(preview.previewID); setPreviewLabel(`${preview.name} · ${preview.version}`)
+    }} />
     <section className="mb-6 rounded-xl border border-stone-200 bg-white p-4">
       <div className="flex gap-2"><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="本地插件目录" className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm" />
       <button disabled={busy || !source} onClick={() => void run(async () => { const preview = await inspectPlugin(source); setPreviewID(preview.previewID); setPreviewDetails(preview); setPreviewLabel(`${preview.name} ${preview.version}`) })} className="rounded-lg bg-stone-800 px-4 py-2 text-sm text-white disabled:opacity-40">检查</button>

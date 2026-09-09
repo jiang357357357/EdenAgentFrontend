@@ -1,3 +1,4 @@
+import { LegacySyncReplay } from './LegacySyncReplay'
 import { LegacySyncReview } from './LegacySyncReview'
 import type { MonSyncResult as SyncStatus } from '@eden/api'
 import { useEffect, useState } from 'react'
@@ -45,6 +46,9 @@ function MonSyncSessionPanel({ sessionId }: { sessionId: string }) {
           <p>{Object.entries(status.legacy.totals).map(([state, count]) => `${labels[state] ?? state}：${count}`).join(' · ')}</p>
           <ul>{status.legacy.items.map(item => <li key={item.id} className="py-1">#{item.id} · {item.kind} · {labels[item.state] ?? item.state} · 尝试 {item.attempts} 次
             {item.error && <p>{item.error}</p>}
+            {item.replay && <p>最近重投：{labels[item.replay.state] ?? item.replay.state} · {item.replay.note}{item.replay.error ? ` · ${item.replay.error}` : ''}</p>}
+            {status.legacy.identityState === 'rebound' && ['session', 'message', 'director'].includes(item.kind) && <LegacySyncReplay
+              sessionId={sessionId} item={item} onUpdated={() => setRevision(value => value + 1)} />}
             {item.review && <p>人工记录：{item.review.decision === 'confirm_completed' ? '已核实完成' : '放弃'} · {item.review.note}</p>}
             {['held', 'unknown'].includes(item.state) && <LegacySyncReview sessionId={sessionId} id={item.id}
               onResolved={() => { setStatus(null); setRevision(value => value + 1) }} />}

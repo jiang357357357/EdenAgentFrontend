@@ -29,7 +29,7 @@ export function ConnectorCredential({ id, onChanged }: { id: string; onChanged?:
     } catch { if (current === epoch.current) setError('凭据未确认更新。请刷新状态后重试；配置可能已变更。') }
     finally { if (current === epoch.current) setBusy(false) }
   }
-  if (status && !status.supported) return null
+  if (status && !status.supported && !status.configured) return null
   return <section className="my-4 rounded-xl border border-stone-200 bg-white p-4 text-sm">
     <div className="flex justify-between"><h3 className="font-medium">身份凭据</h3>
       <button type="button" disabled={busy} onClick={() => setRefresh(value => value + 1)}>刷新</button></div>
@@ -39,9 +39,9 @@ export function ConnectorCredential({ id, onChanged }: { id: string; onChanged?:
       <p className="mt-2 text-xs text-stone-500">凭据只用于当前世界的此身份。修改后连接器将停用，需要重新授权并启用。</p>
       <label className="mt-3 block">令牌或 Admin 密码
         <input type="password" autoComplete="new-password" spellCheck={false} maxLength={16384} value={secret}
-          disabled={busy} onChange={event => setSecret(event.target.value)} className="mt-1 w-full rounded border px-3 py-2" /></label>
+          disabled={busy || !status.supported} onChange={event => setSecret(event.target.value)} className="mt-1 w-full rounded border px-3 py-2" /></label>
       <div className="mt-3 flex gap-3">
-        <button type="button" disabled={busy || !secret} onClick={() => void change(false)}>保存凭据</button>
+        <button type="button" disabled={busy || !status.supported || !secret} onClick={() => void change(false)}>保存凭据</button>
         <button type="button" disabled={busy || !status.configured} onClick={() => void change(true)}>删除凭据</button>
       </div>
     </>}

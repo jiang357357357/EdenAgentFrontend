@@ -43,13 +43,14 @@ export function SubagentPanel({ sessionId }: { sessionId: string }) {
       <div className="mt-3 space-y-2">{agents.map(item => <button key={item.id} onClick={() => setSelected(item.id)} className={`block w-full rounded border p-2 text-left ${selected === item.id ? 'border-amber-500' : 'border-stone-200'}`}><b>{item.agentPath}</b> · {item.status}</button>)}</div>
       {agent && <div className="mt-3 border-t pt-3">
         <p className="mt-2">子树累计预算：模型 {agent.usage.modelRequests}/{agent.config.maxModelRequests} · 工具 {agent.usage.toolCalls}/{agent.config.maxToolCalls}</p>
+        {agent.recoveryState && agent.recoveryState !== 'ready' && <p>迁移前任务已保留，上下文、模型和策略尚待恢复；当前不能启动续接。</p>}
         {agent.deadlineAt != null && <p>截止时间：{new Date(Number(agent.deadlineAt)).toLocaleString()}</p>}
         {agent.error && <p className="text-red-700">{agent.error}</p>}
-        {agent.result && <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words">{agent.result.content}</pre>}
+        {agent.result && <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words">{typeof agent.result === 'string' ? agent.result : JSON.stringify(agent.result, null, 2)}</pre>}
         <textarea aria-label="子任务消息" disabled={busy} value={message} onChange={event => { setMessage(event.target.value); setMessageKey(crypto.randomUUID()) }} maxLength={16000} placeholder="发送消息或续接任务" className="mt-2 w-full rounded border p-2" />
         <div className="mt-2 flex flex-wrap gap-3">
           <button disabled={busy || !message} onClick={() => void run(async () => { await rpcRequest('agent.send', { agentId: agent.id, message, idempotencyKey: messageKey }); setMessage(''); setMessageKey(crypto.randomUUID()) })}>仅发消息</button>
-          <button disabled={busy || !message || ['queued', 'running'].includes(agent.status)} onClick={() => void run(async () => { await rpcRequest('agent.followup', { agentId: agent.id, message, idempotencyKey: messageKey }); setMessage(''); setMessageKey(crypto.randomUUID()) })}>启动续接</button>
+          <button disabled={busy || !message || Boolean(agent.recoveryState && agent.recoveryState !== 'ready') || ['queued', 'running'].includes(agent.status)} onClick={() => void run(async () => { await rpcRequest('agent.followup', { agentId: agent.id, message, idempotencyKey: messageKey }); setMessage(''); setMessageKey(crypto.randomUUID()) })}>启动续接</button>
           <button disabled={busy || !['queued', 'running'].includes(agent.status)} onClick={() => void run(() => rpcRequest('agent.interrupt', { agentId: agent.id }))} className="text-red-700">中断任务</button>
         </div>
       </div>}

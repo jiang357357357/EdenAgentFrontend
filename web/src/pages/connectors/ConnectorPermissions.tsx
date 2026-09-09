@@ -24,6 +24,16 @@ export function ConnectorPermissions({ id, revisionHint, onChanged }: { id: stri
     } catch (reason) { if (epoch.current === current) setError(reason instanceof Error ? reason.message : String(reason)) }
     finally { if (epoch.current === current) setBusy(false) }
   }
+  async function clear() {
+    if (!snapshot || busy || getStoredRuntimeOrigin() !== origin) return
+    const current = epoch.current
+    setBusy(true); setError('')
+    try {
+      const result = await rpcRequestForOrigin(origin, 'connector.permissions.clear', { id, generation: snapshot.generation })
+      if (epoch.current === current) { setSnapshot(result); onChanged?.() }
+    } catch (reason) { if (epoch.current === current) setError(reason instanceof Error ? reason.message : String(reason)) }
+    finally { if (epoch.current === current) setBusy(false) }
+  }
   return <section className="my-4 rounded-xl border border-stone-200 bg-white p-4 text-sm">
     <div className="flex justify-between"><h3 className="font-medium">连接器权限</h3>
       <button type="button" disabled={busy} onClick={() => setRefresh(value => value + 1)}>刷新</button></div>
@@ -31,9 +41,10 @@ export function ConnectorPermissions({ id, revisionHint, onChanged }: { id: stri
     {!snapshot && !error && <p className="mt-2 text-stone-500">读取权限中…</p>}
     {snapshot && <>
       <p className="mt-2 text-xs text-stone-500">授权仅适用于当前配置和包版本。修改配置后需重新授权；撤销权限会停用连接器。</p>
-      <p className="mt-2 break-all">{snapshot.worker.available ? `Worker SHA-256：${snapshot.worker.sha256}` : '缺少当前平台的有效 worker，请先安装制品。'}</p>
+      <p className="mt-2 break-all">{snapshot.worker.available ? `Worker SHA-256：${snapshot.worker.sha256}` : snapshot.worker.error ?? '缺少当前平台的有效 worker，请先安装制品。'}</p>
       <p className="mt-2">{snapshot.ready ? '必需权限已允许；连接状态请查看上方。' : '必需权限尚未就绪。'}</p>
-      {snapshot.permissions.length === 0 && <p>此连接器未声明额外权限。</p>}
+      {snapshot.permissions.length === 0 && snapshot.worker.available && <p>此连接器未声明额外权限。</p>}
+      <button type="button" disabled={busy} onClick={() => void clear()} className="mt-2 rounded border px-3 py-1">清除全部历史授权并断开</button>
       <ul className="mt-2 space-y-3">{snapshot.permissions.map(permission => <li key={permission.key} className="border-t pt-3">
         <p className="font-medium">{permission.capability} · {permission.required ? '必需' : '可选'}</p>
         <p>{permission.description}</p>
