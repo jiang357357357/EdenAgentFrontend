@@ -1,3 +1,4 @@
+const { createDesktopReminderService } = require("./reminders/reminder-service.cjs")
 const { app, BrowserWindow, Menu, Tray, desktopCapturer, dialog, ipcMain, nativeImage, powerMonitor, protocol, screen, net, session, shell } = require("electron")
 const { execFile, spawn } = require("node:child_process")
 const fs = require("node:fs")
@@ -88,6 +89,7 @@ const rustServer = createAgentServerManager({
   agentRoot,
   getRuntimeEnvironment: () => localRuntimeConfig.environment(),
 })
+const desktopReminders = createDesktopReminderService({ BrowserWindow, screen, ipcMain, capability: origin => rustServer.capability(origin) })
 const localRuntimeService = createLocalRuntimeService({
   configStore: localRuntimeConfig,
   rustServer,
@@ -1248,6 +1250,7 @@ app.on("second-instance", () => {
     desktopEnvironmentService.startMonitors()
     createWindow()
     createQuestionWindow()
+    desktopReminders.start()
     if (process.env.EDEN_AGENT_DESKTOP_START_PAGE === "settings") {
       void createSettingsWindow()
     } else if (process.env.EDEN_AGENT_DESKTOP_START_PAGE === "pet") {
@@ -1272,6 +1275,7 @@ app.on("second-instance", () => {
       })
     }
     isQuitting = true
+    desktopReminders.close()
     globalPointerObserver.dispose()
     stopActivityPresence()
     processLifecycle.stopDevParentWatch()

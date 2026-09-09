@@ -129,6 +129,7 @@ function createAgentServerManager({ app, agentRoot, processObject = process, fil
     else delete environment.ELECTRON_RUN_AS_NODE
     if (app.isPackaged) environment.EDEN_AGENT_ALLOWED_ORIGINS = processObject.env.EDEN_AGENT_ALLOWED_ORIGINS?.trim() || "edenagent://app"
     if (realm === "mon") {
+      for (const key of ["MON_SERVICE_SHARED_SECRET", "MON_SERVICE_USER_ID", "MON_CORE_BASE_URL"]) { if (processObject.env[key] !== undefined) environment[key] = processObject.env[key] }
       for (const key of Object.keys(localRuntimeEnvironment)) delete environment[key]
       delete environment.OPENAI_API_KEY
       delete environment.OPENAI_BASE_URL

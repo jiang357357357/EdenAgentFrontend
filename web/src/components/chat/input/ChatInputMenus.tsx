@@ -4,8 +4,7 @@ import { ShieldAlert } from "lucide-react"
 import type { RuntimeModelConfig, RuntimeModelOption, ModelSelectionTarget } from "../../../lib/agent-client"
 import { cn } from "../../../lib/utils"
 import type { PermissionMode } from "../../../types"
-// 暂时隐藏执行边界设置；当前安装通过 command.execution.set 配置本机执行。
-// import { CommandExecutionSettings } from "./CommandExecutionSettings"
+import { CommandExecutionSettings } from "./CommandExecutionSettings"
 
 export const permissionOptions: Array<{ mode: PermissionMode; label: string; description: string }> = [
   { mode: "restricted", label: "受限审批", description: "写入、命令等操作按授权规则确认" },
@@ -79,7 +78,7 @@ export function ChatInputMenus({
               </button>
             )
           })}
-          {/* <CommandExecutionSettings /> */}
+          <CommandExecutionSettings />
         </div>
       )}
 

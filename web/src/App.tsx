@@ -1,3 +1,4 @@
+import { DesktopReminders } from "./components/notifications/DesktopReminders"
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react"
 import { X } from "lucide-react"
 import { AnimatePresence, LayoutGroup, motion } from "motion/react"
@@ -977,6 +978,7 @@ export default function App() {
 
   return (
     <>
+      {!isAuxiliaryWindow && !window.edenAgentDesktop && <DesktopReminders key={runtimeOrigin} origin={runtimeOrigin} />}
       <motion.div
         animate={{
           opacity: modeContentVisible ? 1 : 0,

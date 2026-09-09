@@ -1,3 +1,4 @@
+import { MemoNotificationsPanel } from "../../components/memos/MemoNotificationsPanel"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Archive,
@@ -484,6 +485,7 @@ export function MemoPage({ onBack }: MemoPageProps) {
           </div>
         </div>
         <div className="flex items-center gap-[0.75vw]">
+          <MemoNotificationsPanel />
           <button
             type="button"
             onClick={() => void loadMemos()}

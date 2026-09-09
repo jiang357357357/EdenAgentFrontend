@@ -1,3 +1,5 @@
+import { initializeResultSchema, rpcNotifications } from '@eden/api'
+import type { MemoInfo } from '@eden/api'
 import { blobReference } from "./blob-reference"
 import {
   EdenAgentRpcClient,
@@ -5,11 +7,9 @@ import {
   EDEN_AGENT_WEBSOCKET_PROTOCOL,
   uploadBlob,
   type AttachmentRef,
-  type MemoInfo,
-  type RpcMethodMap,
-  type SessionEvent,
 } from "../generated/eden-agent-rpc"
 import { getStoredRuntimeOrigin } from "./runtime-origin"
+import type { SessionEventInput as SessionEvent } from './session-event'
 import type { ObjectUrlScope } from "./object-url-scope"
 import type {
   CompanionDirectorExecution,
@@ -101,7 +101,7 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
     try {
       const token = await capabilityToken(requestedOrigin)
       const websocketUrl = `${agentHttpBaseUrl(requestedOrigin).replace(/^http/, "ws")}/rpc`
-      const initialized = await next.connect(websocketUrl, token, "dev", requestedOrigin)
+      const initialized = initializeResultSchema.parse(await next.connect(websocketUrl, token, "dev", requestedOrigin))
       if (initialized.runtimeOrigin !== requestedOrigin) {
         throw new Error(
           `Eden Agent runtime origin mismatch: requested ${requestedOrigin}, received ${initialized.runtimeOrigin}`,
@@ -115,8 +115,11 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
       throw error
     }
     const lastSequences = new Map<string, bigint>()
-    next.on("session.event", (event) => {
+    next.on("session.event", (raw) => {
       if (client !== next || currentRuntimeOrigin() !== requestedOrigin) return
+      const parsed = rpcNotifications['session.event'].safeParse(raw)
+      if (!parsed.success) { next.close(); return }
+      const event = parsed.data
       const sequence = BigInt(event.seq)
       const previous = lastSequences.get(event.sessionId)
       if (previous !== undefined) {
@@ -131,9 +134,10 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
       lastSequences.set(event.sessionId, sequence)
       for (const listener of eventListeners) listener(event)
     })
-    next.on("server.warning", (warning) => {
+    next.on("server.warning", (raw) => {
       if (client !== next || currentRuntimeOrigin() !== requestedOrigin) return
-      if (warning.code === "event_stream_lagged") next.close()
+      const parsed = rpcNotifications['server.warning'].safeParse(raw)
+      if (!parsed.success || parsed.data.code === "event_stream_lagged") next.close()
     })
     next.onClose(() => {
       if (client !== next) return
@@ -167,14 +171,14 @@ export async function rpcRequest<K extends keyof RpcMethodMap>(
   params: RpcMethodMap[K]["params"],
 ): Promise<RpcMethodMap[K]["result"]> {
   const current = await connectedClient()
-  return current.request(method, params)
+  return requestWithContract(current, method, params)
 }
 
 export async function rpcRequestForOrigin<K extends keyof RpcMethodMap>(origin: RuntimeOrigin, method: K, params: RpcMethodMap[K]["params"]): Promise<RpcMethodMap[K]["result"]> {
   if (currentRuntimeOrigin() !== origin) throw new Error("当前世界已切换，请重新打开")
   const current = await connectedClient()
   if (currentRuntimeOrigin() !== origin || connectedOrigin !== origin || current !== client) throw new Error("当前世界已切换，请重新打开")
-  const result = await current.request(method, params)
+  const result = await requestWithContract(current, method, params)
   if (currentRuntimeOrigin() !== origin || current !== client) throw new Error("当前世界已切换，请重新打开")
   return result
 }
@@ -356,15 +360,13 @@ function apiParticipants(value: unknown): SessionParticipant[] {
   })
 }
 
-export function apiSession(session: import("../generated/eden-agent-rpc").SessionSummary): ApiSession {
+export function apiSession(session: import("@eden/api").SessionSummary): ApiSession {
   const participants = apiParticipants(session.participants)
   return {
     id: session.id,
     title: session.title,
     runtimeOrigin: session.runtimeOrigin,
     runtimeStatus: "idle",
-    ...(session.contextTokens == null ? {} : { contextTokens: Number(session.contextTokens) }),
-    ...(session.tokenBreakdown == null ? {} : { tokenBreakdown: apiTokenBreakdown(session.tokenBreakdown) }),
     time: { created: Number(session.createdAt), updated: Number(session.updatedAt) },
     participants,
     participantAssistantIDs: participants.map((participant) => participant.assistantID),
@@ -747,12 +749,13 @@ export function apiMessage(event: SessionEvent, messageID = sessionEventMessageI
 }
 
 export function mapMemoForView(memo: MemoInfo): JsonObject {
-  const iso = (value: bigint | null | undefined) => value == null ? null : new Date(Number(value)).toISOString()
+  const iso = (value: number | null | undefined) => value == null ? null : new Date(Number(value)).toISOString()
   return {
     id: Number(memo.id), user: 0, title: memo.title, content: memo.content, kind: memo.kind,
     status: memo.status, priority: memo.priority, remind_at: iso(memo.remindAt), due_at: iso(memo.dueAt),
-    repeat_rule: memo.repeatRule, source: "edenagent", related_session_id: memo.relatedSessionId,
+    repeat_rule: memo.repeatRule, source: memo.source, related_session_id: memo.relatedSessionId,
     related_message_id: "", semantic_task_id: "", last_triggered_at: iso(memo.lastTriggeredAt),
+    snoozed_until: iso(memo.snoozedUntil), trigger_at: iso(memo.snoozedUntil ?? memo.remindAt ?? memo.dueAt),
     completed_at: iso(memo.completedAt), metadata: memo.metadata,
     created_at: iso(memo.createdAt), updated_at: iso(memo.updatedAt),
   }
@@ -967,3 +970,4 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
   }
   return []
 }
+import { requestWithContract, type RpcMethodMap } from './rpc-contracts'

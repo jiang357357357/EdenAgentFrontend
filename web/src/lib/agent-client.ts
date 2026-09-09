@@ -1,3 +1,15 @@
+import type { ToolInfo } from '@eden/api'
+import type { DirectorRun as DirectorRunInfo } from '@eden/api'
+import type { AgentThreadInfo } from '@eden/api'
+import type { SelfAwakeRunInfo } from '@eden/api'
+import type { SkillInfo } from '@eden/api'
+import type { MarketReleaseInfo as PluginMarketReleaseInfo, MarketSourceInfo as PluginMarketSourceInfo } from '@eden/api'
+import { packagePermissionSetSchema } from '@eden/api'
+import type { ManagedPluginInfo as PluginInfo } from '@eden/api'
+import { mediaResolveSchema } from '@eden/api'
+import type { SessionEventInput as RpcSessionEvent } from './session-event'
+import { memoCreateSchema, memoPatchSchema } from '@eden/api'
+import type { ConnectorCapabilityInfo as RpcConnectorCapabilityInfo, ConnectorCatalogEntry as RpcConnectorCatalogEntry, ConnectorInfo as RpcConnectorInfo } from '@eden/api'
 import { buildSessionEnvironment } from "./session-environment"
 import { mapRuntimeModelCatalog, mapLocalRuntimeModel } from "./runtime-models"
 import type { RuntimeModelConfig, ModelSelectionTarget } from "./runtime-models"
@@ -19,19 +31,7 @@ import { getStoredToken, getStoredUser, resolveCoreAssetUrl, resolveCoreBaseUrl 
 import type { CoreCharacterVisualAction, CoreCharacterVisualActionGroup } from "./auth"
 import { formatLocalTime } from "./time"
 import type {
-  ConnectorCapabilityInfo as RpcConnectorCapabilityInfo,
-  ConnectorCatalogEntry as RpcConnectorCatalogEntry,
-  ConnectorInfo as RpcConnectorInfo,
-  AgentThreadInfo,
-  DirectorRunInfo,
   JsonValue,
-  SessionEvent as RpcSessionEvent,
-  SelfAwakeRunInfo,
-  SkillInfo,
-  PluginInfo,
-  PluginMarketReleaseInfo,
-  PluginMarketSourceInfo,
-  ToolInfo,
 } from "../generated/eden-agent-rpc"
 import { getStoredRuntimeOrigin, LOCAL_ASSISTANT_ID } from "./runtime-origin"
 import { getStoredLocalCharacter, localCharacterParticipantProfile } from "./local-character"
@@ -142,7 +142,7 @@ export function setPluginPermissions(
   revision: string,
   decisions: Array<{ capability: string; resource: string; access: string; decision: string }>,
 ) {
-  return rpcRequest("plugin.permissions.set", { id, revision, decisions })
+  return rpcRequest("plugin.permissions.set", packagePermissionSetSchema.parse({ id, revision, decisions }))
 }
 
 export function uninstallPlugin(id: string) {
@@ -189,7 +189,7 @@ export async function listConnectorCatalog() {
 
 export function createConnector(input: { connectorKey: string; identityKey: string; desiredState?: "connected" | "disconnected"; settings?: unknown }) {
   return rpcRequest("connector.create", {
-    connectorKey: input.connectorKey, identityKey: input.identityKey, displayName: "",
+    connectorKey: input.connectorKey, identityKey: input.identityKey, displayName: input.identityKey,
     desiredState: input.desiredState ?? "disconnected", settings: (input.settings ?? {}) as JsonValue,
   })
 }
@@ -199,7 +199,7 @@ export function updateConnector(id: string, input: Partial<Pick<Connector, "desi
     ...(input.desiredState ? { desiredState: input.desiredState } : {}),
     ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
     ...(input.settings !== undefined ? { settings: input.settings } : {}),
-  }) as JsonValue })
+  }) })
 }
 
 export type WorkspaceEntry = {
@@ -990,6 +990,7 @@ export function isCoreAuthExpiredEvent(event: ApiEvent) {
 }
 
 export type InstalledSkill = {
+  workspaceRoot?: string
   id: string
   skillName: string
   displayName: string
@@ -1057,6 +1058,7 @@ function mapSkillInfo(skill: SkillInfo): InstalledSkill {
     : {}
   return {
     id: skill.name,
+    workspaceRoot: typeof manifest.workspaceRoot === "string" ? manifest.workspaceRoot : "",
     skillName: skill.name,
     displayName: skill.displayName || skill.name,
     description: skill.description,
@@ -1123,12 +1125,14 @@ export async function installSkill(previewID: string) {
   return mapSkillInfo(skill)
 }
 
-export function setSkillEnabled(id: string, enabled: boolean) {
-  return rpcRequest("skill.enable", { name: id, enabled }).then(mapSkillInfo)
+export function setSkillEnabled(id: string, enabled: boolean, expected?: InstalledSkill) {
+  const params = { name: id, enabled, ...(expected ? { expectedContentHash: expected.contentHash, expectedWorkspaceRoot: expected.workspaceRoot } : {}) }
+  return rpcRequest("skill.enable", params).then(mapSkillInfo)
 }
 
-export function uninstallSkill(id: string) {
-  return rpcRequest("skill.uninstall", { name: id })
+export function uninstallSkill(id: string, expected?: InstalledSkill) {
+  const params = { name: id, ...(expected ? { expectedContentHash: expected.contentHash, expectedWorkspaceRoot: expected.workspaceRoot } : {}) }
+  return rpcRequest("skill.uninstall", params)
 }
 
 function timeLabel(value?: number) {
@@ -1298,7 +1302,7 @@ async function resolveParticipants(assistantIDs: Array<number | string>) {
       standingImageUrl,
       ttsConfigId: null,
       sttConfigId: null,
-      position: BigInt(position),
+      position,
       profile: localCharacterParticipantProfile(localCharacter),
     }))
   }
@@ -1320,10 +1324,10 @@ async function resolveParticipants(assistantIDs: Array<number | string>) {
       signature: character?.signature ?? "",
       avatarUrl: character?.avatar_url ?? "",
       standingImageUrl: character?.default_standing_image_url ?? "",
-      ttsConfigId: character?.tts_config_id == null ? null : BigInt(character.tts_config_id),
-      sttConfigId: character?.stt_config_id == null ? null : BigInt(character.stt_config_id),
-      position: BigInt(position),
-      profile: assistant == null ? undefined : JSON.parse(JSON.stringify(assistant)) as JsonValue,
+      ttsConfigId: character?.tts_config_id == null ? null : Number(character.tts_config_id),
+      sttConfigId: character?.stt_config_id == null ? null : Number(character.stt_config_id),
+      position,
+      profile: assistant == null ? null : JSON.parse(JSON.stringify(assistant)) as JsonValue,
     }
   }))
 }
@@ -1481,13 +1485,13 @@ function mapDirectorRunForView(run: DirectorRunInfo): CompanionDirectorRun {
 }
 
 async function listAllSessionEvents(sessionID: string, maximum = 10_000) {
-  const events: import("../generated/eden-agent-rpc").SessionEvent[] = []
-  let afterSeq = 0n
+  const events: import("@eden/api").SessionEvent[] = []
+  let afterSeq = '0'
   while (events.length < maximum) {
     const page = await rpcRequest("event.list", { sessionId: sessionID, afterSeq, limit: 500 })
     events.push(...page.items)
     if (!page.hasMore || !page.nextCursor) break
-    afterSeq = BigInt(page.nextCursor)
+    afterSeq = page.nextCursor
   }
   return events.slice(0, maximum)
 }
@@ -1534,12 +1538,11 @@ export async function interruptSubagent(sessionID: string, target: string) {
 }
 
 export async function getSubagentThreadDetails(sessionID: string, target: string, eventLimit = 500) {
-  const [agent, events] = await Promise.all([
-    rpcRequest("agent.read", { agentId: target }),
-    listAllSessionEvents(sessionID),
-  ])
-  return { thread: mapAgentThread(agent), events: events.filter((event) =>
-    String((event.payload as Record<string, unknown>).agentId ?? "") === target).slice(-eventLimit) } as import("../types").SubagentThreadDetails
+  const threads = await rpcRequest("agent.list", { sessionId: sessionID })
+  const agent = threads.find(thread => thread.id === target)
+  if (!agent) throw new Error("Subagent is not part of the selected session tree")
+  const events = await listAllSessionEvents(agent.childSessionId)
+  return { thread: mapAgentThread(agent), events: events.slice(-Math.max(1, Math.min(eventLimit, 10000))) } satisfies import("../types").SubagentThreadDetails
 }
 
 export async function followupSubagent(sessionID: string, target: string, message: string) {
@@ -1554,7 +1557,7 @@ function mapAgentThread(agent: AgentThreadInfo): import("../types").SubagentThre
 }
 
 export async function listPermissionsRaw() {
-  return (await rpcRequest("permission.list", {})).map((item) => ({
+  return (await rpcRequest("permission.list", {})).filter(item => item.state === "pending").map((item) => ({
     id: item.id, sessionID: item.sessionId, permission: item.capability,
     patterns: [item.resource], metadata: item.request as Record<string, unknown>, always: [item.resource],
   })) as PendingPermission[]
@@ -1613,13 +1616,14 @@ export async function replyScreenCapture(
   },
   error?: string,
 ) {
+  if (Boolean(result) === Boolean(error)) throw new Error("Provide exactly one capture result or error")
   let payload: JsonValue | undefined
   if (result) {
     const [attachment] = await uploadAttachments([{ url: result.dataUrl, mime: result.mime, filename: "screen-capture" }])
     payload = { blobId: attachment.blobId, mime: attachment.mime, width: result.width,
       height: result.height, displayId: result.displayId, sourceName: result.sourceName ?? "", source: result.source ?? "desktop" }
   }
-  await rpcRequest("media.resolve", { id: requestID, ...(payload ? { result: payload } : {}), ...(error ? { error } : {}) })
+  await rpcRequest("media.resolve", mediaResolveSchema.parse({ id: requestID, ...(payload ? { result: payload } : {}), ...(error ? { error } : {}) }))
   return true
 }
 
@@ -1641,13 +1645,14 @@ export async function replyCameraCapture(
   },
   error?: string,
 ) {
+  if (Boolean(result) === Boolean(error)) throw new Error("Provide exactly one capture result or error")
   let payload: JsonValue | undefined
   if (result) {
     const [attachment] = await uploadAttachments([{ url: result.dataUrl, mime: result.mime, filename: "camera-capture" }])
     payload = { blobId: attachment.blobId, mime: attachment.mime, width: result.width,
       height: result.height, deviceLabel: result.deviceLabel ?? "", facingMode: result.facingMode ?? "" }
   }
-  await rpcRequest("media.resolve", { id: requestID, ...(payload ? { result: payload } : {}), ...(error ? { error } : {}) })
+  await rpcRequest("media.resolve", mediaResolveSchema.parse({ id: requestID, ...(payload ? { result: payload } : {}), ...(error ? { error } : {}) }))
   return true
 }
 
@@ -1673,7 +1678,7 @@ function mapToolInfoForView(tool: ToolInfo): ToolDefinition {
 
 export async function getToolStatus() {
   const definitions = (await rpcRequest("tool.list", {})).map(mapToolInfoForView)
-  return { search: { status: "online", provider: "rust-host", mode: "embedded" },
+  return { search: { status: "online", provider: "typescript-host", mode: "embedded" },
     tools: Object.fromEntries(definitions.map((tool) => [tool.name, "online"])),
     toolDetails: Object.fromEntries(definitions.map((tool) => [tool.name, tool])) } satisfies ToolStatus
 }
@@ -1687,7 +1692,7 @@ export async function listWorkspaceDirectory(path = "") {
       name: entry.name,
       path: entry.path,
       type: entry.type,
-      size: entry.size == null ? null : Number(entry.size),
+      size: null,
     })),
   } satisfies WorkspaceDirectory
 }
@@ -1762,7 +1767,7 @@ export async function synthesizeSpeechSegment(input: {
     groupIndex: input.groupIndex,
     sequence: input.sequence,
     text: input.text,
-    configId: BigInt(input.configId),
+    configId: input.configId,
     mode: input.mode,
   })
   return {
@@ -1819,20 +1824,7 @@ export function testGsvStt(config: LocalGsvSttConfig) {
   return rpcRequest("voice.stt.test", { config })
 }
 
-export type PersistedSpeechSegment = {
-  id: number
-  external_message_id: string
-  audio_asset_id: number
-  audio_url: string
-  audio_blob_id?: string | null
-  duration_ms?: number | null
-  audio_format: string
-  segment_group_id: string
-  group_index: number
-  sequence: number
-  text_hash: string
-  text_length: number
-}
+export type PersistedSpeechSegment = import('@eden/api').VoiceSegmentInfo
 
 export async function listMessageSpeechSegments(sessionId: string, messageId?: string) {
   const segments = await rpcRequest("voice.tts.list_segments", {
@@ -1895,7 +1887,7 @@ function optionalText(value: JsonValue | undefined) {
   return typeof value === "string" && value.trim() ? value : undefined
 }
 
-function epochIso(value: bigint | null | undefined) {
+function epochIso(value: number | bigint | null | undefined) {
   if (value === null || value === undefined) return undefined
   const date = new Date(Number(value))
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString()
@@ -1994,11 +1986,11 @@ export async function listMemos(params: {
 }
 
 export async function createMemo(input: ApiMemoInput) {
-  const memo = await rpcRequest("memo.create", { title: input.title, content: input.content ?? "",
+  const memo = await rpcRequest("memo.create", memoCreateSchema.parse({ title: input.title, content: input.content ?? "",
     kind: input.kind ?? "note", status: input.status ?? "active", priority: input.priority ?? "normal",
-    ...(input.remind_at ? { remindAt: BigInt(Date.parse(input.remind_at)) } : {}),
-    ...(input.due_at ? { dueAt: BigInt(Date.parse(input.due_at)) } : {}),
-    repeatRule: input.repeat_rule ?? "", relatedSessionId: "", metadata: (input.metadata ?? {}) as JsonValue })
+    ...(input.remind_at ? { remindAt: Date.parse(input.remind_at) } : {}),
+    ...(input.due_at ? { dueAt: Date.parse(input.due_at) } : {}),
+    repeatRule: input.repeat_rule ?? "", relatedSessionId: "", metadata: (input.metadata ?? {}) as JsonValue }))
   return mapMemoForView(memo) as ApiMemo
 }
 
@@ -2013,11 +2005,11 @@ export async function updateMemo(id: number, input: Partial<ApiMemoInput>) {
   if (input.due_at !== undefined) patch.dueAt = input.due_at ? Date.parse(input.due_at) : null
   if (input.repeat_rule !== undefined) patch.repeatRule = input.repeat_rule
   if (input.metadata !== undefined) patch.metadata = input.metadata as JsonValue
-  return mapMemoForView(await rpcRequest("memo.update", { id: BigInt(id), patch })) as ApiMemo
+  return mapMemoForView(await rpcRequest("memo.update", { id, patch: memoPatchSchema.parse(patch) })) as ApiMemo
 }
 
 export async function completeMemo(id: number) {
-  return mapMemoForView(await rpcRequest("memo.complete", { id: BigInt(id) })) as ApiMemo
+  return mapMemoForView(await rpcRequest("memo.complete", { id })) as ApiMemo
 }
 
 export async function archiveMemo(id: number) {
@@ -2025,8 +2017,8 @@ export async function archiveMemo(id: number) {
 }
 
 export async function snoozeMemo(id: number, input: { until?: string | null; minutes?: number }) {
-  const remindAt = input.until ? Date.parse(input.until) : Date.now() + Number(input.minutes ?? 0) * 60_000
-  return mapMemoForView(await rpcRequest("memo.update", { id: BigInt(id), patch: { remindAt } })) as ApiMemo
+  const snoozedUntil = input.until ? Date.parse(input.until) : Date.now() + Number(input.minutes ?? 0) * 60_000
+  return mapMemoForView(await rpcRequest("memo.update", { id, patch: { snoozedUntil, status: "active" } })) as ApiMemo
 }
 
 export async function subscribeEvents(handlers: SubscribeHandlers | ((event: ApiEvent) => void)) {

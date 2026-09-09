@@ -1,3 +1,6 @@
+import { ConnectorHistory } from './ConnectorHistory'
+import { ConnectorCredential } from './ConnectorCredential'
+import { ConnectorPermissions } from './ConnectorPermissions'
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Activity,
@@ -365,6 +368,12 @@ export function ConnectorPage({ onBack }: { onBack: () => void }) {
                 {selected.desiredState === "connected" ? "停用" : "启用"}
               </button>
             </div>
+            <ConnectorCredential key={`credential-${selected.id}`} id={String(selected.id)} onChanged={() => void refresh()} />
+            {selected.connectorKey === 'openttd' && <p className="my-3 text-xs text-stone-500">
+              本机连接可填写 host 和 adminPort；使用启动器受管实例时，留空这两项并填写 instanceRegistry 注册文件的绝对路径，随后允许文件读取权限。
+              Admin 密码在上方身份凭据中配置。游戏退出或注册实例变化后，旧连接会关闭。
+            </p>}
+            <ConnectorPermissions key={String(selected.id)} id={String(selected.id)} revisionHint={String(selected.updatedAt)} onChanged={() => void refresh()} />
             <div className="mt-5 flex border-b border-stone-200 text-sm">
               <button className="border-b-2 border-[#d87300] px-4 pb-3 font-medium text-[#d87300]">能力</button>
               <button className="px-4 pb-3 text-stone-400">最近事件</button>
@@ -379,6 +388,7 @@ export function ConnectorPage({ onBack }: { onBack: () => void }) {
               />
             </label>
             <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+              <ConnectorHistory key={String(selected.id)} id={String(selected.id)} />
               {(
                 [
                   ["输入事件", inputCapabilities],

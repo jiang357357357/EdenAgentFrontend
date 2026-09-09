@@ -1,3 +1,9 @@
+import { PluginComponents } from "./PluginComponents"
+import { McpPanel } from '../../components/chat/McpPanel'
+import { PluginPackagePreview } from "./PluginPackagePreview"
+import type { PluginPreviewInfo } from "@eden/api"
+import { PluginMarketKeys } from "./PluginMarketKeys"
+import { PluginDevelopment } from "./PluginDevelopment"
 import { useCallback, useEffect, useState } from "react"
 import { ArrowLeft, PackagePlus, RefreshCw, ShieldCheck, Store, Trash2 } from "lucide-react"
 import {
@@ -23,15 +29,16 @@ export function PluginPage({ onBack }: { onBack: () => void }) {
   const [marketSources, setMarketSources] = useState<PluginMarketSource[]>([])
   const [marketReleases, setMarketReleases] = useState<PluginMarketRelease[]>([])
   const [source, setSource] = useState("")
+  const [previewDetails, setPreviewDetails] = useState<PluginPreviewInfo | null>(null)
   const [previewID, setPreviewID] = useState("")
   const [previewLabel, setPreviewLabel] = useState("")
   const [marketForm, setMarketForm] = useState({ id: "", name: "", url: "", keyID: "" })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const refresh = useCallback(async () => {
-    const [nextPlugins, nextSources] = await Promise.all([listPlugins(), listPluginMarketSources()])
-    setPlugins(nextPlugins)
-    setMarketSources(nextSources)
+    setPlugins(await listPlugins())
+    try { setMarketSources(await listPluginMarketSources()) }
+    catch (reason) { setMarketSources([]); setError(`插件市场暂不可用：${String(reason)}`) }
     try { setMarketReleases(await listPluginMarketReleases()) }
     catch { setMarketReleases([]) }
   }, [])
@@ -48,10 +55,13 @@ export function PluginPage({ onBack }: { onBack: () => void }) {
       <button onClick={() => void refresh()} className="ml-auto rounded-lg p-2 hover:bg-stone-200" aria-label="刷新"><RefreshCw className="h-4 w-4" /></button>
     </header>
     {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+    {previewDetails && <PluginPackagePreview preview={previewDetails} />}
+    <PluginDevelopment onChanged={refresh} />
+    <PluginMarketKeys onChanged={refresh} />
     <section className="mb-6 rounded-xl border border-stone-200 bg-white p-4">
       <div className="flex gap-2"><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="本地插件目录" className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm" />
-      <button disabled={busy || !source} onClick={() => void run(async () => { const preview = await inspectPlugin(source); setPreviewID(preview.previewID); setPreviewLabel(`${preview.name} ${preview.version}`) })} className="rounded-lg bg-stone-800 px-4 py-2 text-sm text-white disabled:opacity-40">检查</button>
-      <button disabled={busy || !previewID} onClick={() => void run(async () => { await installPlugin(previewID); setPreviewID(""); setPreviewLabel(""); setSource("") })} className="flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm text-white disabled:opacity-40"><PackagePlus className="h-4 w-4" />安装{previewLabel ? ` ${previewLabel}` : ""}</button></div>
+      <button disabled={busy || !source} onClick={() => void run(async () => { const preview = await inspectPlugin(source); setPreviewID(preview.previewID); setPreviewDetails(preview); setPreviewLabel(`${preview.name} ${preview.version}`) })} className="rounded-lg bg-stone-800 px-4 py-2 text-sm text-white disabled:opacity-40">检查</button>
+      <button disabled={busy || !previewID} onClick={() => void run(async () => { await installPlugin(previewID); setPreviewID(""); setPreviewDetails(null); setPreviewLabel(""); setSource("") })} className="flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm text-white disabled:opacity-40"><PackagePlus className="h-4 w-4" />安装{previewLabel ? ` ${previewLabel}` : ""}</button></div>
     </section>
     <section className="mb-6 rounded-xl border border-stone-200 bg-white p-4">
       <div className="mb-3 flex items-center gap-2"><Store className="h-4 w-4" /><h2 className="font-medium">签名插件市场</h2></div>
@@ -74,7 +84,7 @@ export function PluginPage({ onBack }: { onBack: () => void }) {
       {marketReleases.length > 0 && <div className="mt-4 grid gap-2 md:grid-cols-2">{marketReleases.map((release) => <div key={`${release.sourceID}:${release.pluginID}:${release.version}`} className="rounded-lg border border-stone-200 p-3 text-sm">
         <div className="flex gap-2"><span className="min-w-0 flex-1"><b>{release.name}</b><span className="block text-xs text-stone-500">{release.pluginID} · {release.version} · {release.sourceID}</span></span>{release.revoked && <span className="text-xs text-red-600">已撤销</span>}</div>
         <p className="mt-2 text-xs text-stone-600">{release.revocationReason ?? release.description}</p>
-        <button disabled={busy || release.revoked} onClick={() => void run(async () => { const preview = await inspectPluginMarketRelease(release.sourceID, release.pluginID, release.version); setPreviewID(preview.previewID); setPreviewLabel(`${release.name} ${release.version}`) })} className="mt-2 rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">下载并审查</button>
+        <button disabled={busy || release.revoked} onClick={() => void run(async () => { const preview = await inspectPluginMarketRelease(release.sourceID, release.pluginID, release.version); setPreviewID(preview.previewID); setPreviewDetails(preview); setPreviewLabel(`${release.name} ${release.version}`) })} className="mt-2 rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">下载并审查</button>
       </div>)}</div>}
     </section>
     <div className="grid gap-4">
@@ -83,6 +93,8 @@ export function PluginPage({ onBack }: { onBack: () => void }) {
         return <article key={plugin.id} className="rounded-xl border border-stone-200 bg-white p-5">
           <div className="flex items-start gap-3"><div className="min-w-0 flex-1"><h2 className="font-semibold">{plugin.name}</h2><p className="text-xs text-stone-500">{plugin.id} · {plugin.version}</p><p className="mt-2 text-sm text-stone-600">{plugin.description}</p></div>
           <span className={`rounded-full px-2 py-1 text-xs ${plugin.trustState.startsWith("verified:") ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{plugin.trustState}</span></div>
+          {(plugin.sourceType === "marketplace" || plugin.sourceType === "local") && <PluginComponents plugin={plugin} onChanged={refresh} />}
+          {plugin.components.some(component => component.kind === 'mcp_stdio' || component.kind === 'mcp_http') && <McpPanel pluginId={plugin.id} />}
           {plugin.permissions.length > 0 && <div className="mt-4 space-y-2"><div className="flex items-center gap-2 text-sm font-medium"><ShieldCheck className="h-4 w-4" />权限</div>{plugin.permissions.map((permission) => {
             const key = `${permission.capability}\0${permission.resource}\0${permission.access}`
             return <label key={key} className="flex items-center gap-3 rounded-lg bg-stone-50 px-3 py-2 text-xs">

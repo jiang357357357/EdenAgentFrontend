@@ -1,3 +1,4 @@
+import { SkillManagement } from "./SkillManagement"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   ArrowLeft,
@@ -124,7 +125,11 @@ export function SkillPage({ onBack }: { onBack: () => void }) {
     void refresh()
     const handleChanged = () => void refresh()
     window.addEventListener("edenagent:skills-changed", handleChanged)
-    return () => window.removeEventListener("edenagent:skills-changed", handleChanged)
+    window.addEventListener("edenagent:workspace-changed", handleChanged)
+    return () => {
+      window.removeEventListener("edenagent:skills-changed", handleChanged)
+      window.removeEventListener("edenagent:workspace-changed", handleChanged)
+    }
   }, [refresh])
 
   useEffect(() => {
@@ -282,6 +287,7 @@ export function SkillPage({ onBack }: { onBack: () => void }) {
                   <p className="text-xs text-stone-400">{selectedToolNames.length} 个工具</p>
                 </div>
               </div>
+              <SkillManagement key={selectedSkill.id} skill={selectedSkill} onChanged={refresh} />
               <label className="mt-4 flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3">
                 <Search className="h-4 w-4 text-stone-400" />
                 <input

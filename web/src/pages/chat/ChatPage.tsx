@@ -1,3 +1,7 @@
+import { OperationPanel } from '../../components/chat/OperationPanel'
+import { MonSyncPanel } from '../../components/chat/MonSyncPanel'
+import { McpPanel } from '../../components/chat/McpPanel'
+import { SubagentPanel } from "../../components/chat/SubagentPanel"
 import { File, Lock, LockOpen, MessageSquare, X } from "lucide-react"
 import { motion } from "motion/react"
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
@@ -553,6 +557,10 @@ export function ChatPage({
             </div>
             <div className="ml-auto flex h-10 shrink-0 items-center bg-bg px-1.5">
               {activeSessionId && !activeFile && <MemoryCandidatesPanel key={activeSessionId} sessionId={activeSessionId} />}
+              {activeSessionId && !activeFile && <SubagentPanel key={activeSessionId} sessionId={activeSessionId} />}
+              {activeSessionId && !activeFile && <MonSyncPanel key={activeSessionId} sessionId={activeSessionId} />}
+              {activeSessionId && !activeFile && <OperationPanel key={`operations-${activeSessionId}`} sessionId={activeSessionId} />}
+              {activeSessionId && !activeFile && <McpPanel key={`mcp-${activeSessionId}`} sessionId={activeSessionId} />}
               <button
                 type="button"
                 onClick={() => onAutoScrollChange(!autoScrollEnabled)}

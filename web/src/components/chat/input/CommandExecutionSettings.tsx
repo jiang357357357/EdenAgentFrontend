@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import type { CommandExecutionInfo, CommandExecutionMode } from "../../../generated/eden-agent-rpc"
+import type { CommandExecutionInfo, CommandExecutionConfig } from "@eden/api"
+type CommandExecutionMode = CommandExecutionConfig["mode"]
 import { rpcRequestWithTimeout } from "../../../lib/rpc-transport"
 
 export function CommandExecutionSettings() {
