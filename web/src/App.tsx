@@ -1,4 +1,5 @@
 import { DesktopReminders } from "./components/notifications/DesktopReminders"
+import { MigrationReviewBanner } from "./components/migration/MigrationReviewBanner"
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react"
 import { X } from "lucide-react"
 import { AnimatePresence, LayoutGroup, motion } from "motion/react"
@@ -12,6 +13,7 @@ import { LoginPage } from "./pages/login"
 import { OriginSelectionPage } from "./pages/origin"
 import { MemoPage } from "./pages/memo"
 import { SelfAwakePage } from "./pages/self-awake"
+import { SelfAwakeRecoveryPanel } from './pages/self-awake/SelfAwakeRecoveryPanel'
 import { SettingsPage } from "./pages/settings"
 import { SkillPage } from "./pages/skills"
 import { ConnectorPage } from "./pages/connectors"
@@ -979,6 +981,7 @@ export default function App() {
   return (
     <>
       {!isAuxiliaryWindow && !window.edenAgentDesktop && <DesktopReminders key={runtimeOrigin} origin={runtimeOrigin} />}
+      {!isAuxiliaryWindow && <MigrationReviewBanner key={runtimeOrigin} origin={runtimeOrigin} />}
       <motion.div
         animate={{
           opacity: modeContentVisible ? 1 : 0,
@@ -1034,18 +1037,21 @@ export default function App() {
                 />
               </PetSurfaceErrorBoundary>
             ) : activePage === "selfAwake" ? (
+              <div key={runtimeOrigin} className="relative h-full min-h-0">
               <SelfAwakePage
                 currentUser={currentUser}
                 assistant={currentAssistant}
                 toolStatus={toolStatus}
                 onBack={() => setActivePage("chat")}
               />
+              <SelfAwakeRecoveryPanel />
+              </div>
             ) : activePage === "memo" ? (
               <MemoPage onBack={() => setActivePage("chat")} />
             ) : activePage === "skills" ? (
               <SkillPage onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
             ) : activePage === "plugins" ? (
-              <PluginPage onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
+              <PluginPage key={runtimeOrigin} onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
             ) : activePage === "connectors" ? (
               <ConnectorPage onBack={() => setActivePage("chat")} />
             ) : activePage === "configuration" ? (

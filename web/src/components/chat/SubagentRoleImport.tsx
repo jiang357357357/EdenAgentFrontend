@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { roleImportEntrySchema } from '@eden/api'
 import type { RoleImportEntry } from '@eden/api'
-import { rpcRequest } from '../../lib/rpc-transport'
+import { useScopedRpc } from '../../lib/use-scoped-rpc'
 
 interface Candidate { entry: RoleImportEntry | null; label: string; issue: string }
 interface Plan { previewId: string; expiresAt: number; items: { name: string; scope: 'user' | 'project'; workspaceRoot: string; replaces: boolean; definition: RoleImportEntry['definition'] }[] }
 export function SubagentRoleImport({ onSaved }: { onSaved: () => Promise<void> }) {
+  const rpcRequest = useScopedRpc()
   const [rows, setRows] = useState<Candidate[]>([]), [selected, setSelected] = useState<number[]>([]), [plan, setPlan] = useState<Plan | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [confirmed, setConfirmed] = useState(false)
   async function read(file?: File) {

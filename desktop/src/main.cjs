@@ -1,3 +1,4 @@
+require('./app/installed-launch.cjs').assertInstalledLaunch()
 const { createDesktopReminderService } = require("./reminders/reminder-service.cjs")
 const { app, BrowserWindow, Menu, Tray, desktopCapturer, dialog, ipcMain, nativeImage, powerMonitor, protocol, screen, net, session, shell } = require("electron")
 const { execFile, spawn } = require("node:child_process")
@@ -7,6 +8,7 @@ const { promisify } = require("node:util")
 const { createDesktopEnvironmentService } = require("./app/desktop-environment.cjs")
 const { createLocalRuntimeConfigStore } = require("./app/local-runtime-config.cjs")
 const { createLocalRuntimeService } = require("./app/local-runtime-service.cjs")
+const { createRuntimeMigration } = require('./app/runtime-migration.cjs')
 const { createWorkspaceContext } = require("./app/workspace-context.cjs")
 const { createActivityPresenceService } = require("./activity/activity-presence.cjs")
 const { registerDesktopIpc } = require("./ipc/command-router.cjs")
@@ -84,6 +86,8 @@ if (app.isPackaged && workspaceRoot) {
   process.env.EDEN_AGENT_EXTERNAL_ORIGINS ||= "mon"
   process.env.EDEN_AGENT_MON_TOKEN_FILE ||= path.join(workspaceRoot, "Data", "Agent", "server-capability.token")
 }
+const savedRuntimeSelection = path.join(app.getPath('userData'), 'runtime-selection.json')
+if (!process.env.EDEN_AGENT_RUNTIME_SELECTION && fs.existsSync(savedRuntimeSelection)) process.env.EDEN_AGENT_RUNTIME_SELECTION = savedRuntimeSelection
 const rustServer = createAgentServerManager({
   app,
   agentRoot,
@@ -1084,6 +1088,7 @@ function watchQuitFlag() {
 registerDesktopIpc({
   ipcMain,
   handlers: {
+    ...createRuntimeMigration({ app, dialog, manager: rustServer, agentRoot, getMainWindow: () => mainWindow }),
     ...createCoreCommandHandlers({
       resolveCoreBaseUrl,
       getDevAccount,

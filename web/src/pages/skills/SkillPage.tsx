@@ -1,5 +1,7 @@
 import { SkillManagement } from "./SkillManagement"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useSkillClient } from '../../lib/skill-client'
+import { useRuntimeOrigin } from '../../lib/use-runtime-origin'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ArrowLeft,
   Check,
@@ -18,9 +20,6 @@ import {
 } from "lucide-react"
 import { motion } from "motion/react"
 import {
-  inspectSkill,
-  installSkill,
-  listSkills,
   getToolStatus,
   type InstalledSkill,
   type SkillPreview,
@@ -68,6 +67,7 @@ function SkillRow({
           </span>
         </div>
         <p className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500">{skill.description}</p>
+        {!!skill.missingTools?.length && <p className="mt-1 text-xs text-red-600">缺少可用工具：{skill.missingTools.join("、")}</p>}
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-stone-400">
           <span>{skill.scope === "system" ? "系统范围" : skill.scope === "project" ? "当前项目" : "当前用户"}</span>
           <span>
@@ -88,6 +88,12 @@ function SkillRow({
 }
 
 export function SkillPage({ onBack }: { onBack: () => void }) {
+  const origin = useRuntimeOrigin()
+  return <ScopedSkillPage key={origin} onBack={onBack} />
+}
+
+function ScopedSkillPage({ onBack }: { onBack: () => void }) {
+  const { inspectSkill, installSkill, listSkills } = useSkillClient()
   const [skills, setSkills] = useState<InstalledSkill[]>([])
   const [loading, setLoading] = useState(true)
   const [busyID, setBusyID] = useState("")
@@ -104,22 +110,26 @@ export function SkillPage({ onBack }: { onBack: () => void }) {
   const [toolQuery, setToolQuery] = useState("")
   const [selectedToolName, setSelectedToolName] = useState("")
   const [toolDetails, setToolDetails] = useState<Record<string, ToolDefinition>>({})
+  const refreshGeneration = useRef(0)
 
   const refresh = useCallback(async () => {
+    const generation = ++refreshGeneration.current
     setLoading(true)
     setError("")
     try {
       const nextSkills = await listSkills()
+      if (generation !== refreshGeneration.current) return
       setSkills(nextSkills)
       setSelectedID((current) =>
         nextSkills.some((skill) => skill.id === current) ? current : (nextSkills[0]?.id ?? ""),
       )
     } catch (nextError) {
+      if (generation !== refreshGeneration.current) return
       setError(nextError instanceof Error ? nextError.message : String(nextError))
     } finally {
-      setLoading(false)
+      if (generation === refreshGeneration.current) setLoading(false)
     }
-  }, [])
+  }, [listSkills])
 
   useEffect(() => {
     void refresh()
@@ -127,6 +137,7 @@ export function SkillPage({ onBack }: { onBack: () => void }) {
     window.addEventListener("edenagent:skills-changed", handleChanged)
     window.addEventListener("edenagent:workspace-changed", handleChanged)
     return () => {
+      refreshGeneration.current++
       window.removeEventListener("edenagent:skills-changed", handleChanged)
       window.removeEventListener("edenagent:workspace-changed", handleChanged)
     }

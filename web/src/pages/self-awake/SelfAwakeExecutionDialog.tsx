@@ -14,9 +14,9 @@ const labels: Record<string, string> = {
   "agent.tool_execution_start": "调用工具", "agent.tool_execution_end": "工具返回",
   "turn.completed": "本轮完成", "turn.failed": "本轮失败",
   "self_awake.safe_check": "检查决策（执行情况见工具记录）",
-  "self_awake.sync_context": "上下文决策",
+  "self_awake.sync_context": "上下文决策（同步情况见工具记录）",
   "permission.requested": "请求授权", "permission.resolved": "授权结果",
-  "self_awake.dispatch_failed": "启动自醒失败", "self_awake.action_applied": "保存任务或提醒",
+  "self_awake.dispatch_failed": "启动自醒失败", "self_awake.action_applied": "最终动作处理记录",
   "question.requested": "提出问题", "question.resolved": "收到回答",
 }
 

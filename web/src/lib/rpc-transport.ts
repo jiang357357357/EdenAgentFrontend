@@ -1,14 +1,14 @@
+import { EdenAgentRpcClient } from './rpc-client'
+import { uploadAttachmentBatch } from './attachment-upload'
 import { initializeResultSchema, rpcNotifications } from '@eden/api'
 import type { MemoInfo } from '@eden/api'
 import { blobReference } from "./blob-reference"
 import {
-  EdenAgentRpcClient,
   EDEN_AGENT_TOKEN_PROTOCOL_PREFIX,
   EDEN_AGENT_WEBSOCKET_PROTOCOL,
-  uploadBlob,
   type AttachmentRef,
 } from "../generated/eden-agent-rpc"
-import { getStoredRuntimeOrigin } from "./runtime-origin"
+import { getStoredRuntimeOrigin, getRuntimeOriginRevision } from "./runtime-origin"
 import type { SessionEventInput as SessionEvent } from './session-event'
 import type { ObjectUrlScope } from "./object-url-scope"
 import type {
@@ -61,6 +61,8 @@ let connection: Promise<EdenAgentRpcClient> | undefined
 let connectedOrigin: "mon" | "local" | undefined
 let connectingOrigin: "mon" | "local" | undefined
 let connectionGeneration = 0
+let connectedRevision = -1
+let connectingRevision = -1
 const eventListeners = new Set<(event: SessionEvent) => void>()
 const statusListeners = new Set<(connected: boolean, error?: string) => void>()
 const reconnectInitialDelayMs = 500
@@ -81,13 +83,14 @@ async function capabilityToken(origin: RuntimeOrigin = currentRuntimeOrigin()): 
 
 async function connectedClient(): Promise<EdenAgentRpcClient> {
   const requestedOrigin = getStoredRuntimeOrigin() ?? "mon"
-  if (client && connectedOrigin !== requestedOrigin) {
+  const revision = getRuntimeOriginRevision()
+  if (client && (connectedOrigin !== requestedOrigin || connectedRevision !== revision)) {
     client.close()
     client = undefined
     connection = undefined
     connectedOrigin = undefined
   }
-  if (connection && connectingOrigin !== requestedOrigin) {
+  if (connection && (connectingOrigin !== requestedOrigin || connectingRevision !== revision)) {
     connectionGeneration += 1
     connection = undefined
     connectingOrigin = undefined
@@ -96,10 +99,12 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
   if (connection) return connection
   const generation = ++connectionGeneration
   connectingOrigin = requestedOrigin
+  connectingRevision = revision
   const pending = (async () => {
     const next = new EdenAgentRpcClient()
     try {
       const token = await capabilityToken(requestedOrigin)
+      if (revision !== getRuntimeOriginRevision()) throw new Error("World changed while resolving connection capability")
       const websocketUrl = `${agentHttpBaseUrl(requestedOrigin).replace(/^http/, "ws")}/rpc`
       const initialized = initializeResultSchema.parse(await next.connect(websocketUrl, token, "dev", requestedOrigin))
       if (initialized.runtimeOrigin !== requestedOrigin) {
@@ -107,7 +112,7 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
           `Eden Agent runtime origin mismatch: requested ${requestedOrigin}, received ${initialized.runtimeOrigin}`,
         )
       }
-      if (generation !== connectionGeneration || currentRuntimeOrigin() !== requestedOrigin) {
+      if (generation !== connectionGeneration || revision !== getRuntimeOriginRevision() || currentRuntimeOrigin() !== requestedOrigin) {
         throw new Error("Eden Agent runtime changed while the connection was initializing")
       }
     } catch (error) {
@@ -116,7 +121,7 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
     }
     const lastSequences = new Map<string, bigint>()
     next.on("session.event", (raw) => {
-      if (client !== next || currentRuntimeOrigin() !== requestedOrigin) return
+      if (client !== next || revision !== getRuntimeOriginRevision() || currentRuntimeOrigin() !== requestedOrigin) return
       const parsed = rpcNotifications['session.event'].safeParse(raw)
       if (!parsed.success) { next.close(); return }
       const event = parsed.data
@@ -135,7 +140,7 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
       for (const listener of eventListeners) listener(event)
     })
     next.on("server.warning", (raw) => {
-      if (client !== next || currentRuntimeOrigin() !== requestedOrigin) return
+      if (client !== next || revision !== getRuntimeOriginRevision() || currentRuntimeOrigin() !== requestedOrigin) return
       const parsed = rpcNotifications['server.warning'].safeParse(raw)
       if (!parsed.success || parsed.data.code === "event_stream_lagged") next.close()
     })
@@ -149,6 +154,7 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
     })
     client = next
     connectedOrigin = requestedOrigin
+    connectedRevision = revision
     connectingOrigin = undefined
     for (const listener of statusListeners) listener(true)
     return next
@@ -170,16 +176,15 @@ export async function rpcRequest<K extends keyof RpcMethodMap>(
   method: K,
   params: RpcMethodMap[K]["params"],
 ): Promise<RpcMethodMap[K]["result"]> {
-  const current = await connectedClient()
-  return requestWithContract(current, method, params)
+  return rpcRequestForOrigin(currentRuntimeOrigin(), method, params)
 }
 
-export async function rpcRequestForOrigin<K extends keyof RpcMethodMap>(origin: RuntimeOrigin, method: K, params: RpcMethodMap[K]["params"]): Promise<RpcMethodMap[K]["result"]> {
-  if (currentRuntimeOrigin() !== origin) throw new Error("当前世界已切换，请重新打开")
+export async function rpcRequestForOrigin<K extends keyof RpcMethodMap>(origin: RuntimeOrigin, method: K, params: RpcMethodMap[K]["params"], revision = getRuntimeOriginRevision()): Promise<RpcMethodMap[K]["result"]> {
+  if (currentRuntimeOrigin() !== origin || getRuntimeOriginRevision() !== revision) throw new Error("当前世界已切换，请重新打开")
   const current = await connectedClient()
-  if (currentRuntimeOrigin() !== origin || connectedOrigin !== origin || current !== client) throw new Error("当前世界已切换，请重新打开")
+  if (currentRuntimeOrigin() !== origin || getRuntimeOriginRevision() !== revision || connectedOrigin !== origin || current !== client) throw new Error("当前世界已切换，请重新打开")
   const result = await requestWithContract(current, method, params)
-  if (currentRuntimeOrigin() !== origin || current !== client) throw new Error("当前世界已切换，请重新打开")
+  if (currentRuntimeOrigin() !== origin || getRuntimeOriginRevision() !== revision || current !== client) throw new Error("世界切换前的请求结果未确认，请刷新后核对，勿自动重试")
   return result
 }
 
@@ -205,7 +210,9 @@ export async function rpcRequestWithTimeout<K extends keyof RpcMethodMap>(
 
 export async function createRealtimeSttSocket(sessionId: string): Promise<WebSocket> {
   const origin = currentRuntimeOrigin()
+  const revision = getRuntimeOriginRevision()
   const token = await capabilityToken(origin)
+  if (currentRuntimeOrigin() !== origin || getRuntimeOriginRevision() !== revision) throw new Error('World changed while opening realtime speech')
   const url = new URL(`${agentHttpBaseUrl(origin).replace(/^http/, "ws")}/voice/stt/realtime`)
   url.searchParams.set("session_id", sessionId)
   return new WebSocket(url, [
@@ -300,36 +307,11 @@ export async function subscribeRpcEvents(
   }
 }
 
-async function attachmentBlob(attachment: PromptAttachment | string): Promise<{ blob: Blob; filename?: string }> {
-  const normalized = typeof attachment === "string"
-    ? { url: attachment, mime: "image/png", filename: "image.png" }
-    : attachment
-  const response = await fetch(normalized.url)
-  if (!response.ok) throw new Error(`Unable to read attachment: ${response.status}`)
-  const source = await response.blob()
-  return {
-    blob: source.type ? source : new Blob([source], { type: normalized.mime || "application/octet-stream" }),
-    filename: normalized.filename,
-  }
-}
-
 export async function uploadAttachments(
-  attachments: Array<PromptAttachment | string>,
+  attachments: Array<PromptAttachment | string>, signal?: AbortSignal,
 ): Promise<AttachmentRef[]> {
   const origin = currentRuntimeOrigin()
-  const token = await capabilityToken(origin)
-  const result: AttachmentRef[] = []
-  for (let offset = 0; offset < attachments.length; offset += 4) {
-    const batch = await Promise.all(attachments.slice(offset, offset + 4).map(async attachment => {
-      const { blob, filename } = await attachmentBlob(attachment)
-      if (origin !== currentRuntimeOrigin()) throw new Error("World changed while uploading attachments")
-      const info = await uploadBlob(agentHttpBaseUrl(origin), token, blob)
-      if (origin !== currentRuntimeOrigin()) throw new Error("World changed while uploading attachments")
-      return { blobId: info.id, mime: info.mime, ...(filename ? { filename } : {}) }
-    }))
-    result.push(...batch)
-  }
-  return result
+  return uploadAttachmentBatch(attachments, origin, agentHttpBaseUrl(origin), () => capabilityToken(origin), signal)
 }
 
 type JsonObject = Record<string, unknown>

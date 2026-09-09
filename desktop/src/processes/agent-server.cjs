@@ -3,6 +3,8 @@ const fs = require("node:fs")
 const path = require("node:path")
 const { spawn } = require("node:child_process")
 const { stopServerChild } = require("./stop-server-child.cjs")
+const { resolveRealmSelection } = require('./realm-data-roots.cjs')
+const { realmCommandEnvironment } = require('./realm-command-environment.cjs')
 
 const RUNTIME_ORIGINS = ["mon", "local"]
 
@@ -49,11 +51,11 @@ function createAgentServerManager({ app, agentRoot, processObject = process, fil
     configuredTokens[origin] || (externallyManaged(origin) ? null : crypto.randomBytes(32).toString("hex")),
   ]))
 
-  function realmDataRoot(origin) {
-    const realm = normalizeOrigin(origin)
-    if (externallyManaged(realm)) return effectivePathApi.join(agentRoot, "Data", "realms", realm, "v2")
-    return effectivePathApi.join(app.getPath("userData"), "server", "realms", realm, "v2")
-  }
+  const { roots: dataRoots, selection } = resolveRealmSelection(processObject.env, Object.fromEntries(RUNTIME_ORIGINS.map(realm => [realm,
+    externallyManaged(realm) ? effectivePathApi.join(agentRoot, 'Data', 'realms', realm, 'v2') :
+      effectivePathApi.join(app.getPath('userData'), 'server', 'realms', realm, 'v2'),
+  ])), { pathApi: effectivePathApi, fileSystem })
+  function realmDataRoot(origin) { return dataRoots[normalizeOrigin(origin)] }
 
   function tokenFilePath(origin) {
     const realm = normalizeOrigin(origin)
@@ -116,13 +118,17 @@ function createAgentServerManager({ app, agentRoot, processObject = process, fil
     const localRuntimeEnvironment = getRuntimeEnvironment(processObject.env)
     const allowed = ["PATH", "SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "TZ", "EDEN_AGENT_ALLOWED_ORIGINS", "EDEN_AGENT_MAX_BLOB_BYTES"]
     const base = Object.fromEntries(allowed.filter(key => processObject.env[key] !== undefined).map(key => [key, processObject.env[key]]))
+    const skillRootsKey = `EDEN_AGENT_${realm.toUpperCase()}_SYSTEM_SKILL_ROOTS`
+    if (processObject.env[skillRootsKey] !== undefined) base[skillRootsKey] = processObject.env[skillRootsKey]
     const environment = {
       ...base,
       ...(realm === "local" ? localRuntimeEnvironment : {}),
+      ...realmCommandEnvironment(processObject.env, realm),
       EDEN_AGENT_PORT: String(ports[realm]),
       EDEN_AGENT_RUNTIME_ORIGIN: realm,
       EDEN_AGENT_CAPABILITY_TOKEN: capabilityToken(realm),
       EDEN_AGENT_V2_DATA_ROOT: dataRoot,
+      ...(selection ? { EDEN_AGENT_RUNTIME_SELECTION: selection.filename, EDEN_AGENT_RUNTIME_SELECTION_REVISION: selection.revision } : {}),
     }
     // A development desktop may use Electron's executable as its Node runtime.
     if (!app.isPackaged && !processObject.env.EDEN_AGENT_NODE_PATH) environment.ELECTRON_RUN_AS_NODE = "1"
@@ -224,7 +230,7 @@ function createAgentServerManager({ app, agentRoot, processObject = process, fil
     }
   }
 
-  return { capability, executablePath, entryPath, prepareRealmData, restart, start, status, stop }
+  return { capability, executablePath, entryPath, prepareRealmData, restart, start, status, stop, dataRoots: () => ({ ...dataRoots }) }
 }
 
 module.exports = { RUNTIME_ORIGINS, createAgentServerManager, normalizeOrigin }

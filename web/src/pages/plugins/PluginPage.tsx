@@ -1,4 +1,5 @@
 import { PluginRecovery } from "./PluginRecovery"
+import { JobOutcomeReview } from '../../components/chat/JobOutcomeReview'
 import { PluginComponents } from "./PluginComponents"
 import { McpPanel } from '../../components/chat/McpPanel'
 import { PluginPackagePreview } from "./PluginPackagePreview"
@@ -58,6 +59,7 @@ export function PluginPage({ onBack }: { onBack: () => void }) {
     {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
     {previewDetails && <PluginPackagePreview preview={previewDetails} />}
     <PluginDevelopment onChanged={refresh} />
+    <JobOutcomeReview kind="plugin.hook" title="插件钩子作业恢复" />
     <PluginMarketKeys onChanged={refresh} />
     <PluginRecovery disabled={busy || Boolean(previewID)} onPreview={preview => {
       setPreviewDetails(preview); setPreviewID(preview.previewID); setPreviewLabel(`${preview.name} · ${preview.version}`)

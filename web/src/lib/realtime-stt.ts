@@ -1,5 +1,8 @@
+import { TARGET_SAMPLE_RATE, clamp, downsampleToPcm16, estimateLevel } from './realtime-stt-audio'
+import { startRealtimeSpeech } from './realtime-stt-handshake'
 import { createRealtimeSttSocket } from "./rpc-transport"
 import { realtimeSTTFinalization } from "./realtime-stt-finalization"
+import { getRuntimeOriginRevision, RUNTIME_ORIGIN_STORAGE_KEY } from './runtime-origin'
 
 export type RealtimeSTTStatus = "idle" | "connecting" | "recording" | "transcribing"
 
@@ -24,55 +27,14 @@ interface RealtimeSTTStartOptions {
   audioInputDeviceId?: string
 }
 
-const TARGET_SAMPLE_RATE = 16_000
-
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value))
-}
-
-function floatToPcm16(input: Float32Array) {
-  const buffer = new ArrayBuffer(input.length * 2)
-  const view = new DataView(buffer)
-  for (let index = 0; index < input.length; index += 1) {
-    const sample = clamp(input[index], -1, 1)
-    view.setInt16(index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true)
-  }
-  return buffer
-}
-
-function downsampleToPcm16(input: Float32Array, inputSampleRate: number) {
-  if (inputSampleRate === TARGET_SAMPLE_RATE) return floatToPcm16(input)
-
-  const ratio = inputSampleRate / TARGET_SAMPLE_RATE
-  const outputLength = Math.max(1, Math.floor(input.length / ratio))
-  const output = new Float32Array(outputLength)
-  for (let outputIndex = 0; outputIndex < outputLength; outputIndex += 1) {
-    const start = Math.floor(outputIndex * ratio)
-    const end = Math.min(input.length, Math.floor((outputIndex + 1) * ratio))
-    let sum = 0
-    let count = 0
-    for (let inputIndex = start; inputIndex < end; inputIndex += 1) {
-      sum += input[inputIndex]
-      count += 1
-    }
-    output[outputIndex] = count > 0 ? sum / count : input[start] ?? 0
-  }
-  return floatToPcm16(output)
-}
-
-function estimateLevel(input: Float32Array) {
-  if (input.length === 0) return 0
-  let sum = 0
-  for (let index = 0; index < input.length; index += 1) {
-    sum += input[index] * input[index]
-  }
-  return clamp(Math.sqrt(sum / input.length) * 6, 0, 1)
-}
-
 export class RealtimeSTTService {
+  private generation = 0
+  private releaseWorldListener?: () => void
   private acceptingResults = false
   private audioContext?: AudioContext
   private finishPending?: { resolve: (text: string) => void; timer: number }
+  private finishTask?: Promise<string>
+  private stopSent = false
   private gain?: GainNode
   private handlers: RealtimeSTTHandlers
   private latestTranscript = ""
@@ -94,15 +56,29 @@ export class RealtimeSTTService {
 
   async start(options: RealtimeSTTStartOptions) {
     if (this.status !== "idle") return
+    this.finishTask = undefined
+    this.stopSent = false
+    const generation = ++this.generation
+    const revision = getRuntimeOriginRevision()
+    const worldChanged = () => { if (getRuntimeOriginRevision() !== revision) void this.cancel() }
+    const storage = (event: StorageEvent) => { if (event.key === null || event.key === RUNTIME_ORIGIN_STORAGE_KEY) worldChanged() }
+    window.addEventListener('edenagent:runtime-origin-changed', worldChanged)
+    window.addEventListener('storage', storage)
+    this.releaseWorldListener = () => {
+      window.removeEventListener('edenagent:runtime-origin-changed', worldChanged)
+      window.removeEventListener('storage', storage)
+    }
     this.acceptingResults = true
     this.latestTranscript = ""
     this.setStatus("connecting")
 
     try {
       const socket = await createRealtimeSttSocket(options.sessionId)
+      if (generation !== this.generation || revision !== getRuntimeOriginRevision()) { socket.close(); throw new Error('语音输入已取消') }
       this.socket = socket
-      socket.addEventListener("message", (event) => this.handleSocketMessage(event.data))
+      socket.addEventListener("message", (event) => { if (this.socket === socket && generation === this.generation) this.handleSocketMessage(event.data) })
       socket.addEventListener("close", () => {
+        if (this.socket !== socket || generation !== this.generation) return
         this.settleFinish()
         if (this.status !== "idle" && this.acceptingResults) {
           this.handlers.onError?.(new Error("实时语音连接已关闭"))
@@ -110,43 +86,11 @@ export class RealtimeSTTService {
         }
       })
 
-      await new Promise<void>((resolve, reject) => {
-        let settled = false
-        const timer = window.setTimeout(() => fail(new Error("连接语音识别服务超时")), 8_000)
-        const fail = (error: Error) => {
-          if (settled) return
-          settled = true
-          window.clearTimeout(timer)
-          reject(error)
-        }
+      const behavior = await startRealtimeSpeech(socket, options,
+        () => this.socket === socket && generation === this.generation && this.acceptingResults)
+      this.applyInputBehavior(behavior)
 
-        socket.addEventListener("open", () => {
-          socket.send(JSON.stringify({
-            command: "start",
-            ...(typeof options.configId === "number" ? { config_id: options.configId } : {}),
-            ...(typeof options.endSilenceMs === "number" ? { end_silence_ms: options.endSilenceMs } : {}),
-          }))
-        }, { once: true })
-        socket.addEventListener("message", (event) => {
-          if (settled || typeof event.data !== "string") return
-          try {
-            const payload = JSON.parse(event.data) as Record<string, unknown>
-            if (payload.type === "status" && payload.status === "started") {
-              this.applyInputBehavior(payload.input_behavior)
-              settled = true
-              window.clearTimeout(timer)
-              resolve()
-            } else if (payload.type === "error") {
-              fail(new Error(typeof payload.message === "string" ? payload.message : "语音识别启动失败"))
-            }
-          } catch {
-            // Ignore non-JSON upstream messages while waiting for the start acknowledgement.
-          }
-        })
-        socket.addEventListener("error", () => fail(new Error("无法连接语音识别服务")), { once: true })
-        socket.addEventListener("close", () => fail(new Error("语音识别连接已关闭")), { once: true })
-      })
-
+      if (generation !== this.generation || !this.acceptingResults) throw new Error('语音输入已取消')
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("当前环境不支持麦克风采集")
       }
@@ -161,19 +105,22 @@ export class RealtimeSTTService {
           sampleRate: TARGET_SAMPLE_RATE,
         },
       })
-      if (!this.acceptingResults || this.socket !== socket || socket.readyState !== WebSocket.OPEN) {
+      if (generation !== this.generation || !this.acceptingResults || this.socket !== socket || socket.readyState !== WebSocket.OPEN) {
         stream.getTracks().forEach((track) => track.stop())
         throw new Error("语音输入已取消")
       }
 
+      this.mediaStream = stream
       const audioContext = new AudioContext()
+      this.audioContext = audioContext
       await audioContext.resume()
+      if (generation !== this.generation || this.socket !== socket || !this.acceptingResults) throw new Error('语音输入已取消')
       const source = audioContext.createMediaStreamSource(stream)
       const processor = audioContext.createScriptProcessor(4096, 1, 1)
       const gain = audioContext.createGain()
       gain.gain.value = 0
       processor.onaudioprocess = (event) => {
-        if (this.status !== "recording" || this.socket?.readyState !== WebSocket.OPEN) return
+        if (generation !== this.generation || this.socket !== socket || this.status !== "recording" || socket.readyState !== WebSocket.OPEN) return
         const input = event.inputBuffer.getChannelData(0)
         this.handlers.onLevel?.(estimateLevel(input))
         this.socket.send(downsampleToPcm16(input, audioContext.sampleRate))
@@ -189,6 +136,7 @@ export class RealtimeSTTService {
       this.source = source
       this.setStatus("recording")
     } catch (error) {
+      if (generation !== this.generation) throw error
       await this.close(false)
       const normalized = error instanceof Error ? error : new Error(String(error))
       this.handlers.onError?.(normalized)
@@ -196,7 +144,16 @@ export class RealtimeSTTService {
     }
   }
 
-  async finish(timeoutMs = 30_000) {
+  finish(timeoutMs = 30_000): Promise<string> {
+    if (this.finishTask) return this.finishTask
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 120000) return Promise.reject(new Error('Invalid speech finalization timeout'))
+    const task = this.finishRecording(timeoutMs, this.generation)
+    this.finishTask = task
+    void task.finally(() => { if (this.finishTask === task) this.finishTask = undefined }).catch(() => {})
+    return task
+  }
+
+  private async finishRecording(timeoutMs: number, generation: number) {
     if (this.status === "idle") return this.latestTranscript
     this.stopAudioCapture()
     this.setStatus("transcribing")
@@ -207,26 +164,46 @@ export class RealtimeSTTService {
       return text
     }
 
-    const text = await new Promise<string>((resolve) => {
-      const timer = window.setTimeout(() => this.settleFinish(), timeoutMs)
-      this.finishPending = { resolve, timer }
-      socket.send(JSON.stringify({ command: "stop" }))
-    })
-    await this.close(false)
-    return text
+    try {
+      const text = await new Promise<string>((resolve, reject) => {
+        const timer = window.setTimeout(() => this.settleFinish(), timeoutMs)
+        this.finishPending = { resolve, timer }
+        try { this.sendStop(socket) }
+        catch (error) {
+          window.clearTimeout(timer)
+          this.finishPending = undefined
+          reject(error)
+        }
+      })
+      // Cancellation or socket failure already closed this recording. Never close its successor.
+      if (generation === this.generation) await this.close(false)
+      return text
+    } catch (error) {
+      if (generation === this.generation) await this.close(false)
+      throw error
+    }
   }
 
   async cancel() {
     this.acceptingResults = false
+    this.latestTranscript = ''
     this.settleFinish("")
     await this.close(true)
   }
 
   private handleSocketMessage(rawData: unknown) {
     if (!this.acceptingResults || typeof rawData !== "string") return
+    if (rawData.length > 1048576) {
+      this.handlers.onError?.(new Error('实时语音响应过大'))
+      this.settleFinish('')
+      void this.close(false)
+      return
+    }
     let payload: Record<string, unknown>
     try {
-      payload = JSON.parse(rawData) as Record<string, unknown>
+      const decoded: unknown = JSON.parse(rawData)
+      if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) return
+      payload = decoded as Record<string, unknown>
     } catch {
       return
     }
@@ -297,11 +274,13 @@ export class RealtimeSTTService {
   private scheduleAutoFinish() {
     if (!this.inputBehavior.autoFinish || this.status !== "recording") return
     this.clearAutoFinishTimer()
+    const generation = this.generation, revision = getRuntimeOriginRevision()
     this.autoFinishTimer = window.setTimeout(async () => {
       this.autoFinishTimer = undefined
       if (this.status !== "recording") return
       try {
         const text = await this.finish()
+        if (getRuntimeOriginRevision() !== revision || this.generation !== generation + 1) return
         this.handlers.onAutoFinish?.({ text, autoSend: this.inputBehavior.autoSend })
       } catch (error) {
         this.handlers.onError?.(error instanceof Error ? error : new Error(String(error)))
@@ -329,15 +308,25 @@ export class RealtimeSTTService {
   }
 
   private async close(sendStop: boolean) {
+    this.generation++
+    this.releaseWorldListener?.()
+    this.releaseWorldListener = undefined
     this.clearAutoFinishTimer()
     this.stopAudioCapture()
     const socket = this.socket
     this.socket = undefined
-    if (sendStop && socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ command: "stop" }))
+    try {
+      if (sendStop && socket?.readyState === WebSocket.OPEN) this.sendStop(socket)
+    } finally {
+      socket?.close()
+      this.acceptingResults = false
+      this.setStatus("idle")
     }
-    socket?.close()
-    this.acceptingResults = false
-    this.setStatus("idle")
+  }
+
+  private sendStop(socket: WebSocket) {
+    if (this.stopSent) return
+    socket.send(JSON.stringify({ command: 'stop' }))
+    this.stopSent = true
   }
 }

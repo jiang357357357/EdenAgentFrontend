@@ -1,8 +1,8 @@
+import { rpcRequestForOrigin } from './rpc-transport'
 import type { ToolInfo } from '@eden/api'
 import type { DirectorRun as DirectorRunInfo } from '@eden/api'
 import type { AgentThreadInfo } from '@eden/api'
 import type { SelfAwakeRunInfo } from '@eden/api'
-import type { SkillInfo } from '@eden/api'
 import type { MarketReleaseInfo as PluginMarketReleaseInfo, MarketSourceInfo as PluginMarketSourceInfo } from '@eden/api'
 import { packagePermissionSetSchema } from '@eden/api'
 import type { ManagedPluginInfo as PluginInfo } from '@eden/api'
@@ -11,8 +11,8 @@ import type { SessionEventInput as RpcSessionEvent } from './session-event'
 import { memoCreateSchema, memoPatchSchema } from '@eden/api'
 import type { ConnectorCapabilityInfo as RpcConnectorCapabilityInfo, ConnectorCatalogEntry as RpcConnectorCatalogEntry, ConnectorInfo as RpcConnectorInfo } from '@eden/api'
 import { buildSessionEnvironment } from "./session-environment"
-import { mapRuntimeModelCatalog, mapLocalRuntimeModel } from "./runtime-models"
-import type { RuntimeModelConfig, ModelSelectionTarget } from "./runtime-models"
+import { getRuntimeModelConfig } from "./runtime-model-client"
+export { getRuntimeModelConfig, updateRuntimeModel } from "./runtime-model-client"
 export type { RuntimeModelConfig, RuntimeModelOption, ModelSelectionTarget } from "./runtime-models"
 import type {
   CompanionDirectorBeat,
@@ -27,16 +27,15 @@ import type {
   Session,
   ToolCall,
 } from "../types"
-import { getStoredToken, getStoredUser, resolveCoreAssetUrl, resolveCoreBaseUrl } from "./auth"
+import { getStoredUser, resolveCoreAssetUrl } from "./auth"
 import type { CoreCharacterVisualAction, CoreCharacterVisualActionGroup } from "./auth"
 import { formatLocalTime } from "./time"
 import type {
   JsonValue,
 } from "../generated/eden-agent-rpc"
 import { getStoredRuntimeOrigin, LOCAL_ASSISTANT_ID } from "./runtime-origin"
-import { getStoredLocalCharacter, localCharacterParticipantProfile } from "./local-character"
+import { captureParticipantIdentity, resolveParticipants } from "./session-participants"
 import {
-  resolveDesktopFileUrl,
   type LocalGsvConfig,
   type LocalGsvDiscovery,
   type LocalGsvPreview,
@@ -989,151 +988,8 @@ export function isCoreAuthExpiredEvent(event: ApiEvent) {
   )
 }
 
-export type InstalledSkill = {
-  workspaceRoot?: string
-  id: string
-  skillName: string
-  displayName: string
-  description: string
-  scope: "system" | "user" | "project"
-  sourceType: "builtin" | "local" | "git" | "archive" | "marketplace" | "generated"
-  sourceUri?: string
-  sourceRef?: string
-  sourceSubpath?: string
-  version?: string
-  enabled: boolean
-  trustStatus: "trusted" | "blocked"
-  builtin: boolean
-  available: boolean
-  tools?: string[]
-  profiles?: string[]
-  permissions?: string[]
-  modelInvocable?: boolean
-  defaultPrompt?: string
-  contentHash?: string
-  totalBytes?: number
-  missingTools?: string[]
-  installedAt?: string
-  updatedAt?: string
-  shadowed?: boolean
-}
-
-export type SkillDetails = InstalledSkill & {
-  content: string
-  files: string[]
-  manifest: Record<string, unknown>
-}
-
-export type SkillPreview = {
-  previewID: string
-  skillName: string
-  displayName: string
-  description: string
-  version: string
-  scope: "user" | "project"
-  source: { type: "local" | "git"; uri: string; ref: string; subpath: string }
-  tools: string[]
-  profiles: string[]
-  modelInvocable: boolean
-  contentHash: string
-  fileCount: number
-  totalBytes: number
-  expiresAt: number
-  replaceInstallationID?: string | null
-}
-
-export async function listSkills() {
-  return (await rpcRequest("skill.list", {})).map(mapSkillInfo)
-}
-
-function mapSkillInfo(skill: SkillInfo): InstalledSkill {
-  const sourceType = (["builtin", "local", "git", "archive", "marketplace", "generated"] as const)
-    .find((value) => value === skill.sourceType) ?? "local"
-  const scope = (["system", "user", "project"] as const).find((value) => value === skill.scope) ?? "user"
-  const manifest = skill.manifest && typeof skill.manifest === "object" && !Array.isArray(skill.manifest)
-    ? skill.manifest as Record<string, JsonValue>
-    : {}
-  const source = manifest.source && typeof manifest.source === "object" && !Array.isArray(manifest.source)
-    ? manifest.source as Record<string, JsonValue>
-    : {}
-  return {
-    id: skill.name,
-    workspaceRoot: typeof manifest.workspaceRoot === "string" ? manifest.workspaceRoot : "",
-    skillName: skill.name,
-    displayName: skill.displayName || skill.name,
-    description: skill.description,
-    scope,
-    sourceType,
-    sourceUri: typeof source.uri === "string" ? source.uri : undefined,
-    sourceRef: typeof source.ref === "string" ? source.ref : undefined,
-    sourceSubpath: typeof source.subpath === "string" ? source.subpath : undefined,
-    version: skill.version,
-    enabled: skill.enabled,
-    trustStatus: "trusted",
-    builtin: sourceType === "builtin",
-    available: skill.available,
-    tools: skill.tools,
-    profiles: skill.profiles,
-    permissions: skill.permissions,
-    modelInvocable: skill.modelInvocable,
-    defaultPrompt: skill.defaultPrompt,
-    contentHash: skill.contentHash,
-    totalBytes: Number(skill.totalBytes),
-    missingTools: skill.missingTools,
-  }
-}
-
-export async function getSkillDetails(id: string) {
-  const skill = await rpcRequest("skill.read", { name: id })
-  return { ...mapSkillInfo(skill), content: skill.content ?? "", files: skill.files,
-    manifest: skill.manifest && typeof skill.manifest === "object" && !Array.isArray(skill.manifest)
-      ? skill.manifest as Record<string, unknown> : {} } satisfies SkillDetails
-}
-
-export function inspectSkill(input: {
-  sourceType: "local" | "git"
-  sourceUri: string
-  sourceRef?: string
-  sourceSubpath?: string
-  scope: "user" | "project"
-}) {
-  return rpcRequest("skill.inspect", input).then((preview): SkillPreview => ({
-    previewID: preview.previewID,
-    skillName: preview.skillName,
-    displayName: preview.displayName,
-    description: preview.description,
-    version: preview.version,
-    scope: preview.scope === "project" ? "project" : "user",
-    source: {
-      type: preview.source.type === "git" ? "git" : "local",
-      uri: preview.source.uri,
-      ref: preview.source.ref,
-      subpath: preview.source.subpath,
-    },
-    tools: preview.tools,
-    profiles: preview.profiles,
-    modelInvocable: preview.modelInvocable,
-    contentHash: preview.contentHash,
-    fileCount: Number(preview.fileCount),
-    totalBytes: Number(preview.totalBytes),
-    expiresAt: Number(preview.expiresAt),
-  }))
-}
-
-export async function installSkill(previewID: string) {
-  const skill = await rpcRequest("skill.install_preview", { previewId: previewID })
-  return mapSkillInfo(skill)
-}
-
-export function setSkillEnabled(id: string, enabled: boolean, expected?: InstalledSkill) {
-  const params = { name: id, enabled, ...(expected ? { expectedContentHash: expected.contentHash, expectedWorkspaceRoot: expected.workspaceRoot } : {}) }
-  return rpcRequest("skill.enable", params).then(mapSkillInfo)
-}
-
-export function uninstallSkill(id: string, expected?: InstalledSkill) {
-  const params = { name: id, ...(expected ? { expectedContentHash: expected.contentHash, expectedWorkspaceRoot: expected.workspaceRoot } : {}) }
-  return rpcRequest("skill.uninstall", params)
-}
+export { listSkills, getSkillDetails, inspectSkill, installSkill, setSkillEnabled, uninstallSkill } from "./skill-client"
+export type { InstalledSkill, SkillDetails, SkillPreview } from "./skill-client"
 
 function timeLabel(value?: number) {
   return formatLocalTime(value)
@@ -1264,73 +1120,42 @@ export async function createSessionRaw(
   assistantIDs: Array<number | string> = [],
   initialPrompt?: { content: string; attachments: Array<PromptAttachment | string> },
 ) {
-  const participantIDs = getStoredRuntimeOrigin() === "local" && assistantIDs.length === 0
+  const identity = captureParticipantIdentity()
+  const { origin } = identity
+  const participantIDs = origin === "local" && assistantIDs.length === 0
     ? [LOCAL_ASSISTANT_ID]
     : assistantIDs
-  const participants = await resolveParticipants(participantIDs)
+  const participants = await resolveParticipants(participantIDs, identity)
+  identity.assertCurrent()
   const environment = currentSessionEnvironment()
-  const session = await rpcRequest("session.create", { title: "", participants, environment })
-  await getRuntimeModelConfig(session.id).catch((error) => {
+  const session = await rpcRequestForOrigin(origin, "session.create", { title: "", participants, environment })
+  identity.assertCurrent()
+  await getRuntimeModelConfig(session.id, origin).catch((error) => {
     console.warn(`[Model] session ${session.id} could not hydrate its Core model binding`, error)
   })
   if (initialPrompt) {
-    await rpcRequest("turn.start", { sessionId: session.id, text: initialPrompt.content,
-      attachments: await uploadAttachments(initialPrompt.attachments), environment })
+    identity.assertCurrent()
+    const attachments = await uploadAttachments(initialPrompt.attachments)
+    identity.assertCurrent()
+    await rpcRequestForOrigin(origin, "turn.start", { sessionId: session.id, text: initialPrompt.content,
+      attachments, environment })
   }
+  identity.assertCurrent()
   return apiSession(session)
 }
 
 export async function updateSessionParticipants(sessionID: string, assistantIDs: Array<number | string>) {
-  const participants = await resolveParticipants(assistantIDs)
-  const session = apiSession(await rpcRequest("session.set_participants", { sessionId: sessionID, participants }))
-  await getRuntimeModelConfig(sessionID)
+  const identity = captureParticipantIdentity()
+  const { origin } = identity
+  const participants = await resolveParticipants(assistantIDs, identity)
+  identity.assertCurrent()
+  const session = apiSession(await rpcRequestForOrigin(origin, "session.set_participants", { sessionId: sessionID, participants }))
+  identity.assertCurrent()
+  await getRuntimeModelConfig(sessionID, origin)
+  identity.assertCurrent()
   return session
 }
 
-async function resolveParticipants(assistantIDs: Array<number | string>) {
-  if (getStoredRuntimeOrigin() === "local") {
-    const localCharacter = getStoredLocalCharacter()
-    const avatarUrl = resolveDesktopFileUrl(localCharacter.avatarPath)
-    const standingImageUrl = resolveDesktopFileUrl(localCharacter.standingImagePath)
-    return assistantIDs.map((_assistantID, position) => ({
-      assistantId: LOCAL_ASSISTANT_ID,
-      assistantName: localCharacter.name,
-      characterId: LOCAL_ASSISTANT_ID,
-      characterName: localCharacter.name,
-      signature: localCharacter.signature,
-      avatarUrl,
-      standingImageUrl,
-      ttsConfigId: null,
-      sttConfigId: null,
-      position,
-      profile: localCharacterParticipantProfile(localCharacter),
-    }))
-  }
-  return Promise.all(assistantIDs.map(async (assistantID, position) => {
-    let assistant: Awaited<ReturnType<typeof import("./auth").fetchAssistant>> | undefined
-    try {
-      const { getStoredToken, fetchAssistant } = await import("./auth")
-      const token = getStoredToken()
-      if (token) assistant = await fetchAssistant(token, Number(assistantID))
-    } catch {
-      // The durable session can retain an assistant ID while Core is temporarily unavailable.
-    }
-    const character = assistant?.character
-    return {
-      assistantId: assistantID,
-      assistantName: assistant?.name ?? character?.name ?? `助手 ${String(assistantID)}`,
-      characterId: character?.id ?? null,
-      characterName: character?.name ?? "",
-      signature: character?.signature ?? "",
-      avatarUrl: character?.avatar_url ?? "",
-      standingImageUrl: character?.default_standing_image_url ?? "",
-      ttsConfigId: character?.tts_config_id == null ? null : Number(character.tts_config_id),
-      sttConfigId: character?.stt_config_id == null ? null : Number(character.stt_config_id),
-      position,
-      profile: assistant == null ? null : JSON.parse(JSON.stringify(assistant)) as JsonValue,
-    }
-  }))
-}
 
 function currentSessionEnvironment() {
   return buildSessionEnvironment(getStoredUser()?.environment, Intl.DateTimeFormat().resolvedOptions().timeZone, navigator.language)
@@ -1502,11 +1327,13 @@ export async function listMessages(sessionID: string) {
 }
 
 export async function sendPrompt(sessionID: string, content: string, attachments: Array<PromptAttachment | string>) {
-  return rpcRequest("turn.start", {
+  const origin = getStoredRuntimeOrigin() ?? "mon"
+  const environment = currentSessionEnvironment()
+  return rpcRequestForOrigin(origin, "turn.start", {
     sessionId: sessionID,
     text: content,
     attachments: await uploadAttachments(attachments),
-    environment: currentSessionEnvironment(),
+    environment,
   })
 }
 
@@ -1616,6 +1443,7 @@ export async function replyScreenCapture(
   },
   error?: string,
 ) {
+  const origin = getStoredRuntimeOrigin() ?? "mon"
   if (Boolean(result) === Boolean(error)) throw new Error("Provide exactly one capture result or error")
   let payload: JsonValue | undefined
   if (result) {
@@ -1623,7 +1451,7 @@ export async function replyScreenCapture(
     payload = { blobId: attachment.blobId, mime: attachment.mime, width: result.width,
       height: result.height, displayId: result.displayId, sourceName: result.sourceName ?? "", source: result.source ?? "desktop" }
   }
-  await rpcRequest("media.resolve", mediaResolveSchema.parse({ id: requestID, ...(payload ? { result: payload } : {}), ...(error ? { error } : {}) }))
+  await rpcRequestForOrigin(origin, "media.resolve", mediaResolveSchema.parse({ id: requestID, ...(payload ? { result: payload } : {}), ...(error ? { error } : {}) }))
   return true
 }
 
@@ -1645,6 +1473,7 @@ export async function replyCameraCapture(
   },
   error?: string,
 ) {
+  const origin = getStoredRuntimeOrigin() ?? "mon"
   if (Boolean(result) === Boolean(error)) throw new Error("Provide exactly one capture result or error")
   let payload: JsonValue | undefined
   if (result) {
@@ -1652,7 +1481,7 @@ export async function replyCameraCapture(
     payload = { blobId: attachment.blobId, mime: attachment.mime, width: result.width,
       height: result.height, deviceLabel: result.deviceLabel ?? "", facingMode: result.facingMode ?? "" }
   }
-  await rpcRequest("media.resolve", mediaResolveSchema.parse({ id: requestID, ...(payload ? { result: payload } : {}), ...(error ? { error } : {}) }))
+  await rpcRequestForOrigin(origin, "media.resolve", mediaResolveSchema.parse({ id: requestID, ...(payload ? { result: payload } : {}), ...(error ? { error } : {}) }))
   return true
 }
 
@@ -1715,39 +1544,6 @@ export async function switchWorkspace(sessionId: string | undefined, path: strin
   const auditSessionId = sessionId || (await createSessionRaw()).id
   const result = await rpcRequest("workspace.switch", { sessionId: auditSessionId, path })
   return { ...result, auditSessionId, createdAuditSession }
-}
-
-export async function getRuntimeModelConfig(sessionId?: string) {
-  if (getStoredRuntimeOrigin() === "local") {
-    return mapLocalRuntimeModel(await rpcRequest("model.read", sessionId ? { sessionId } : {}))
-  }
-  const coreToken = getStoredToken()
-  if (!coreToken) throw new Error("not_authenticated: Core token missing")
-  return mapRuntimeModelCatalog(await rpcRequest("model.catalog", {
-    coreBaseUrl: await resolveCoreBaseUrl(),
-    coreToken,
-    ...(sessionId ? { sessionId } : {}),
-  }))
-}
-
-export async function updateRuntimeModel(aiEntityId: number | string, sessionId?: string, target?: ModelSelectionTarget): Promise<RuntimeModelConfig> {
-  if (getStoredRuntimeOrigin() === "local") {
-    const config = await getRuntimeModelConfig(sessionId)
-    if (String(config.current?.aiEntityId) !== String(aiEntityId)) {
-      throw new Error("本地模式的模型由 EDEN_AGENT_MODEL 配置；修改后请重启 Agent Server。")
-    }
-    return config
-  }
-  const coreToken = getStoredToken()
-  if (!coreToken) throw new Error("not_authenticated: Core token missing")
-  const params = {
-    coreBaseUrl: await resolveCoreBaseUrl(),
-    coreToken,
-    aiEntityId,
-    ...(sessionId ? { sessionId } : {}),
-    ...(target ? { target } : {}),
-  }
-  return mapRuntimeModelCatalog(await rpcRequest("model.select", params))
 }
 
 export async function synthesizeSpeechSegment(input: {

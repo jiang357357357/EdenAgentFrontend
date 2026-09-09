@@ -1,4 +1,6 @@
-import type { JsonValue, RuntimeModelCatalogInfo, RuntimeModelInfo } from '../generated/eden-agent-rpc'
+import type { JsonValue, SchemaRpcMethodMap } from '@eden/api'
+type RuntimeModelCatalogInfo = SchemaRpcMethodMap['model.catalog']['result']
+type RuntimeModelInfo = SchemaRpcMethodMap['model.read']['result']
 import type { ModelSelectionTarget } from '@eden/api'
 export type { ModelSelectionTarget } from '@eden/api'
 

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { PluginDiffResult, PluginLogPage } from '@eden/api'
-import { pluginDevelopment as api, type PluginVersionSummary } from '../../lib/plugin-development'
+import { usePluginDevelopment, type PluginVersionSummary } from '../../lib/plugin-development'
 export function PluginHistory({ id, versions }: { id: string; versions: PluginVersionSummary[] }) {
+  const api = usePluginDevelopment()
   const [from, setFrom] = useState(''), [to, setTo] = useState('')
   const [diff, setDiff] = useState<PluginDiffResult | null>(null)
   const [logs, setLogs] = useState<PluginLogPage | null>(null)

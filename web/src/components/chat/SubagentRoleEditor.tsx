@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { subagentRoleDefinitionSchema } from '@eden/api'
-import { rpcRequest } from '../../lib/rpc-transport'
+import { useScopedRpc } from '../../lib/use-scoped-rpc'
 import { SubagentRoleImport } from './SubagentRoleImport'
 
 export function SubagentRoleEditor({ role, onSaved }: { role: string; onSaved: () => Promise<void> }) {
+  const rpcRequest = useScopedRpc()
   const [text, setText] = useState(''), [loaded, setLoaded] = useState<{ name: string; revision: string | null; workspaceRoot: string; scope: 'user' | 'project' } | null>(null)
   const [scope, setScope] = useState<'user' | 'project'>('user')
   const [busy, setBusy] = useState(false), [error, setError] = useState('')

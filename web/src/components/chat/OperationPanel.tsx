@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { JobOutcomeReview } from './JobOutcomeReview'
+import { InputOutcomeReview } from './InputOutcomeReview'
 import type { OperationInfo } from '@eden/api'
 import { rpcRequestForOrigin } from '../../lib/rpc-transport'
 import { getStoredRuntimeOrigin } from '../../lib/runtime-origin'
@@ -60,6 +62,8 @@ export function OperationPanel({ sessionId }: { sessionId: string }) {
     } finally { mutating.current = false; setBusy('') }
   }
   return <section className="my-3 rounded-lg border p-3 text-sm">
+    <JobOutcomeReview key={sessionId} sessionId={sessionId} />
+    <InputOutcomeReview key={sessionId} sessionId={sessionId} />
     <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}>工具操作记录与结果审阅</button>
     {open && <div className="mt-3 space-y-3">
       <div className="flex gap-3">
