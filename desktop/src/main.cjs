@@ -36,7 +36,7 @@ const {
 const { createDesktopCapture } = require("./media/desktop-capture.cjs")
 const { registerMediaPermissions } = require("./permissions/register-media-permissions.cjs")
 const { createProcessLifecycle } = require("./processes/process-lifecycle.cjs")
-const { createRustServerManager } = require("./processes/rust-server.cjs")
+const { createAgentServerManager } = require("./processes/agent-server.cjs")
 const { createDesktopQuitFlagController } = require("./processes/desktop-quit-flag.cjs")
 const { registerFileProtocol } = require("./protocols/register-file-protocol.cjs")
 const { registerAppProtocol } = require("./protocols/app-protocol.cjs")
@@ -83,7 +83,7 @@ if (app.isPackaged && workspaceRoot) {
   process.env.EDEN_AGENT_EXTERNAL_ORIGINS ||= "mon"
   process.env.EDEN_AGENT_MON_TOKEN_FILE ||= path.join(workspaceRoot, "Data", "Agent", "server-capability.token")
 }
-const rustServer = createRustServerManager({
+const rustServer = createAgentServerManager({
   app,
   agentRoot,
   getRuntimeEnvironment: () => localRuntimeConfig.environment(),
@@ -1254,14 +1254,27 @@ app.on("second-instance", () => {
       void createPetWindow()
     }
     createTray()
+  }).catch(error => {
+    console.error("Desktop startup failed", error)
+    app.quit()
   })
 
-  app.on("before-quit", () => {
+  let serversDrained = false
+  let drainingServers = false
+  app.on("before-quit", (event) => {
+    if (!serversDrained) {
+      event.preventDefault()
+      if (drainingServers) return
+      drainingServers = true
+      void rustServer.stop().then(() => { serversDrained = true; app.quit() }).catch(error => {
+        drainingServers = false
+        console.error("Agent server shutdown failed", error)
+      })
+    }
     isQuitting = true
     globalPointerObserver.dispose()
     stopActivityPresence()
     processLifecycle.stopDevParentWatch()
-    rustServer.stop()
 
     stopDesktopEnvironmentMonitors()
   })

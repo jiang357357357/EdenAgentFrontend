@@ -554,7 +554,6 @@ function userMessageSignature(message: RuntimeMessage) {
           part.type === "file" &&
           "mime" in part &&
           typeof part.mime === "string" &&
-          part.mime.startsWith("image/") &&
           "url" in part &&
           typeof part.url === "string",
       ),

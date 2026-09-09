@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict")
 const test = require("node:test")
 const { EventEmitter } = require("node:events")
-const { createRustServerManager } = require("../src/processes/rust-server.cjs")
+const { createAgentServerManager } = require("../src/processes/agent-server.cjs")
 
 function childProcess() {
   const child = new EventEmitter()
@@ -16,7 +16,7 @@ function childProcess() {
 
 function packagedManager(overrides = {}) {
   const calls = []
-  const manager = createRustServerManager({
+  const manager = createAgentServerManager({
     app: { isPackaged: true, getPath: () => "C:\\UserData" },
     agentRoot: "C:\\Agent",
     processObject: { platform: "win32", resourcesPath: "C:\\Resources", env: {}, stdout: {}, stderr: {} },
@@ -32,7 +32,7 @@ function packagedManager(overrides = {}) {
   return { manager, calls }
 }
 
-test("packaged desktop starts physically isolated Mon and local Rust servers", () => {
+test("packaged desktop starts physically isolated Mon and local Node servers", () => {
   const { manager, calls } = packagedManager()
   manager.start()
   manager.start()
@@ -41,21 +41,16 @@ test("packaged desktop starts physically isolated Mon and local Rust servers", (
   const local = calls.find((call) => call.options.env.EDEN_AGENT_RUNTIME_ORIGIN === "local")
   assert.ok(mon)
   assert.ok(local)
-  assert.equal(mon.options.env.EDEN_AGENT_BIND, "127.0.0.1:40092")
-  assert.equal(local.options.env.EDEN_AGENT_BIND, "127.0.0.1:40093")
+  assert.equal(mon.options.env.EDEN_AGENT_PORT, "40092")
+  assert.equal(local.options.env.EDEN_AGENT_PORT, "40093")
   assert.notEqual(mon.options.env.EDEN_AGENT_CAPABILITY_TOKEN, local.options.env.EDEN_AGENT_CAPABILITY_TOKEN)
-  assert.match(mon.options.env.EDEN_AGENT_DATABASE, /realms[\\/]mon[\\/]eden-agent\.db$/)
-  assert.match(local.options.env.EDEN_AGENT_DATABASE, /realms[\\/]local[\\/]eden-agent\.db$/)
-  assert.match(mon.options.env.EDEN_AGENT_PLUGIN_ROOT, /realms[\\/]mon[\\/]plugins$/)
-  assert.match(local.options.env.EDEN_AGENT_PLUGIN_ROOT, /realms[\\/]local[\\/]plugins$/)
-  assert.match(mon.options.env.EDEN_AGENT_CONNECTOR_DATA_ROOT, /realms[\\/]mon[\\/]connectors[\\/]runtime$/)
-  assert.match(local.options.env.EDEN_AGENT_CONNECTOR_DATA_ROOT, /realms[\\/]local[\\/]connectors[\\/]runtime$/)
-  assert.equal(mon.options.env.EDEN_AGENT_CONNECTOR_MANIFEST_ROOT, "C:\\Resources\\manifests")
-  assert.equal(local.options.env.EDEN_AGENT_CONNECTOR_MANIFEST_ROOT, "C:\\Resources\\manifests")
+  assert.match(mon.options.env.EDEN_AGENT_V2_DATA_ROOT, /realms[\\/]mon[\\/]v2$/)
+  assert.match(local.options.env.EDEN_AGENT_V2_DATA_ROOT, /realms[\\/]local[\\/]v2$/)
+  assert.equal(mon.executable, "C:\\Resources\\node\\node.exe")
+  assert.deepEqual(mon.args, ["C:\\Resources\\server\\main.mjs"])
+  assert.equal(mon.options.env.ELECTRON_RUN_AS_NODE, undefined)
   assert.equal(mon.options.env.EDEN_AGENT_ALLOWED_ORIGINS, "edenagent://app")
   assert.equal(local.options.env.EDEN_AGENT_ALLOWED_ORIGINS, "edenagent://app")
-  assert.match(mon.options.env.EDEN_AGENT_USER_AGENT_ROOT, /realms[\\/]mon[\\/]agents$/)
-  assert.match(local.options.env.EDEN_AGENT_USER_AGENT_ROOT, /realms[\\/]local[\\/]agents$/)
   assert.equal(mon.options.env.EDEN_AGENT_MODEL, undefined)
   assert.equal(mon.options.env.OLLAMA_API_KEY, undefined)
   assert.equal(local.options.env.EDEN_AGENT_MODEL, "ollama/qwen3")
@@ -85,7 +80,7 @@ test("changing the local model restarts only the local realm", async () => {
 
 test("external desktop reads a different server-owned token for each realm", () => {
   const files = []
-  const manager = createRustServerManager({
+  const manager = createAgentServerManager({
     app: { isPackaged: false, getPath: () => "C:\\UserData" },
     agentRoot: "C:\\Agent",
     processObject: { platform: "win32", env: { EDEN_AGENT_SERVER_MODE: "external" }, stdout: {}, stderr: {} },
@@ -101,11 +96,11 @@ test("external desktop reads a different server-owned token for each realm", () 
   assert.deepEqual(manager.start(), [null, null])
   assert.equal(manager.capability("mon").token, "a".repeat(64))
   assert.equal(manager.capability("local").token, "b".repeat(64))
-  assert.match(files[0], /realms[\\/]mon[\\/]capability\.token$/)
-  assert.match(files[1], /realms[\\/]local[\\/]capability\.token$/)
+  assert.match(files[0], /realms[\\/]mon[\\/]v2[\\/]capability\.token$/)
+  assert.match(files[1], /realms[\\/]local[\\/]v2[\\/]capability\.token$/)
 })
 
-test("legacy packaged data is copied into both realms without removing the source", () => {
+test("desktop prepares empty v2 roots without copying legacy data", () => {
   const copies = []
   const writes = []
   const existing = new Set([
@@ -121,16 +116,13 @@ test("legacy packaged data is copied into both realms without removing the sourc
     },
   })
   manager.prepareRealmData()
-  assert.equal(copies.length, 4)
-  assert.equal(copies.filter(({ source }) => source.endsWith("eden-agent.db")).length, 2)
-  assert.equal(copies.filter(({ source }) => source.endsWith("blobs")).length, 2)
-  assert.equal(writes.length, 2)
-  assert.match(writes[0].target, /\.realm-migration-pending$/)
+  assert.equal(copies.length, 0)
+  assert.equal(writes.length, 0)
   assert.equal(existing.has("C:\\UserData\\server\\eden-agent.db"), true)
 })
 
 test("external supervisor reports realm restart as requiring an app restart", async () => {
-  const manager = createRustServerManager({
+  const manager = createAgentServerManager({
     app: { isPackaged: false, getPath: () => "/tmp/user-data" },
     agentRoot: "/workspace/Agent",
     processObject: {
@@ -154,7 +146,7 @@ test("external supervisor reports realm restart as requiring an app restart", as
 })
 
 test("external desktop never invents a missing realm token", () => {
-  const manager = createRustServerManager({
+  const manager = createAgentServerManager({
     app: { isPackaged: false, getPath: () => "C:\\UserData" },
     agentRoot: "C:\\Agent",
     processObject: { platform: "win32", env: { EDEN_AGENT_SERVER_MODE: "external" }, stdout: {}, stderr: {} },

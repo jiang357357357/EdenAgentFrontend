@@ -1,4 +1,4 @@
-import { resolveEdenAgentUrl } from "../../../lib/agent-client"
+import { AttachmentImage } from "../message/AttachmentImage"
 import { cn } from "../../../lib/utils"
 import { MarkdownContent } from "../message/MarkdownContent"
 import type { DialogSegment } from "./types"
@@ -69,16 +69,13 @@ export function ChatDialogPanel({
           {currentOutput.images && currentOutput.images.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {currentOutput.images.map((image, index) => {
-                const src = resolveEdenAgentUrl(image)
+                const src = image
                 return (
-                  <img
+                  <AttachmentImage
                     key={`${image}-${index}`}
                     src={src}
                     alt="会话图片"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onPreviewImage?.(src, "会话图片")
-                    }}
+                    onPreview={onPreviewImage}
                     className="max-h-32 max-w-full cursor-pointer rounded-lg border border-white/10 object-contain transition-opacity hover:opacity-85"
                   />
                 )

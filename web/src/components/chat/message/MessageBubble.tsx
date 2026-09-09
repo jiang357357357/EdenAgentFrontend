@@ -11,6 +11,8 @@ import type { PetTTSMode } from "../../../lib/desktop-window"
 import { shouldShowOrganizingReply, type MessageGroupPosition } from "../../../lib/message-grouping"
 import { MessageErrorCard, RawOutput } from "./MessageDetails"
 import { TextSegment } from "./TextSegment"
+import { AttachmentImage } from "./AttachmentImage"
+import { AttachmentFiles } from "./AttachmentFiles"
 
 interface MessageBubbleProps {
   message: MessageData
@@ -139,15 +141,16 @@ export function MessageBubble({
           </div>
         ) : null}
 
+        <AttachmentFiles files={message.files} />
         {/* Attachments (Images) */}
         {!useOrderedAssistantSegments && message.images && message.images.length > 0 && (
           <div className="mb-[0.85vh] flex flex-wrap gap-[0.85vh]">
             {message.images.map((img, idx) => (
-              <img
+              <AttachmentImage
                 key={idx}
-                src={resolveEdenAgentUrl(img)}
+                src={img}
                 alt="上传图片"
-                onClick={() => onPreviewImage?.(resolveEdenAgentUrl(img), "上传图片")}
+                onPreview={onPreviewImage}
                 className={cn(
                   "max-w-[32vh] cursor-pointer rounded-[1.35vh] border border-border object-cover shadow-sm transition-opacity hover:opacity-90",
                   isUser ? "h-[16vh] w-auto" : "w-[28vh] h-auto",
@@ -219,13 +222,13 @@ export function MessageBubble({
                 return <MetaPartCard key={segment.id} part={segment.part} />
               }
               if (segment.type === "image") {
-                const src = resolveEdenAgentUrl(segment.url)
+                const src = segment.url
                 return (
-                  <img
+                  <AttachmentImage
                     key={segment.id}
                     src={src}
                     alt={segment.filename || "图片"}
-                    onClick={() => onPreviewImage?.(src, segment.filename || "图片")}
+                    onPreview={onPreviewImage}
                     className="mb-[0.85vh] h-auto w-[28vh] cursor-pointer rounded-[1.35vh] border border-border object-cover shadow-sm transition-opacity hover:opacity-90"
                     draggable={false}
                   />

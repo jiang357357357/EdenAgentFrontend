@@ -82,6 +82,7 @@ export interface MessageData {
   toolCalls?: ToolCall[]
   metaParts?: MetaPartCard[]
   images?: string[]
+  files?: { url: string; mime: string; filename?: string }[]
   isStreaming?: boolean
   deliveryState?: "sending" | "queued" | "failed"
   error?: MessageError

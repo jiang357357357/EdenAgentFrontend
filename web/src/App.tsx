@@ -115,6 +115,7 @@ function messageScrollSignature(message: MessageData) {
     textLength(message.thinking),
     message.thinkingState ?? "",
     message.images?.join(",") ?? "",
+    message.files?.map(file => `${file.url}:${file.mime}:${file.filename ?? ""}`).join(",") ?? "",
     message.isStreaming ? "streaming" : "done",
     segmentSignature,
     toolSignature,

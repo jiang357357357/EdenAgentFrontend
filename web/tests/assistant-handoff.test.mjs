@@ -1,5 +1,4 @@
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
 import { after, test } from "node:test"
 import { createServer } from "vite"
 
@@ -11,29 +10,13 @@ after(async () => {
   await vite.close()
 })
 
-const transport = readFileSync(new URL("../src/lib/rpc-transport.ts", import.meta.url), "utf8")
-const host = readFileSync(new URL("../../../Server/crates/eden-agent-host/src/core_tools.rs", import.meta.url), "utf8")
-const appRuntime = readFileSync(new URL("../../../Server/crates/eden-agent-app/src/runtime/mod.rs", import.meta.url), "utf8")
-const appMessage = readFileSync(new URL("../../../Server/crates/eden-agent-app/src/runtime/message.rs", import.meta.url), "utf8")
-const serverJobs = readFileSync(new URL("../../../Server/rust/jobs.rs", import.meta.url), "utf8")
-const serverRpcSupport = readFileSync(new URL("../../../Server/rust/rpc_support.rs", import.meta.url), "utf8")
-const store = readFileSync(new URL("../../../Server/crates/eden-agent-store/src/lib.rs", import.meta.url), "utf8")
-
-test("assistant switching is a durable next-root-run handoff", () => {
-  assert.match(host, /schedule_assistant_handoff/)
-  assert.match(store, /session\.assistant_handoff\.requested/)
-  assert.match(serverJobs, /dispatch_assistant_handoff/)
-  assert.match(serverJobs, /ensure_assistant_handoff_ready/)
-  assert.match(`${serverJobs}\n${serverRpcSupport}`, /configure_assistant_for_session/)
-  assert.match(serverJobs, /commit_assistant_handoff/)
-  assert.match(store, /session\.assistant_handoff\.completed/)
-  assert.match(store, /state = 'completed'/)
-})
-
-test("the internal handoff instruction is hidden and transient", () => {
-  assert.match(appRuntime, /"internalHandoff": job_kind == "assistant\.handoff"/)
-  assert.match(appMessage, /extra\.insert\("transient"\.to_owned\(\), Value::Bool\(true\)\)/)
-  assert.match(transport, /message\?\.display === false \|\| message\?\.internalHandoff === true/)
+// Durable scheduling and transient model context are exercised by Server/tests/handoff-*.test.ts.
+test("internal handoff runtime events do not become public user messages", () => {
+  const events = runtimeTransport.projectSessionEvent({ id: "internal", sessionId: "session-1", seq: 1n,
+    eventType: "handoff.runtime.message_end", createdAt: 1n,
+    payload: { message: { role: "user", content: [{ type: "text", text: "INTERNAL_INSTRUCTION" }] } },
+  })
+  assert.deepEqual(events, [])
 })
 
 test("handoff events replace the live conversation participant without rehydration", () => {

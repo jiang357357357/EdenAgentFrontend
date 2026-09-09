@@ -1,3 +1,4 @@
+import { blobReference } from "./blob-reference"
 import {
   EdenAgentRpcClient,
   EDEN_AGENT_TOKEN_PROTOCOL_PREFIX,
@@ -169,6 +170,15 @@ export async function rpcRequest<K extends keyof RpcMethodMap>(
   return current.request(method, params)
 }
 
+export async function rpcRequestForOrigin<K extends keyof RpcMethodMap>(origin: RuntimeOrigin, method: K, params: RpcMethodMap[K]["params"]): Promise<RpcMethodMap[K]["result"]> {
+  if (currentRuntimeOrigin() !== origin) throw new Error("当前世界已切换，请重新打开")
+  const current = await connectedClient()
+  if (currentRuntimeOrigin() !== origin || connectedOrigin !== origin || current !== client) throw new Error("当前世界已切换，请重新打开")
+  const result = await current.request(method, params)
+  if (currentRuntimeOrigin() !== origin || current !== client) throw new Error("当前世界已切换，请重新打开")
+  return result
+}
+
 export async function rpcRequestWithTimeout<K extends keyof RpcMethodMap>(
   method: K,
   params: RpcMethodMap[K]["params"],
@@ -201,16 +211,24 @@ export async function createRealtimeSttSocket(sessionId: string): Promise<WebSoc
 }
 
 export function resolveVoiceBlobUrl(blobId: string, scope: ObjectUrlScope): Promise<string> {
-  const origin = currentRuntimeOrigin()
+  return resolveRuntimeBlobUrl(blobId, currentRuntimeOrigin(), scope)
+}
+
+export function resolveRuntimeBlobUrl(blobId: string, origin: "mon" | "local", scope: ObjectUrlScope): Promise<string> {
+  if (origin !== currentRuntimeOrigin()) return Promise.reject(new Error("Attachment belongs to another world"))
   const cacheKey = `${origin}:${blobId}`
   return scope.resolve(cacheKey, async (signal) => {
+    if (origin !== currentRuntimeOrigin()) throw new Error("Attachment belongs to another world")
     const token = await capabilityToken(origin)
+    if (origin !== currentRuntimeOrigin()) throw new Error("World changed while loading attachment")
     const response = await fetch(`${agentHttpBaseUrl(origin)}/blobs/${encodeURIComponent(blobId)}`, {
       headers: { Authorization: `Bearer ${token}` },
       signal,
     })
-    if (!response.ok) throw new Error(`Unable to read speech audio: ${response.status}`)
-    return response.blob()
+    if (!response.ok) throw new Error(`Unable to read attachment: ${response.status}`)
+    const blob = await response.blob()
+    if (origin !== currentRuntimeOrigin()) throw new Error("World changed while loading attachment")
+    return blob
   })
 }
 
@@ -296,11 +314,18 @@ export async function uploadAttachments(
 ): Promise<AttachmentRef[]> {
   const origin = currentRuntimeOrigin()
   const token = await capabilityToken(origin)
-  return Promise.all(attachments.map(async (attachment) => {
-    const { blob, filename } = await attachmentBlob(attachment)
-    const info = await uploadBlob(agentHttpBaseUrl(origin), token, blob)
-    return { blobId: info.id, mime: info.mime, ...(filename ? { filename } : {}) }
-  }))
+  const result: AttachmentRef[] = []
+  for (let offset = 0; offset < attachments.length; offset += 4) {
+    const batch = await Promise.all(attachments.slice(offset, offset + 4).map(async attachment => {
+      const { blob, filename } = await attachmentBlob(attachment)
+      if (origin !== currentRuntimeOrigin()) throw new Error("World changed while uploading attachments")
+      const info = await uploadBlob(agentHttpBaseUrl(origin), token, blob)
+      if (origin !== currentRuntimeOrigin()) throw new Error("World changed while uploading attachments")
+      return { blobId: info.id, mime: info.mime, ...(filename ? { filename } : {}) }
+    }))
+    result.push(...batch)
+  }
+  return result
 }
 
 type JsonObject = Record<string, unknown>
@@ -610,6 +635,10 @@ function messageParts(
     }
     if (block.type === "image") {
       return [{ id, messageID, sessionID, type: "file", mime: String(block.mimeType ?? "image/png"), url: `data:${String(block.mimeType ?? "image/png")};base64,${String(block.data ?? "")}` }]
+    }
+    if (block.type === "attachment" && typeof block.blobId === "string" && typeof block.mime === "string") {
+      return [{ id, messageID, sessionID, type: "file", mime: block.mime,
+        url: blobReference(currentRuntimeOrigin(), block.blobId), ...(typeof block.filename === "string" ? { filename: block.filename } : {}) }]
     }
     if (block.type === "sticker") {
       const stickerID = Number(block.stickerID ?? block.stickerId)

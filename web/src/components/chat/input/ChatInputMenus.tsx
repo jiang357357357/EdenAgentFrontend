@@ -1,6 +1,7 @@
+import { ModelSelectionMenu } from "./ModelSelectionMenu"
 import { ShieldAlert } from "lucide-react"
 
-import type { RuntimeModelConfig, RuntimeModelOption } from "../../../lib/agent-client"
+import type { RuntimeModelConfig, RuntimeModelOption, ModelSelectionTarget } from "../../../lib/agent-client"
 import { cn } from "../../../lib/utils"
 import type { PermissionMode } from "../../../types"
 // 暂时隐藏执行边界设置；当前安装通过 command.execution.set 配置本机执行。
@@ -19,7 +20,7 @@ interface ChatInputMenusProps {
   modelLoading: boolean
   modelMenuOpen: boolean
   modelSubmitting: string | null
-  onSelectModel: (option: RuntimeModelOption) => void
+  onSelectModel: (option: RuntimeModelOption, target?: ModelSelectionTarget) => void
   onSelectPermission: (mode: PermissionMode) => void
   overlay: boolean
   permissionMenuOpen: boolean
@@ -97,34 +98,7 @@ export function ChatInputMenus({
           {modelLoading && !modelConfig ? (
             <div className={cn("px-3 py-3 text-sm", overlay ? "text-stone-300" : "text-text-muted")}>正在读取模型...</div>
           ) : modelConfig?.options.length ? (
-            modelConfig.options.map((option) => {
-              const saving = modelSubmitting === option.id
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={option.selected}
-                  disabled={modelSubmitting !== null}
-                  onClick={() => onSelectModel(option)}
-                  className={cn(
-                    "flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left transition-colors disabled:cursor-wait disabled:opacity-70",
-                    option.selected
-                      ? overlay ? "bg-white/10 text-stone-50" : "bg-bg text-text"
-                      : overlay ? "text-stone-300 hover:bg-white/8 hover:text-stone-100" : "text-text-muted hover:bg-bg hover:text-text",
-                  )}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">{saving ? "正在切换..." : option.label}</span>
-                    <span className="mt-0.5 block truncate text-xs opacity-75">
-                      {option.providerName || option.provider}/{option.modelID}
-                      {option.status && option.status !== "active" ? ` · ${option.status}` : ""}
-                    </span>
-                  </span>
-                  {option.selected && <span className="mt-0.5 flex-shrink-0 text-xs opacity-70">当前</span>}
-                </button>
-              )
-            })
+            <ModelSelectionMenu config={modelConfig} submitting={modelSubmitting} overlay={overlay} onSelect={onSelectModel} />
           ) : (
             <div className={cn("px-3 py-3 text-sm", overlay ? "text-stone-300" : "text-text-muted")}>没有可用模型</div>
           )}

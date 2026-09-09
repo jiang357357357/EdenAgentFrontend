@@ -1,26 +1,23 @@
-import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
-import test from "node:test"
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { buildSessionEnvironment } from '../src/lib/session-environment.ts'
 
-const api = readFileSync(new URL("../../../Server/crates/eden-agent-api/src/lib.rs", import.meta.url), "utf8")
-const store = readFileSync(new URL("../../../Server/crates/eden-agent-store/src/lib.rs", import.meta.url), "utf8")
-const turnPreparation = readFileSync(new URL("../../../Server/crates/eden-agent-app/src/runtime/turn/prepare.rs", import.meta.url), "utf8")
-const client = readFileSync(new URL("../src/lib/agent-client.ts", import.meta.url), "utf8")
-
-test("authenticated user environment follows session create and each new root turn", () => {
-  assert.match(api, /pub struct SessionEnvironment/)
-  assert.match(api, /pub environment: Option<SessionEnvironment>/)
-  assert.match(client, /function currentSessionEnvironment\(\)/)
-  assert.match(client, /session\.create", \{ title: "", participants, environment \}/)
-  assert.match(client, /"turn\.start"[\s\S]*environment: currentSessionEnvironment\(\)/)
+test('user environment overrides browser defaults and preserves coordinates for host storage', () => {
+  const stored = { timezone: ' Asia/Shanghai ', locale: ' zh-CN ', location: { country: '中国', city: '上海', latitude: 31.23, longitude: 121.47 }, privateToken: 'not-environment' }
+  const snapshot = buildSessionEnvironment(stored, 'UTC', 'en-US')
+  assert.equal(snapshot.timezone, 'Asia/Shanghai')
+  assert.equal(snapshot.locale, 'zh-CN')
+  assert.equal(snapshot.location.latitude, 31.23)
+  assert.equal(snapshot.location.longitude, 121.47)
+  assert.equal(snapshot.privateToken, undefined)
+  snapshot.location.city = 'changed'
+  assert.equal(stored.location.city, '上海')
 })
 
-test("session environment is durable and enters the model context without raw coordinates", () => {
-  assert.match(store, /environment_json/)
-  assert.match(store, /session\.environment_updated/)
-  assert.match(turnPreparation, /compile_system_prompt\([\s\S]*&session\.environment/)
-  assert.doesNotMatch(
-    readFileSync(new URL("../../../Server/crates/eden-agent-app/src/prompt.rs", import.meta.url), "utf8"),
-    /用户地点[^\n]*latitude|用户地点[^\n]*longitude/,
-  )
+test('missing user settings fall back to the browser without undefined coordinate fields', () => {
+  const snapshot = buildSessionEnvironment(undefined, 'UTC', 'en-US')
+  assert.equal(snapshot.timezone, 'UTC')
+  assert.equal(snapshot.locale, 'en-US')
+  assert.equal(Object.hasOwn(snapshot.location, 'latitude'), false)
+  assert.equal(buildSessionEnvironment({ timezone: ' ' }, '', '').locale, 'zh-CN')
 })

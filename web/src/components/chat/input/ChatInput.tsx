@@ -505,7 +505,7 @@ export function ChatInput({
           modelLoading={modelLoading}
           modelMenuOpen={modelMenuOpen}
           modelSubmitting={modelSubmitting}
-          onSelectModel={(option) => void selectModel(option)}
+          onSelectModel={(option, target) => void selectModel(option, target)}
           onSelectPermission={(mode) => void selectPermissionMode(mode)}
           overlay={overlay}
           permissionMenuOpen={permissionMenuOpen}

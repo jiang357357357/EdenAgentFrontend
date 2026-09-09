@@ -207,11 +207,9 @@ function userMessageSignature(message: RuntimeMessage) {
     .filter(Boolean)
     .join("\n")
     .trim()
-  const images = parts
-    .filter((part): part is RuntimeFilePart => isRuntimeFilePart(part) && part.mime.startsWith("image/"))
-    .map((part) => `${part.filename ?? ""}:${part.mime}`)
-  if (!text && images.length === 0) return undefined
-  return `${text}||${images.join("|")}`
+  const attachments = parts.filter(isRuntimeFilePart).map(part => `${part.filename ?? ""}:${part.mime}`)
+  if (!text && attachments.length === 0) return undefined
+  return `${text}||${attachments.join("|")}`
 }
 
 function visibleMessages(session: RuntimeSession) {
@@ -291,6 +289,8 @@ function mapMessage(message: RuntimeMessage, sessionIsRunning: boolean): Message
   const images = parts
     .filter((part): part is RuntimeFilePart => isRuntimeFilePart(part) && part.mime.startsWith("image/"))
     .map((part) => part.url)
+  const files = parts.filter((part): part is RuntimeFilePart => isRuntimeFilePart(part) && !part.mime.startsWith("image/"))
+    .map(part => ({ url: part.url, mime: part.mime, filename: part.filename }))
   const toolCalls = toolParts.map((part) => mapTool(part, sessionIsRunning))
   const metaParts = parts.map(mapMetaPart).filter((part): part is MetaPartCard => Boolean(part))
   const hasRunningTool = toolParts.some((part) => part.state.status === "pending" || part.state.status === "running")
@@ -372,6 +372,7 @@ function mapMessage(message: RuntimeMessage, sessionIsRunning: boolean): Message
     toolCalls: toolCalls.length ? toolCalls : undefined,
     metaParts: metaParts.length ? metaParts : undefined,
     images: images.length ? images : undefined,
+    files: files.length ? files : undefined,
     isStreaming,
     deliveryState: message.deliveryState,
     error: message.error

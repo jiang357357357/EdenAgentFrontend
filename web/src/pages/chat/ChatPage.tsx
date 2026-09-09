@@ -7,6 +7,7 @@ import { ChatInput } from "../../components/chat/input"
 import { DirectorPlanCard, MessageBubble, RunReviewCard } from "../../components/chat/message"
 import { PermissionRequestCard } from "../../components/requests"
 import { Sidebar } from "../../components/layout"
+import { MemoryCandidatesPanel } from "../../components/memories/MemoryCandidatesPanel"
 import { resolveCoreAssetUrl, type ActiveCharacterAction, type AuthUser, type CoreAssistant } from "../../lib/auth"
 import {
   DEFAULT_PET_SETTINGS,
@@ -551,6 +552,7 @@ export function ChatPage({
             })}
             </div>
             <div className="ml-auto flex h-10 shrink-0 items-center bg-bg px-1.5">
+              {activeSessionId && !activeFile && <MemoryCandidatesPanel key={activeSessionId} sessionId={activeSessionId} />}
               <button
                 type="button"
                 onClick={() => onAutoScrollChange(!autoScrollEnabled)}

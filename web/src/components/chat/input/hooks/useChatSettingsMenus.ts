@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react"
+import { ModelMenuController } from "../../../../lib/model-menu-controller"
+import { useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react"
 
 import {
   getRuntimeModelConfig,
   updateRuntimeModel,
-  type RuntimeModelConfig,
   type RuntimeModelOption,
+  type ModelSelectionTarget,
 } from "../../../../lib/agent-client"
 import type { PermissionMode } from "../../../../types"
 import { permissionOptions } from "../ChatInputMenus"
@@ -26,47 +27,23 @@ export function useChatSettingsMenus({
   const [permissionSubmitting, setPermissionSubmitting] = useState<PermissionMode | null>(null)
   const [permissionError, setPermissionError] = useState("")
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
-  const [modelConfig, setModelConfig] = useState<RuntimeModelConfig | null>(null)
-  const [modelLoading, setModelLoading] = useState(false)
-  const [modelSubmitting, setModelSubmitting] = useState<string | null>(null)
-  const [modelError, setModelError] = useState<string | null>(null)
+  const modelController = useMemo(() => new ModelMenuController({ load: getRuntimeModelConfig, save: updateRuntimeModel }, sessionId), [sessionId])
+  const { config: modelConfig, loading: modelLoading, submitting: modelSubmitting, error: modelError } =
+    useSyncExternalStore(modelController.subscribe, modelController.snapshot, modelController.snapshot)
 
   const closeMenus = () => {
     setPermissionMenuOpen(false)
     setModelMenuOpen(false)
   }
 
-  const refreshModelConfig = async () => {
-    setModelLoading(true)
-    setModelError(null)
-    try {
-      setModelConfig(await getRuntimeModelConfig(sessionId))
-    } catch (error) {
-      setModelError(error instanceof Error ? error.message : String(error))
-    } finally {
-      setModelLoading(false)
-    }
-  }
+  const refreshModelConfig = () => modelController.refresh()
 
-  useEffect(() => {
-    if (hideComposerFooter) return
-    let active = true
-    setModelLoading(true)
-    setModelError(null)
-    getRuntimeModelConfig(sessionId)
-      .then((config) => {
-        if (active) setModelConfig(config)
-      })
-      .catch((error) => {
-        if (active) setModelError(error instanceof Error ? error.message : String(error))
-      })
-      .finally(() => {
-        if (active) setModelLoading(false)
-      })
-    return () => {
-      active = false
-    }
-  }, [hideComposerFooter, sessionId])
+  useLayoutEffect(() => {
+    modelController.activate()
+    setModelMenuOpen(false)
+    if (!hideComposerFooter) void modelController.refresh()
+    return () => modelController.deactivate()
+  }, [hideComposerFooter, modelController])
 
   const openPermissionMenu = () => {
     setPermissionMenuOpen(true)
@@ -108,26 +85,13 @@ export function useChatSettingsMenus({
     }
   }
 
-  const selectModel = async (option: RuntimeModelOption) => {
-    if (option.selected || modelSubmitting) {
-      setModelMenuOpen(false)
-      return
-    }
-    setModelSubmitting(option.id)
-    setModelError(null)
-    try {
-      setModelConfig(await updateRuntimeModel(option.aiEntityId, sessionId))
-      setModelMenuOpen(false)
-    } catch (error) {
-      setModelError(error instanceof Error ? error.message : String(error))
-    } finally {
-      setModelSubmitting(null)
-    }
+  const selectModel = async (option: RuntimeModelOption, target?: ModelSelectionTarget) => {
+    if (await modelController.select(option, target)) setModelMenuOpen(false)
   }
 
   const activePermission = permissionOptions.find((option) => option.mode === permissionMode) ?? permissionOptions[0]
   const currentModel = modelConfig?.current ?? modelConfig?.options.find((option) => option.selected) ?? null
-  const currentModelLabel = currentModel?.label || (modelLoading ? "..." : "模型")
+  const currentModelLabel = (modelConfig?.actors?.length ?? 0) > 1 ? "角色模型" : currentModel?.label || (modelLoading ? "..." : "模型")
   const modelButtonTitle = modelError
     ? `模型配置读取失败: ${modelError}`
     : currentModel

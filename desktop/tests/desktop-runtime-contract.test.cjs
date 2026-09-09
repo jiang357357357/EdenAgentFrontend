@@ -19,7 +19,7 @@ test("development desktop uses realm-owned Mon token and explicit ownership", ()
 
   assert.equal(environment.EDEN_AGENT_DEV_PARENT_PID, "321")
   assert.equal(environment.EDEN_AGENT_EXTERNAL_ORIGINS, "mon")
-  assert.equal(environment.EDEN_AGENT_MON_TOKEN_FILE, "C:\\Agent\\Data\\realms\\mon\\capability.token")
+  assert.equal(environment.EDEN_AGENT_MON_TOKEN_FILE, "C:\\Agent\\Data\\realms\\mon\\v2\\capability.token")
   assert.equal(environment.EDEN_AGENT_SERVER_MODE, "")
   assert.equal(environment.EDEN_AGENT_TOKEN_FILE, "")
 })

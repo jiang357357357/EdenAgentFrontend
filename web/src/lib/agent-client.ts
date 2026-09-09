@@ -1,3 +1,7 @@
+import { buildSessionEnvironment } from "./session-environment"
+import { mapRuntimeModelCatalog, mapLocalRuntimeModel } from "./runtime-models"
+import type { RuntimeModelConfig, ModelSelectionTarget } from "./runtime-models"
+export type { RuntimeModelConfig, RuntimeModelOption, ModelSelectionTarget } from "./runtime-models"
 import type {
   CompanionDirectorBeat,
   CompanionDirectorExecution,
@@ -21,8 +25,6 @@ import type {
   AgentThreadInfo,
   DirectorRunInfo,
   JsonValue,
-  RuntimeModelCatalogInfo,
-  RuntimeModelInfo,
   SessionEvent as RpcSessionEvent,
   SelfAwakeRunInfo,
   SkillInfo,
@@ -220,39 +222,6 @@ export type WorkspaceFileContent = {
   binary: boolean
   truncated: boolean
   content: string
-}
-
-export type RuntimeModelOption = {
-  id: string
-  aiEntityId: number | string
-  label: string
-  name: string
-  provider: string
-  providerName?: string
-  providerIcon?: string
-  supportedModels?: string[]
-  modelID: string
-  status: string
-  isMultimodal: boolean
-  contextWindow?: number
-  selected: boolean
-}
-
-export type RuntimeModelConfig = {
-  source: "core" | "env" | string
-  serviceType?: "ai" | string
-  vendors?: Record<string, unknown>
-  assistant?: {
-    id?: number | string
-    name?: string
-  }
-  character?: {
-    id?: number | string
-    name?: string
-  }
-  current?: RuntimeModelOption | null
-  vision?: RuntimeModelOption | null
-  options: RuntimeModelOption[]
 }
 
 export type ApiSelfAwakeDiary = {
@@ -1250,6 +1219,8 @@ export function mapMessage(input: ApiMessage): MessageData {
   const images = input.parts
     .filter((part): part is ApiFilePart => isApiFilePart(part) && part.mime.startsWith("image/"))
     .map((part) => part.url)
+  const files = input.parts.filter((part): part is ApiFilePart => isApiFilePart(part) && !part.mime.startsWith("image/"))
+    .map(part => ({ url: part.url, mime: part.mime, filename: part.filename }))
   const toolCalls = input.parts.filter(isApiToolPart).map(mapTool)
 
   return {
@@ -1261,6 +1232,7 @@ export function mapMessage(input: ApiMessage): MessageData {
     thinking: reasoning || undefined,
     toolCalls: toolCalls.length ? toolCalls : undefined,
     images: images.length ? images : undefined,
+    files: files.length ? files : undefined,
   }
 }
 
@@ -1357,20 +1329,7 @@ async function resolveParticipants(assistantIDs: Array<number | string>) {
 }
 
 function currentSessionEnvironment() {
-  const environment = getStoredUser()?.environment
-  const location = environment?.location
-  return {
-    timezone: environment?.timezone?.trim() || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
-    locale: environment?.locale?.trim() || navigator.language || "zh-CN",
-    location: {
-      country: location?.country ?? "",
-      region: location?.region ?? "",
-      city: location?.city ?? "",
-      district: location?.district ?? "",
-      latitude: location?.latitude,
-      longitude: location?.longitude,
-    },
-  }
+  return buildSessionEnvironment(getStoredUser()?.environment, Intl.DateTimeFormat().resolvedOptions().timeZone, navigator.language)
 }
 
 export async function deleteSession(sessionID: string) {
@@ -1712,74 +1671,6 @@ function mapToolInfoForView(tool: ToolInfo): ToolDefinition {
   }
 }
 
-function modelEntityId(value: JsonValue): number | string | undefined {
-  return typeof value === "number" || typeof value === "string" ? value : undefined
-}
-
-function mapRuntimeModelOption(option: RuntimeModelCatalogInfo["options"][number]): RuntimeModelOption {
-  return {
-    id: option.id,
-    aiEntityId: modelEntityId(option.aiEntityId) ?? option.id,
-    label: option.label,
-    name: option.name,
-    provider: option.provider,
-    providerName: option.providerName,
-    providerIcon: option.providerIcon,
-    supportedModels: option.supportedModels,
-    modelID: option.modelID,
-    status: option.status,
-    isMultimodal: option.isMultimodal,
-    contextWindow: Number(option.contextWindow),
-    selected: option.selected,
-  }
-}
-
-function mapRuntimeModelCatalog(catalog: RuntimeModelCatalogInfo): RuntimeModelConfig {
-  const vendors = catalog.vendors && typeof catalog.vendors === "object" && !Array.isArray(catalog.vendors)
-    ? catalog.vendors as Record<string, unknown>
-    : {}
-  return {
-    source: catalog.source,
-    serviceType: catalog.serviceType,
-    vendors,
-    assistant: {
-      id: modelEntityId(catalog.assistant.id),
-      name: catalog.assistant.name,
-    },
-    character: {
-      id: modelEntityId(catalog.character.id),
-      name: catalog.character.name,
-    },
-    current: catalog.current ? mapRuntimeModelOption(catalog.current) : null,
-    vision: catalog.vision ? mapRuntimeModelOption(catalog.vision) : null,
-    options: catalog.options.map(mapRuntimeModelOption),
-  }
-}
-
-function mapLocalRuntimeModel(info: RuntimeModelInfo): RuntimeModelConfig {
-  const aiEntityId = modelEntityId(info.aiEntityId ?? info.id) ?? info.id
-  const option: RuntimeModelOption = {
-    id: info.id,
-    aiEntityId,
-    label: info.label,
-    name: info.label,
-    provider: info.provider,
-    providerName: info.provider,
-    modelID: info.id,
-    status: info.available ? "available" : "unavailable",
-    isMultimodal: false,
-    contextWindow: info.contextWindow == null ? undefined : Number(info.contextWindow),
-    selected: true,
-  }
-  return {
-    source: info.source,
-    serviceType: "ai",
-    current: option,
-    vision: null,
-    options: [option],
-  }
-}
-
 export async function getToolStatus() {
   const definitions = (await rpcRequest("tool.list", {})).map(mapToolInfoForView)
   return { search: { status: "online", provider: "rust-host", mode: "embedded" },
@@ -1834,7 +1725,7 @@ export async function getRuntimeModelConfig(sessionId?: string) {
   }))
 }
 
-export async function updateRuntimeModel(aiEntityId: number | string, sessionId?: string): Promise<RuntimeModelConfig> {
+export async function updateRuntimeModel(aiEntityId: number | string, sessionId?: string, target?: ModelSelectionTarget): Promise<RuntimeModelConfig> {
   if (getStoredRuntimeOrigin() === "local") {
     const config = await getRuntimeModelConfig(sessionId)
     if (String(config.current?.aiEntityId) !== String(aiEntityId)) {
@@ -1844,12 +1735,14 @@ export async function updateRuntimeModel(aiEntityId: number | string, sessionId?
   }
   const coreToken = getStoredToken()
   if (!coreToken) throw new Error("not_authenticated: Core token missing")
-  return mapRuntimeModelCatalog(await rpcRequest("model.select", {
+  const params = {
     coreBaseUrl: await resolveCoreBaseUrl(),
     coreToken,
     aiEntityId,
     ...(sessionId ? { sessionId } : {}),
-  }))
+    ...(target ? { target } : {}),
+  }
+  return mapRuntimeModelCatalog(await rpcRequest("model.select", params))
 }
 
 export async function synthesizeSpeechSegment(input: {

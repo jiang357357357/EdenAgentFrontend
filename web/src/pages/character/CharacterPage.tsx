@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useState, type CSSProperties } from "react"
 import { ArrowLeft, X } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { ChatInput } from "../../components/chat/input"
+import { AttachmentImage } from "../../components/chat/message/AttachmentImage"
+import { AttachmentFiles } from "../../components/chat/message/AttachmentFiles"
 import { DesktopPetChatBubble, DesktopPetStage } from "../../components/desktop-pet"
 import { PermissionRequestCard, QuestionRequestCard } from "../../components/requests"
 import type { ActiveCharacterAction, CoreAssistant } from "../../lib/auth"
@@ -20,7 +22,6 @@ import {
   type PetSettings,
   type PetCharacterViewport,
 } from "../../lib/desktop-window"
-import { resolveEdenAgentUrl } from "../../lib/agent-client"
 import { getStoredRuntimeOrigin } from "../../lib/runtime-origin"
 import { cn } from "../../lib/utils"
 import type { MessageData, PendingPermission, PendingQuestion, PermissionMode, PromptAttachment, Session, ToolCall } from "../../types"
@@ -380,14 +381,15 @@ export function CharacterPage({
                           <span>{message.role === "user" ? "你" : displayName}</span>
                           <span className="text-stone-600">{message.timestamp}</span>
                         </div>
+                        <AttachmentFiles files={message.files} />
                         {message.images && message.images.length > 0 && (
                           <div className="mb-3 flex flex-wrap gap-2">
                             {message.images.map((image, index) => (
-                              <img
+                              <AttachmentImage
                                 key={`${message.id}-${index}`}
-                                src={resolveEdenAgentUrl(image)}
+                                src={image}
                                 alt="历史图片"
-                                onClick={() => onPreviewImage(resolveEdenAgentUrl(image), "历史图片")}
+                                onPreview={onPreviewImage}
                                 className="max-h-28 max-w-full cursor-pointer rounded-lg border border-white/10 object-contain transition-opacity hover:opacity-85"
                               />
                             ))}
