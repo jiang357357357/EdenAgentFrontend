@@ -1,3 +1,5 @@
+import { AdjustableCharacterView } from './AdjustableCharacterView';
+import { getStoredRuntimeOrigin } from '../../lib/runtime-origin';
 import { Bot, ImageOff } from 'lucide-react';
 import { resolveCoreAssetUrl, type ActiveCharacterAction, type CoreAssistant } from '../../lib/auth';
 import { CharacterPerformanceStage } from './CharacterPerformanceStage';
@@ -8,10 +10,11 @@ import { isMemoryLobbySpineAsset } from './renderer/spine/spine-layout';
 interface CharacterPanelProps {
   assistant?: CoreAssistant | null;
   assistantError?: string;
+  editing?: boolean;
   activeAction?: ActiveCharacterAction;
 }
 
-export function CharacterPanel({ assistant, assistantError, activeAction }: CharacterPanelProps) {
+export function CharacterPanel({ assistant, assistantError, activeAction, editing = false }: CharacterPanelProps) {
   const character = assistant?.character;
   const displayName = assistant?.name || character?.name || '默认助手';
   const activeActionImage =
@@ -30,6 +33,7 @@ export function CharacterPanel({ assistant, assistantError, activeAction }: Char
     <aside className="flex h-[100vh] w-[34vw] flex-none items-end justify-center overflow-hidden border-l border-border bg-bg">
       <div className="relative h-full w-full overflow-hidden">
         {hasVisual && character ? (
+          <AdjustableCharacterView key={`${getStoredRuntimeOrigin()}:${character.id}`} storageKey={`eden-character-placement:${getStoredRuntimeOrigin()}:${character.id}`} editing={editing}>
           <CharacterPerformanceStage
             activeAction={activeAction}
             className={memoryLobby ? "absolute inset-0 flex justify-center" : "absolute inset-x-0 bottom-0 flex h-[96vh] justify-center"}
@@ -45,6 +49,7 @@ export function CharacterPanel({ assistant, assistantError, activeAction }: Char
               className="relative h-full w-full"
             />
           </CharacterPerformanceStage>
+          </AdjustableCharacterView>
         ) : (
           <div className="flex h-full w-full items-center justify-center px-[3vw] text-center">
             <div className="rounded-3xl border border-border bg-card/80 p-[4vh] shadow-sm">

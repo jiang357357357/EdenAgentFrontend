@@ -1,6 +1,6 @@
 import { RuntimeDiagnostics } from '../../components/chat/RuntimeDiagnostics'
 import { SubagentPanel } from "../../components/chat/SubagentPanel"
-import { File, Lock, LockOpen, MessageSquare, X } from "lucide-react"
+import { Move, File, Lock, LockOpen, MessageSquare, X } from "lucide-react"
 import { motion } from "motion/react"
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
@@ -164,6 +164,14 @@ export function ChatPage({
   const pendingOlderWindowRef = useRef(false)
   const messageAnchorRefs = useRef(new Map<string, HTMLSpanElement>())
   const windowScrollAdjustmentRef = useRef<{ anchorID: string; viewportTop: number } | undefined>(undefined)
+  const [characterEditing, setCharacterEditing] = useState(false)
+  useEffect(() => { setCharacterEditing(false) }, [assistant?.character?.id])
+  useEffect(() => {
+    if (!characterEditing) return
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setCharacterEditing(false) }
+    window.addEventListener("keydown", close)
+    return () => window.removeEventListener("keydown", close)
+  }, [characterEditing])
   const assistantName = assistant?.name || assistant?.character?.name || "助手"
   const assistantInitial = assistantName.trim().slice(0, 1) || "助"
   const assistantAvatarUrl = resolveCoreAssetUrl(assistant?.character?.avatar_url)
@@ -559,6 +567,11 @@ export function ChatPage({
             <div className="ml-auto flex h-10 shrink-0 items-center bg-bg px-1.5">
               {activeSessionId && !activeFile && <MemoryCandidatesPanel key={activeSessionId} sessionId={activeSessionId} />}
               {activeSessionId && !activeFile && <SubagentPanel key={activeSessionId} sessionId={activeSessionId} />}
+              <button type="button" onClick={() => setCharacterEditing(value => !value)}
+                aria-pressed={characterEditing} aria-label="调整角色位置" title={characterEditing ? "结束调整角色位置（Esc）" : "调整角色位置和大小"}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${characterEditing ? "bg-accent/10 text-accent" : "text-text-muted hover:bg-bg hover:text-text"}`}>
+                <Move className="h-4 w-4" />
+              </button>
               {activeSessionId && !activeFile && <RuntimeDiagnostics key={`diagnostics-${activeSessionId}`} iconOnly sessions={sessions} activeSessionId={activeSessionId} />}
               <button
                 type="button"
@@ -823,7 +836,7 @@ export function ChatPage({
           )
         : null}
 
-      <CharacterPanel assistant={assistant} assistantError={assistantError} activeAction={activeCharacterAction} />
+      <CharacterPanel editing={characterEditing} assistant={assistant} assistantError={assistantError} activeAction={activeCharacterAction} />
     </motion.div>
   )
 }
