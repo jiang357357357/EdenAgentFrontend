@@ -21,6 +21,7 @@ import journalWorkspaceBackground from "../../assets/self-awake/journal-workspac
 import type { AuthUser, CoreAssistant } from "../../lib/auth"
 import { getErrorMessage } from "../../lib/auth"
 import {
+  getSelfAwakeExecution,
   listSelfAwakeRunsPage,
   type ApiSelfAwakeAction,
   type ApiSelfAwakeDiary,
@@ -28,7 +29,7 @@ import {
   type ToolStatus,
 } from "../../lib/agent-client"
 import type { SelfAwakeScheduleInfo } from "../../generated/eden-agent-rpc"
-import { selfAwakeActivity, selfAwakeObservations } from "../../lib/self-awake-context"
+import { selfAwakeObservations, selfAwakeToolExecutions, type SelfAwakeToolExecution } from "../../lib/self-awake-context"
 import { formatLocalMonthDayTime, formatLocalWeekday } from "../../lib/time"
 
 const screenMotion = {
@@ -227,13 +228,6 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
-function formatFact(value: unknown, fallback = "未记录") {
-  if (value === true) return "是"
-  if (value === false) return "否"
-  if (value === null || value === undefined || value === "") return fallback
-  return String(value)
-}
-
 function formatClock(value?: string | null) {
   const date = parseDate(value)
   if (!date) return "--:--"
@@ -286,6 +280,9 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
   const [expandedDiaryEntryDates, setExpandedDiaryEntryDates] = useState<string[]>([])
   const [diarySearch, setDiarySearch] = useState("")
   const [executionRunId, setExecutionRunId] = useState<string | null>(null)
+  const [selectedToolExecutions, setSelectedToolExecutions] = useState<SelfAwakeToolExecution[]>([])
+  const [toolExecutionsLoading, setToolExecutionsLoading] = useState(false)
+  const [toolExecutionsError, setToolExecutionsError] = useState("")
   const closeExecution = useCallback(() => setExecutionRunId(null), [])
   const [rawDataExpanded, setRawDataExpanded] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -370,13 +367,29 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
       runs: groupRuns,
     }))
   }, [overviewRuns])
-  const selectedContext = asRecord(selectedRun?.context_payload)
-  const selectedActivity = selfAwakeActivity(selectedContext)
   const selectedObservations = selfAwakeObservations(selectedRun?.decision_payload)
-  const selectedSystemInput = asRecord(selectedActivity.system_input)
-  const selectedSession = asRecord(selectedActivity.session)
-  const selectedForeground = asRecord(selectedActivity.foreground_window)
   const selectedStatus = statusMeta[selectedRun?.status || ""] ?? { label: selectedRun?.status || "未知", tone: "muted" as const }
+  useEffect(() => {
+    let disposed = false
+    setSelectedToolExecutions([])
+    setToolExecutionsError("")
+    if (!selectedRun?.id) {
+      setToolExecutionsLoading(false)
+      return () => { disposed = true }
+    }
+    setToolExecutionsLoading(true)
+    getSelfAwakeExecution(selectedRun.id)
+      .then((result) => {
+        if (!disposed) setSelectedToolExecutions(selfAwakeToolExecutions(result.record))
+      })
+      .catch((reason) => {
+        if (!disposed) setToolExecutionsError(getErrorMessage(reason, "读取工具记录失败。"))
+      })
+      .finally(() => {
+        if (!disposed) setToolExecutionsLoading(false)
+      })
+    return () => { disposed = true }
+  }, [selectedRun?.id])
   const allDiaryEntries = useMemo(
     () =>
       runs
@@ -687,15 +700,34 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                           ["触发", eventLabels[selectedRun.event_type] || selectedRun.event_type],
                           ["来源", selectedRun.event_source || selectedRun.source_service],
                           ["原因", selectedRun.event_reason],
-                          ["系统空闲", selectedSystemInput.idle_seconds !== undefined ? `${formatFact(selectedSystemInput.idle_seconds)} 秒` : "未采集"],
-                          ["屏幕锁定", selectedSession.locked === true ? "是" : selectedSession.locked === false ? "否" : "未采集"],
-                          ["前台应用", formatFact(selectedForeground.application_name, "未采集")],
-                          ["文档/窗口", formatFact(selectedForeground.window_title, "未采集")],
-                          ["捕获时间", typeof selectedActivity.captured_at === "string" ? formatClock(selectedActivity.captured_at) : "未记录"],
+                          ["触发时间", formatDateTime(selectedRun.event_occurred_at ?? selectedRun.created_at)],
                         ].map(([label, value]) => (
                           <div key={label} className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">{label}</dt><dd className="truncate" title={String(value)}>{value || "未记录"}</dd></div>
                         ))}
                       </dl>
+                      <div className="mt-[1.45vh] border-t border-border/70 pt-[1.25vh] text-[1.72vh] leading-relaxed">
+                        <h4 className="text-text-muted">实际观察工具</h4>
+                        {toolExecutionsLoading ? <p className="mt-[0.75vh] text-text-muted">正在读取执行记录…</p> : null}
+                        {!toolExecutionsLoading && toolExecutionsError ? <p className="mt-[0.75vh] text-red-600">{toolExecutionsError}</p> : null}
+                        {!toolExecutionsLoading && !toolExecutionsError && selectedToolExecutions.length === 0 ? (
+                          <p className="mt-[0.75vh] text-text-muted">本轮未执行观察工具。</p>
+                        ) : null}
+                        {selectedToolExecutions.length > 0 ? (
+                          <ul className="mt-[0.75vh] space-y-[0.8vh]">
+                            {selectedToolExecutions.map((execution) => (
+                              <li key={execution.id} className="rounded-[0.45vh] bg-bg/70 px-[0.7vw] py-[0.65vh]">
+                                <div className="flex items-center gap-[0.5vw]">
+                                  <span className="truncate font-medium" title={execution.name}>{execution.name}</span>
+                                  <span className={`shrink-0 text-[1.35vh] ${toneTextClass(execution.status === "succeeded" ? "ok" : execution.status === "failed" ? "danger" : "warn")}`}>
+                                    {execution.status === "succeeded" ? "成功" : execution.status === "failed" ? "失败" : "执行中"}
+                                  </span>
+                                </div>
+                                <p className="mt-[0.35vh] line-clamp-2 break-all text-[1.42vh] text-text-muted" title={execution.result}>{execution.result}</p>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
                     </section>
 
                     <section className="mt-[2.4vh] border-t border-border pt-[2.1vh]">
