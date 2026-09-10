@@ -33,7 +33,7 @@ export function CharacterPanel({ assistant, assistantError, activeAction, editin
     <aside className="flex h-[100vh] w-[34vw] flex-none items-end justify-center overflow-hidden border-l border-border bg-bg">
       <div className="relative h-full w-full overflow-hidden">
         {hasVisual && character ? (
-          <AdjustableCharacterView key={`${getStoredRuntimeOrigin()}:${character.id}`} storageKey={`eden-character-placement:${getStoredRuntimeOrigin()}:${character.id}`} editing={editing}>
+          <AdjustableCharacterView key={`${getStoredRuntimeOrigin()}:${character.id}`} storageKey={`eden-character-placement:${getStoredRuntimeOrigin()}:${character.id}`} editing={editing} nativeTransform={hasSpine}>
           <CharacterPerformanceStage
             activeAction={activeAction}
             className={memoryLobby ? "absolute inset-0 flex justify-center" : "absolute inset-x-0 bottom-0 flex h-[96vh] justify-center"}

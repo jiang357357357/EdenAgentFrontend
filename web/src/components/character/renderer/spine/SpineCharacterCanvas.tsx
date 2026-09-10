@@ -1,3 +1,5 @@
+import { useContext } from 'react'
+import { CharacterPlacementContext } from '../../character-placement-context'
 import { Application, UPDATE_PRIORITY } from "pixi.js"
 import { Physics, Spine, VertexAttachment } from "@esotericsoftware/spine-pixi-v7"
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react"
@@ -101,6 +103,11 @@ export function SpineCharacterCanvas({
   onReady,
   globalPointerEnabled = false,
 }: SpineCharacterCanvasProps) {
+  const userPlacement = useContext(CharacterPlacementContext)
+  const userPlacementRef = useRef(userPlacement)
+  const refitRef = useRef<(() => boolean) | null>(null)
+  userPlacementRef.current = userPlacement
+  useEffect(() => { refitRef.current?.() }, [userPlacement])
   const hostRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
   const loadedRef = useRef<LoadedSpineAsset | null>(null)
@@ -254,25 +261,28 @@ export function SpineCharacterCanvas({
         ? cameraBoundsRef.current ?? modelBoundsRef.current ?? normalizeSpineBounds(spine.getLocalBounds())
         : modelBoundsRef.current ?? normalizeSpineBounds(spine.getLocalBounds())
       if (!bounds) return false
+      const adjustable = userPlacementRef.current
       const padding = memoryLobby ? 0 : Math.min(app.screen.width, app.screen.height) * 0.025
       const placement = calculateSpinePlacement({
         bounds,
         viewportWidth: app.screen.width,
         viewportHeight: app.screen.height,
         padding,
-        assetScale: (asset.scale ?? 1) * (memoryLobby ? MEMORY_LOBBY_CAMERA_SCALE : 1),
+        assetScale: (asset.scale ?? 1) * (memoryLobby && !adjustable ? MEMORY_LOBBY_CAMERA_SCALE : 1),
         offsetX: asset.offset_x,
-        offsetY: (asset.offset_y ?? 0) + (memoryLobby ? app.screen.height * MEMORY_LOBBY_CAMERA_Y_BIAS : 0),
-        fit: memoryLobby ? "cover" : "contain",
+        offsetY: (asset.offset_y ?? 0) + (memoryLobby && !adjustable ? app.screen.height * MEMORY_LOBBY_CAMERA_Y_BIAS : 0),
+        fit: memoryLobby && !adjustable ? "cover" : "contain",
         verticalAlignment: memoryLobby ? "center" : "bottom",
       })
       if (!placement) return false
-      spine.scale.set(placement.scale)
-      spine.x = placement.x
-      spine.y = placement.y
+      const zoom = adjustable?.scale ?? 1
+      spine.scale.set(placement.scale * zoom)
+      spine.x = app.screen.width / 2 + (placement.x - app.screen.width / 2) * zoom + (adjustable?.x ?? 0) * app.screen.width
+      spine.y = app.screen.height / 2 + (placement.y - app.screen.height / 2) * zoom + (adjustable?.y ?? 0) * app.screen.height
       app.render()
       return true
     }
+    refitRef.current = fitModel
 
     const markReady = () => {
       if (disposed || readyReported) return
@@ -460,6 +470,7 @@ export function SpineCharacterCanvas({
 
     return () => {
       disposed = true
+      refitRef.current = null
       abortController.abort()
       if (startupFitTimer !== undefined) window.clearTimeout(startupFitTimer)
       if (readyFitFrame !== undefined) window.cancelAnimationFrame(readyFitFrame)
@@ -816,6 +827,7 @@ export function SpineCharacterCanvas({
     })
     return () => {
       disposed = true
+      refitRef.current = null
       unsubscribe?.()
       handlePointerCancel()
     }
