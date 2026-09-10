@@ -1,6 +1,4 @@
-import { OperationPanel } from '../../components/chat/OperationPanel'
-import { MonSyncPanel } from '../../components/chat/MonSyncPanel'
-import { McpPanel } from '../../components/chat/McpPanel'
+import { RuntimeDiagnostics } from '../../components/chat/RuntimeDiagnostics'
 import { SubagentPanel } from "../../components/chat/SubagentPanel"
 import { File, Lock, LockOpen, MessageSquare, X } from "lucide-react"
 import { motion } from "motion/react"
@@ -133,6 +131,7 @@ export function ChatPage({
   permissionMode,
   onPermissionModeChange,
   onPreviewImage,
+  onLogout,
   onOpenAssistantSwitcher,
   onOpenDutyAssistantSwitcher,
   onOpenSettings,
@@ -459,6 +458,8 @@ export function ChatPage({
         onOpenSkills={onOpenSkills}
         onOpenConnectors={onOpenConnectors}
         onOpenConfiguration={onOpenConfiguration}
+        onLogout={onLogout}
+        logoutLabel={getStoredRuntimeOrigin() === "local" ? "返回世界选择" : "退出登录"}
         onOpenSettings={onOpenSettings}
         onOpenFile={openWorkspaceFile}
         onWorkspaceChanged={resetWorkspaceFiles}
@@ -558,9 +559,7 @@ export function ChatPage({
             <div className="ml-auto flex h-10 shrink-0 items-center bg-bg px-1.5">
               {activeSessionId && !activeFile && <MemoryCandidatesPanel key={activeSessionId} sessionId={activeSessionId} />}
               {activeSessionId && !activeFile && <SubagentPanel key={activeSessionId} sessionId={activeSessionId} />}
-              {activeSessionId && !activeFile && <MonSyncPanel key={activeSessionId} sessionId={activeSessionId} />}
-              {activeSessionId && !activeFile && <OperationPanel key={`operations-${activeSessionId}`} sessionId={activeSessionId} />}
-              {activeSessionId && !activeFile && <McpPanel key={`mcp-${activeSessionId}`} sessionId={activeSessionId} />}
+              {activeSessionId && !activeFile && <RuntimeDiagnostics key={`diagnostics-${activeSessionId}`} iconOnly sessions={sessions} activeSessionId={activeSessionId} />}
               <button
                 type="button"
                 onClick={() => onAutoScrollChange(!autoScrollEnabled)}

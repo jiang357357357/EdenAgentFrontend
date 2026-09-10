@@ -1,3 +1,4 @@
+import { SelfAwakeModelCalls } from "./SelfAwakeModelCalls"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Activity,
@@ -280,6 +281,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
   const [expandedDiaryEntryDates, setExpandedDiaryEntryDates] = useState<string[]>([])
   const [diarySearch, setDiarySearch] = useState("")
   const [executionRunId, setExecutionRunId] = useState<string | null>(null)
+  const [executionRecord, setExecutionRecord] = useState<unknown>(null)
   const [selectedToolExecutions, setSelectedToolExecutions] = useState<SelfAwakeToolExecution[]>([])
   const [toolExecutionsLoading, setToolExecutionsLoading] = useState(false)
   const [toolExecutionsError, setToolExecutionsError] = useState("")
@@ -345,7 +347,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
     : wakeSchedule?.status === "disabled" ? "自醒已暂停"
     : wakeSchedule?.status === "unscheduled" ? "尚未安排"
     : wakeTime ? (Date.parse(wakeTime) <= clockNow ? "已到时间，等待唤醒" : formatDateTime(wakeTime))
-    : "时间暂不可用"
+    : loading ? "正在读取" : "尚未安排"
 
   const selectedRun = useMemo(() => runs.find((run) => run.id === selectedRunId) ?? runs[0], [runs, selectedRunId])
   const hasMoreRuns = currentPage < totalPages
@@ -371,6 +373,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
   const selectedStatus = statusMeta[selectedRun?.status || ""] ?? { label: selectedRun?.status || "未知", tone: "muted" as const }
   useEffect(() => {
     let disposed = false
+    setExecutionRecord(null)
     setSelectedToolExecutions([])
     setToolExecutionsError("")
     if (!selectedRun?.id) {
@@ -380,7 +383,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
     setToolExecutionsLoading(true)
     getSelfAwakeExecution(selectedRun.id)
       .then((result) => {
-        if (!disposed) setSelectedToolExecutions(selfAwakeToolExecutions(result.record))
+        if (!disposed) { setExecutionRecord(result.record); setSelectedToolExecutions(selfAwakeToolExecutions(result.record)) }
       })
       .catch((reason) => {
         if (!disposed) setToolExecutionsError(getErrorMessage(reason, "读取工具记录失败。"))
@@ -706,27 +709,13 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                         ))}
                       </dl>
                       <div className="mt-[1.45vh] border-t border-border/70 pt-[1.25vh] text-[1.72vh] leading-relaxed">
-                        <h4 className="text-text-muted">实际观察工具</h4>
+                        <h4 className="text-text-muted">模型请求与工具调用</h4>
                         {toolExecutionsLoading ? <p className="mt-[0.75vh] text-text-muted">正在读取执行记录…</p> : null}
                         {!toolExecutionsLoading && toolExecutionsError ? <p className="mt-[0.75vh] text-red-600">{toolExecutionsError}</p> : null}
                         {!toolExecutionsLoading && !toolExecutionsError && selectedToolExecutions.length === 0 ? (
-                          <p className="mt-[0.75vh] text-text-muted">本轮未执行观察工具。</p>
+                          <p className="mt-[0.75vh] text-text-muted">本轮未调用工具。</p>
                         ) : null}
-                        {selectedToolExecutions.length > 0 ? (
-                          <ul className="mt-[0.75vh] space-y-[0.8vh]">
-                            {selectedToolExecutions.map((execution) => (
-                              <li key={execution.id} className="rounded-[0.45vh] bg-bg/70 px-[0.7vw] py-[0.65vh]">
-                                <div className="flex items-center gap-[0.5vw]">
-                                  <span className="truncate font-medium" title={execution.name}>{execution.name}</span>
-                                  <span className={`shrink-0 text-[1.35vh] ${toneTextClass(execution.status === "succeeded" ? "ok" : execution.status === "failed" ? "danger" : "warn")}`}>
-                                    {execution.status === "succeeded" ? "成功" : execution.status === "failed" ? "失败" : "执行中"}
-                                  </span>
-                                </div>
-                                <p className="mt-[0.35vh] line-clamp-2 break-all text-[1.42vh] text-text-muted" title={execution.result}>{execution.result}</p>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : null}
+                        {executionRecord && !toolExecutionsLoading && !toolExecutionsError ? <SelfAwakeModelCalls record={executionRecord} /> : null}
                       </div>
                     </section>
 
@@ -761,8 +750,8 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
               ) : (
                 <div className="flex h-full flex-col items-center justify-center text-center text-text-muted">
                   <NotebookText className="mb-[1.2vh] h-[4.6vh] w-[4.6vh] text-accent/70" />
-                  <div className="font-serif text-[2.6vh] text-text">等待第一次自醒</div>
-                  <div className="mt-[0.7vh] text-[1.75vh]">这里会显示她后台醒来后的观察报告。</div>
+                  <div className="font-serif text-[2.6vh] text-text">{loading ? "正在读取自醒记录" : error ? "自醒记录读取失败" : searchQuery ? "没有匹配的自醒记录" : "等待第一次自醒"}</div>
+                  <div className="mt-[0.7vh] text-[1.75vh]">{loading ? "请稍候。" : error ? "请点击顶部刷新重试。" : searchQuery ? "换个关键词试试。" : "这里会显示她后台醒来后的观察报告。"}</div>
                 </div>
               )}
             </section>
@@ -989,8 +978,8 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
             ) : (
               <div className="flex h-full flex-col items-center justify-center text-center text-text-muted">
                 <NotebookText className="mb-[1.2vh] h-[4.6vh] w-[4.6vh] text-accent/70" />
-                <div className="font-serif text-[2.6vh] text-text">选择一篇日记</div>
-                <div className="mt-[0.7vh] text-[1.75vh]">自醒写下的内容会在这里展开。</div>
+                <div className="font-serif text-[2.6vh] text-text">{loading ? "正在读取日记" : error ? "日记读取失败" : "选择一篇日记"}</div>
+                <div className="mt-[0.7vh] text-[1.75vh]">{error ? "请点击顶部刷新重试。" : "自醒写下的内容会在这里展开。"}</div>
               </div>
             )}
           </section>

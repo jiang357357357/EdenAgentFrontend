@@ -1,3 +1,5 @@
+import { Brain } from 'lucide-react'
+import { SessionPanelDialog } from '../chat/SessionPanelDialog'
 import { useEffect, useRef, useState } from 'react'
 import type { MemoryCandidateView, MemoryCandidatesPage } from '@eden/api'
 import { listMemoryCandidates, resumeMemoryCandidates } from '../../lib/memory-candidates'
@@ -55,13 +57,14 @@ export function MemoryCandidatesPanel({ sessionId }: { sessionId: string }) {
     } finally { if (current === epoch.current) setPending(null) }
   }
 
-  return <div className="relative">
-    <button type="button" aria-expanded={open} onClick={() => { setOpen(value => !value); setCursor(undefined) }}
-      className="h-8 rounded px-2 text-xs text-text-muted hover:bg-card hover:text-text">记忆候选</button>
-    {open && <section aria-label="当前会话记忆候选" className="absolute right-0 top-10 z-50 max-h-[65vh] w-[min(24rem,85vw)] overflow-y-auto rounded-lg border border-border bg-bg p-4 text-sm text-text shadow-xl"
-      onKeyDown={event => { if (event.key === 'Escape') setOpen(false) }}>
-      <div className="mb-2 flex items-center justify-between"><strong>待保存的记忆</strong>
-        <button type="button" onClick={() => setOpen(false)} aria-label="关闭记忆候选">关闭</button></div>
+  return <div className="shrink-0">
+    <button type="button" aria-haspopup="dialog" aria-label="打开记忆候选" title="记忆候选"
+      onClick={() => { setOpen(true); setCursor(undefined) }}
+      className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-card hover:text-text">
+      <Brain className="h-4 w-4" />
+    </button>
+    {open && <SessionPanelDialog title="记忆候选" onClose={() => setOpen(false)}>
+      {!loading && !error && <p className="mb-2 text-xs text-text-muted">本页 {page.items.reduce((count, item) => count + item.candidates.length, 0)} 条候选记忆</p>}
       <p className="mb-3 text-xs text-text-muted">候选尚未成为长期记忆。重新审批后，由你决定是否保存。</p>
       {error && <p role="alert" className="mb-2 text-red-500">{error}</p>}
       {notice && <p role="status" className="mb-2 text-xs text-text-muted">{notice}</p>}
@@ -80,6 +83,6 @@ export function MemoryCandidatesPanel({ sessionId }: { sessionId: string }) {
         {cursor && <button type="button" disabled={loading || pending !== null} onClick={() => setCursor(undefined)}>返回首页</button>}
         {page.nextCursor && <button type="button" disabled={loading || pending !== null} onClick={() => setCursor(page.nextCursor!)}>下一页</button>}
       </div>
-    </section>}
+    </SessionPanelDialog>}
   </div>
 }

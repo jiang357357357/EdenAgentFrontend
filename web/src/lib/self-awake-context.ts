@@ -8,6 +8,8 @@ export type SelfAwakeToolExecution = {
   name: string
   status: "running" | "succeeded" | "failed"
   result: string
+  args?: unknown
+  rawResult?: unknown
 }
 
 function compactResult(value: unknown) {
@@ -26,13 +28,14 @@ export function selfAwakeToolExecutions(value: unknown): SelfAwakeToolExecution[
   for (const item of events) {
     const event = record(item)
     const payload = record(event.payload)
-    const eventType = String(event.eventType ?? event.event_type ?? "")
+    const eventType = String(event.kind ?? event.eventType ?? event.event_type ?? "")
     const id = String(payload.toolCallId ?? payload.tool_call_id ?? "")
     if (!id) continue
     if (eventType === "agent.tool_execution_start") {
       calls.set(id, {
         id,
         name: String(payload.toolName ?? payload.tool_name ?? "未知工具"),
+        args: payload.args ?? payload.arguments,
         status: "running",
         result: "执行中",
       })
@@ -42,6 +45,7 @@ export function selfAwakeToolExecutions(value: unknown): SelfAwakeToolExecution[
       calls.set(id, {
         ...existing,
         status: failed ? "failed" : "succeeded",
+        rawResult: payload.result ?? payload.output ?? payload.error,
         result: compactResult(payload.result ?? payload.output ?? payload.error),
       })
     }

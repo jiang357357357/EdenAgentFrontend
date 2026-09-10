@@ -1,3 +1,5 @@
+import { Network } from 'lucide-react'
+import { SessionPanelDialog } from './SessionPanelDialog'
 import { useEffect, useState } from 'react'
 import { useRuntimeOrigin } from '../../lib/use-runtime-origin'
 import { useScopedRpc } from '../../lib/use-scoped-rpc'
@@ -55,9 +57,12 @@ function ScopedSubagentPanel({ sessionId }: { sessionId: string }) {
   }
   const agent = agents.find(item => item.id === selected)
   return <div className="relative text-xs">
-    <button onClick={() => setOpen(!open)} className="rounded border px-3 py-1.5">子任务 · {agents.length}</button>
-    {open && <section className="absolute right-0 top-9 z-40 max-h-[70vh] w-[min(620px,85vw)] overflow-auto rounded-xl border border-stone-200 bg-white p-4 shadow-xl">
-      <header className="flex justify-between"><b>子智能体任务</b><button onClick={() => setOpen(false)}>关闭</button></header>
+    <button type="button" onClick={() => setOpen(true)} aria-label={`子任务，共 ${agents.length} 个`} title={`子任务 · ${agents.length}`} aria-haspopup="dialog"
+      className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-card hover:text-text">
+      <Network className="h-4 w-4" />
+      {agents.length > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 rounded-full bg-accent px-1 text-[10px] leading-4 text-white">{agents.length > 99 ? '99+' : agents.length}</span>}
+    </button>
+    {open && <SessionPanelDialog title="子任务" onClose={() => setOpen(false)}>
       <LocalModelProfiles key={sessionId} />
       <MonChildModels key={sessionId} sessionId={sessionId} />
       <SubagentRoleEditor key={sessionId} role={role} onSaved={async () => { setRoles(await rpcRequest('agent.roles', {})); setSpawnKey(crypto.randomUUID()) }} />
@@ -105,6 +110,6 @@ function ScopedSubagentPanel({ sessionId }: { sessionId: string }) {
           <button disabled={busy || !['queued', 'running'].includes(agent.status)} onClick={() => void run(() => rpcRequest('agent.interrupt', { agentId: agent.id }))} className="text-red-700">中断任务</button>
         </div>
       </div>}
-    </section>}
+    </SessionPanelDialog>}
   </div>
 }

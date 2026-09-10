@@ -153,3 +153,26 @@ test("manual replay uses the same chunks as completed streaming speech", () => {
   const streamed = consumeSpeechStream(text, "all", undefined, true)
   assert.deepEqual(speechChunksForTTS(text, "all"), streamed.chunks)
 })
+
+test("Chinese double dash separates speech while single dashes remain inline", () => {
+  assert.deepEqual(speechChunksForTTS("我准备好了——现在出发。", "all"), ["我准备好了——", "现在出发。"])
+  assert.deepEqual(speechChunksForTTS("范围 A—B 和 foo-bar。", "all"), ["范围 A—B 和 foo-bar。"])
+  assert.deepEqual(speechChunksForTTS("等待————然后出发。", "all"), ["等待————", "然后出发。"])
+})
+
+test("streamed double dash commits once after lookahead and matches manual replay", () => {
+  let cursor
+  const chunks = []
+  for (const text of ["我准备好了—", "我准备好了——", "我准备好了——现", "我准备好了——现在出发。"] ) {
+    const result = consumeSpeechStream(text, "all", cursor)
+    assert.equal(result.resetRequired, false)
+    if (text.endsWith("—")) assert.deepEqual(result.chunks, [])
+    chunks.push(...result.chunks)
+    cursor = result.cursor
+  }
+  const result = consumeSpeechStream("我准备好了——现在出发。", "all", cursor, true)
+  assert.equal(result.resetRequired, false)
+  chunks.push(...result.chunks)
+  assert.deepEqual(chunks, ["我准备好了——", "现在出发。"])
+  assert.deepEqual(chunks, speechChunksForTTS("我准备好了——现在出发。", "all"))
+})

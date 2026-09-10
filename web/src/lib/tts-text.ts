@@ -161,7 +161,7 @@ function isEnglishAbbreviation(text: string, start: number, periodIndex: number)
 
 function absorbBoundarySuffix(text: string, start: number) {
   let end = start
-  while (end < text.length && /[。！？!?；;.…"'”’）)\]]/.test(text[end])) end += 1
+  while (end < text.length && /[。！？!?；;.…—"'”’）)\]]/.test(text[end])) end += 1
   while (end < text.length && /[ \t]/.test(text[end])) end += 1
   return end
 }
@@ -172,6 +172,7 @@ function streamingBoundaryEnd(text: string, start: number, flush: boolean) {
     const isNewline = character === "\n"
     const isStrongTerminal = /[。！？!?]/.test(character)
     const isSemicolon = /[；;]/.test(character) && index - start + 1 >= MIN_SEMICOLON_SPLIT_CHARS
+    const isChineseDash = character === "—" && text[index + 1] === "—"
     const isChineseEllipsis = character === "…" && text[index + 1] === "…"
     const isAsciiEllipsis = character === "." && text.slice(index, index + 3) === "..."
     let isEnglishPeriod = false
@@ -180,9 +181,9 @@ function streamingBoundaryEnd(text: string, start: number, flush: boolean) {
       const hasBoundaryLookahead = next !== undefined && /[\s"'”’）)\]]/.test(next)
       isEnglishPeriod = (flush && next === undefined) || (hasBoundaryLookahead && !isEnglishAbbreviation(text, start, index))
     }
-    if (!isNewline && !isStrongTerminal && !isSemicolon && !isChineseEllipsis && !isAsciiEllipsis && !isEnglishPeriod) continue
+    if (!isNewline && !isStrongTerminal && !isSemicolon && !isChineseEllipsis && !isChineseDash && !isAsciiEllipsis && !isEnglishPeriod) continue
 
-    const punctuationEnd = isChineseEllipsis ? index + 2 : isAsciiEllipsis ? index + 3 : index + 1
+    const punctuationEnd = isChineseEllipsis || isChineseDash ? index + 2 : isAsciiEllipsis ? index + 3 : index + 1
     const end = absorbBoundarySuffix(text, punctuationEnd)
     // A terminal at the current stream tail is still provisional: the next
     // delta may turn `1.` into `1.8`, add a closing quote, or complete Markdown.

@@ -1,3 +1,5 @@
+import { RuntimeDiagnostics } from '../../components/chat/RuntimeDiagnostics'
+import type { Session } from '../../types'
 import { useEffect, useRef, useState } from "react"
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react"
 import {
@@ -66,6 +68,8 @@ type SettingsSection = "pet" | "input" | "advanced" | "about"
 type SaveState = "idle" | "saving" | "saved"
 
 interface SettingsPageProps {
+  sessions?: Session[]
+  activeSessionId?: string
   assistant?: CoreAssistant | null
   assistantError?: string
   activeCharacterAction?: ActiveCharacterAction
@@ -352,6 +356,8 @@ function WindowControls() {
 }
 
 export function SettingsPage({
+  sessions = [],
+  activeSessionId,
   assistant,
   assistantError,
   activeCharacterAction,
@@ -933,6 +939,7 @@ export function SettingsPage({
 
           {activeSection === "advanced" ? (
             <div className="grid h-full w-full content-start overflow-y-auto px-[4%] pb-[4%] pt-[2%]">
+              <RuntimeDiagnostics sessions={sessions} activeSessionId={activeSessionId} />
               <ToggleRow label="开启语音输入" description="允许通过麦克风向当前角色输入消息" value={voiceInputEnabled} onChange={(value) => patchSettings({ voiceInputEnabled: value })} />
               <div className="border-t border-border px-2 py-5">
                 <div className="mb-3">

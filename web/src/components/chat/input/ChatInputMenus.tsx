@@ -98,9 +98,9 @@ export function ChatInputMenus({
             <div className={cn("px-3 py-3 text-sm", overlay ? "text-stone-300" : "text-text-muted")}>正在读取模型...</div>
           ) : modelConfig?.options.length ? (
             <ModelSelectionMenu config={modelConfig} submitting={modelSubmitting} overlay={overlay} onSelect={onSelectModel} />
-          ) : (
+          ) : !modelError ? (
             <div className={cn("px-3 py-3 text-sm", overlay ? "text-stone-300" : "text-text-muted")}>没有可用模型</div>
-          )}
+          ) : null}
         </div>
       )}
     </>

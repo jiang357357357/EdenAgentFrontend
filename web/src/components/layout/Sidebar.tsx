@@ -1,5 +1,6 @@
 import {
   Brain,
+  LogOut,
   Cable,
   ChevronDown,
   ChevronRight,
@@ -38,6 +39,8 @@ interface SidebarProps {
   onOpenSkills: () => void
   onOpenConnectors: () => void
   onOpenConfiguration: () => void
+  onLogout?: () => Promise<void> | void
+  logoutLabel?: string
   onOpenSettings: () => void
   onOpenFile: (entry: WorkspaceEntry) => void
   onWorkspaceChanged: () => void
@@ -137,6 +140,8 @@ export interface ActivityRailProps {
   onOpenSkills: () => void
   onOpenConnectors: () => void
   onOpenConfiguration: () => void
+  onLogout?: () => Promise<void> | void
+  logoutLabel?: string
   onOpenSettings: () => void
 }
 
@@ -171,11 +176,13 @@ export function ActivityRail({
   onOpenSkills,
   onOpenConnectors,
   onOpenConfiguration,
+  onLogout,
+  logoutLabel = "退出登录",
   onOpenSettings,
 }: ActivityRailProps) {
   return (
     <nav className="flex h-full w-16 shrink-0 flex-col border-r border-border bg-bg" aria-label="主导航">
-      <div className="flex-1 pb-[0.6vh]">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-[0.6vh]">
         <ActivityButton label="文件" icon={FolderOpen} active={active === "files"} onClick={onOpenFiles} />
         <ActivityButton label="会话" icon={MessageSquare} active={active === "sessions"} onClick={onOpenSessions} />
         <ActivityButton label="参与者" icon={UsersRound} onClick={onOpenParticipants} />
@@ -187,6 +194,7 @@ export function ActivityRail({
       </div>
       <ActivityButton label="配置" icon={SlidersHorizontal} active={active === "configuration"} onClick={onOpenConfiguration} />
       <ActivityButton label="设置" icon={Settings} onClick={onOpenSettings} />
+      {onLogout && <ActivityButton label={logoutLabel} icon={LogOut} onClick={() => { void onLogout() }} />}
     </nav>
   )
 }
@@ -242,6 +250,8 @@ export function Sidebar({
   onOpenSkills,
   onOpenConnectors,
   onOpenConfiguration,
+  onLogout,
+  logoutLabel = "退出登录",
   onOpenSettings,
   onOpenFile,
   onWorkspaceChanged,
@@ -265,28 +275,29 @@ export function Sidebar({
   const sessionGroups = useMemo(() => groupSessions(filteredSessions), [filteredSessions])
 
   useEffect(() => {
-    if (activity !== "files" || workspaceLoaded || workspaceLoading) return
+    if (activity !== "files" || workspaceLoaded) return
+    let disposed = false
     setWorkspaceLoading(true)
     setWorkspaceError("")
-    void Promise.allSettled([getWorkspace(), listWorkspaceDirectory()])
-      .then(([workspaceResult, directoryResult]) => {
-        const errors: string[] = []
-        if (workspaceResult.status === "fulfilled") {
-          setWorkspaceName(workspaceResult.value.name)
-          setWorkspacePath(workspaceResult.value.path)
-          setWorkspacePending(workspaceResult.value.pendingPath ?? "")
-        } else {
-          errors.push(workspaceResult.reason instanceof Error ? workspaceResult.reason.message : "读取工作区信息失败")
-        }
-        if (directoryResult.status === "fulfilled") {
-          setWorkspaceEntries(directoryResult.value.entries)
-        } else {
-          errors.push(directoryResult.reason instanceof Error ? directoryResult.reason.message : "读取工作区目录失败")
-        }
-        setWorkspaceError(errors.join("；"))
-      })
-      .finally(() => { setWorkspaceLoading(false); setWorkspaceLoaded(true) })
-  }, [activity, workspaceLoaded, workspaceLoading])
+    void (async () => {
+      try {
+        const workspace = await getWorkspace()
+        if (disposed) return
+        setWorkspaceName(workspace.path ? workspace.name : "未选择文件夹")
+        setWorkspacePath(workspace.path)
+        setWorkspacePending(workspace.pendingPath ?? "")
+        // An unconfigured workspace is an empty state, not a directory-read failure.
+        if (!workspace.path) { setWorkspaceEntries([]); return }
+        const directory = await listWorkspaceDirectory()
+        if (!disposed) setWorkspaceEntries(directory.entries)
+      } catch (reason) {
+        if (!disposed) setWorkspaceError(reason instanceof Error ? reason.message : "读取工作区失败")
+      } finally {
+        if (!disposed) { setWorkspaceLoading(false); setWorkspaceLoaded(true) }
+      }
+    })()
+    return () => { disposed = true }
+  }, [activity, workspaceLoaded])
 
   useEffect(() => {
     const refreshWorkspace = () => {
@@ -355,7 +366,9 @@ export function Sidebar({
     setWorkspaceSwitching(true)
     setWorkspaceError("")
     try {
-      const selected = await selectDesktopWorkspaceDirectory(workspacePath)
+      const selected = window.edenAgentDesktop
+        ? await selectDesktopWorkspaceDirectory(workspacePath)
+        : window.prompt("输入服务端上的文件夹绝对路径", workspacePath)?.trim()
       if (!selected) return
       setWorkspaceMenuOpen(false)
       const result = await switchWorkspace(activeId || sessions[0]?.id, selected)
@@ -388,6 +401,8 @@ export function Sidebar({
           onOpenSkills={onOpenSkills}
           onOpenConnectors={onOpenConnectors}
           onOpenConfiguration={onOpenConfiguration}
+          onLogout={onLogout}
+          logoutLabel={logoutLabel}
           onOpenSettings={onOpenSettings}
         />
 
@@ -401,7 +416,7 @@ export function Sidebar({
             {workspaceMenuOpen ? (
               <div className="absolute left-4 top-[calc(100%-0.4rem)] z-40 w-52 rounded-xl border border-border bg-card p-1.5 text-sm shadow-xl">
                 <button type="button" onClick={() => { setWorkspaceMenuOpen(false); void openDesktopWorkspaceDirectory(workspacePath) }} disabled={!window.edenAgentDesktop || !workspacePath} className="flex w-full rounded-lg px-3 py-2 text-left text-text hover:bg-bg disabled:opacity-40">在系统文件管理器中打开</button>
-                <button type="button" onClick={() => void chooseWorkspace()} disabled={!window.edenAgentDesktop || workspaceSwitching || Boolean(workspacePending)} className="flex w-full rounded-lg px-3 py-2 text-left text-text hover:bg-bg disabled:opacity-40">{workspaceSwitching ? "正在选择…" : workspacePending ? "等待切换…" : "切换工作区…"}</button>
+                <button type="button" onClick={() => void chooseWorkspace()} disabled={workspaceSwitching || Boolean(workspacePending)} className="flex w-full rounded-lg px-3 py-2 text-left text-text hover:bg-bg disabled:opacity-40">{workspaceSwitching ? "正在选择…" : workspacePending ? "等待切换…" : "切换工作区…"}</button>
                 <div className="px-3 py-2 text-xs text-text-muted">{workspacePending ? `等待当前任务结束后切换到 ${workspacePending}` : "选择项目文件夹；没有会话时会自动保存当前空白会话"}</div>
               </div>
             ) : null}
@@ -492,7 +507,19 @@ export function Sidebar({
               {workspaceError ? (
                 <div className="mx-3 my-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
                   <div className="break-words">{workspaceError}</div>
+                  {!workspacePath && <button type="button" onClick={() => void chooseWorkspace()} disabled={workspaceSwitching || Boolean(workspacePending)} className="mr-2 mt-2 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium hover:bg-red-100 disabled:opacity-50">重新选择文件夹</button>}
                   <button type="button" onClick={retryWorkspace} className="mt-2 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium hover:bg-red-100">重新读取</button>
+                </div>
+              ) : null}
+              {!workspaceLoading && workspaceLoaded && !workspacePath && !workspaceError ? (
+                <div className="px-4 py-8 text-center">
+                  <FolderOpen className="mx-auto mb-3 h-8 w-8 text-text-muted" />
+                  <p className="text-sm text-text-muted">尚未打开文件夹</p>
+                  <p className="mt-2 text-xs leading-relaxed text-text-muted">选择项目文件夹后，即可浏览文件。</p>
+                  <button type="button" onClick={() => void chooseWorkspace()} disabled={workspaceSwitching || Boolean(workspacePending)}
+                    className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm text-white disabled:opacity-50">
+                    {workspaceSwitching ? "正在选择…" : workspacePending ? "等待切换…" : "打开文件夹"}
+                  </button>
                 </div>
               ) : null}
               {!workspaceLoading ? workspaceEntries.map((entry) => <FileTreeNode key={entry.path} entry={entry} onOpenFile={onOpenFile} />) : null}

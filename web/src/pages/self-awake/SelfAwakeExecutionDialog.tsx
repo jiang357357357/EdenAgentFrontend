@@ -50,10 +50,11 @@ export function SelfAwakeExecutionDialog({ runId, onClose }: { runId: string; on
     return () => { active = false }
   }, [runId, refresh])
   const record = object(data?.record)
-  const decision = object(record.decision)
-  const notification = object(record.notification)
+  const run = object(record.run)
+  const decision = object(run.decision)
+  const notification = object(record.notificationHistory)
   const events = Array.isArray(record.events) ? record.events.map(object) : []
-  const diaries = Array.isArray(record.diaries) ? record.diaries.map(object) : []
+  const diaries = Array.isArray(run.diaries) ? run.diaries.map(object) : []
   const download = () => {
     if (!data) return
     const url = URL.createObjectURL(new Blob([JSON.stringify(data.record, null, 2)], { type: "application/json" }))
@@ -70,13 +71,13 @@ export function SelfAwakeExecutionDialog({ runId, onClose }: { runId: string; on
       </div>
       <div className="overflow-y-auto py-4 space-y-4 text-sm">
         {error ? <p role="alert" className="text-red-600">{error}</p> : !data ? <p>正在读取执行记录…</p> : <>
-          <p>状态：{statuses[String(record.status)] ?? String(record.status ?? "未知")} · 尝试 {String(record.attempts ?? 0)} 次 · 调用工具 {String(record.toolCallCount ?? 0)} 次</p>
-          <p className="break-all text-text-muted">已保存文件：{data.path}</p>
-          <p>触发原因：{String(object(record.trigger).reason ?? "未记录")}</p>
+          <p>状态：{statuses[String(run.status)] ?? String(run.status ?? "未知")} · 尝试 {String(run.attempts ?? 0)} 次 · 调用工具 {String(events.filter(event => event.kind === "agent.tool_execution_start").length)} 次</p>
+          <p className="break-all text-text-muted">记录标识：{data.path}</p>
+          <p>触发原因：{String(object(object(run.request).trigger).reason ?? "未记录")}</p>
           {diaries.map((diary, index) => <section key={index}><h3 className="font-semibold">{String(diary.title ?? "工作日记")}</h3><p className="mt-2 whitespace-pre-wrap">{String(diary.content ?? "")}</p></section>)}
           {!diaries.length && <p>本轮尚无日记记录。</p>}
           {decision.action != null && <p>行动决策：{actions[String(decision.action)] ?? String(decision.action)}</p>}
-          {record.error != null && <p className="text-red-600">{String(record.error)}</p>}
+          {run.lastError != null && <p className="text-red-600">{String(run.lastError)}</p>}
           {notification.state != null && <section className="rounded border border-border p-3">
             <h3 className="font-semibold">联系用户</h3>
             <p>发送状态：{({ delivered: "渠道已接收", pending: "等待发送或重试", failed: "发送失败", suppressed: "本次未发送" } as Record<string, string>)[String(notification.state)] ?? String(notification.state)}</p>
@@ -94,9 +95,9 @@ export function SelfAwakeExecutionDialog({ runId, onClose }: { runId: string; on
             </div> })}
           </section>}
           <h3 className="font-semibold">实际执行过程</h3>
-          {Number(record.toolCallCount ?? 0) === 0 && <p className="text-text-muted">本轮没有调用工具。</p>}
+          {!events.some(event => event.kind === "agent.tool_execution_start") && <p className="text-text-muted">本轮没有调用工具。</p>}
           {events.map((event, index) => <details key={String(event.id ?? index)} className="rounded border border-border p-3">
-            <summary className="cursor-pointer">{new Date(Number(event.createdAt)).toLocaleString()} · {labels[String(event.eventType)] ?? String(event.eventType)} {String(object(event.payload).toolName ?? "")}</summary>
+            <summary className="cursor-pointer">{new Date(Number(event.createdAt)).toLocaleString()} · {labels[String(event.kind)] ?? String(event.kind)} {String(object(event.payload).toolName ?? "")}</summary>
             <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(event.payload, null, 2)}</pre>
           </details>)}
           <p className="text-xs text-text-muted">{String(record.recordNote ?? "")}</p>
