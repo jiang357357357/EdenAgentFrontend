@@ -32,6 +32,7 @@ export function selfAwakeToolExecutions(value: unknown): SelfAwakeToolExecution[
     const id = String(payload.toolCallId ?? payload.tool_call_id ?? "")
     if (!id) continue
     if (eventType === "agent.tool_execution_start") {
+      if (calls.has(id)) continue
       calls.set(id, {
         id,
         name: String(payload.toolName ?? payload.tool_name ?? "未知工具"),
@@ -40,7 +41,7 @@ export function selfAwakeToolExecutions(value: unknown): SelfAwakeToolExecution[
         result: "执行中",
       })
     } else if (eventType === "agent.tool_execution_end") {
-      const existing = calls.get(id) ?? { id, name: "未知工具", status: "running" as const, result: "执行中" }
+      const existing = calls.get(id) ?? { id, name: String(payload.toolName ?? payload.tool_name ?? "未知工具"), status: "running" as const, result: "执行中" }
       const failed = payload.isError === true || payload.is_error === true
       calls.set(id, {
         ...existing,

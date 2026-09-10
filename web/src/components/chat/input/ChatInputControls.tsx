@@ -75,6 +75,7 @@ export function TokenMeter({
   contextWindow: number
   breakdown?: import("../../../types").TokenBreakdown
 }) {
+  const knownTokens = (value: number | undefined) => value === undefined ? "未提供" : formatTokenCount(value)
   const authoritativeContextTokens = contextTokens
   const providerAdjustment = breakdown?.providerAdjustment ?? 0
   const contextLabel = inputTokens > 0
@@ -100,7 +101,7 @@ export function TokenMeter({
           "relative flex h-[4.7vh] w-[4.7vh] items-center justify-center rounded-full bg-card text-[1.65vh] font-medium tabular-nums outline-none transition-transform hover:scale-[1.04] focus-visible:scale-[1.04]",
           warning ? "text-red-600" : "text-text-muted",
         )}
-        aria-label={`本次输入约 ${inputTokens} tokens，角色人设约 ${breakdown?.character ?? 0}，技能约 ${breakdown?.skills ?? 0}，系统约 ${breakdown?.system ?? 0}，工具约 ${breakdown?.tools ?? 0}，对话历史约 ${breakdown?.history ?? contextTokens - inputTokens}，供应商输入 ${breakdown?.providerInput ?? 0}，供应商输出 ${breakdown?.providerOutput ?? 0}，命中缓存 ${breakdown?.cacheRead ?? 0}，未命中缓存 ${breakdown?.cacheMiss ?? 0}，缓存前缀${promptCacheState}，当前上下文 ${authoritativeContextTokens}，可用上限 ${contextWindow}`}
+        aria-label={`上下文占用约 ${Math.round(contextPercent)}%，${authoritativeContextTokens} tokens，上限 ${contextWindow}；本次待发送输入约 ${inputTokens} tokens`}
         aria-describedby={tooltipId}
       >
         <Circle className="absolute inset-0 h-full w-full text-border" strokeWidth={1.7} aria-hidden="true" />
@@ -114,7 +115,7 @@ export function TokenMeter({
           strokeLinecap="round"
           aria-hidden="true"
         />
-        <span className="relative z-10 max-w-[3.1vh] truncate">{formatTokenCount(inputTokens)}</span>
+        <span className="relative z-10 max-w-[3.1vh] truncate">{Math.round(contextPercent)}%</span>
       </button>
 
       <div
@@ -127,24 +128,24 @@ export function TokenMeter({
           <span className="text-text-muted">本次输入</span>
           <strong className="font-medium tabular-nums">{formatTokenCount(inputTokens)}</strong>
           <span className="text-text-muted">角色人设</span>
-          <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.character ?? 0)}</strong>
+          <strong className="font-medium tabular-nums">{knownTokens(breakdown?.character)}</strong>
           <span className="text-text-muted">技能</span>
-          <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.skills ?? 0)}</strong>
+          <strong className="font-medium tabular-nums">{knownTokens(breakdown?.skills)}</strong>
           <span className="text-text-muted">系统</span>
-          <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.system ?? 0)}</strong>
+          <strong className="font-medium tabular-nums">{knownTokens(breakdown?.system)}</strong>
           <span className="text-text-muted">工具</span>
-          <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.tools ?? 0)}</strong>
+          <strong className="font-medium tabular-nums">{knownTokens(breakdown?.tools)}</strong>
           <span className="text-text-muted">对话历史</span>
-          <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.history ?? Math.max(0, contextTokens - inputTokens))}</strong>
+          <strong className="font-medium tabular-nums">{breakdown?.providerInput !== undefined ? knownTokens(breakdown.history) : formatTokenCount(breakdown?.history ?? Math.max(0, contextTokens - inputTokens))}</strong>
           {breakdown?.providerInput != null && (
             <>
-              <span className="text-text-muted">供应商输入</span>
+              <span className="text-text-muted">最近请求输入</span>
               <strong className="font-medium tabular-nums">{formatTokenCount(breakdown.providerInput)}</strong>
             </>
           )}
           {breakdown?.providerOutput != null && (
             <>
-              <span className="text-text-muted">供应商输出</span>
+              <span className="text-text-muted">最近请求输出</span>
               <strong className="font-medium tabular-nums">{formatTokenCount(breakdown.providerOutput)}</strong>
             </>
           )}
@@ -157,14 +158,14 @@ export function TokenMeter({
             </>
           )}
           <span className="text-text-muted">命中缓存</span>
-          <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.cacheRead ?? 0)}</strong>
+          <strong className="font-medium tabular-nums">{knownTokens(breakdown?.cacheRead)}</strong>
           <span className="text-text-muted">未命中缓存</span>
-          <strong className="font-medium tabular-nums">{formatTokenCount(breakdown?.cacheMiss ?? 0)}</strong>
+          <strong className="font-medium tabular-nums">{knownTokens(breakdown?.cacheMiss)}</strong>
           <span className="text-text-muted">缓存命中率</span>
-          <strong className="font-medium tabular-nums">{Math.round((breakdown?.cacheHitRate ?? 0) * 100)}%</strong>
+          <strong className="font-medium tabular-nums">{breakdown?.cacheHitRate === undefined ? "未提供" : `${Math.round(breakdown.cacheHitRate * 100)}%`}</strong>
           <span className="text-text-muted">缓存前缀</span>
           <strong className="max-w-[10vh] truncate text-right font-medium" title={breakdown?.promptCacheFingerprint}>
-            {promptCacheState}
+            {breakdown?.promptCacheEpoch === undefined ? "未提供" : promptCacheState}
           </strong>
           <span className="text-text-muted">{contextLabel}</span>
           <strong className="font-medium tabular-nums">{formatTokenCount(authoritativeContextTokens)}</strong>

@@ -18,3 +18,16 @@ test('does not invent a response association when evidence is missing', () => {
   assert.equal(result.rounds[0].responded,false)
   assert.equal(result.unassigned.length,1)
 })
+test('replayed request and tool events do not create duplicate cards or inflate counts', () => {
+  const request=event('model.request',{requestId:'one',model:'model'})
+  const start=event('agent.tool_execution_start',{toolCallId:'a',toolName:'read'})
+  const result=selfAwakeModelRounds({events:[request,request,event('model.response',{requestId:'one'}),start,start]})
+  assert.equal(result.rounds.length,1)
+  assert.deepEqual(result.rounds[0].tools.map(call=>call.id),['a'])
+})
+test('tool completion without a start remains visible as unassigned evidence', () => {
+  const result=selfAwakeModelRounds({events:[event('agent.tool_execution_end',{toolCallId:'a',toolName:'read',result:'done'})]})
+  assert.equal(result.unassigned.length,1)
+  assert.equal(result.unassigned[0].status,'succeeded')
+  assert.equal(result.unassigned[0].name,'read')
+})

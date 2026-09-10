@@ -1,3 +1,4 @@
+import { modelContextUsage } from "./model-context-usage"
 import { EdenAgentRpcClient } from './rpc-client'
 import { uploadAttachmentBatch } from './attachment-upload'
 import { initializeResultSchema, rpcNotifications } from '@eden/api'
@@ -361,7 +362,7 @@ function apiTokenBreakdown(value: unknown): import("../types").TokenBreakdown {
   const breakdown = jsonObject(value) ?? {}
   const number = (key: string) => {
     const item = breakdown[key]
-    return typeof item === "bigint" ? Number(item) : optionalNumber(item) ?? 0
+    return typeof item === "bigint" ? Number(item) : optionalNumber(item)
   }
   return {
     character: number("character"),
@@ -815,6 +816,10 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
       titleSource: String(value.titleSource ?? "generated"),
       updatedAt: Number(event.createdAt),
     } }]
+  }
+  if (event.eventType === "model.response") {
+    const usage = modelContextUsage(event.payload)
+    return usage ? [{ type: "session.context_usage", properties: { sessionID, ...usage, updatedAt: Number(event.createdAt) } }] : []
   }
   if (event.eventType === "context.usage_updated") {
     const value = event.payload as JsonObject

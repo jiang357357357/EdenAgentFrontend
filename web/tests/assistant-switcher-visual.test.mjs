@@ -71,10 +71,10 @@ test("Spine stays visually empty until its first fitted frame is ready", () => {
 test("a visible non-focusable desktop-pet window still renders Spine frames", () => {
   assert.doesNotMatch(spineSource, /document\.hidden \|\| !document\.hasFocus\(\)/)
   assert.match(spineSource, /if \(document\.hidden \|\| !isIntersecting\) app\.ticker\.stop\(\)/)
-  assert.match(spineSource, /spine\.y = placement\.y\s+app\.render\(\)/)
+  assert.match(spineSource, /spine\.y = [^\n]+\n\s+app\.render\(\)/)
 })
 
-test("memory-lobby Spine skips its intro and renders against a stable covered camera", () => {
+test("memory-lobby Spine skips its intro and uses a stable camera with full framing in adjustable views", () => {
   assert.match(spineSource, /name\.toLowerCase\(\) === "start_idle_01"/)
   assert.match(spineSource, /layoutRef\.current !== "memory-lobby"/)
   assert.match(spineSource, /setAnimation\(0, idleAnimation, true\)/)
@@ -82,7 +82,7 @@ test("memory-lobby Spine skips its intro and renders against a stable covered ca
   assert.match(spineSource, /getAttachmentBounds\(loaded\.spine, slotName\)/)
   assert.match(spineSource, /cameraBoundsRef\.current/)
   assert.doesNotMatch(spineSource, /skeletonData\.width/)
-  assert.match(spineSource, /fit: memoryLobby \? "cover" : "contain"/)
+  assert.match(spineSource, /fit: memoryLobby && !adjustable \? "cover" : "contain"/)
   assert.match(spineSource, /"overflow-hidden"/)
 })
 

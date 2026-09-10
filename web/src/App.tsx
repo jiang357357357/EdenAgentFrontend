@@ -209,6 +209,7 @@ export default function App() {
     abortSession: abortRuntimeSession,
     compactSession: compactRuntimeSession,
     connectionError,
+    runtimeError,
     createSession: createRuntimeSession,
     deleteSession: deleteRuntimeSession,
     renameSession: renameRuntimeSession,
@@ -1114,6 +1115,7 @@ export default function App() {
                 activeCharacterAction={activeCharacterAction}
                 isThinking={isThinking}
                 connectionError={connectionError}
+                runtimeError={runtimeError}
                 activePendingPermissions={activePendingPermissions}
                 messagesScrollRef={messagesScrollRef}
                 messagesEndRef={messagesEndRef}

@@ -58,6 +58,14 @@ interface UseSessionRuntimeOptions {
   defaultParticipantID?: number | string;
 }
 
+async function refreshModelWhenIdle(sessionID: string) {
+  try { await getRuntimeModelConfig(sessionID); }
+  catch (error) {
+    // Reading the catalogue can rebind models. A busy session keeps its binding.
+    if (!(error instanceof Error && error.message === 'Wait for the session to become idle before configuration')) throw error;
+  }
+}
+
 export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOptions = {}) {
   const [state, dispatch] = useReducer(runtimeReducer, initialRuntimeState);
   const [permissionMode, setPermissionModeState] = useState<PermissionMode>('restricted');
@@ -150,7 +158,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         if (cancelled) return;
         const firstSessionID = activeSessionIdRef.current ?? sessions[0]?.id;
         if (firstSessionID) {
-          await getRuntimeModelConfig(firstSessionID);
+          await refreshModelWhenIdle(firstSessionID);
           await refreshSessionMessages(firstSessionID);
         }
         await refreshBlockers();
@@ -217,7 +225,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
           try {
             await Promise.all([refreshSessions(), refreshBlockers()]);
             if (sessionID) {
-              await getRuntimeModelConfig(sessionID);
+              await refreshModelWhenIdle(sessionID);
               await refreshSessionMessages(sessionID);
             }
           } catch (error) {
@@ -535,7 +543,8 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     abortSession,
     answerQuestion,
     connectionState: state.connectionState,
-    connectionError: state.connectionError,
+    connectionError: state.connectionState !== 'connected' ? state.connectionError : undefined,
+    runtimeError: state.connectionState === 'connected' ? state.connectionError : undefined,
     compactSession,
     createSession,
     deleteSession,

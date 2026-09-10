@@ -28,5 +28,5 @@ test("voice calls stay behind the Rust Agent Server boundary", () => {
 test("single-participant voice metadata has durable and historical fallbacks", () => {
   assert.match(chatSource, /speaker\?\.ttsConfigID \?\? soloTTSConfigId/)
   assert.match(chatSource, /participants\?\.\[0\]\?\.sttConfigID/)
-  assert.match(runtimeSource, /onOpen:[\s\S]*getRuntimeModelConfig\(sessionID\)/)
+  assert.match(runtimeSource, /onOpen:[\s\S]*refreshModelWhenIdle\(sessionID\)/)
 })

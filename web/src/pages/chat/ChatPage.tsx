@@ -69,6 +69,7 @@ interface ChatPageProps {
   activeCharacterAction?: ActiveCharacterAction
   isThinking: boolean
   connectionError?: string
+  runtimeError?: string
   activePendingPermissions: PendingPermission[]
   messagesScrollRef: React.RefObject<HTMLDivElement | null>
   messagesEndRef: React.RefObject<HTMLDivElement | null>
@@ -111,6 +112,7 @@ export function ChatPage({
   activeCharacterAction,
   isThinking,
   connectionError,
+  runtimeError,
   activePendingPermissions,
   messagesScrollRef,
   messagesEndRef,
@@ -565,8 +567,8 @@ export function ChatPage({
             })}
             </div>
             <div className="ml-auto flex h-10 shrink-0 items-center bg-bg px-1.5">
-              {activeSessionId && !activeFile && <MemoryCandidatesPanel key={activeSessionId} sessionId={activeSessionId} />}
-              {activeSessionId && !activeFile && <SubagentPanel key={activeSessionId} sessionId={activeSessionId} />}
+              {activeSessionId && !activeFile && <MemoryCandidatesPanel key={`memory-${activeSessionId}`} sessionId={activeSessionId} />}
+              {activeSessionId && !activeFile && <SubagentPanel key={`subagents-${activeSessionId}`} sessionId={activeSessionId} />}
               <button type="button" onClick={() => setCharacterEditing(value => !value)}
                 aria-pressed={characterEditing} aria-label="调整角色位置" title={characterEditing ? "结束调整角色位置（Esc）" : "调整角色位置和大小"}
                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${characterEditing ? "bg-accent/10 text-accent" : "text-text-muted hover:bg-bg hover:text-text"}`}>
@@ -641,6 +643,7 @@ export function ChatPage({
               className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
             >
               <div className="mx-auto w-[95%] px-[1vw]">
+                {runtimeError ? <p role="alert" className="my-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">操作未完成：{runtimeError}</p> : null}
                 {connectionError ? (
                   <div className="flex h-[61vh] flex-col items-center justify-center text-center">
                     <div className="mb-[2vh] rounded-full border border-border bg-card px-[2vw] py-[1.2vh] text-[1.8vh] uppercase tracking-[0.15em] text-accent shadow-sm">

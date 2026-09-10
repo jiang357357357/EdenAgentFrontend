@@ -17,7 +17,7 @@ test('failed, pending and missing execution events are represented honestly', ()
     {event_type:'agent.tool_execution_end',payload:{tool_call_id:'failed',tool_name:'lookup',error:'denied',is_error:true}},
   ]}).map(({args, rawResult, ...call}) => call), [
     {id:'pending',name:'check',status:'running',result:'执行中'},
-    {id:'failed',name:'未知工具',status:'failed',result:'denied'},
+    {id:'failed',name:'lookup',status:'failed',result:'denied'},
   ])
 })
 test('observations remain visible when no diary was written', () => {

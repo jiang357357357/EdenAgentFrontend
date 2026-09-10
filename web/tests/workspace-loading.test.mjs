@@ -13,16 +13,15 @@ test("workspace loading has a bounded timeout and an explicit retry", () => {
   assert.match(clientSource, /rpcRequestWithTimeout\("workspace\.list", \{ path \}, 8_000\)/)
   assert.match(transportSource, /Promise\.race\(/)
   assert.match(transportSource, /请求 \$\{String\(method\)\} 超时/)
-  assert.match(sidebarSource, /Promise\.allSettled\(\[getWorkspace\(\), listWorkspaceDirectory\(\)\]\)/)
+  assert.match(sidebarSource, /const workspace = await getWorkspace\(\)/)
   assert.match(sidebarSource, /const retryWorkspace = \(\) =>/)
   assert.match(sidebarSource, />重新读取<\/button>/)
 })
 
-test("a workspace metadata failure does not hide a successful directory result", () => {
-  assert.match(sidebarSource, /directoryResult\.status === "fulfilled"/)
-  assert.match(sidebarSource, /setWorkspaceEntries\(directoryResult\.value\.entries\)/)
-  assert.match(sidebarSource, /!workspaceLoading \? workspaceEntries\.map/)
-  assert.doesNotMatch(sidebarSource, /!workspaceLoading && !workspaceError \? workspaceEntries\.map/)
+test("an unselected workspace skips directory queries and preserves an explicit empty state", () => {
+  assert.match(sidebarSource, /if \(!workspace\.path\) \{ setWorkspaceEntries\(\[\]\); return \}/)
+  assert.ok(sidebarSource.indexOf('if (!workspace.path)') < sidebarSource.indexOf('const directory = await listWorkspaceDirectory()'))
+  assert.match(sidebarSource, /if \(!disposed\) setWorkspaceEntries\(directory\.entries\)/)
 })
 
 test("workspace switching is available before the first chat session exists", () => {

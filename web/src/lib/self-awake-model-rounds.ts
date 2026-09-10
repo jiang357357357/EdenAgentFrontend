@@ -7,19 +7,28 @@ export function selfAwakeModelRounds(value: unknown) {
   const events = object(value).events
   const calls = new Map(selfAwakeToolExecutions(value).map(call => [call.id, call]))
   const rounds: SelfAwakeModelRound[] = [], unassigned: SelfAwakeToolExecution[] = []
+  const assigned = new Set<string>()
   let current: SelfAwakeModelRound | undefined
   for (const entry of Array.isArray(events) ? events : []) {
     const event = object(entry), payload = object(event.payload)
     if (event.kind === 'model.request') {
-      current = { id: String(payload.requestId), model: String(payload.model ?? ''), responded: false, tools: [] }
-      rounds.push(current)
+      const id = String(payload.requestId ?? event.id ?? `missing-${rounds.length}`)
+      current = rounds.find(round => round.id === id)
+      if (!current) {
+        current = { id, model: String(payload.model ?? ''), responded: false, tools: [] }
+        rounds.push(current)
+      }
     } else if (event.kind === 'model.response') {
       const round = rounds.find(item => item.id === payload.requestId)
       if (round) { round.responded = true; current = round }
     } else if (event.kind === 'agent.tool_execution_start') {
       const call = calls.get(String(payload.toolCallId))
-      if (call) { if (current?.responded) current.tools.push(call); else unassigned.push(call) }
+      if (call && !assigned.has(call.id)) {
+        assigned.add(call.id)
+        if (current?.responded) current.tools.push(call); else unassigned.push(call)
+      }
     }
   }
+  for (const call of calls.values()) if (!assigned.has(call.id)) unassigned.push(call)
   return { rounds, unassigned }
 }

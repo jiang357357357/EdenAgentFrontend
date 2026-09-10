@@ -1147,9 +1147,6 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
 
     case "connectionError":
       next.connectionError = action.error
-      if (action.error) {
-        next.connectionState = "disconnected"
-      }
       return next
 
     case "connectionState":

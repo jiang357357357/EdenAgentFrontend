@@ -118,8 +118,8 @@ test("token meter keeps the server total authoritative and exposes provider cali
   )
 
   assert.match(source, /const authoritativeContextTokens = contextTokens/)
-  assert.match(source, />供应商输入</)
-  assert.match(source, />供应商输出</)
+  assert.match(source, />最近请求输入</)
+  assert.match(source, />最近请求输出</)
   assert.match(source, />供应商校准</)
   assert.match(source, />未命中缓存</)
 })
