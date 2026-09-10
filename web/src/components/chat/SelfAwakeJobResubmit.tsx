@@ -5,7 +5,7 @@ import { getStoredRuntimeOrigin } from '../../lib/runtime-origin'
 
 export function SelfAwakeJobResubmit({ jobId }: { jobId: string }) {
   const [origin] = useState(() => getStoredRuntimeOrigin() ?? 'mon')
-  const [preview, setPreview] = useState<{ fingerprint: string; job: JobInfo; runId: string | null; author: JsonValue; environment: JsonValue } | null>(null)
+  const [preview, setPreview] = useState<{ fingerprint: string; job: JobInfo; runId?: string | null; author: JsonValue; environment: JsonValue } | null>(null)
   const [note, setNote] = useState(''), [confirmed, setConfirmed] = useState(false)
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [result, setResult] = useState('')
   async function load() {

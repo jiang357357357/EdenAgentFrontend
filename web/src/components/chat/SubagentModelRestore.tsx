@@ -14,7 +14,7 @@ export function SubagentModelRestore({ agentId, onSaved }: { agentId: string; on
   useEffect(() => {
     let active = true
     void rpcRequestForOrigin(origin, 'agent.recovery.model.sources', { agentId }).then(value => {
-      if (active) { setSource(value); setActorId(value.actorId ?? '') }
+      if (active) { setSource({ ...value, actorId: value.actorId ?? null }); setActorId(value.actorId ?? '') }
     }).catch(reason => { if (active) setError(String(reason)) })
     return () => { active = false }
   }, [origin, agentId])

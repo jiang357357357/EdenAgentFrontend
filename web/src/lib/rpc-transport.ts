@@ -352,6 +352,8 @@ export function apiSession(session: import("@eden/api").SessionSummary): ApiSess
     time: { created: Number(session.createdAt), updated: Number(session.updatedAt) },
     participants,
     participantAssistantIDs: participants.map((participant) => participant.assistantID),
+    ...(session.contextTokens == null ? {} : { contextTokens: Number(session.contextTokens) }),
+    ...(session.tokenBreakdown == null ? {} : { tokenBreakdown: apiTokenBreakdown(session.tokenBreakdown) }),
   }
 }
 

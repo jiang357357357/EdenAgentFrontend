@@ -2,6 +2,9 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
 
+const rpcClientSource = await readFile(new URL("../src/lib/rpc-client.ts", import.meta.url), "utf8")
+const participantSource = await readFile(new URL("../src/lib/session-participants.ts", import.meta.url), "utf8")
+const modelSource = await readFile(new URL("../src/lib/runtime-model-client.ts", import.meta.url), "utf8")
 const [appSource, pageSource, authSource, runtimeHookSource, transportSource, clientSource, generatedSource, sidebarSource, chatPageSource, configurationPageSource, localCharacterSource] = await Promise.all([
   readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/origin/OriginSelectionPage.tsx", import.meta.url), "utf8"),
@@ -50,9 +53,9 @@ test("the sidebar configuration button opens local runtime configuration", () =>
   assert.match(configurationPageSource, /saveLocalCharacterConfig\(snapshot\)/)
 })
 
-test("the selected origin is negotiated with the Rust server", () => {
-  assert.match(generatedSource, /runtimeOrigin: RuntimeOrigin/)
-  assert.match(generatedSource, /runtimeOrigin: RuntimeOrigin = "mon"/)
+test("the selected origin is negotiated with the TypeScript host", () => {
+  assert.match(generatedSource, /export \{ EdenAgentRpcClient \} from/)
+  assert.match(rpcClientSource, /runtimeOrigin: RuntimeOrigin = 'mon'/)
   assert.match(transportSource, /next\.connect\(websocketUrl, token, "dev", requestedOrigin\)/)
   assert.match(transportSource, /connectedOrigin !== requestedOrigin/)
   assert.match(transportSource, /VITE_EDEN_AGENT_MON_BASE_URL/)
@@ -68,10 +71,10 @@ test("local mode uses the environment model and local identity without Core look
   assert.match(appSource, /if \(runtimeOrigin === "local"\)[\s\S]*?setAuthStatus\("authenticated"\)/)
   assert.match(runtimeHookSource, /const isRuntimeReady = useCallback\(\(\) => enabled, \[enabled\]\)/)
   assert.match(appSource, /if \(runtimeOrigin === "local"\)[\s\S]*?setCurrentAssistant\(localAssistant\)/)
-  assert.match(clientSource, /getStoredRuntimeOrigin\(\) === "local"[\s\S]*?assistantName: localCharacter\.name/)
-  assert.match(clientSource, /getStoredRuntimeOrigin\(\) === "local"[\s\S]*?rpcRequest\("model\.read"/)
-  assert.match(clientSource, /本地模式的模型由 EDEN_AGENT_MODEL 配置/)
-  assert.match(clientSource, /profile: localCharacterParticipantProfile\(localCharacter\)/)
+  assert.match(participantSource, /identity.origin === "local"[\s\S]*?assistantName: localCharacter\.name/)
+  assert.match(modelSource, /origin === 'local'[\s\S]*?'model.read'/)
+  assert.match(modelSource, /本地模式不通过 Core 模型目录切换模型/)
+  assert.match(participantSource, /profile: localCharacterParticipantProfile\(localCharacter\)/)
   assert.match(localCharacterSource, /system_prompt: normalized\.systemPrompt/)
   assert.match(appSource, /updateSessionParticipants\(\[LOCAL_ASSISTANT_ID\]\)/)
 })

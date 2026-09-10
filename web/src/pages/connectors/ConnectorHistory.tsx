@@ -16,7 +16,7 @@ export function ConnectorHistory({ id }: { id: string }) {
     setPage(null); setDetail(null); setError('')
     if (!open) return
     void rpcRequestForOrigin(origin, tab === 'events' ? 'connector.events' : 'connector.operations', { id, ...(before === undefined ? {} : { before }) })
-      .then(result => { if (epoch.current === current) setPage(result) }, reason => { if (epoch.current === current) setError(String(reason)) })
+      .then(result => { if (epoch.current === current) setPage({ ...result, nextCursor: result.nextCursor ?? null }) }, reason => { if (epoch.current === current) setError(String(reason)) })
     return () => { epoch.current++ }
   }, [id, origin, tab, before, refresh, open])
   async function inspect(eventId: string) {

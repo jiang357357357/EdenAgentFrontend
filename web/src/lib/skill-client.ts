@@ -18,6 +18,7 @@ export type InstalledSkill = {
   enabled: boolean
   trustStatus: "trusted" | "blocked"
   builtin: boolean
+  discovered?: boolean
   available: boolean
   tools?: string[]
   profiles?: string[]
@@ -86,6 +87,7 @@ function mapSkillInfo(skill: SkillInfo): InstalledSkill {
     enabled: skill.enabled,
     trustStatus: "trusted",
     builtin: sourceType === "builtin",
+    discovered: skill.manifest.discovered === true,
     available: skill.available,
     tools: skill.tools,
     profiles: skill.profiles,
@@ -150,7 +152,9 @@ function uninstallSkill(id: string, expected?: InstalledSkill) {
   return rpcRequest("skill.uninstall", params)
 }
 
-  return { listSkills, getSkillDetails, inspectSkill, installSkill, setSkillEnabled, uninstallSkill }
+  const refreshCatalog = () => rpcRequest('skill.refresh', {})
+  const catalogStatus = () => rpcRequest('skill.catalog_status', {})
+  return { listSkills, getSkillDetails, inspectSkill, installSkill, setSkillEnabled, uninstallSkill, refreshCatalog, catalogStatus }
 }
 
 export const { listSkills, getSkillDetails, inspectSkill, installSkill, setSkillEnabled, uninstallSkill } = createSkillClient()

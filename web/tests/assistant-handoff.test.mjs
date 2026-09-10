@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { after, test } from "node:test"
 import { createServer } from "vite"
 
-const vite = await createServer({ server: { middlewareMode: true }, appType: "custom" })
+const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" })
 const runtimeTransport = await vite.ssrLoadModule("/src/lib/rpc-transport.ts")
 const reducer = await vite.ssrLoadModule("/src/lib/session-reducer.ts")
 

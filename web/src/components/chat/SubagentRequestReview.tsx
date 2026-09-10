@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useScopedRpc } from '../../lib/use-scoped-rpc'
 
-interface RequestInfo { id: string; agentId: string; turnId: string; createdAt: number; executing: boolean; costConfigured: boolean; tokens: number | null; costMicrousd: number | null }
+interface RequestInfo { id: string; agentId: string; turnId: string; createdAt: number; executing: boolean; costConfigured: boolean; tokens?: number | null; costMicrousd?: number | null }
 export function SubagentRequestReview({ agentId }: { agentId: string }) {
   const rpcRequest = useScopedRpc()
   const [items, setItems] = useState<RequestInfo[]>([]), [cursor, setCursor] = useState<string | null>(null)

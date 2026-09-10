@@ -4,13 +4,14 @@ import { createServer } from 'vite'
 import { ObjectUrlScope } from '../src/lib/object-url-scope.ts'
 import { blobReference, parseBlobReference } from '../src/lib/blob-reference.ts'
 
-const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom' })
+const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
 const transport = await vite.ssrLoadModule('/src/lib/rpc-transport.ts')
 const client = await vite.ssrLoadModule('/src/lib/agent-client.ts')
 const originalWindow = globalThis.window
 const originalFetch = globalThis.fetch
 let origin = 'mon'
-globalThis.window = { localStorage: { getItem: () => origin }, edenAgentDesktop: { getAgentCapability: async () => ({ token: 'world-token' }) } }
+const windowEvents = new EventTarget()
+globalThis.window = { addEventListener: windowEvents.addEventListener.bind(windowEvents), removeEventListener: windowEvents.removeEventListener.bind(windowEvents), dispatchEvent: windowEvents.dispatchEvent.bind(windowEvents), localStorage: { getItem: () => origin }, edenAgentDesktop: { getAgentCapability: async () => ({ token: 'w'.repeat(43) }) } }
 after(async () => { globalThis.window = originalWindow; globalThis.fetch = originalFetch; await vite.close() })
 const id = '11111111-1111-4111-8111-111111111111'
 
@@ -43,7 +44,7 @@ test('blob display fetches with authorization, rejects cross-world cached URLs a
   globalThis.fetch = async (url, options) => {
     calls++
     assert.equal(String(url), `http://127.0.0.1:40092/blobs/${id}`)
-    assert.equal(options.headers.Authorization, 'Bearer world-token')
+    assert.equal(options.headers.Authorization, `Bearer ${'w'.repeat(43)}`)
     assert.ok(options.signal instanceof AbortSignal)
     return new Response(new Blob(['image'], { type: 'image/png' }))
   }
@@ -72,7 +73,7 @@ test('a world switch during credential lookup prevents the blob request', async 
   await assert.rejects(pending, /World changed/)
   assert.equal(calls, 0)
   scope.dispose()
-  window.edenAgentDesktop.getAgentCapability = async () => ({ token: 'world-token' })
+  window.edenAgentDesktop.getAgentCapability = async () => ({ token: 'w'.repeat(43) })
   globalThis.fetch = originalFetch
 })
 
@@ -86,7 +87,7 @@ test('attachment uploads preserve order while limiting concurrent requests to fo
     const value = await options.body.text()
     await new Promise(resolve => setTimeout(resolve, 5))
     active--
-    return new Response(JSON.stringify({ id: `${id.slice(0, -2)}${value.padStart(2, '0')}`, mime: 'text/plain' }), { headers: { 'content-type': 'application/json' } })
+    return new Response(JSON.stringify({ id: `${id.slice(0, -2)}${value.padStart(2, '0')}`, mime: 'text/plain', sha256: 'a'.repeat(64), createdAt: 1, byteLength: Buffer.byteLength(value) }), { headers: { 'content-type': 'application/json' } })
   }
   try {
     const files = Array.from({ length: 12 }, (_, index) => ({ url: `data:text/plain,${index}`, filename: `${index}.txt`, mime: 'text/plain' }))

@@ -24,13 +24,13 @@ class FakeWebSocket extends EventTarget {
     const request = JSON.parse(raw)
     this.requests.push(request)
     const result = request.method === "initialize"
-      ? { runtimeOrigin: request.params.runtimeOrigin }
+      ? { protocolVersion: 2, serverName: 'fixture', serverVersion: '2', agentCoreVersion: 'pi-test', capabilities: [], runtimeOrigin: request.params.runtimeOrigin }
       : []
     queueMicrotask(() => this.receive({ id: request.id, result }))
   }
 
   receive(message) {
-    this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(message) }))
+    this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ jsonrpc: "2.0", ...message }) }))
   }
 
   close() {
@@ -41,11 +41,12 @@ class FakeWebSocket extends EventTarget {
 }
 
 globalThis.WebSocket = FakeWebSocket
-globalThis.window = {
+const windowEvents = new EventTarget()
+globalThis.window = { addEventListener: windowEvents.addEventListener.bind(windowEvents), removeEventListener: windowEvents.removeEventListener.bind(windowEvents), dispatchEvent: windowEvents.dispatchEvent.bind(windowEvents),
   localStorage: { getItem: () => origin },
   edenAgentDesktop: { getAgentCapability: async () => ({ token: "test-capability" }) },
 }
-const vite = await createServer({ server: { middlewareMode: true }, appType: "custom" })
+const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" })
 const transport = await vite.ssrLoadModule("/src/lib/rpc-transport.ts")
 const reducer = await vite.ssrLoadModule("/src/lib/session-reducer.ts")
 let unsubscribe
@@ -58,10 +59,11 @@ async function until(predicate) {
   assert.fail("timed out waiting for RPC recovery")
 }
 
+const eventId = (sessionId, seq) => `00000000-0000-4000-8000-${sessionId === "a" ? "1" : "2"}${String(seq).padStart(11, "0")}`
 function event(socket, sessionId, seq) {
   socket.receive({
     method: "session.event",
-    params: { id: `${sessionId}-${seq}`, sessionId, seq, eventType: "turn.completed", payload: {} },
+    params: { id: eventId(sessionId, seq), sessionId: eventId(sessionId, 0), turnId: null, seq: String(seq), createdAt: 1, eventType: "turn.completed", payload: {} },
   })
 }
 
@@ -94,10 +96,10 @@ test("lag warning reconnects and invokes snapshot reconciliation without replayi
   event(first, "a", 61)
   await until(() => reconciled)
   assert.equal(sockets.length, 2)
-  assert.deepEqual(received.map((value) => value.seq), [50])
+  assert.deepEqual(received.map((value) => Number(value.seq)), [50])
   assert.ok(sockets[1].requests.some((request) => request.method === "session.list"))
   event(sockets[1], "a", 100)
-  assert.deepEqual(received.map((value) => value.seq), [50, 100])
+  assert.deepEqual(received.map((value) => Number(value.seq)), [50, 100])
 })
 
 test("sequence gaps trigger recovery while duplicates and independent sessions do not", async () => {
@@ -116,7 +118,7 @@ test("sequence gaps trigger recovery while duplicates and independent sessions d
   assert.equal(first.readyState, FakeWebSocket.OPEN)
   event(first, "a", 43)
   await until(() => opens === 2)
-  assert.deepEqual(received.map((value) => value.id), ["a-40", "b-90", "a-41"])
+  assert.deepEqual(received.map((value) => value.id), [eventId("a", 40), eventId("b", 90), eventId("a", 41)])
 })
 
 test("unrelated warnings leave the connection open", async () => {
@@ -141,7 +143,7 @@ test("switching realms discards notifications from the old connection", async ()
   event(sockets[1], "a", 1)
   assert.equal(sockets.length, 2)
   assert.match(sockets[1].url, /40093/)
-  assert.deepEqual(received.map((value) => value.seq), [1])
+  assert.deepEqual(received.map((value) => Number(value.seq)), [1])
 })
 
 test("recovery invalidates inactive caches without discarding messages or mutating prior state", () => {

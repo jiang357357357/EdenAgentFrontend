@@ -601,7 +601,6 @@ export function useTTSSpeech({
             mode,
           })
           throwIfSpeechTaskCancelled(signal)
-          if (!result.success) throw new Error(result.error_message || `语音段 ${index + 1}/${chunks.length} 合成失败`)
           if (!result.audio_blob_id) throw new Error(`语音段 ${index + 1}/${chunks.length} 未返回音频`)
           const resolved = await resolveVoiceBlobUrl(result.audio_blob_id, voiceUrls)
           throwIfSpeechTaskCancelled(signal)
@@ -718,7 +717,6 @@ export function useTTSSpeech({
               mode,
             })
             throwIfSpeechTaskCancelled(signal)
-            if (!result.success) throw new Error(result.error_message || `语音句子 ${chunkIndex + 1} 合成失败`)
             diagnose("synthesis-completed", {
               messageId,
               segmentId: state.segmentId,

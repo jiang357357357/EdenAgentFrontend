@@ -26,7 +26,7 @@ export function LegacySyncReplay({ sessionId, item, onUpdated }: { sessionId: st
       saveReplayAttempt(sessionId, item.id, next)
       setAttempt(next)
       const receipt = await rpcRequestForOrigin('mon', 'mon.sync.legacy.replay', { sessionId, id: item.id, ...next, confirm: true })
-      if (mounted.current && getStoredRuntimeOrigin() === 'mon') { setResult(receipt); onUpdated() }
+      if (mounted.current && getStoredRuntimeOrigin() === 'mon') { setResult({ ...receipt, error: receipt.error ?? null }); onUpdated() }
     } catch (reason) {
       if (mounted.current) setError(reason instanceof Error ? reason.message : String(reason))
     } finally { locked.current = false; if (mounted.current) setBusy(false) }

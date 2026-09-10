@@ -5,7 +5,7 @@ import test from "node:test"
 const [characterSource, configurationSource, clientSource, desktopWindowSource] = await Promise.all([
   readFile(new URL("../src/lib/local-character.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/configuration/ConfigurationPage.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../src/lib/agent-client.ts", import.meta.url), "utf8"),
+  readFile(new URL("../src/lib/session-participants.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/lib/desktop-window.ts", import.meta.url), "utf8"),
 ])
 

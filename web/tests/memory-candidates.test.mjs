@@ -16,18 +16,19 @@ class FakeWebSocket extends EventTarget {
   send(raw) {
     const request = JSON.parse(raw)
     this.requests.push(request)
-    const result = request.method === 'initialize' ? { runtimeOrigin: request.params.runtimeOrigin } :
+    const result = request.method === 'initialize' ? { protocolVersion: 2, serverName: 'fixture', serverVersion: '2', agentCoreVersion: 'pi-test', capabilities: [], runtimeOrigin: request.params.runtimeOrigin } :
       request.method === 'memory.extraction.resume' ? { jobId: request.params.jobId, state: 'accepted' } : page
     queueMicrotask(() => {
       if (request.method !== 'initialize') beforeReply()
-      this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ id: request.id, result }) }))
+      this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) }))
     })
   }
   close() { if (this.readyState !== 3) { this.readyState = 3; this.dispatchEvent(new Event('close')) } }
 }
 globalThis.WebSocket = FakeWebSocket
-globalThis.window = { localStorage: { getItem: () => origin }, edenAgentDesktop: { getAgentCapability: async () => ({ token: 'test-token' }) } }
-const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom' })
+const windowEvents = new EventTarget()
+globalThis.window = { addEventListener: windowEvents.addEventListener.bind(windowEvents), removeEventListener: windowEvents.removeEventListener.bind(windowEvents), dispatchEvent: windowEvents.dispatchEvent.bind(windowEvents), localStorage: { getItem: () => origin }, edenAgentDesktop: { getAgentCapability: async () => ({ token: 'test-token' }) } }
+const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
 const api = await vite.ssrLoadModule('/src/lib/memory-candidates.ts')
 afterEach(() => { sockets.splice(0).forEach(socket => socket.close()); origin = 'mon'; beforeReply = () => {} })
 after(async () => { await vite.close(); globalThis.window = originalWindow; globalThis.WebSocket = originalWebSocket })
@@ -57,5 +58,5 @@ test('world mismatch rejects before sending and a world change during response r
   origin = 'mon'
   page = { items: [], nextCursor: null }
   beforeReply = () => { origin = 'local' }
-  await assert.rejects(api.listMemoryCandidates('mon', id), /世界已切换/)
+  await assert.rejects(api.listMemoryCandidates('mon', id), /世界切换前的请求结果未确认/)
 })

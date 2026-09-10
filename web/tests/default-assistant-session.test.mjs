@@ -2,10 +2,11 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
 
-const [appSource, runtimeSource, clientSource] = await Promise.all([
+const [appSource, runtimeSource, clientSource, participantSource] = await Promise.all([
   readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/hooks/useSessionRuntime.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/lib/agent-client.ts", import.meta.url), "utf8"),
+  readFile(new URL("../src/lib/session-participants.ts", import.meta.url), "utf8"),
 ])
 
 test("new conversations bind the authenticated Core current assistant", () => {
@@ -16,7 +17,7 @@ test("new conversations bind the authenticated Core current assistant", () => {
 })
 
 test("participant profiles are resolved before the durable session is created", () => {
-  assert.match(clientSource, /const participants = await resolveParticipants\(assistantIDs\)/)
-  assert.match(clientSource, /rpcRequest\("session\.create", \{ title: "", participants, environment \}\)/)
-  assert.match(clientSource, /profile: assistant == null \? undefined/)
+  assert.match(clientSource, /const participants = await resolveParticipants\(assistantIDs, identity\)/)
+  assert.match(clientSource, /rpcRequestForOrigin\(origin, "session\.create", \{ title: "", participants, environment \}\)/)
+  assert.match(participantSource, /profile: assistant == null \? null/)
 })

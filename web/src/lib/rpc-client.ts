@@ -90,7 +90,9 @@ export class EdenAgentRpcClient {
       const pending = this.pending.get(message.id)
       if (!pending) return
       clearTimeout(pending.timer); this.pending.delete(message.id)
-      const hasResult = Object.hasOwn(message, 'result'), hasError = Object.hasOwn(message, 'error')
+      // Legacy Eden responses include an explicit null for the unused branch.
+      const hasError = Object.hasOwn(message, 'error') && message.error !== null
+      const hasResult = Object.hasOwn(message, 'result') && (!hasError || message.result !== null)
       if (hasResult === hasError) { pending.reject(new Error('Invalid RPC response; execution outcome is unconfirmed')); return }
       if (hasError) {
         const error = message.error

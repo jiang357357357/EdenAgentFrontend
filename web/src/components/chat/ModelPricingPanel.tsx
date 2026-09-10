@@ -15,7 +15,7 @@ export function ModelPricingPanel({ sessionId }: { sessionId: string }) {
     try {
       const selection: ModelPricingTarget = { sessionId, target, ...(['actor', 'actor_vision'].includes(target) ? { assistantId } : {}) }
       const info = await rpcRequestForOrigin('mon', 'model.pricing.read', selection)
-      setLoaded({ selection, info }); setNote('')
+      setLoaded({ selection, info: { ...info, rates: info.rates ?? null, revision: info.revision ?? null } }); setNote('')
       setRates({ input: info.rates ? String(info.rates.input) : '', output: info.rates ? String(info.rates.output) : '',
         cacheRead: info.rates ? String(info.rates.cacheRead) : '', cacheWrite: info.rates ? String(info.rates.cacheWrite) : '' })
     } catch (reason) { setError(String(reason)) } finally { setBusy(false) }
@@ -27,7 +27,7 @@ export function ModelPricingPanel({ sessionId }: { sessionId: string }) {
       const value = clear ? null : { input: Number(rates.input), output: Number(rates.output), cacheRead: Number(rates.cacheRead), cacheWrite: Number(rates.cacheWrite) }
       const info = await rpcRequestForOrigin('mon', 'model.pricing.set', { selection: loaded.selection, expectedModelKey: loaded.info.modelKey,
         expectedRevision: loaded.info.revision, rates: value, note })
-      setLoaded({ ...loaded, info }); setNote('')
+      setLoaded({ ...loaded, info: { ...info, rates: info.rates ?? null, revision: info.revision ?? null } }); setNote('')
       if (clear) setRates({ input: '', output: '', cacheRead: '', cacheWrite: '' })
     } catch (reason) { setError(String(reason)) } finally { setBusy(false) }
   }

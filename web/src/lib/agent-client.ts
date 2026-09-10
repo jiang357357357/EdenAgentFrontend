@@ -1532,7 +1532,7 @@ export async function readWorkspaceFile(path: string): Promise<WorkspaceFileCont
 }
 
 export async function getWorkspace() {
-  return rpcRequestWithTimeout("workspace.info", {}, 8_000)
+  return { ...await rpcRequestWithTimeout("workspace.info", {}, 8_000), pendingPath: null }
 }
 
 export async function switchWorkspace(sessionId: string | undefined, path: string) {

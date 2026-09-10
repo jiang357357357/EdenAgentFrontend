@@ -31,9 +31,9 @@ export function SkillManagement({ skill, onChanged }: { skill: InstalledSkill; o
       <button type="button" disabled={busy} onClick={() => void change(false)} className="text-amber-700 disabled:opacity-50">
         {skill.enabled ? '停用技能' : '启用技能'}
       </button>
-      <button type="button" disabled={busy || skill.builtin} onClick={() => setConfirmDelete(true)} className="text-red-700 disabled:opacity-50">卸载</button>
+      <button type="button" disabled={busy || skill.builtin || skill.discovered} onClick={() => setConfirmDelete(true)} className="text-red-700 disabled:opacity-50">卸载</button>
     </div>
-    {skill.builtin && <p className="mt-2 text-stone-500">系统技能可在当前世界停用；移除源文件需由管理员调整技能目录。</p>}
+    {(skill.builtin || skill.discovered) && <p className="mt-2 text-stone-500">目录发现的技能可在当前世界停用；移除时需调整源目录。</p>}
     {confirmDelete && <div className="mt-3 space-x-3">
       <span>卸载“{skill.displayName || skill.skillName}”？</span>
       <button type="button" disabled={busy} onClick={() => void change(true)} className="text-red-700">确认卸载</button>
