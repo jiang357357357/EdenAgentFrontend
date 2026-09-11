@@ -1,5 +1,4 @@
 import { DesktopReminders } from "./components/notifications/DesktopReminders"
-import { MigrationReviewBanner } from "./components/migration/MigrationReviewBanner"
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react"
 import { X } from "lucide-react"
 import { AnimatePresence, LayoutGroup, motion } from "motion/react"
@@ -981,7 +980,6 @@ export default function App() {
   return (
     <>
       {!isAuxiliaryWindow && !window.edenAgentDesktop && <DesktopReminders key={runtimeOrigin} origin={runtimeOrigin} />}
-      {!isAuxiliaryWindow && <MigrationReviewBanner key={runtimeOrigin} origin={runtimeOrigin} />}
       <motion.div
         animate={{
           opacity: modeContentVisible ? 1 : 0,

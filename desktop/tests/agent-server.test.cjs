@@ -44,8 +44,8 @@ test("packaged desktop starts physically isolated Mon and local Node servers", (
   assert.equal(mon.options.env.EDEN_AGENT_PORT, "40092")
   assert.equal(local.options.env.EDEN_AGENT_PORT, "40093")
   assert.notEqual(mon.options.env.EDEN_AGENT_CAPABILITY_TOKEN, local.options.env.EDEN_AGENT_CAPABILITY_TOKEN)
-  assert.match(mon.options.env.EDEN_AGENT_V2_DATA_ROOT, /realms[\\/]mon[\\/]v2$/)
-  assert.match(local.options.env.EDEN_AGENT_V2_DATA_ROOT, /realms[\\/]local[\\/]v2$/)
+  assert.match(mon.options.env.EDEN_AGENT_DATA_ROOT, /realms[\\/]mon$/)
+  assert.match(local.options.env.EDEN_AGENT_DATA_ROOT, /realms[\\/]local$/)
   assert.equal(mon.executable, "C:\\Resources\\node\\node.exe")
   assert.deepEqual(mon.args, ["C:\\Resources\\server\\main.mjs"])
   assert.equal(mon.options.env.ELECTRON_RUN_AS_NODE, undefined)
@@ -96,11 +96,11 @@ test("external desktop reads a different server-owned token for each realm", () 
   assert.deepEqual(manager.start(), [null, null])
   assert.equal(manager.capability("mon").token, "a".repeat(64))
   assert.equal(manager.capability("local").token, "b".repeat(64))
-  assert.match(files[0], /realms[\\/]mon[\\/]v2[\\/]capability\.token$/)
-  assert.match(files[1], /realms[\\/]local[\\/]v2[\\/]capability\.token$/)
+  assert.match(files[0], /realms[\\/]mon[\\/]capability\.token$/)
+  assert.match(files[1], /realms[\\/]local[\\/]capability\.token$/)
 })
 
-test("desktop prepares empty v2 roots without copying legacy data", () => {
+test("desktop prepares empty current roots without copying legacy data", () => {
   const copies = []
   const writes = []
   const existing = new Set([

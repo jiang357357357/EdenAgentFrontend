@@ -19,9 +19,9 @@ test("development desktop uses realm-owned Mon token and explicit ownership", ()
 
   assert.equal(environment.EDEN_AGENT_DEV_PARENT_PID, "321")
   assert.equal(environment.EDEN_AGENT_EXTERNAL_ORIGINS, "mon")
-  assert.equal(environment.EDEN_AGENT_MON_TOKEN_FILE, "C:\\Agent\\Data\\realms\\mon\\v2\\capability.token")
+  assert.equal(environment.EDEN_AGENT_MON_TOKEN_FILE, "C:\\Agent\\Data\\realms\\mon\\capability.token")
   assert.equal(environment.EDEN_AGENT_SERVER_MODE, "")
-  assert.equal(environment.EDEN_AGENT_TOKEN_FILE, "")
+  assert.equal(environment.EDEN_AGENT_TOKEN_FILE, undefined)
 })
 
 test("runtime contract preserves explicit per-realm token and normalizes origins", () => {
@@ -46,7 +46,7 @@ test("portable desktop uses the MonPM-managed capability token", () => {
   })
 
   assert.equal(environment.EDEN_AGENT_EXTERNAL_ORIGINS, "mon")
-  assert.equal(environment.EDEN_AGENT_MON_TOKEN_FILE, "C:\\EDEN_win\\Data\\Agent\\server-capability.token")
+  assert.equal(environment.EDEN_AGENT_MON_TOKEN_FILE, "C:\\EDEN_win\\Data\\Agent\\realms\\mon\\capability.token")
 })
 
 test("runtime contract rejects unknown origins instead of guessing", () => {

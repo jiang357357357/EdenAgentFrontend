@@ -32,13 +32,14 @@ function createDesktopRuntimeEnvironment({
     ),
     EDEN_AGENT_MON_TOKEN_FILE: String(environment.EDEN_AGENT_MON_TOKEN_FILE || "").trim()
       || (workspaceRoot
-        ? effectivePathApi.join(workspaceRoot, "Data", "Agent", "server-capability.token")
-        : effectivePathApi.join(agentRoot, "Data", "realms", "mon", "v2", "capability.token")),
+        ? effectivePathApi.join(workspaceRoot, "Data", "Agent", "realms", "mon", "capability.token")
+        : effectivePathApi.join(agentRoot, "Data", "realms", "mon", "capability.token")),
     // Realm-aware launchers must not fall back to the legacy all-external mode
     // or to one token shared by multiple runtime origins.
     EDEN_AGENT_SERVER_MODE: "",
     EDEN_AGENT_TOKEN_FILE: "",
   }
+  delete result.EDEN_AGENT_TOKEN_FILE
   if (quitFlag) result.EDEN_AGENT_DESKTOP_QUIT_FLAG = quitFlag
   return result
 }

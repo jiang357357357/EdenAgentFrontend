@@ -8,7 +8,6 @@ const { promisify } = require("node:util")
 const { createDesktopEnvironmentService } = require("./app/desktop-environment.cjs")
 const { createLocalRuntimeConfigStore } = require("./app/local-runtime-config.cjs")
 const { createLocalRuntimeService } = require("./app/local-runtime-service.cjs")
-const { createRuntimeMigration } = require('./app/runtime-migration.cjs')
 const { createWorkspaceContext } = require("./app/workspace-context.cjs")
 const { createActivityPresenceService } = require("./activity/activity-presence.cjs")
 const { registerDesktopIpc } = require("./ipc/command-router.cjs")
@@ -84,10 +83,9 @@ const quitFlagController = createDesktopQuitFlagController({ quitFlagPath })
 const localRuntimeConfig = createLocalRuntimeConfigStore({ app, agentRoot })
 if (app.isPackaged && workspaceRoot) {
   process.env.EDEN_AGENT_EXTERNAL_ORIGINS ||= "mon"
-  process.env.EDEN_AGENT_MON_TOKEN_FILE ||= path.join(workspaceRoot, "Data", "Agent", "server-capability.token")
+  process.env.EDEN_AGENT_MON_DATA_ROOT ||= path.join(workspaceRoot, "Data", "Agent", "realms", "mon")
+  process.env.EDEN_AGENT_MON_TOKEN_FILE ||= path.join(process.env.EDEN_AGENT_MON_DATA_ROOT, "capability.token")
 }
-const savedRuntimeSelection = path.join(app.getPath('userData'), 'runtime-selection.json')
-if (!process.env.EDEN_AGENT_RUNTIME_SELECTION && fs.existsSync(savedRuntimeSelection)) process.env.EDEN_AGENT_RUNTIME_SELECTION = savedRuntimeSelection
 const rustServer = createAgentServerManager({
   app,
   agentRoot,
@@ -1088,7 +1086,6 @@ function watchQuitFlag() {
 registerDesktopIpc({
   ipcMain,
   handlers: {
-    ...createRuntimeMigration({ app, dialog, manager: rustServer, agentRoot, getMainWindow: () => mainWindow }),
     ...createCoreCommandHandlers({
       resolveCoreBaseUrl,
       getDevAccount,

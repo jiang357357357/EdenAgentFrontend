@@ -18,7 +18,7 @@ export function resolveNpmInvocation(args, runtime = {}) {
   const execPath = runtime.execPath ?? process.execPath
   const platform = runtime.platform ?? process.platform
   const fileExists = runtime.fileExists ?? existsSync
-  const pathApi = platform === "win32" ? path.win32 : path
+  const pathApi = platform === "win32" ? path.win32 : path.posix
   const inheritedCli = String(environment.npm_execpath ?? "").trim()
 
   if (inheritedCli && isJavaScriptCli(inheritedCli) && fileExists(inheritedCli)) {

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { DesktopRuntimeMigration } from '../../components/migration/DesktopRuntimeMigration'
 import { ObjectUrlScope } from "../../lib/object-url-scope"
 import {
   AlertCircle,
@@ -737,7 +736,6 @@ export function ConfigurationPage({
       />
 
       <aside className="flex w-[19vw] min-w-52 max-w-72 shrink-0 flex-col border-r border-border bg-card/35 px-4 py-5">
-        <DesktopRuntimeMigration />
         <button type="button" onClick={onBack} className="mb-5 flex items-center gap-2 self-start rounded-lg px-2 py-1.5 text-sm text-text-muted hover:bg-card hover:text-text">
           <ArrowLeft className="h-4 w-4" /> 返回会话
         </button>

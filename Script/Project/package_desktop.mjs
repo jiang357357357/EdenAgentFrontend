@@ -13,14 +13,9 @@ const platform = process.argv[2] ?? process.platform, arch = process.argv[3] ?? 
 if (process.argv.length > 4 || !['linux', 'win32', 'darwin'].includes(platform) || !['x64', 'arm64'].includes(arch)) throw new Error('Usage: node Script/Project/package_desktop.mjs <linux|win32|darwin> <x64|arm64>')
 const runtime = path.join(root, 'dist', `runtime-${platform}-${arch}`)
 const manifest = JSON.parse(await readFile(path.join(runtime, 'runtime-manifest.json'), 'utf8'))
-if (manifest.platform !== platform || manifest.arch !== arch || manifest.node !== '22.23.1' || !manifest.migration?.artifacts?.length) throw new Error('Prepare a matching TS runtime distribution with migration tools first')
+if (manifest.platform !== platform || manifest.arch !== arch || manifest.node !== '22.23.1') throw new Error('Prepare a matching TS runtime distribution first')
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 if (digest(await readFile(path.join(runtime, 'server/main.mjs'))) !== manifest.entrySha256) throw new Error('Server artifact differs from its manifest')
-for (const artifact of manifest.migration.artifacts) {
-  if (typeof artifact.file !== 'string' || !/^migration\/[a-zA-Z0-9.-]+$/.test(artifact.file)) throw new Error('Invalid migration artifact path')
-  const bytes = await readFile(path.join(runtime, artifact.file))
-  if (bytes.length !== artifact.bytes || digest(bytes) !== artifact.sha256) throw new Error(`Migration artifact changed: ${artifact.file}`)
-}
 await stat(path.join(frontend, 'web/dist/index.html'))
 const output = path.join(frontend, 'dist/app'), target = path.join(output, `eden-agent-${platform}-${arch}`)
 if (existsSync(target)) throw new Error(`Refusing to overwrite a desktop artifact: ${target}`)
