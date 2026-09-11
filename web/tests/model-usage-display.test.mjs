@@ -22,3 +22,15 @@ test('empty input does not make the context meter zero and unknown details stay 
   assert.match(html,/未提供/)
   assert.match(html,/最近请求输入/)
 })
+
+test('estimated categories survive live projection and cache percentage is not rounded to 100', () => {
+  const projected = projectSessionEvent({ id: 'e', sessionId: 's', turnId: 't', eventType: 'model.response', createdAt: 1,
+    payload: { contextEstimate: { character: 100, skills: 25, system: 50, tools: 40, history: 90, promptCacheEpoch: 1, promptCacheInvalidationReason: 'stable' },
+      usage: { input: 431, cacheRead: 92032, cacheWrite: 0, output: 2223 } } })
+  const state = runtimeReducer(initialRuntimeState, { type: 'event', event: projected[0] })
+  assert.equal(state.sessions.s.tokenBreakdown.character, 100)
+  const html = renderToStaticMarkup(createElement(TokenMeter, { inputTokens: 0, contextTokens: 94686, contextWindow: 128000, breakdown: state.sessions.s.tokenBreakdown })).replace(/<!--.*?-->/g, '')
+  assert.match(html, /99.53%/)
+  assert.match(html, /角色人设（估算）/)
+  assert.match(html, /本地前缀/)
+})

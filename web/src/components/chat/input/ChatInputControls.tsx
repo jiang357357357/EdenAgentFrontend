@@ -127,15 +127,15 @@ export function TokenMeter({
         <span className="grid grid-cols-[1fr_auto] gap-x-[1.3vh] gap-y-[0.65vh]">
           <span className="text-text-muted">本次输入</span>
           <strong className="font-medium tabular-nums">{formatTokenCount(inputTokens)}</strong>
-          <span className="text-text-muted">角色人设</span>
+          <span className="text-text-muted">角色人设（估算）</span>
           <strong className="font-medium tabular-nums">{knownTokens(breakdown?.character)}</strong>
-          <span className="text-text-muted">技能</span>
+          <span className="text-text-muted">技能目录（估算）</span>
           <strong className="font-medium tabular-nums">{knownTokens(breakdown?.skills)}</strong>
-          <span className="text-text-muted">系统</span>
+          <span className="text-text-muted">系统（估算）</span>
           <strong className="font-medium tabular-nums">{knownTokens(breakdown?.system)}</strong>
-          <span className="text-text-muted">工具</span>
+          <span className="text-text-muted">工具定义（估算）</span>
           <strong className="font-medium tabular-nums">{knownTokens(breakdown?.tools)}</strong>
-          <span className="text-text-muted">对话历史</span>
+          <span className="text-text-muted">请求消息（估算）</span>
           <strong className="font-medium tabular-nums">{breakdown?.providerInput !== undefined ? knownTokens(breakdown.history) : formatTokenCount(breakdown?.history ?? Math.max(0, contextTokens - inputTokens))}</strong>
           {breakdown?.providerInput != null && (
             <>
@@ -162,9 +162,9 @@ export function TokenMeter({
           <span className="text-text-muted">未命中缓存</span>
           <strong className="font-medium tabular-nums">{knownTokens(breakdown?.cacheMiss)}</strong>
           <span className="text-text-muted">缓存命中率</span>
-          <strong className="font-medium tabular-nums">{breakdown?.cacheHitRate === undefined ? "未提供" : `${Math.round(breakdown.cacheHitRate * 100)}%`}</strong>
-          <span className="text-text-muted">缓存前缀</span>
-          <strong className="max-w-[10vh] truncate text-right font-medium" title={breakdown?.promptCacheFingerprint}>
+          <strong className="font-medium tabular-nums">{breakdown?.cacheHitRate === undefined ? "未提供" : `${(breakdown.cacheHitRate * 100).toFixed(2)}%`}</strong>
+          <span className="text-text-muted">本地前缀</span>
+          <strong className="max-w-[10vh] truncate text-right font-medium" title={`本地系统提示词与工具定义的指纹，不代表供应商缓存是否失效。${breakdown?.promptCacheFingerprint ?? ""}`}>
             {breakdown?.promptCacheEpoch === undefined ? "未提供" : promptCacheState}
           </strong>
           <span className="text-text-muted">{contextLabel}</span>
