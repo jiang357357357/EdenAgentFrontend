@@ -84,7 +84,7 @@ export function usePetSpeechPlayback({
     speechOutputActive: speech.autoPlaybackPending,
     speechPaused: speech.paused,
     stopSpeechPlayback: speech.stop,
-    toggleSpeechClip: (segmentId: string, messageId: string, rawText: string) =>
-      speech.toggle(segmentId, rawText, messageId),
+    toggleSpeechClip: (segmentId: string, messageId: string, rawText: string, cancelSynthesis?: boolean) =>
+      speech.toggle(segmentId, rawText, messageId, cancelSynthesis),
   }
 }

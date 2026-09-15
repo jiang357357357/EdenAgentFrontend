@@ -73,6 +73,7 @@ interface ChatPageProps {
   activePendingPermissions: PendingPermission[]
   messagesScrollRef: React.RefObject<HTMLDivElement | null>
   messagesEndRef: React.RefObject<HTMLDivElement | null>
+  autoScrollReady?: boolean
   autoScrollEnabled: boolean
   onAutoScrollChange: (enabled: boolean) => void
   onLoadOlderMessages: () => Promise<void>
@@ -116,6 +117,7 @@ export function ChatPage({
   activePendingPermissions,
   messagesScrollRef,
   messagesEndRef,
+  autoScrollReady = true,
   autoScrollEnabled,
   onAutoScrollChange,
   onLoadOlderMessages,
@@ -136,6 +138,7 @@ export function ChatPage({
   onLogout,
   onOpenAssistantSwitcher,
   onOpenDutyAssistantSwitcher,
+  onOpenSessionAssistantSwitcher,
   onOpenSettings,
   onOpenSelfAwake,
   onOpenMemo,
@@ -578,7 +581,7 @@ export function ChatPage({
               <button
                 type="button"
                 onClick={() => onAutoScrollChange(!autoScrollEnabled)}
-                disabled={Boolean(activeFile)}
+                disabled={Boolean(activeFile) || !autoScrollReady}
                 aria-pressed={autoScrollEnabled}
                 aria-label={autoScrollEnabled ? "关闭新消息自动滚动" : "开启新消息自动滚动"}
                 title={activeFile ? "文件标签不使用自动滚动" : autoScrollEnabled ? "新消息自动滚动：开启" : "新消息自动滚动：关闭"}
@@ -643,7 +646,22 @@ export function ChatPage({
               className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
             >
               <div className="mx-auto w-[95%] px-[1vw]">
-                {runtimeError ? <p role="alert" className="my-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">操作未完成：{runtimeError}</p> : null}
+                {runtimeError ? (
+                  <div role="alert" className="my-3 flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    <span>操作未完成：{runtimeError}</span>
+                    {activeSessionId && /会话助手（ID：.+）已不在 Mon Core 中/.test(runtimeError) ? (
+                      <button type="button" onClick={onOpenSessionAssistantSwitcher}
+                        className="shrink-0 rounded-md border border-amber-300 bg-white px-3 py-1.5 font-medium text-amber-800 hover:bg-amber-100">
+                        重新选择助手
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {activeSession?.modelRetry ? (
+                  <div role="status" className="my-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800">
+                    模型连接中断，正在重试（{activeSession.modelRetry.attempt}/{activeSession.modelRetry.maxAttempts}）
+                  </div>
+                ) : null}
                 {connectionError ? (
                   <div className="flex h-[61vh] flex-col items-center justify-center text-center">
                     <div className="mb-[2vh] rounded-full border border-border bg-card px-[2vw] py-[1.2vh] text-[1.8vh] uppercase tracking-[0.15em] text-accent shadow-sm">

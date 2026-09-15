@@ -302,7 +302,11 @@ export function AssistantSwitcherPage({
         setAssistants(ordered)
         setSelectedId((current) => current ?? currentId ?? ordered[0]?.id)
         if (mode === "participants") {
-          setSelectedIds((current) => current.length ? current : currentId ? [currentId] : ordered[0]?.id ? [ordered[0].id] : [])
+          const available = new Set(ordered.map((item) => item.id))
+          setSelectedIds((current) => {
+            const retained = current.filter((id) => available.has(id))
+            return retained.length ? retained : currentId ? [currentId] : ordered[0]?.id ? [ordered[0].id] : []
+          })
         }
       } catch (loadError) {
         if (!cancelled) setError(getErrorMessage(loadError, "助手列表加载失败。"))
@@ -379,7 +383,10 @@ export function AssistantSwitcherPage({
     hydratedAssistants.find((assistant) => assistant.id === currentAssistant?.id) ??
     hydratedAssistants.find((assistant) => assistant.is_default) ??
     hydratedAssistants[0]
-  const currentAssistantId = currentAssistant?.id ?? hydratedAssistants.find((assistant) => assistant.is_default)?.id
+  const sessionAssistantId = Number(sessionParticipantIDs[0])
+  const currentAssistantId = mode === "session" && Number.isFinite(sessionAssistantId)
+    ? sessionAssistantId
+    : currentAssistant?.id ?? hydratedAssistants.find((assistant) => assistant.is_default)?.id
   const selectedIsCurrent = Boolean(selectedAssistant && currentAssistantId === selectedAssistant.id)
   const savedAppearance = resolveAssistantAppearance(selectedAssistant)
   const selectedAppearance = resolveAssistantAppearance(selectedAssistant, {

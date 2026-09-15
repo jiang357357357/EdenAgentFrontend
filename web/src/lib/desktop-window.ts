@@ -199,7 +199,7 @@ export interface LocalGsvPreview {
 export interface LocalGsvSttConfig {
   provider: "gsv"
   serviceUrl: string
-  language: "auto" | "zh" | "en" | "ja" | "ko"
+  language: "auto" | "zh" | "yue" | "en" | "ja" | "ko"
   modelType: string
   modelSize: string
   precision: "float32" | "float16" | "int8"
@@ -213,6 +213,19 @@ export interface LocalGsvSttConfig {
   speechNoiseThreshold: number
   prerollMs: number
   chunkMs: number
+}
+
+export interface LocalGsvSttModelCapability {
+  modelType: string
+  languages: LocalGsvSttConfig["language"][]
+  sizes: string[]
+  precisions: LocalGsvSttConfig["precision"][]
+}
+
+export interface LocalGsvSttDiscovery {
+  ok: true
+  latencyMs: number
+  models: LocalGsvSttModelCapability[]
 }
 
 export interface LocalCharacterConfig {

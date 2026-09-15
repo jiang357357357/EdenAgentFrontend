@@ -6,6 +6,8 @@ import { cn } from "../../../lib/utils"
 import { SendButton, StopButton, TokenMeter } from "./ChatInputControls"
 
 interface ChatComposerFooterProps {
+  sessionId?: string
+  draft?: string
   allowFollowUp: boolean
   canSend: boolean
   contextTokens: number
@@ -47,6 +49,8 @@ interface ChatComposerFooterProps {
 }
 
 export function ChatComposerFooter({
+  sessionId,
+  draft,
   allowFollowUp,
   canSend,
   contextTokens,
@@ -131,14 +135,16 @@ export function ChatComposerFooter({
       )}
 
       {!overlay && !voicePanelVisible ? (
-        <div className="absolute bottom-[1.5vh] right-[-6.2vh] z-30 flex items-end gap-[3.9vh]">
+        <>
+        <div className="absolute bottom-[1.5vh] right-[2.4vh] z-30">
           <div className="flex flex-col items-center gap-[0.9vh]">
             {disabled && onAbort ? <><SendButton canSend={canSend} disabled={!allowFollowUp} dialogMode={isDialogMode} overlay={false} onSend={onSend} /><StopButton overlay={false} onStop={() => void onAbort()} /></> : <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay={false} onSend={onSend} />}
           </div>
-          <div className="mb-[0.25vh]">
-            <TokenMeter inputTokens={inputTokens} contextTokens={contextTokens} contextWindow={contextWindow} breakdown={tokenBreakdown} />
-          </div>
         </div>
+          <div className="absolute bottom-[1.75vh] right-[-7.5vh] z-30">
+            <TokenMeter sessionId={sessionId} draft={draft} inputTokens={inputTokens} contextTokens={contextTokens} contextWindow={contextWindow} breakdown={tokenBreakdown} />
+          </div>
+        </>
       ) : null}
     </>
   )

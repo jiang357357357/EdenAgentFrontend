@@ -1,3 +1,5 @@
+import { cancellableSpeechRequest } from './cancellable-speech-request'
+import { compactionMessage, compactionCommandMessage } from './compaction-message'
 import { modelContextUsage } from "./model-context-usage"
 import { EdenAgentRpcClient } from './rpc-client'
 import { uploadAttachmentBatch } from './attachment-upload'
@@ -700,6 +702,8 @@ function toolResultPart(event: SessionEvent, messageID: string): ApiToolPart | u
 }
 
 export function apiMessage(event: SessionEvent, messageID = sessionEventMessageID(event)): ApiMessage | undefined {
+  const compacted = compactionMessage(event) ?? compactionCommandMessage(event)
+  if (compacted) return compacted
   const payload = event.payload as JsonObject
   const message = payload.message as JsonObject | undefined
   if (message?.display === false || message?.internalHandoff === true) return undefined
@@ -720,7 +724,7 @@ export function apiMessage(event: SessionEvent, messageID = sessionEventMessageI
         ...(speaker ? { speaker } : {}),
         ...(orchestration ? { orchestration } : {}),
         time: { created, completed: event.eventType.endsWith("message_end") ? Number(event.createdAt) : undefined },
-        ...(message.errorMessage ? { error: { message: String(message.errorMessage) } } : {}),
+        ...(message.errorMessage ? { error: { message: modelFailureMessage(String(message.errorMessage)) } } : {}),
       }
   return {
     info,
@@ -888,7 +892,7 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
   }
   if (event.eventType === "turn.failed" || event.eventType === "input.interrupted") {
     return [
-      { type: "session.error", properties: { sessionID, error: { message: String((event.payload as JsonObject).reason ?? "Turn failed") } } },
+      { type: "session.error", properties: { sessionID, error: { message: modelFailureMessage(String((event.payload as JsonObject).reason ?? "Turn failed")) } } },
       { type: "session.status", properties: { sessionID, status: { type: "idle" } } },
     ]
   }
@@ -902,7 +906,7 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
       },
     }]
   }
-  if (event.eventType.startsWith("agent.message_")) {
+  if (event.eventType.startsWith("agent.message_") || event.eventType === "agent.session_compact" || event.eventType === "input.queued") {
     const message = apiMessage(event, messageID)
     if (!message) return []
     return [
@@ -959,4 +963,25 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
   }
   return []
 }
+
+function modelFailureMessage(message: string): string {
+  if (/^terminated$/i.test(message.trim())) return "模型连接意外中断，请重试。"
+  if (/stream ended|ended without/i.test(message)) return "模型响应流提前结束，请重试。"
+  if (/fetch failed|ECONNRESET|socket hang up|connection (?:was )?(?:closed|lost)/i.test(message)) return "模型网络连接失败，请重试。"
+  return message
+}
 import { requestWithContract, type RpcMethodMap } from './rpc-contracts'
+
+/** Send cancellation on the same connection as synthesis, even during a world switch. */
+export async function requestSpeechSynthesis(params: RpcMethodMap['voice.tts.synthesize']['params'], signal?: AbortSignal) {
+  const origin = currentRuntimeOrigin(), revision = getRuntimeOriginRevision()
+  signal?.throwIfAborted()
+  const connection = await connectedClient()
+  signal?.throwIfAborted()
+  if (origin !== currentRuntimeOrigin() || revision !== getRuntimeOriginRevision()) throw new Error('当前世界已切换')
+  return cancellableSpeechRequest(
+    requestId => requestWithContract(connection, 'voice.tts.synthesize', { ...params, requestId }),
+    requestId => requestWithContract(connection, 'voice.tts.cancel', { sessionId: params.sessionId, requestId }),
+    signal,
+  )
+}

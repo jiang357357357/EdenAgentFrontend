@@ -30,7 +30,7 @@ import {
 } from "../lib/tts-text"
 
 export interface SpeechClip {
-  status: "synthesizing" | "ready" | "error"
+  status: "synthesizing" | "ready" | "error" | "cancelled"
   source?: string
   sources?: string[]
   error?: string
@@ -164,6 +164,7 @@ export function useTTSSpeech({
   const durationCacheRef = useRef<Map<string, number>>(new Map())
   const generationRef = useRef(0)
   const playbackGenerationRef = useRef(0)
+  const cancelledMessagesRef = useRef(new Set<string>())
   const synthesisSchedulerRef = useRef(new SpeechSynthesisScheduler())
   const playbackQueueRef = useRef(new SpeechPlaybackQueue((error, taskId) => {
     console.warn(`[Chat][TTS] 播放任务 ${taskId} 失败`, error)
@@ -284,6 +285,9 @@ export function useTTSSpeech({
       synthesisSchedulerRef.current.cancelAll()
       streamStatesRef.current.clear()
       nextStreamOrderRef.current = 0
+      setClips(current => Object.fromEntries(Object.entries(current).map(([id, clip]) => [id,
+        clip.status === "synthesizing" ? { ...clip, status: clip.sources?.length ? "ready" as const : "cancelled" as const } : clip,
+      ])))
     }
     audioRef.current?.pause()
     audioRef.current = null
@@ -588,6 +592,7 @@ export function useTTSSpeech({
     const synthesis = (async () => {
       const sources: string[] = []
       for (const [index, text] of chunks.entries()) {
+        if (!isCurrentMessageGeneration(messageId, messageGeneration) || generation !== generationRef.current) throw new SpeechTaskCancelledError()
         const source = await synthesisSchedulerRef.current.schedule(messageId, async (signal) => {
           throwIfSpeechTaskCancelled(signal)
           const result = await synthesizeSpeechSegment({
@@ -599,7 +604,7 @@ export function useTTSSpeech({
             text,
             configId,
             mode,
-          })
+          }, signal)
           throwIfSpeechTaskCancelled(signal)
           if (!result.audio_blob_id) throw new Error(`语音段 ${index + 1}/${chunks.length} 未返回音频`)
           const resolved = await resolveVoiceBlobUrl(result.audio_blob_id, voiceUrls)
@@ -622,7 +627,7 @@ export function useTTSSpeech({
         return sources
       })
       .catch((error) => {
-        if (isSpeechTaskCancelled(error)) return null
+        if (isSpeechTaskCancelled(error) || !isCurrentMessageGeneration(messageId, messageGeneration) || generation !== generationRef.current) return null
         const message = error instanceof Error ? error.message : String(error)
         if (generation === generationRef.current && isCurrentMessageGeneration(messageId, messageGeneration)) {
           setClips((current) => ({ ...current, [segmentId]: { status: "error", error: message } }))
@@ -715,7 +720,7 @@ export function useTTSSpeech({
               text,
               configId,
               mode,
-            })
+            }, signal)
             throwIfSpeechTaskCancelled(signal)
             diagnose("synthesis-completed", {
               messageId,
@@ -745,7 +750,7 @@ export function useTTSSpeech({
         return source
       })
       .catch((error) => {
-        if (isSpeechTaskCancelled(error)) return null
+        if (isSpeechTaskCancelled(error) || !isCurrentMessageGeneration(messageId, messageGeneration) || generation !== generationRef.current) return null
         const message = error instanceof Error ? error.message : String(error)
         if (
           generation === generationRef.current &&
@@ -804,9 +809,28 @@ export function useTTSSpeech({
     })
   }
 
-  const toggle = (segmentId: string, rawText: string, messageId: string) => {
+  const toggle = (segmentId: string, rawText: string, messageId: string, cancelSynthesis = false) => {
+    if (cancelSynthesis) {
+      cancelledMessagesRef.current.add(messageId)
+      invalidateMessageSpeech(messageId, "user-cancelled-synthesis")
+      if (audioSegmentIdRef.current === segmentId || segments.some(segment => segment.messageId === messageId && segment.id === audioSegmentIdRef.current)) {
+        stopPlayback({ cancelPlaybackQueue: false, disableAutomaticPlayback: false, resetOutputGate: false, reason: "user-cancelled-synthesis" })
+      }
+      setClips(current => ({ ...current, [segmentId]: { status: "cancelled" } }))
+      return
+    }
     const clip = clips[segmentId]
     const sources = clip?.sources ?? (clip?.source ? [clip.source] : [])
+    if (audioSegmentIdRef.current === segmentId && audioRef.current) {
+      if (audioRef.current.paused) {
+        setPaused(false)
+        void audioRef.current.play().catch(() => finishAudioRef.current?.())
+      } else {
+        audioRef.current.pause()
+        setPaused(true)
+      }
+      return
+    }
     if (!sources.length) {
       const segmentConfigId = segments.find((segment) => segment.id === segmentId)?.configId
       void synthesize(segmentId, messageId, rawText, segmentConfigId, false)?.then((synthesizedSources) => {
@@ -820,16 +844,6 @@ export function useTTSSpeech({
           "manual",
         ).catch((error) => console.warn("[Chat][TTS] 播放失败", error))
       })
-      return
-    }
-    if (audioSegmentIdRef.current === segmentId && audioRef.current) {
-      if (audioRef.current.paused) {
-        setPaused(false)
-        void audioRef.current.play().catch(() => finishAudioRef.current?.())
-      } else {
-        audioRef.current.pause()
-        setPaused(true)
-      }
       return
     }
     stop(false)
@@ -952,6 +966,7 @@ export function useTTSSpeech({
       [...activeMessageRevisions].map(([messageId, revision]) => [messageId, revision.epoch]),
     )
     messageGenerationsRef.current.clear()
+    cancelledMessagesRef.current.clear()
     automaticPlaybackEnabledRef.current = isThinking
     runActiveRef.current = isThinking
     outputGateRef.current?.reset(isThinking)
@@ -1047,6 +1062,7 @@ export function useTTSSpeech({
     if (isThinking || runWasActive) {
       const messageGroupIndexes = new Map<string, number>()
       for (const segment of activeSegments) {
+        if (cancelledMessagesRef.current.has(segment.messageId)) continue
         if (
           runBaselineMessageIdsRef.current.has(segment.messageId) &&
           segment.state !== "streaming"

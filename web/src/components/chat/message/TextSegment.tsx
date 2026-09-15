@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { LoaderCircle, Pause, Play } from "lucide-react"
+import { Square, Pause, Play } from "lucide-react"
 
 import { useTypewriterText } from "../../../hooks/useTypewriterText"
 import type { SpeechClip, SpeechProgress } from "../../../hooks/useTTSSpeech"
@@ -20,7 +20,7 @@ interface TextSegmentProps {
   activeSpeechSegmentId?: string | null
   speechPaused: boolean
   getSpeechProgress?: (segmentId: string) => SpeechProgress | null
-  onToggleSpeech?: (segmentId: string, text: string, messageId: string) => void
+  onToggleSpeech?: (segmentId: string, text: string, messageId: string, cancelSynthesis?: boolean) => void
   onSeekSpeech?: (segmentId: string, time: number) => void
   onBeginSeekSpeech?: (segmentId: string) => void
   onEndSeekSpeech?: (segmentId: string) => void
@@ -51,7 +51,7 @@ export function TextSegment({
   const speechSegmentId = segment.id
   const clip = speechClips[speechSegmentId]
   const segmentComplete = segment.state !== "streaming"
-  const canSpeak = segmentComplete && Boolean(textForTTS(visibleContent, ttsMode))
+  const canSpeak = (segmentComplete || clip?.status === "synthesizing" || activeSpeechSegmentId === speechSegmentId) && Boolean(textForTTS(visibleContent, ttsMode))
   const playing = activeSpeechSegmentId === speechSegmentId && !speechPaused
   const [activeProgress, setActiveProgress] = useState<SpeechProgress | null>(null)
 
@@ -89,12 +89,13 @@ export function TextSegment({
               />
             </div>
             {canSpeak && clip?.status === "synthesizing" ? (
-              <LoaderCircle
-                className="mb-[0.35vh] h-[1.8vh] w-[1.8vh] shrink-0 animate-spin text-text-muted"
-                aria-label="正在合成语音"
-              />
+              <button type="button" onClick={() => onToggleSpeech?.(speechSegmentId, visibleContent, messageId, true)}
+                className="mb-[0.35vh] shrink-0 text-text-muted hover:text-red-500"
+                aria-label="取消本条消息的语音合成" title="取消本条消息的语音合成">
+                <Square className="h-[1.8vh] w-[1.8vh] fill-current" />
+              </button>
             ) : null}
-            {canSpeak && clip?.status !== "synthesizing" ? (
+            {canSpeak && (clip?.status !== "synthesizing" || activeSpeechSegmentId === speechSegmentId) ? (
               <button
                 type="button"
                 onClick={() => onToggleSpeech?.(speechSegmentId, visibleContent, messageId)}

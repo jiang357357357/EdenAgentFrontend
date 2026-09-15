@@ -136,3 +136,9 @@ export function modelSelection(config: RuntimeModelConfig, key: string) {
     options: config.options.map(option => ({ ...option,
       selected: current ? String(option.aiEntityId) === String(current.aiEntityId) : target ? false : option.selected })) }
 }
+
+export function hasConfiguredRuntimeModel(config: RuntimeModelConfig): boolean {
+  const actors = config.actors ?? []
+  if (actors.length > 1) return Boolean(config.director && actors.every((actor) => actor.current))
+  return Boolean(config.current && config.current.status !== "unavailable")
+}

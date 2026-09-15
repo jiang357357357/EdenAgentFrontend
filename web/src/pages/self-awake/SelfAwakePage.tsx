@@ -29,7 +29,8 @@ import {
   type ApiSelfAwakeRun,
   type ToolStatus,
 } from "../../lib/agent-client"
-import type { SelfAwakeScheduleInfo } from "../../generated/eden-agent-rpc"
+import type { RpcMethodMap } from "../../lib/rpc-contracts"
+type SelfAwakeScheduleInfo = RpcMethodMap["self_awake.list"]["result"]["schedule"]
 import { selfAwakeObservations, selfAwakeToolExecutions, type SelfAwakeToolExecution } from "../../lib/self-awake-context"
 import { formatLocalMonthDayTime, formatLocalWeekday } from "../../lib/time"
 
@@ -343,9 +344,10 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
 
   const wakeTime = wakeSchedule?.nextWakeAt
   const wakeLabel = scheduleError ? "时间读取失败"
-    : wakeSchedule?.status === "running" ? "正在自醒"
     : wakeSchedule?.status === "disabled" ? "自醒已暂停"
     : wakeSchedule?.status === "unscheduled" ? "尚未安排"
+    : wakeSchedule?.status === "retrying"
+      ? `上次失败 · ${wakeTime ? `${formatDateTime(wakeTime)}${Date.parse(wakeTime) <= clockNow ? " 已到重试时间" : " 重试"}` : "等待重试计划"}`
     : wakeTime ? (Date.parse(wakeTime) <= clockNow ? "已到时间，等待唤醒" : formatDateTime(wakeTime))
     : loading ? "正在读取" : "尚未安排"
 
@@ -546,12 +548,12 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
         <div className="flex items-center gap-[0.8vw]">
           <div
             className="flex min-w-0 items-center gap-[0.6vw] rounded-[0.75vh] border border-accent/20 bg-card px-[1.1vw] py-[0.65vh] text-accent shadow-sm"
-            title={scheduleError ? "无法读取最新调度，请稍后刷新" : [wakeTime ? formatDateTime(wakeTime) : "", wakeSchedule?.reason].filter(Boolean).join(" · ")}
+            title={scheduleError ? "无法读取最新自动调度，请稍后刷新" : ["自动调度状态，与下方所选自醒记录的执行结果独立。", wakeTime ? formatDateTime(wakeTime) : "", wakeSchedule?.reason].filter(Boolean).join(" · ")}
             role="status"
           >
             <AlarmClock aria-hidden="true" className="h-[2.4vh] w-[2.4vh] shrink-0" />
             <div className="min-w-0">
-              <div className="text-[1.25vh] text-text-muted">下次醒来</div>
+              <div className="text-[1.25vh] text-text-muted">自动调度</div>
               <div className="truncate text-[1.65vh] tabular-nums">{wakeLabel}</div>
             </div>
           </div>
@@ -612,7 +614,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                 {overviewRunGroups.map((group) => (
                   <div key={group.dateKey}>
                     <div className="flex h-[4.5vh] items-center border-b border-border bg-bg/45 px-[1.35vw] text-[1.55vh] text-text-muted">{group.label}</div>
-                    {group.runs.slice(0, 5).map((run) => {
+                    {group.runs.map((run) => {
                       const diary = resolveDiary(run)
                       const selected = run.id === selectedRun?.id
                       return (
@@ -680,19 +682,19 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
 
                     <div className="mt-[1.6vh] flex h-[5.4vh] shrink-0 items-center gap-[0.65vw] border-t border-border text-[1.46vh] text-text-muted">
                       <NotebookText className="h-[1.65vh] w-[1.65vh]" />
-                      <span>{actionLabels[selectedAction?.action_type || ""] || selectedAction?.action_type || "未记录动作"}</span>
+                      <span>{actionLabels[selectedAction?.action_type || ""] || selectedAction?.action_type || "自醒记录"}</span>
                       <span>·</span>
-                      <span className={toneTextClass(selectedAction?.status === "failed" ? "danger" : selectedAction?.status === "succeeded" ? "ok" : "muted")}>{selectedAction?.status || "未执行"}</span>
+                      <span className={toneTextClass(selectedAction?.status === "failed" ? "danger" : selectedAction?.status === "succeeded" ? "ok" : "muted")}>{selectedAction?.status || selectedStatus.label}</span>
                     </div>
                   </article>
 
                   <aside className="min-h-0 overflow-y-auto border-l border-border px-[1.65vw] py-[2.8vh]" style={{ scrollbarGutter: "stable" }}>
                     <section>
-                      <h3 className="border-l-[0.22vw] border-accent pl-[0.75vw] font-serif text-[2.55vh] text-text">本轮判断</h3>
+                      <h3 className="border-l-[0.22vw] border-accent pl-[0.75vw] font-serif text-[2.55vh] text-text">执行状态</h3>
                       <dl className="mt-[2vh] space-y-[1.45vh] text-[1.95vh] leading-relaxed">
-                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">状态</dt><dd>{trimText(selectedRun.mood, "平稳")}</dd></div>
-                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">当前想法</dt><dd>{trimText(selectedRun.current_desire, "没有留下明确想法。")}</dd></div>
-                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">行动摘要</dt><dd>{trimText(selectedAction?.message || selectedDiary?.summary || selectedRun.current_desire, "完成本轮观察。")}</dd></div>
+                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">状态</dt><dd>{selectedStatus.label}</dd></div>
+                        {selectedRun.current_desire && <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">当前想法</dt><dd>{selectedRun.current_desire}</dd></div>}
+                        {selectedAction?.message && <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">行动摘要</dt><dd>{selectedAction.message}</dd></div>}
                       </dl>
                     </section>
 

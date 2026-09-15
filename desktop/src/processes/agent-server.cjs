@@ -4,6 +4,7 @@ const path = require("node:path")
 const { spawn } = require("node:child_process")
 const { stopServerChild } = require("./stop-server-child.cjs")
 const { realmCommandEnvironment } = require('./realm-command-environment.cjs')
+const { takeOverTcpPort } = require('./port-takeover.cjs')
 
 const RUNTIME_ORIGINS = ["mon", "local"]
 
@@ -12,7 +13,7 @@ function normalizeOrigin(origin) {
   throw new TypeError(`Unsupported Eden Agent runtime origin: ${String(origin)}`)
 }
 
-function createAgentServerManager({ app, agentRoot, processObject = process, fileSystem = fs, pathApi, spawnProcess = spawn, getRuntimeEnvironment = () => ({}), stopTimeoutMs = 12000 } = {}) {
+function createAgentServerManager({ app, agentRoot, processObject = process, fileSystem = fs, pathApi, spawnProcess = spawn, takeOverPort = takeOverTcpPort, getRuntimeEnvironment = () => ({}), stopTimeoutMs = 12000 } = {}) {
   if (!app?.getPath) throw new TypeError("app.getPath is required")
   const effectivePathApi = pathApi ?? (processObject.platform === "win32" ? path.win32 : path)
   const children = { mon: null, local: null }
@@ -155,6 +156,7 @@ function createAgentServerManager({ app, agentRoot, processObject = process, fil
     const entry = entryPath()
     if (!executable || !fileSystem.existsSync(executable)) throw new Error(`Node runtime not found: ${executable}`)
     if (!fileSystem.existsSync(entry)) throw new Error(`TS server entry not found: ${entry}; run npm run build:server`)
+    takeOverPort(ports[realm], `${realm} Agent Server`)
     fileSystem.mkdirSync(realmDataRoot(realm), { recursive: true })
     const child = spawnProcess(executable, [entry], {
       cwd: agentRoot,

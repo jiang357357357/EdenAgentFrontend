@@ -9,6 +9,7 @@ function fixture() {
     app: { isPackaged: false, getPath: () => '/tmp/user' }, agentRoot: '/workspace', stopTimeoutMs: 15,
     processObject: { platform: 'linux', execPath: '/node', env: { OPENAI_API_KEY: 'secret', MON_CORE_TOKEN: 'secret' } },
     fileSystem: { existsSync: () => true, mkdirSync: () => {} },
+    takeOverPort: () => {},
     spawnProcess: (executable, args, options) => {
       const child = new EventEmitter()
       child.signals = []; child.kill = signal => { child.signals.push(signal); return true }

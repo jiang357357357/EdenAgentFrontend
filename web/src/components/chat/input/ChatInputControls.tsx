@@ -1,6 +1,7 @@
+import { ContextContentDialog } from "./ContextContentDialog"
 import { ArrowUp, Circle, Square } from "lucide-react"
 import { motion } from "motion/react"
-import { useEffect, useId, useRef } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 
 import { formatPromptCacheState, formatTokenCount } from "../../../lib/token-usage"
 import { cn } from "../../../lib/utils"
@@ -69,20 +70,21 @@ export function TokenMeter({
   contextTokens,
   contextWindow,
   breakdown,
+  sessionId,
+  draft = "",
 }: {
+  sessionId?: string
+  draft?: string
   inputTokens: number
   contextTokens: number
   contextWindow: number
   breakdown?: import("../../../types").TokenBreakdown
 }) {
+  const [contextOpen, setContextOpen] = useState(false)
   const knownTokens = (value: number | undefined) => value === undefined ? "未提供" : formatTokenCount(value)
   const authoritativeContextTokens = contextTokens
   const providerAdjustment = breakdown?.providerAdjustment ?? 0
-  const contextLabel = inputTokens > 0
-    ? "当前上下文（含输入估算）"
-    : breakdown?.contextMeasurement === "provider"
-      ? "当前上下文"
-      : "当前上下文（估算）"
+  const contextLabel = "当前上下文"
   const contextPercent = Math.min(100, (authoritativeContextTokens / Math.max(1, contextWindow)) * 100)
   const contextArcLength = Math.min(58, Math.max(0, contextPercent * 0.58))
   const warning = contextPercent >= 85
@@ -94,14 +96,18 @@ export function TokenMeter({
   )
 
   return (
-    <div className="group/token relative flex h-[4.7vh] w-[4.7vh] items-center justify-center">
+    <div className="group/token relative flex h-[6vh] w-[6vh] items-center justify-center">
       <button
         type="button"
         className={cn(
-          "relative flex h-[4.7vh] w-[4.7vh] items-center justify-center rounded-full bg-card text-[1.65vh] font-medium tabular-nums outline-none transition-transform hover:scale-[1.04] focus-visible:scale-[1.04]",
+          "relative flex h-[6vh] w-[6vh] items-center justify-center rounded-full bg-card text-[1.8vh] font-medium tabular-nums outline-none transition-transform hover:scale-[1.04] focus-visible:scale-[1.04]",
           warning ? "text-red-600" : "text-text-muted",
         )}
         aria-label={`上下文占用约 ${Math.round(contextPercent)}%，${authoritativeContextTokens} tokens，上限 ${contextWindow}；本次待发送输入约 ${inputTokens} tokens`}
+        onDoubleClick={() => setContextOpen(true)}
+        onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setContextOpen(true) } }}
+        title="双击查看上下文内容"
+        aria-haspopup="dialog"
         aria-describedby={tooltipId}
       >
         <Circle className="absolute inset-0 h-full w-full text-border" strokeWidth={1.7} aria-hidden="true" />
@@ -115,9 +121,10 @@ export function TokenMeter({
           strokeLinecap="round"
           aria-hidden="true"
         />
-        <span className="relative z-10 max-w-[3.1vh] truncate">{Math.round(contextPercent)}%</span>
+        <span className="relative z-10 whitespace-nowrap text-center">{Math.round(contextPercent)}%</span>
       </button>
 
+      {contextOpen && <ContextContentDialog key={sessionId} sessionId={sessionId} draft={draft} onClose={() => setContextOpen(false)} />}
       <div
         id={tooltipId}
         role="tooltip"
@@ -127,15 +134,15 @@ export function TokenMeter({
         <span className="grid grid-cols-[1fr_auto] gap-x-[1.3vh] gap-y-[0.65vh]">
           <span className="text-text-muted">本次输入</span>
           <strong className="font-medium tabular-nums">{formatTokenCount(inputTokens)}</strong>
-          <span className="text-text-muted">角色人设（估算）</span>
+          <span className="text-text-muted">角色人设</span>
           <strong className="font-medium tabular-nums">{knownTokens(breakdown?.character)}</strong>
-          <span className="text-text-muted">技能目录（估算）</span>
+          <span className="text-text-muted">技能目录</span>
           <strong className="font-medium tabular-nums">{knownTokens(breakdown?.skills)}</strong>
-          <span className="text-text-muted">系统（估算）</span>
+          <span className="text-text-muted">系统</span>
           <strong className="font-medium tabular-nums">{knownTokens(breakdown?.system)}</strong>
-          <span className="text-text-muted">工具定义（估算）</span>
+          <span className="text-text-muted">工具定义</span>
           <strong className="font-medium tabular-nums">{knownTokens(breakdown?.tools)}</strong>
-          <span className="text-text-muted">请求消息（估算）</span>
+          <span className="text-text-muted">请求消息</span>
           <strong className="font-medium tabular-nums">{breakdown?.providerInput !== undefined ? knownTokens(breakdown.history) : formatTokenCount(breakdown?.history ?? Math.max(0, contextTokens - inputTokens))}</strong>
           {breakdown?.providerInput != null && (
             <>

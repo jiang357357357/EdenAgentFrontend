@@ -741,6 +741,11 @@ function isMessagePartRemovedEvent(event: ApiEvent): event is Extract<ApiEvent, 
   )
 }
 
+function isMessageRemovedEvent(event: ApiEvent): event is Extract<ApiEvent, { type: "message.removed" }> {
+  return event.type === "message.removed" && typeof event.properties?.sessionID === "string" &&
+    typeof event.properties.messageID === "string"
+}
+
 function isSessionTitleUpdatedEvent(event: ApiEvent): event is ApiEvent & {
   type: "session.title_updated"
   properties: { sessionID: string; title: string; updatedAt: number }
@@ -1236,6 +1241,11 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
         }
         return next
       }
+      if (isMessageRemovedEvent(event)) {
+        const session = ensureSession(next, event.properties.sessionID)
+        removeMessage(session, event.properties.messageID)
+        return next
+      }
       if (isMessagePartUpdatedEvent(event)) {
         applyPartUpdate(next, event.properties.part)
         return next
@@ -1337,8 +1347,24 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       }
       if (isSessionStatusEvent(event)) {
         const session = ensureSession(next, event.properties.sessionID)
-        const status = event.properties.status.type
+        const statusDetail = event.properties.status
+        const status = statusDetail.type
         session.status = status === "busy" || status === "retry" || status === "stopping" ? status : "idle"
+        if (status === "retry") {
+          const attempt = Number(statusDetail.attempt)
+          const maxAttempts = Number(statusDetail.maxAttempts)
+          if (Number.isSafeInteger(attempt) && attempt > 0 && Number.isSafeInteger(maxAttempts) && maxAttempts > 0) {
+            const delayMs = Number(statusDetail.delayMs)
+            session.modelRetry = {
+              attempt,
+              maxAttempts,
+              ...(Number.isFinite(delayMs) && delayMs >= 0 ? { delayMs } : {}),
+              ...(typeof statusDetail.errorMessage === "string" ? { errorMessage: statusDetail.errorMessage } : {}),
+            }
+          }
+        } else if (statusDetail.retryFinished === true || session.status === "idle") {
+          delete session.modelRetry
+        }
         if (session.status === "idle") {
           session.directorRun = completeCompanionDirectorRun(session.directorRun)
           upsertDirectorRun(session, session.directorRun)
@@ -1389,6 +1415,8 @@ function isRuntimeStateEvent(event: ApiEvent): boolean {
     isMessagePartUpdatedEvent(event) ||
     isMessagePartDeltaEvent(event) ||
     isMessagePartRemovedEvent(event) ||
+    isMessageRemovedEvent(event) ||
+    isMessageStreamResetEvent(event) ||
     isCompanionDirectorStartedEvent(event) ||
     isCompanionPlanEvent(event) ||
     isCompanionSpeakerEvent(event) ||

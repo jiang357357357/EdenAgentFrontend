@@ -187,6 +187,12 @@ export interface Session {
   directorRuns?: CompanionDirectorRun[]
   agentThreads?: SubagentThread[]
   coordinationBatches?: CoordinationBatch[]
+  modelRetry?: {
+    attempt: number
+    maxAttempts: number
+    delayMs?: number
+    errorMessage?: string
+  }
 }
 
 export interface TokenBreakdown {
@@ -558,6 +564,12 @@ export interface RuntimeSession {
   messageCursor?: string
   loadingOlderMessages: boolean
   error?: string
+  modelRetry?: {
+    attempt: number
+    maxAttempts: number
+    delayMs?: number
+    errorMessage?: string
+  }
   mode?: "companion" | "solo"
   participants?: import("./lib/agent-client").SessionParticipant[]
   assistantHandoff?: AssistantHandoffState

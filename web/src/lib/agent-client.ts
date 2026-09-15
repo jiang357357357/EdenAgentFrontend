@@ -1,4 +1,4 @@
-import { rpcRequestForOrigin } from './rpc-transport'
+import { requestSpeechSynthesis, rpcRequestForOrigin } from './rpc-transport'
 import type { ToolInfo } from '@eden/api'
 import type { DirectorRun as DirectorRunInfo } from '@eden/api'
 import type { AgentThreadInfo } from '@eden/api'
@@ -12,6 +12,7 @@ import { memoCreateSchema, memoPatchSchema } from '@eden/api'
 import type { ConnectorCapabilityInfo as RpcConnectorCapabilityInfo, ConnectorCatalogEntry as RpcConnectorCatalogEntry, ConnectorInfo as RpcConnectorInfo } from '@eden/api'
 import { buildSessionEnvironment } from "./session-environment"
 import { getRuntimeModelConfig } from "./runtime-model-client"
+import { hasConfiguredRuntimeModel } from "./runtime-models"
 export { getRuntimeModelConfig, updateRuntimeModel } from "./runtime-model-client"
 export type { RuntimeModelConfig, RuntimeModelOption, ModelSelectionTarget } from "./runtime-models"
 import type {
@@ -792,6 +793,14 @@ export type MessagePartRemovedEvent = {
   }
 }
 
+export type MessageRemovedEvent = {
+  type: "message.removed"
+  properties: {
+    sessionID: string
+    messageID: string
+  }
+}
+
 export type SessionParticipantsUpdatedEvent = {
   type: "session.participants_updated"
   properties: {
@@ -878,6 +887,7 @@ export type ApiEvent =
   | MessagePartUpdatedEvent
   | MessagePartDeltaEvent
   | MessagePartRemovedEvent
+  | MessageRemovedEvent
   | MessageStreamResetEvent
   | CharacterActionChangedEvent
   | {
@@ -1130,9 +1140,21 @@ export async function createSessionRaw(
   const environment = currentSessionEnvironment()
   const session = await rpcRequestForOrigin(origin, "session.create", { title: "", participants, environment })
   identity.assertCurrent()
-  await getRuntimeModelConfig(session.id, origin).catch((error) => {
-    console.warn(`[Model] session ${session.id} could not hydrate its Core model binding`, error)
-  })
+  try {
+    const model = await getRuntimeModelConfig(session.id, origin)
+    if (!hasConfiguredRuntimeModel(model)) {
+      throw new Error(origin === "mon"
+        ? "当前助手没有可用模型，请先选择或配置模型。"
+        : "当前世界还没有配置可用模型，请先在模型设置中完成配置。")
+    }
+  } catch (error) {
+    // A conversation without a model cannot accept its first turn. Remove the
+    // empty durable shell so a failed attempt does not accumulate ghost chats.
+    await rpcRequestForOrigin(origin, "session.delete", { sessionId: session.id }).catch((cleanupError) => {
+      console.warn(`[Model] failed to remove unconfigured session ${session.id}`, cleanupError)
+    })
+    throw error
+  }
   if (initialPrompt) {
     identity.assertCurrent()
     const attachments = await uploadAttachments(initialPrompt.attachments)
@@ -1213,6 +1235,24 @@ export function projectMessageEvents(events: RpcSessionEvent[]): ApiMessage[] {
 
   for (const event of events) {
     const turnKey = String(event.turnId ?? "none")
+    if (
+      event.eventType === "agent.retry_scheduled" &&
+      event.payload &&
+      typeof event.payload === "object" &&
+      !Array.isArray(event.payload) &&
+      event.payload.operation === "model"
+    ) {
+      const failed = latestByTurn.get(turnKey)
+      if (failed?.info.role === "assistant") {
+        const index = items.lastIndexOf(failed)
+        if (index >= 0) items.splice(index, 1)
+        latestByTurn.delete(turnKey)
+      }
+      for (const key of toolOwners.keys()) {
+        if (key.startsWith(`${turnKey}:`)) toolOwners.delete(key)
+      }
+      continue
+    }
     const toolCallID = sessionEventToolResultCallID(event)
     if (toolCallID) {
       const ownerKey = `${turnKey}:${toolCallID}`
@@ -1555,8 +1595,8 @@ export async function synthesizeSpeechSegment(input: {
   text: string
   configId: number
   mode: "text_only" | "all"
-}) {
-  const result = await rpcRequest("voice.tts.synthesize", {
+}, signal?: AbortSignal) {
+  const result = await requestSpeechSynthesis({
     sessionId: input.sessionId,
     messageId: input.messageId,
     segmentGroupId: input.segmentGroupId,
@@ -1565,7 +1605,7 @@ export async function synthesizeSpeechSegment(input: {
     text: input.text,
     configId: input.configId,
     mode: input.mode,
-  })
+  }, signal)
   return {
     ...result,
     duration_ms: result.duration_ms == null ? result.duration_ms : Number(result.duration_ms),
@@ -1602,6 +1642,10 @@ export async function discoverGsv(
   stage: "all" | "catalog" | "worlds" | "roles" | "emotions" = "all",
 ): Promise<LocalGsvDiscovery> {
   return rpcRequest("voice.gsv.discover", { config, stage }) as Promise<LocalGsvDiscovery>
+}
+
+export function discoverGsvStt(config: LocalGsvSttConfig): Promise<import("./desktop-window").LocalGsvSttDiscovery> {
+  return rpcRequest("voice.stt.discover", { config }) as Promise<import("./desktop-window").LocalGsvSttDiscovery>
 }
 
 export async function previewGsv(config: LocalGsvConfig, text: string, scope: import("./object-url-scope").ObjectUrlScope): Promise<LocalGsvPreview> {
@@ -1836,6 +1880,7 @@ export async function subscribeEvents(handlers: SubscribeHandlers | ((event: Api
 
 export function createSessionEventProjector() {
   const activeMessages = new Map<string, string>()
+  const lastAssistantMessages = new Map<string, string>()
   const toolOwners = new Map<string, string>()
 
   return (event: RpcSessionEvent): ApiEvent[] => {
@@ -1843,6 +1888,21 @@ export function createSessionEventProjector() {
     const role = sessionEventMessageRole(event)
     if (event.eventType === "agent.message_start" && role !== "toolResult" && !activeMessages.has(key)) {
       activeMessages.set(key, event.id)
+      if (role === "assistant") lastAssistantMessages.set(key, event.id)
+    }
+    if (event.eventType === "agent.retry_scheduled" && event.payload && typeof event.payload === "object" && !Array.isArray(event.payload) && event.payload.operation === "model") {
+      const failedMessageID = lastAssistantMessages.get(key)
+      activeMessages.delete(key)
+      return [
+        ...(failedMessageID ? [{ type: "message.removed", properties: { sessionID: event.sessionId, messageID: failedMessageID } }] : []),
+        { type: "session.status", properties: { sessionID: event.sessionId, status: { type: "retry", ...event.payload } } },
+      ]
+    }
+    if (event.eventType === "agent.retry_attempt_start" && event.payload && typeof event.payload === "object" && !Array.isArray(event.payload) && event.payload.operation === "model") {
+      return [{ type: "session.status", properties: { sessionID: event.sessionId, status: { type: "busy", ...event.payload } } }]
+    }
+    if (event.eventType === "agent.retry_finished" && event.payload && typeof event.payload === "object" && !Array.isArray(event.payload) && event.payload.operation === "model") {
+      return [{ type: "session.status", properties: { sessionID: event.sessionId, status: { type: "busy", retryFinished: true, ...event.payload } } }]
     }
 
     const toolCallID = sessionEventToolResultCallID(event)
@@ -1861,6 +1921,7 @@ export function createSessionEventProjector() {
     if (event.eventType === "agent.message_end" && ownerKey) toolOwners.delete(ownerKey)
     if (event.eventType === "turn.completed" || event.eventType === "turn.failed" || event.eventType === "input.interrupted") {
       activeMessages.delete(key)
+      lastAssistantMessages.delete(key)
       for (const candidate of toolOwners.keys()) {
         if (candidate.startsWith(`${key}:`)) toolOwners.delete(candidate)
       }

@@ -231,7 +231,7 @@ function normalizeLocalGsvSttConfig(value = {}, current = DEFAULT_LOCAL_GSV_STT_
   return {
     provider: "gsv",
     serviceUrl: normalizeBaseUrl(source.serviceUrl ?? fallback.serviceUrl, "gsv"),
-    language: characterEnum(source.language, fallback.language || "zh", ["auto", "zh", "en", "ja", "ko"]),
+    language: characterEnum(source.language, fallback.language || "zh", ["auto", "zh", "yue", "en", "ja", "ko"]),
     modelType: characterText(source.modelType, fallback.modelType || "funasr", 120),
     modelSize: characterText(source.modelSize, fallback.modelSize || "large", 120),
     precision: characterEnum(source.precision, fallback.precision || "float32", ["float32", "float16", "int8"]),

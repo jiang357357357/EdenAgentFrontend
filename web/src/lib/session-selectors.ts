@@ -150,7 +150,7 @@ function mapMetaPart(part: RuntimePart): MetaPartCard | undefined {
         id: compaction.id,
         type: compaction.type,
         title: compaction.auto ? "自动压缩上下文" : "上下文压缩",
-        summary: compaction.overflow ? "上下文接近容量上限，较早的对话已整理为摘要。" : "较早的对话已整理为摘要。",
+        summary: "压缩已完成，点击查看摘要；短对话压缩后可能更长。",
         detail: compaction.summary || details,
         tone: "accent",
         contextTokensBefore: compaction.tokensBefore,
@@ -456,6 +456,7 @@ function mapSession(session: RuntimeSession): Session {
     directorRuns,
     agentThreads: session.agentThreads,
     coordinationBatches: session.coordinationBatches,
+    modelRetry: session.modelRetry,
   }
 }
 

@@ -1,3 +1,4 @@
+import { useAutoScrollPreference } from "./lib/use-auto-scroll-preference"
 import { DesktopReminders } from "./components/notifications/DesktopReminders"
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react"
 import { X } from "lucide-react"
@@ -39,7 +40,7 @@ import {
   type CoreAssistant,
   type DevAccount,
 } from "./lib/auth"
-import { hasAssistantDetail, resolveConversationAssistant } from "./lib/assistant-detail"
+import { assistantFromParticipantSnapshot, hasAssistantDetail, resolveConversationAssistant } from "./lib/assistant-detail"
 import type { MessageData, PromptAttachment } from "./types"
 import {
   getLocalRuntimeConfig,
@@ -157,7 +158,7 @@ export default function App() {
   const [availableAssistants, setAvailableAssistants] = useState<CoreAssistant[]>([])
   const [currentAssistantError, setCurrentAssistantError] = useState<string | undefined>()
   const [activeCharacterAction, setActiveCharacterAction] = useState<ActiveCharacterAction | undefined>()
-  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
+  const { enabled: autoScrollEnabled, ready: autoScrollReady, error: autoScrollError, change: setAutoScrollEnabled } = useAutoScrollPreference(runtimeOrigin, runtimeReady)
   const [toolStatus, setToolStatus] = useState<ToolStatus | undefined>()
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const historyPrependInProgressRef = useRef(false)
@@ -569,9 +570,6 @@ export default function App() {
 
   function handleAutoScrollChange(enabled: boolean) {
     setAutoScrollEnabled(enabled)
-    if (enabled) {
-      window.setTimeout(() => scrollMessagesToBottom("smooth"), 0)
-    }
   }
 
   useLayoutEffect(() => {
@@ -579,7 +577,6 @@ export default function App() {
     if (lastScrollSessionRef.current !== activeSessionId) {
       lastScrollSessionRef.current = activeSessionId
       pendingSessionBottomRef.current = activeSessionId
-      setAutoScrollEnabled(true)
     }
     if (pendingSessionBottomRef.current !== activeSessionId) return
     if (!activeMessages.length) return
@@ -891,7 +888,7 @@ export default function App() {
     currentAssistant,
     availableAssistants,
     conversationAssistantID,
-  )
+  ) ?? assistantFromParticipantSnapshot(activeSession?.participants?.[0])
 
   useEffect(() => {
     if (authStatus !== "authenticated" || !conversationAssistantID) return
@@ -1113,11 +1110,12 @@ export default function App() {
                 activeCharacterAction={activeCharacterAction}
                 isThinking={isThinking}
                 connectionError={connectionError}
-                runtimeError={runtimeError}
+                runtimeError={[runtimeError, autoScrollError].filter(Boolean).join("；") || undefined}
                 activePendingPermissions={activePendingPermissions}
                 messagesScrollRef={messagesScrollRef}
                 messagesEndRef={messagesEndRef}
                 autoScrollEnabled={autoScrollEnabled}
+                autoScrollReady={autoScrollReady}
                 onAutoScrollChange={handleAutoScrollChange}
                 onLoadOlderMessages={handleLoadOlderMessages}
                 onSelectSession={selectRuntimeSession}

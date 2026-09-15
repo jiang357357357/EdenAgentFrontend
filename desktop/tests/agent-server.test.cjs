@@ -16,6 +16,7 @@ function childProcess() {
 
 function packagedManager(overrides = {}) {
   const calls = []
+  const takeovers = []
   const manager = createAgentServerManager({
     app: { isPackaged: true, getPath: () => "C:\\UserData" },
     agentRoot: "C:\\Agent",
@@ -26,17 +27,22 @@ function packagedManager(overrides = {}) {
       calls.push({ executable, args, options, child })
       return child
     },
+    takeOverPort: (port, label) => takeovers.push({ port, label }),
     getRuntimeEnvironment: () => ({ EDEN_AGENT_MODEL: "ollama/qwen3", OLLAMA_API_KEY: "local-secret" }),
     ...overrides,
   })
-  return { manager, calls }
+  return { manager, calls, takeovers }
 }
 
-test("packaged desktop starts physically isolated Mon and local Node servers", () => {
-  const { manager, calls } = packagedManager()
+test("packaged desktop takes over realm ports before starting isolated Mon and local Node servers", () => {
+  const { manager, calls, takeovers } = packagedManager()
   manager.start()
   manager.start()
   assert.equal(calls.length, 2)
+  assert.deepEqual(takeovers, [
+    { port: 40092, label: "mon Agent Server" },
+    { port: 40093, label: "local Agent Server" },
+  ])
   const mon = calls.find((call) => call.options.env.EDEN_AGENT_RUNTIME_ORIGIN === "mon")
   const local = calls.find((call) => call.options.env.EDEN_AGENT_RUNTIME_ORIGIN === "local")
   assert.ok(mon)
@@ -66,6 +72,7 @@ test("changing the local model restarts only the local realm", async () => {
   let model = "openai/gpt-4o-mini"
   const { manager, calls } = packagedManager({
     getRuntimeEnvironment: () => ({ EDEN_AGENT_MODEL: model }),
+    takeOverPort: () => {},
   })
   manager.start()
   const monChild = calls.find((call) => call.options.env.EDEN_AGENT_RUNTIME_ORIGIN === "mon").child
@@ -92,6 +99,7 @@ test("external desktop reads a different server-owned token for each realm", () 
         return filePath.includes("local") ? `${"b".repeat(64)}\n` : `${"a".repeat(64)}\n`
       },
     },
+    takeOverPort: () => {},
   })
   assert.deepEqual(manager.start(), [null, null])
   assert.equal(manager.capability("mon").token, "a".repeat(64))
@@ -136,6 +144,7 @@ test("external supervisor reports realm restart as requiring an app restart", as
       stderr: {},
     },
     fileSystem: { existsSync: () => true, mkdirSync: () => {} },
+    takeOverPort: () => {},
   })
   assert.equal(manager.status("local").restartSupported, false)
   assert.deepEqual(await manager.restart("local"), {
@@ -155,6 +164,7 @@ test("external desktop never invents a missing realm token", () => {
       mkdirSync: () => {},
       readFileSync: () => { throw Object.assign(new Error("missing"), { code: "ENOENT" }) },
     },
+    takeOverPort: () => {},
   })
   assert.throws(() => manager.capability("local"), /local capability token is not ready/)
   assert.throws(() => manager.capability("other"), /Unsupported Eden Agent runtime origin/)

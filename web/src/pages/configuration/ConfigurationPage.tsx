@@ -39,6 +39,7 @@ import {
   type LocalGsvConfig,
   type LocalGsvDiscovery,
   type LocalGsvSttConfig,
+  type LocalGsvSttDiscovery,
   type LocalRuntimeConfig,
   type LocalRuntimeConfigInput,
   type PetSettings,
@@ -47,7 +48,7 @@ import {
   discoverGsv,
   getVoiceRuntimeConfig,
   previewGsv as previewGsvVoice,
-  testGsvStt,
+  discoverGsvStt,
   updateGsvSttConfig,
   updateGsvTtsConfig,
 } from "../../lib/agent-client"
@@ -154,10 +155,22 @@ const defaultGsvSttForm: LocalGsvSttConfig = {
 const sttLanguages: Array<{ value: LocalGsvSttConfig["language"]; label: string }> = [
   { value: "auto", label: "自动检测" },
   { value: "zh", label: "中文" },
+  { value: "yue", label: "粤语" },
   { value: "en", label: "英文" },
   { value: "ja", label: "日文" },
   { value: "ko", label: "韩文" },
 ]
+
+const sttModelLabels: Record<string, string> = {
+  funasr: "FunASR",
+  faster_whisper: "Faster-Whisper",
+}
+
+const sttPrecisionLabels: Record<LocalGsvSttConfig["precision"], string> = {
+  float32: "Float32",
+  float16: "Float16",
+  int8: "Int8",
+}
 
 function messageOf(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
@@ -245,6 +258,7 @@ export function ConfigurationPage({
   const [gsvPreviewing, setGsvPreviewing] = useState(false)
   const [gsvPreviewLatency, setGsvPreviewLatency] = useState<number | null>(null)
   const [sttForm, setSttForm] = useState<LocalGsvSttConfig>(defaultGsvSttForm)
+  const [sttDiscovery, setSttDiscovery] = useState<LocalGsvSttDiscovery | null>(null)
   const [sttTesting, setSttTesting] = useState(false)
   const [sttSaving, setSttSaving] = useState(false)
   const [sttLatency, setSttLatency] = useState<number | null>(null)
@@ -505,17 +519,40 @@ export function ConfigurationPage({
     setVoiceError("")
   }
 
+  const selectSttModel = (modelType: string) => {
+    const capability = sttDiscovery?.models.find((model) => model.modelType === modelType)
+    if (!capability) return
+    patchSttForm({
+      modelType,
+      language: capability.languages.includes(sttForm.language) ? sttForm.language : capability.languages[0] ?? "zh",
+      modelSize: capability.sizes.includes(sttForm.modelSize) ? sttForm.modelSize : capability.sizes[0] ?? "large",
+      precision: capability.precisions.includes(sttForm.precision) ? sttForm.precision : capability.precisions[0] ?? "float32",
+    })
+  }
+
   const testStt = async () => {
     setSttTesting(true)
     setVoiceError("")
     try {
-      const result = await testGsvStt(sttForm)
+      const result = await discoverGsvStt(sttForm)
+      if (!result.models.length) throw new Error("GSV 没有返回可用的 ASR 模型")
+      const capability = result.models.find((model) => model.modelType === sttForm.modelType) ?? result.models[0]
+      if (!capability) throw new Error("GSV 没有返回可用的 ASR 模型")
+      const normalized: LocalGsvSttConfig = {
+        ...sttForm,
+        modelType: capability.modelType,
+        language: capability.languages.includes(sttForm.language) ? sttForm.language : capability.languages[0] ?? "zh",
+        modelSize: capability.sizes.includes(sttForm.modelSize) ? sttForm.modelSize : capability.sizes[0] ?? "large",
+        precision: capability.precisions.includes(sttForm.precision) ? sttForm.precision : capability.precisions[0] ?? "float32",
+      }
+      setSttDiscovery(result)
+      setSttForm(normalized)
       setSttLatency(result.latencyMs)
-      return true
+      return normalized
     } catch (sttError) {
       setSttLatency(null)
       setVoiceError(messageOf(sttError, "连接 GSV 转录服务失败。"))
-      return false
+      return null
     } finally {
       setSttTesting(false)
     }
@@ -525,8 +562,9 @@ export function ConfigurationPage({
     setSttSaving(true)
     setVoiceError("")
     try {
-      if (!(await testStt())) return
-      const result = await updateGsvSttConfig(sttForm)
+      const testedConfig = await testStt()
+      if (!testedConfig) return
+      const result = await updateGsvSttConfig(testedConfig)
       setSttForm(result.stt)
       setSttSaved(true)
     } catch (saveError) {
@@ -988,23 +1026,35 @@ export function ConfigurationPage({
                   </Field>
                   <Field label="GSV 转录服务地址">
                     <div className="flex gap-2">
-                      <input value={sttForm.serviceUrl} placeholder="http://127.0.0.1:40302" onChange={(event) => patchSttForm({ serviceUrl: event.target.value })} className="h-11 min-w-0 flex-1 rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-accent/60" />
-                      <button type="button" onClick={() => void testStt()} disabled={sttTesting || sttSaving || !sttForm.serviceUrl.trim()} className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-accent/30 bg-accent/5 px-4 text-sm font-medium text-accent hover:bg-accent/10 disabled:cursor-wait disabled:opacity-50">{sttTesting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}测试连接</button>
+                      <input value={sttForm.serviceUrl} placeholder="http://127.0.0.1:40302" onChange={(event) => { patchSttForm({ serviceUrl: event.target.value }); setSttDiscovery(null) }} className="h-11 min-w-0 flex-1 rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-accent/60" />
+                      <button type="button" onClick={() => void testStt()} disabled={sttTesting || sttSaving || !sttForm.serviceUrl.trim()} className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-accent/30 bg-accent/5 px-4 text-sm font-medium text-accent hover:bg-accent/10 disabled:cursor-wait disabled:opacity-50">{sttTesting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}读取选项</button>
                     </div>
                   </Field>
                 </div>
 
                 <div className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-                  <Field label="默认语言">
-                    <select value={sttForm.language} onChange={(event) => patchSttForm({ language: event.target.value as LocalGsvSttConfig["language"] })} className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-accent/60">
-                      {sttLanguages.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}
+                  <Field label="识别语言">
+                    <select disabled={!sttDiscovery} value={sttForm.language} onChange={(event) => patchSttForm({ language: event.target.value as LocalGsvSttConfig["language"] })} className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm outline-none disabled:opacity-50 focus:border-accent/60">
+                      {!sttDiscovery && <option value={sttForm.language}>{sttLanguages.find((item) => item.value === sttForm.language)?.label ?? sttForm.language}</option>}
+                      {sttDiscovery?.models.find((model) => model.modelType === sttForm.modelType)?.languages.map((language) => <option key={language} value={language}>{sttLanguages.find((item) => item.value === language)?.label ?? language}</option>)}
                     </select>
                   </Field>
-                  <TextField label="模型类型" value={sttForm.modelType} placeholder="funasr" maxLength={120} onChange={(value) => patchSttForm({ modelType: value })} />
-                  <TextField label="模型规格" value={sttForm.modelSize} placeholder="large" maxLength={120} onChange={(value) => patchSttForm({ modelSize: value })} />
+                  <Field label="模型类型">
+                    <select disabled={!sttDiscovery} value={sttForm.modelType} onChange={(event) => selectSttModel(event.target.value)} className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm outline-none disabled:opacity-50 focus:border-accent/60">
+                      {!sttDiscovery && <option value={sttForm.modelType}>{sttModelLabels[sttForm.modelType] ?? sttForm.modelType}</option>}
+                      {sttDiscovery?.models.map((model) => <option key={model.modelType} value={model.modelType}>{sttModelLabels[model.modelType] ?? model.modelType}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="模型规格">
+                    <select disabled={!sttDiscovery} value={sttForm.modelSize} onChange={(event) => patchSttForm({ modelSize: event.target.value })} className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm outline-none disabled:opacity-50 focus:border-accent/60">
+                      {!sttDiscovery && <option value={sttForm.modelSize}>{sttForm.modelSize}</option>}
+                      {sttDiscovery?.models.find((model) => model.modelType === sttForm.modelType)?.sizes.map((size) => <option key={size} value={size}>{size}</option>)}
+                    </select>
+                  </Field>
                   <Field label="推理精度">
-                    <select value={sttForm.precision} onChange={(event) => patchSttForm({ precision: event.target.value as LocalGsvSttConfig["precision"] })} className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-accent/60">
-                      <option value="float32">Float32</option><option value="float16">Float16</option><option value="int8">Int8</option>
+                    <select disabled={!sttDiscovery} value={sttForm.precision} onChange={(event) => patchSttForm({ precision: event.target.value as LocalGsvSttConfig["precision"] })} className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm outline-none disabled:opacity-50 focus:border-accent/60">
+                      {!sttDiscovery && <option value={sttForm.precision}>{sttPrecisionLabels[sttForm.precision]}</option>}
+                      {sttDiscovery?.models.find((model) => model.modelType === sttForm.modelType)?.precisions.map((precision) => <option key={precision} value={precision}>{sttPrecisionLabels[precision]}</option>)}
                     </select>
                   </Field>
                   <NumberField label="超时时间（秒）" value={sttForm.timeoutSeconds} min={1} max={300} onChange={(value) => patchSttForm({ timeoutSeconds: value })} />
@@ -1031,7 +1081,7 @@ export function ConfigurationPage({
 
                 <div className="mt-5 flex flex-wrap items-center gap-3">
                   <button type="button" onClick={() => void saveStt()} disabled={sttTesting || sttSaving} className="flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-white hover:bg-[#c66d05] disabled:cursor-wait disabled:opacity-50">{sttSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />} 保存并应用</button>
-                  {sttLatency !== null ? <span className="flex items-center gap-2 text-sm text-emerald-600"><Check className="h-4 w-4" />连接成功 · {sttLatency} ms</span> : null}
+                  {sttLatency !== null ? <span className="flex items-center gap-2 text-sm text-emerald-600"><Check className="h-4 w-4" />已读取 · {sttLatency} ms{sttDiscovery ? ` · ${sttDiscovery.models.length} 种引擎` : ""}</span> : null}
                   {sttSaved ? <span className="text-sm text-emerald-600">配置已应用到本地 STT</span> : null}
                 </div>
               </section>

@@ -288,7 +288,7 @@ export function ChatInput({
         "sticky bottom-0 z-10",
         overlay
           ? "bg-transparent p-0 [container-type:size]"
-          : "bg-gradient-to-t from-bg via-bg/95 to-transparent pt-[1.2vh] pb-[2.8vh]",
+          : "mx-auto w-[90%] bg-gradient-to-t from-bg via-bg/95 to-transparent pt-[1.2vh] pb-[2.8vh]",
       )}
       style={overlay ? { height: standaloneOverlay ? "100%" : `${overlayHeight ?? (overlayCompact ? 20 : 40)}vh` } : undefined}
     >
@@ -325,7 +325,7 @@ export function ChatInput({
                   draggingFiles ? "border-orange-300/70 ring-2 ring-orange-300/30" : "border-white/12",
                 )
               : cn(
-                  "relative min-h-[16vh] overflow-visible rounded-[3.3vh] border bg-card/96 shadow-sm backdrop-blur-md focus-within:border-border",
+                  "relative min-h-[20vh] overflow-visible rounded-[3.3vh] border bg-card/96 shadow-sm backdrop-blur-md focus-within:border-border",
                   draggingFiles ? "border-orange-300/70 ring-2 ring-orange-300/25" : "border-border",
                 ),
           )}
@@ -414,7 +414,7 @@ export function ChatInput({
                     "absolute inset-0 box-border h-full max-h-none min-h-0 w-full overflow-hidden text-stone-100 placeholder:text-stone-400/55 [&::-webkit-scrollbar]:hidden",
                     standaloneOverlay ? "px-[8cqh] pb-[8cqh] pt-[8cqh]" : "px-[2.8vh] pt-[2.7vh]",
                   )
-                : "relative block box-border min-h-[9.3vh] w-full overflow-hidden pl-[2.8vh] pr-[10vh] pt-[2.7vh] text-[2.2vh] text-text placeholder:text-text-muted/65 [&::-webkit-scrollbar]:hidden",
+                : "relative block box-border min-h-[13.3vh] w-full overflow-hidden pl-[2.8vh] pr-[10vh] pt-[2.7vh] text-[2.2vh] text-text placeholder:text-text-muted/65 [&::-webkit-scrollbar]:hidden",
               hideComposerFooter
                 ? (standaloneOverlay ? "" : "pb-[2.7vh]")
                 : overlay
@@ -425,6 +425,8 @@ export function ChatInput({
         )}
 
         <ChatComposerFooter
+          sessionId={sessionId}
+          draft={input}
           allowFollowUp={allowFollowUp}
           canSend={canSend}
           contextTokens={contextTokens}

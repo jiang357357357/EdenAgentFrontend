@@ -38,7 +38,7 @@ export function SubagentPolicyRestore({ agentId, onSaved }: { agentId: string; o
     <button disabled={busy || !role} onClick={() => void load()} className="my-2 rounded border px-2 py-1">读取角色与恢复依据</button>
     {basis && <><p className="break-all">工作区：{basis.workspaceRoot} · 历史配置 SHA-256：{basis.sourceHash}</p>
       <pre className="max-h-48 overflow-auto whitespace-pre-wrap">{basis.definition}</pre>
-      <textarea aria-label="映射后的历史策略 JSON" disabled={busy} value={text} onChange={event => { setText(event.target.value); setConfirmed(false) }} placeholder={'{"sandboxMode":"read-only","allowedTools":["eden_read_file"],"deniedTools":[]}'} className="mt-2 min-h-28 w-full rounded border p-2" />
+      <textarea aria-label="映射后的历史策略 JSON" disabled={busy} value={text} onChange={event => { setText(event.target.value); setConfirmed(false) }} placeholder={'{"sandboxMode":"read-only","allowedTools":["read_file"],"deniedTools":[]}'} className="mt-2 min-h-28 w-full rounded border p-2" />
       <textarea aria-label="历史策略映射依据" disabled={busy} value={note} onChange={event => { setNote(event.target.value); setConfirmed(false) }} placeholder="说明原配置来源、工具名映射及保留的限制" className="mt-2 w-full rounded border p-2" />
       <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我已核对源配置，确认映射未遗漏历史限制。</label>
       <button disabled={busy || !confirmed || !text || !note} onClick={() => void save()} className="mt-2 rounded border px-2 py-1">保存策略恢复记录</button>

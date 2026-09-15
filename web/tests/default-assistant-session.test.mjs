@@ -21,3 +21,9 @@ test("participant profiles are resolved before the durable session is created", 
   assert.match(clientSource, /rpcRequestForOrigin\(origin, "session\.create", \{ title: "", participants, environment \}\)/)
   assert.match(participantSource, /profile: assistant == null \? null/)
 })
+
+test("a new conversation is removed when its model binding cannot be established", () => {
+  assert.match(clientSource, /hasConfiguredRuntimeModel\(model\)/)
+  assert.match(clientSource, /rpcRequestForOrigin\(origin, "session\.delete", \{ sessionId: session\.id \}\)/)
+  assert.doesNotMatch(clientSource, /could not hydrate its Core model binding/)
+})

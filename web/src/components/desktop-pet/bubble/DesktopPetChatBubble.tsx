@@ -287,15 +287,16 @@ export function DesktopPetChatBubble({
                         <div className="min-w-0 flex-1">
                           <DesktopPetMarkdown content={content} />
                         </div>
-                        {speechSegmentID && speechClip?.status === "synthesizing" ? (
-                          <span
+                        {speechSegmentID && speechMessageID && speechClip?.status === "synthesizing" ? (
+                          <button type="button" onClick={() => toggleSpeechClip(speechSegmentID, speechMessageID, content, true)}
+                            aria-label="取消本条消息的语音合成"
                             className="mb-[0.2cqh] inline-flex h-[5cqh] w-[5cqh] shrink-0 text-stone-500"
-                            title="正在合成语音"
+                            title="取消本条消息的语音合成"
                           >
-                            <LoaderCircle className="h-full w-full animate-spin" />
-                          </span>
+                            <Square className="h-full w-full fill-current" />
+                          </button>
                         ) : null}
-                        {speechSegmentID && speechMessageID && ttsMode !== "none" && speechClip?.status !== "synthesizing" ? (
+                        {speechSegmentID && speechMessageID && ttsMode !== "none" && (speechClip?.status !== "synthesizing" || activeSpeechSegmentId === speechSegmentID) ? (
                           <button
                             type="button"
                             onClick={() => toggleSpeechClip(speechSegmentID, speechMessageID, content)}

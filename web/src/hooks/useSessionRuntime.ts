@@ -70,6 +70,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const [state, dispatch] = useReducer(runtimeReducer, initialRuntimeState);
   const [permissionMode, setPermissionModeState] = useState<PermissionMode>('restricted');
   const [draftParticipantIDs, setDraftParticipantIDs] = useState<Array<number | string>>([]);
+  const [modelErrors, setModelErrors] = useState<Record<string, string>>({});
   const activeSessionIdRef = useRef<string | undefined>(state.activeSessionId);
   const cachedSessionIdsRef = useRef<string[]>([]);
   cachedSessionIdsRef.current = Object.keys(state.sessions);
@@ -108,6 +109,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   useEffect(() => {
     if (enabled) return;
     hasOpenedStreamRef.current = false;
+    setModelErrors({});
     dispatch(resetRuntime());
   }, [enabled]);
 
@@ -131,6 +133,25 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     const page = await listMessagesRaw(sessionID);
     dispatch(hydrateSessionMessages(sessionID, page));
   }, [isRuntimeReady]);
+
+  const refreshSessionModel = useCallback(async (sessionID: string) => {
+    try {
+      await refreshModelWhenIdle(sessionID);
+      setModelErrors((current) => {
+        if (!current[sessionID]) return current;
+        const next = { ...current };
+        delete next[sessionID];
+        return next;
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/authentication_expired|not_authenticated|core_authentication_expired|Mon authentication rejected/i.test(message)) {
+        dispatch(setConnectionError(message));
+        return;
+      }
+      setModelErrors((current) => current[sessionID] === message ? current : { ...current, [sessionID]: message });
+    }
+  }, []);
 
   const refreshBlockers = useCallback(async () => {
     if (!isRuntimeReady()) return;
@@ -158,7 +179,6 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         if (cancelled) return;
         const firstSessionID = activeSessionIdRef.current ?? sessions[0]?.id;
         if (firstSessionID) {
-          await refreshModelWhenIdle(firstSessionID);
           await refreshSessionMessages(firstSessionID);
         }
         await refreshBlockers();
@@ -173,6 +193,11 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       cancelled = true;
     };
   }, [isRuntimeReady, refreshBlockers, refreshSessionMessages, refreshSessions]);
+
+  useEffect(() => {
+    if (!isRuntimeReady() || !state.activeSessionId) return;
+    void refreshSessionModel(state.activeSessionId);
+  }, [isRuntimeReady, refreshSessionModel, state.activeSessionId]);
 
   const activeSessionHydrated = state.activeSessionId
     ? Boolean(state.sessions[state.activeSessionId]?.hydrated)
@@ -225,7 +250,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
           try {
             await Promise.all([refreshSessions(), refreshBlockers()]);
             if (sessionID) {
-              await refreshModelWhenIdle(sessionID);
+              await refreshSessionModel(sessionID);
               await refreshSessionMessages(sessionID);
             }
           } catch (error) {
@@ -295,7 +320,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       }
       cleanup?.();
     };
-  }, [isRuntimeReady, refreshBlockers, refreshSessionMessages, refreshSessions]);
+  }, [isRuntimeReady, refreshBlockers, refreshSessionMessages, refreshSessionModel, refreshSessions]);
 
   const createSession = useCallback(async () => {
     if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
@@ -448,6 +473,12 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     }
     const session = await updateSessionParticipantsRaw(sessionID, assistantIDs);
     dispatch(hydrateSessionList([session]));
+    setModelErrors((current) => {
+      if (!current[sessionID]) return current;
+      const next = { ...current };
+      delete next[sessionID];
+      return next;
+    });
     return session;
   }, [isRuntimeReady]);
 
@@ -457,6 +488,12 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       throw new Error('智能体正在处理当前任务，请先停止任务再删除会话。');
     }
     await deleteSessionRaw(sessionID);
+    setModelErrors((current) => {
+      if (!current[sessionID]) return current;
+      const next = { ...current };
+      delete next[sessionID];
+      return next;
+    });
     const nextSessionID = state.sessionOrder.find((id) => id !== sessionID);
     sendingSessionIdsRef.current.delete(sessionID);
     hydratingSessionIdsRef.current.delete(sessionID);
@@ -535,6 +572,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const allPendingQuestions = useMemo(() => selectPendingQuestions(state), [state]);
   const isThinking = selectSessionStatus(state, state.activeSessionId) !== 'idle';
   const activeSessionError = state.activeSessionId ? state.sessions[state.activeSessionId]?.error : undefined;
+  const activeModelError = state.activeSessionId ? modelErrors[state.activeSessionId] : undefined;
 
   return {
     activeSession,
@@ -544,7 +582,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     answerQuestion,
     connectionState: state.connectionState,
     connectionError: state.connectionState !== 'connected' ? state.connectionError : undefined,
-    runtimeError: state.connectionState === 'connected' ? state.connectionError : undefined,
+    runtimeError: state.connectionState === 'connected' ? activeModelError ?? state.connectionError : undefined,
     compactSession,
     createSession,
     deleteSession,
@@ -563,6 +601,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     reset: () => {
       activeSessionIdRef.current = undefined;
       setDraftParticipantIDs(defaultParticipantID === undefined || defaultParticipantID === null ? [] : [defaultParticipantID]);
+      setModelErrors({});
       dispatch(resetRuntime());
     },
     selectSession: chooseSession,

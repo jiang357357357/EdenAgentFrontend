@@ -41,7 +41,7 @@ export function MetaPartCard({ part }: MetaPartCardProps) {
   const isCompaction = part.type === 'compaction';
   const before = part.contextTokensBefore;
   const after = part.contextTokensAfter;
-  const saved = typeof before === 'number' && typeof after === 'number' ? Math.max(0, before - after) : undefined;
+  const saved = typeof before === 'number' && typeof after === 'number' ? before - after : undefined;
   const reduction = saved !== undefined && before ? Math.round((saved / before) * 100) : undefined;
 
   if (isCompaction) {
@@ -60,7 +60,7 @@ export function MetaPartCard({ part }: MetaPartCardProps) {
             <span className="flex min-w-0 items-center gap-[0.65vh]">
               <span className="shrink-0 font-serif text-[1.6vh] text-text">{part.title}</span>
               <span className="shrink-0 rounded-full border border-accent/20 bg-accent/[0.06] px-[0.65vh] py-[0.08vh] text-[1.02vh] font-medium tracking-[0.1em] text-accent">
-                压缩
+                已完成
               </span>
               {before !== undefined && after !== undefined ? (
                 <span className="ml-auto shrink-0 text-[1.2vh] tabular-nums text-text-muted/70">
@@ -70,7 +70,7 @@ export function MetaPartCard({ part }: MetaPartCardProps) {
             </span>
             <span className="mt-[0.25vh] flex min-w-0 items-center gap-[0.55vh] text-[1.28vh] text-text-muted">
               <span className="truncate">{part.summary}</span>
-              {reduction !== undefined ? <span className="shrink-0 text-accent/80">减少 {reduction}%</span> : null}
+              {reduction !== undefined ? <span className="shrink-0 text-accent/80">{reduction > 0 ? `减少 ${reduction}%` : reduction < 0 ? `增加 ${Math.abs(reduction)}%` : "大小未变"}</span> : null}
             </span>
           </span>
           <span className="flex h-[2.4vh] w-[2.4vh] shrink-0 items-center justify-center rounded-full text-text-muted/65 transition-colors group-hover:bg-bg group-hover:text-text">
@@ -89,7 +89,7 @@ export function MetaPartCard({ part }: MetaPartCardProps) {
               <div className="min-w-0 border-t border-border/70 bg-bg/45 px-[1.45vh] py-[1.2vh]">
                 <div className="mb-[0.8vh] flex items-center gap-[0.7vh] text-[1.12vh] font-medium tracking-[0.12em] text-text-muted">
                   <span>压缩摘要</span>
-                  {after !== undefined ? <span className="ml-auto font-normal tracking-normal text-text-muted/60">当前上下文 {after.toLocaleString()} tokens</span> : null}
+                  {after !== undefined ? <span className="ml-auto font-normal tracking-normal text-text-muted/60">本次压缩后 {after.toLocaleString()} tokens</span> : null}
                 </div>
                 {part.detail ? (
                   <div className="min-w-0 max-h-[42vh] overflow-x-hidden overflow-y-auto pr-[0.6vh] text-[1.38vh] leading-[1.65] text-text [overflow-wrap:anywhere] [&_*]:max-w-full">

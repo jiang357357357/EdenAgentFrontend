@@ -27,7 +27,7 @@ interface MessageBubbleProps {
   activeSpeechSegmentId?: string | null
   speechPaused?: boolean
   getSpeechProgress?: (segmentId: string) => SpeechProgress | null
-  onToggleSpeech?: (segmentId: string, text: string, messageId: string) => void
+  onToggleSpeech?: (segmentId: string, text: string, messageId: string, cancelSynthesis?: boolean) => void
   onSeekSpeech?: (segmentId: string, time: number) => void
   onBeginSeekSpeech?: (segmentId: string) => void
   onEndSeekSpeech?: (segmentId: string) => void
