@@ -18,23 +18,23 @@ export function RawOutput({ content }: { content: string }) {
 
 export function MessageErrorCard({ error }: { error: MessageError }) {
   return (
-    <div className="mx-[0.45vh] my-[0.7vh] w-[calc(100%-0.9vh)] rounded-[1.25vh] border border-red-200/80 bg-red-50/65 px-[1.45vh] py-[1.2vh] font-sans text-red-950">
+    <div className="mx-[0.45vh] my-[0.7vh] w-[calc(100%-0.9vh)] rounded-[1.25vh] border border-danger/30 bg-danger-dim px-[1.45vh] py-[1.2vh] font-sans text-danger">
       <div className="flex items-start gap-[0.9vh]">
-        <AlertTriangle className="mt-[0.15vh] h-[1.8vh] w-[1.8vh] shrink-0 text-red-500" />
+        <AlertTriangle className="mt-[0.15vh] h-[1.8vh] w-[1.8vh] shrink-0 text-danger" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-[1vh] gap-y-[0.45vh]">
-            <span className="text-[1.58vh] font-medium text-red-700">{error.title}</span>
+            <span className="text-[1.58vh] font-medium text-danger">{error.title}</span>
             {error.model ? (
-              <span className="rounded-full border border-red-200/80 bg-white/55 px-[0.75vh] py-[0.18vh] font-mono text-[1.15vh] text-red-500">
+              <span className="rounded-full border border-danger/30 bg-card/95 px-[0.75vh] py-[0.18vh] font-mono text-[1.15vh] text-danger">
                 {error.model}
               </span>
             ) : null}
           </div>
-          <p className="mt-[0.45vh] text-[1.4vh] leading-[1.55] text-red-800/85">{error.message}</p>
+          <p className="mt-[0.45vh] text-[1.4vh] leading-[1.55] text-danger/85">{error.message}</p>
           {error.detail ? (
-            <details className="mt-[0.7vh] text-[1.22vh] text-red-700/75">
-              <summary className="cursor-pointer select-none hover:text-red-700">查看技术详情</summary>
-              <pre className="mt-[0.55vh] max-h-[18vh] overflow-auto whitespace-pre-wrap break-words rounded-[0.75vh] border border-red-200/70 bg-white/50 px-[0.9vh] py-[0.7vh] font-mono text-[1.15vh] leading-[1.5] text-red-900/75">
+            <details className="mt-[0.7vh] text-[1.22vh] text-danger/75">
+              <summary className="cursor-pointer select-none hover:text-danger">查看技术详情</summary>
+              <pre className="mt-[0.55vh] max-h-[18vh] overflow-auto whitespace-pre-wrap break-words rounded-[0.75vh] border border-danger/30 bg-bg/80 px-[0.9vh] py-[0.7vh] font-mono text-[1.15vh] leading-[1.5] text-danger/75">
                 {error.detail}
               </pre>
             </details>

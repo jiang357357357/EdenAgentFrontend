@@ -39,27 +39,27 @@ export function ThinkingBlock({
   const TraceIcon = isError ? AlertTriangle : isRuntime ? Activity : Sparkles
 
   return (
-    <div className="my-[0.55vh] w-full min-w-0">
+    <div className="chat-trace my-[0.55vh] w-full min-w-0">
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className="flex w-full min-w-0 items-center gap-[0.8vh] py-[0.45vh] text-left font-sans text-[1.42vh] text-text-muted transition-colors hover:text-text"
+        className="chat-trace-heading flex w-full min-w-0 items-center gap-[0.55em] py-[0.45em] text-left font-sans text-[1.65vh] text-text-muted transition-colors hover:text-text"
         aria-expanded={expanded}
       >
         <TraceIcon
           className={cn(
-            "h-[1.65vh] w-[1.65vh] shrink-0",
-            isError ? "text-red-500" : isRuntime ? "text-sky-500" : "text-accent",
+            "h-[1.1em] w-[1.1em] shrink-0",
+            isError ? "text-danger" : isRuntime ? "text-info" : "text-accent",
             isStreaming && "animate-pulse",
           )}
         />
-        <span className={cn("shrink-0 whitespace-nowrap", isError ? "text-red-600" : isRuntime ? "text-sky-600" : "text-accent")}>
+        <span className={cn("shrink-0 whitespace-nowrap", isError ? "text-danger" : isRuntime ? "text-info" : "text-accent")}>
           {displayTitle}
         </span>
-        {preview ? <span className="min-w-0 flex-1 truncate text-text-muted/70">{preview}</span> : null}
-        {isStreaming ? <span className="shrink-0 text-[1.2vh] text-text-muted/60">进行中</span> : null}
+        {preview ? <span className="min-w-0 flex-1 truncate text-text-muted">{preview}</span> : null}
+        {isStreaming ? <span className="shrink-0 text-[0.8em] text-text-muted">进行中</span> : null}
         <ChevronRight
-          className={cn("h-[1.55vh] w-[1.55vh] shrink-0 text-text-muted/60 transition-transform", expanded && "rotate-90")}
+          className={cn("h-[1em] w-[1em] shrink-0 text-text-muted/60 transition-transform", expanded && "rotate-90")}
         />
       </button>
 
@@ -75,13 +75,13 @@ export function ThinkingBlock({
               className={cn(
                 "mt-[0.55vh] rounded-[1.1vh] border px-[1.35vh] py-[1.05vh]",
                 isError
-                  ? "border-red-200/70 bg-red-50/55"
+                  ? "border-danger/35 bg-card/95"
                   : isRuntime
-                    ? "border-sky-200/60 bg-sky-50/45"
-                    : "border-orange-200/60 bg-orange-50/35",
+                    ? "border-info/30 bg-card/95"
+                    : "border-accent/25 bg-card/95",
               )}
             >
-              <div className="prose max-w-none font-sans text-[1.48vh] leading-[1.58] text-text-muted">
+              <div className="chat-thinking-font prose max-w-none font-sans text-[1.48vh] leading-[1.58] text-text-muted">
                 <MarkdownContent content={visibleContent} separateActionLines />
               </div>
             </div>

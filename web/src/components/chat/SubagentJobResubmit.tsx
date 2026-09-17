@@ -32,6 +32,6 @@ export function SubagentJobResubmit({ agentId, sessionId, onSaved }: { agentId: 
       <textarea aria-label="子任务作业重提依据" disabled={busy} value={note} onChange={event => { setNote(event.target.value); setConfirmed(false) }} placeholder="说明原任务处置和再次执行的原因" className="mt-2 w-full rounded border p-2" />
       <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我明确要求重新排队此子任务。</label>
       <button disabled={busy || !confirmed || !note.trim()} onClick={() => void submit()} className="mt-2 rounded border px-2 py-1">确认重提作业</button></>}
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
   </details>
 }

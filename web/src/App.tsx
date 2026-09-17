@@ -1,8 +1,10 @@
 import { useAutoScrollPreference } from "./lib/use-auto-scroll-preference"
+import { useBackgroundPreference } from "./lib/use-background-preference"
+import { useAppearancePreference } from "./lib/use-appearance-preference"
 import { DesktopReminders } from "./components/notifications/DesktopReminders"
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react"
 import { X } from "lucide-react"
-import { AnimatePresence, LayoutGroup, motion } from "motion/react"
+import { AnimatePresence, motion } from "motion/react"
 import { QuestionDecisionOverlay } from "./components/requests"
 import { setDesktopQuestionWindowVisible } from "./lib/desktop-window"
 import { PetSurfaceErrorBoundary } from "./components/desktop-pet"
@@ -40,7 +42,11 @@ import {
   type CoreAssistant,
   type DevAccount,
 } from "./lib/auth"
-import { assistantFromParticipantSnapshot, hasAssistantDetail, resolveConversationAssistant } from "./lib/assistant-detail"
+import {
+  assistantFromParticipantSnapshot,
+  hasAssistantDetail,
+  resolveConversationAssistant,
+} from "./lib/assistant-detail"
 import type { MessageData, PromptAttachment } from "./types"
 import {
   getLocalRuntimeConfig,
@@ -59,22 +65,45 @@ import {
   LOCAL_ASSISTANT_ID,
   RUNTIME_ORIGIN_STORAGE_KEY,
 } from "./lib/runtime-origin"
-import {
-  getStoredLocalCharacter,
-  localCharacterAssistant,
-  saveStoredLocalCharacter,
-} from "./lib/local-character"
+import { getStoredLocalCharacter, localCharacterAssistant, saveStoredLocalCharacter } from "./lib/local-character"
 
 const screenTransition = {
   duration: 0.28,
   ease: [0.16, 1, 0.3, 1],
 } as const
 
-type AppPage = "chat" | "selfAwake" | "memo" | "skills" | "plugins" | "connectors" | "configuration" | "settings" | "assistant-switcher" | "pet" | "pet-character" | "pet-bubble" | "pet-icon" | "question"
+type AppPage =
+  | "chat"
+  | "selfAwake"
+  | "memo"
+  | "skills"
+  | "plugins"
+  | "connectors"
+  | "configuration"
+  | "settings"
+  | "assistant-switcher"
+  | "pet"
+  | "pet-character"
+  | "pet-bubble"
+  | "pet-icon"
+  | "question"
 
 function initialPageFromLocation(): AppPage {
   const page = new URLSearchParams(window.location.search).get("page")
-  if (page === "settings" || page === "skills" || page === "plugins" || page === "connectors" || page === "configuration" || page === "assistant-switcher" || page === "pet" || page === "pet-character" || page === "pet-bubble" || page === "pet-icon" || page === "question") return page
+  if (
+    page === "settings" ||
+    page === "skills" ||
+    page === "plugins" ||
+    page === "connectors" ||
+    page === "configuration" ||
+    page === "assistant-switcher" ||
+    page === "pet" ||
+    page === "pet-character" ||
+    page === "pet-bubble" ||
+    page === "pet-icon" ||
+    page === "question"
+  )
+    return page
   return "chat"
 }
 
@@ -117,7 +146,7 @@ function messageScrollSignature(message: MessageData) {
     textLength(message.thinking),
     message.thinkingState ?? "",
     message.images?.join(",") ?? "",
-    message.files?.map(file => `${file.url}:${file.mime}:${file.filename ?? ""}`).join(",") ?? "",
+    message.files?.map((file) => `${file.url}:${file.mime}:${file.filename ?? ""}`).join(",") ?? "",
     message.isStreaming ? "streaming" : "done",
     segmentSignature,
     toolSignature,
@@ -136,14 +165,19 @@ export default function App() {
   const initialPage = initialPageFromLocation()
   const isSettingsWindow = initialPage === "settings"
   const isQuestionWindow = initialPage === "question"
-  const isPetWindow = initialPage === "pet" || initialPage === "pet-character" || initialPage === "pet-bubble" || initialPage === "pet-icon"
-  const petSurface = initialPage === "pet-character"
-    ? "character"
-    : initialPage === "pet-bubble"
-      ? "bubble"
-      : initialPage === "pet-icon"
-        ? "icon"
-        : "combined"
+  const isPetWindow =
+    initialPage === "pet" ||
+    initialPage === "pet-character" ||
+    initialPage === "pet-bubble" ||
+    initialPage === "pet-icon"
+  const petSurface =
+    initialPage === "pet-character"
+      ? "character"
+      : initialPage === "pet-bubble"
+        ? "bubble"
+        : initialPage === "pet-icon"
+          ? "icon"
+          : "combined"
   const isAuxiliaryWindow = isSettingsWindow || isQuestionWindow || isPetWindow
   const runtimeReady = authStatus === "authenticated" && (isAuxiliaryWindow || runtimeOrigin !== null)
   const [activePage, setActivePage] = useState<AppPage>(() => initialPageFromLocation())
@@ -158,7 +192,27 @@ export default function App() {
   const [availableAssistants, setAvailableAssistants] = useState<CoreAssistant[]>([])
   const [currentAssistantError, setCurrentAssistantError] = useState<string | undefined>()
   const [activeCharacterAction, setActiveCharacterAction] = useState<ActiveCharacterAction | undefined>()
-  const { enabled: autoScrollEnabled, ready: autoScrollReady, error: autoScrollError, change: setAutoScrollEnabled } = useAutoScrollPreference(runtimeOrigin, runtimeReady)
+  const {
+    enabled: autoScrollEnabled,
+    ready: autoScrollReady,
+    error: autoScrollError,
+    change: setAutoScrollEnabled,
+  } = useAutoScrollPreference(runtimeOrigin, runtimeReady)
+  const {
+    value: backgroundPreference,
+    imageUrl: backgroundImageUrl,
+    ready: backgroundReady,
+    uploading: backgroundUploading,
+    error: backgroundError,
+    change: setBackgroundPreference,
+    selectImage: selectBackgroundImage,
+  } = useBackgroundPreference(runtimeOrigin, runtimeReady, currentUser?.id)
+  const {
+    value: appearancePreference,
+    ready: appearanceReady,
+    error: appearanceError,
+    change: setAppearancePreference,
+  } = useAppearancePreference(runtimeOrigin, runtimeReady, currentUser?.id)
   const [toolStatus, setToolStatus] = useState<ToolStatus | undefined>()
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const historyPrependInProgressRef = useRef(false)
@@ -276,12 +330,21 @@ export default function App() {
       setAuthError(undefined)
       setAuthStatus(nextOrigin === "local" ? "authenticated" : "checking")
     }
+    const synchronizeAccount = () => {
+      if (runtimeOrigin !== "mon") return
+      resetRuntimeState()
+      setCurrentUser(null)
+      setAuthStatus(getStoredToken() ? "checking" : "unauthenticated")
+    }
     const handleStorage = (event: StorageEvent) => {
+      if (event.key === "agent.auth_token" || event.key === null) synchronizeAccount()
       if (event.key === RUNTIME_ORIGIN_STORAGE_KEY || event.key === null) synchronizeRuntimeOrigin()
     }
+    window.addEventListener("edenagent:account-changed", synchronizeAccount)
     window.addEventListener("storage", handleStorage)
     window.addEventListener("edenagent:runtime-origin-changed", synchronizeRuntimeOrigin)
     return () => {
+      window.removeEventListener("edenagent:account-changed", synchronizeAccount)
       window.removeEventListener("storage", handleStorage)
       window.removeEventListener("edenagent:runtime-origin-changed", synchronizeRuntimeOrigin)
     }
@@ -337,7 +400,10 @@ export default function App() {
     .reverse()
     .find((message) => message.role === "assistant")
   const dialogSegments = activeMessages.flatMap((message) => {
-    const speaker = message.role === "user" ? "你" : message.speaker?.assistantName || message.speaker?.characterName || assistantDisplayName
+    const speaker =
+      message.role === "user"
+        ? "你"
+        : message.speaker?.assistantName || message.speaker?.characterName || assistantDisplayName
     const segments: Array<{
       speaker: string
       text?: string
@@ -610,7 +676,9 @@ export default function App() {
         setLocalCharacter(character)
       })
       .catch((error) => console.warn("[Local character] configuration unavailable", error))
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [runtimeOrigin])
 
   useEffect(() => {
@@ -675,9 +743,7 @@ export default function App() {
     }
 
     const expiresAt = getStoredTokenExpiresAt()
-    const delay = expiresAt
-      ? Math.max(0, Math.min(expiresAt - Date.now() + 250, 2_147_483_647))
-      : 60_000
+    const delay = expiresAt ? Math.max(0, Math.min(expiresAt - Date.now() + 250, 2_147_483_647)) : 60_000
 
     const timeout = window.setTimeout(() => {
       void verifyAuthStillValid("token-expiry")
@@ -879,16 +945,14 @@ export default function App() {
       await renameRuntimeSession(sessionID, title)
     } catch (error) {
       console.error("[Runtime] rename session failed", error)
-      window.alert(getErrorMessage(error, "重命名会话失败。"))
+      throw new Error(getErrorMessage(error, "重命名会话失败。"))
     }
   }
 
   const conversationAssistantID = draftParticipantIDs[0] ?? activeSession?.participants?.[0]?.assistantID
-  const conversationAssistant = resolveConversationAssistant(
-    currentAssistant,
-    availableAssistants,
-    conversationAssistantID,
-  ) ?? assistantFromParticipantSnapshot(activeSession?.participants?.[0])
+  const conversationAssistant =
+    resolveConversationAssistant(currentAssistant, availableAssistants, conversationAssistantID) ??
+    assistantFromParticipantSnapshot(activeSession?.participants?.[0])
 
   useEffect(() => {
     if (authStatus !== "authenticated" || !conversationAssistantID) return
@@ -901,9 +965,7 @@ export default function App() {
     void fetchAssistant(token, assistantId)
       .then((assistant) => {
         if (cancelled) return
-        setAvailableAssistants((items) =>
-          items.map((item) => item.id === assistant.id ? assistant : item),
-        )
+        setAvailableAssistants((items) => items.map((item) => (item.id === assistant.id ? assistant : item)))
       })
       .catch((error) => {
         if (!cancelled) console.warn("[Assistant] load conversation assistant detail failed", error)
@@ -976,195 +1038,202 @@ export default function App() {
 
   return (
     <>
-      {!isAuxiliaryWindow && !window.edenAgentDesktop && <DesktopReminders key={runtimeOrigin} origin={runtimeOrigin} />}
+      {!isAuxiliaryWindow && !window.edenAgentDesktop && (
+        <DesktopReminders key={runtimeOrigin} origin={runtimeOrigin} />
+      )}
       <motion.div
         animate={{
           opacity: modeContentVisible ? 1 : 0,
-          filter: modeContentVisible ? "blur(0px)" : "blur(6px)",
         }}
         transition={{ duration: modeContentVisible ? 0.22 : 0.18, ease: [0.16, 1, 0.3, 1] }}
         className="fixed inset-0"
       >
-        <LayoutGroup id="eden-agent-mode-switch">
-          <AnimatePresence mode="wait" initial={false}>
-            {isQuestionWindow ? (
-              <div className="fixed inset-0 bg-bg">
-                {allPendingQuestions[0] && (
-                  <QuestionDecisionOverlay
-                    key={allPendingQuestions[0].id}
-                    request={allPendingQuestions[0]}
-                    onReply={handleQuestionReply}
-                    onReject={handleQuestionReject}
-                    fillWindow
-                  />
-                )}
-              </div>
-            ) : isPetWindow || activePage === "pet" ? (
-              <PetSurfaceErrorBoundary surface={petSurface}>
-                <CharacterPage
-                  surface={petSurface}
-                  isThinking={isThinking}
-                  activeSession={activeSession}
-                  activeReplyMessage={activeReplyMessage}
-                  activePendingPermissions={activePendingPermissions}
-                  activePendingQuestions={activePendingQuestions}
-                  historyOpen={historyOpen}
-                  historyView={historyView}
-                  sessions={sessions}
-                  activeSessionId={activeSessionId}
-                  dialogSegments={dialogSegments}
-                  onSetHistoryOpen={setHistoryOpen}
-                  onSetHistoryView={setHistoryView}
-                  onSelectSession={selectRuntimeSession}
-                  onSendMessage={handleSendMessage}
-                  onCompact={handleCompactSession}
-                  onAbort={handleAbortSession}
-                  onPermissionReply={handlePermissionReply}
-                  permissionMode={permissionMode}
-                  onPermissionModeChange={updatePermissionMode}
-                  onQuestionReply={handleQuestionReply}
-                  onQuestionReject={handleQuestionReject}
-                  onStartWindowDrag={startDesktopWindowDrag}
-                  assistant={conversationAssistant}
-                  assistantError={currentAssistantError}
-                  activeCharacterAction={activeCharacterAction}
-                  onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
-                />
-              </PetSurfaceErrorBoundary>
-            ) : activePage === "selfAwake" ? (
-              <SelfAwakePage
-                key={runtimeOrigin}
-                currentUser={currentUser}
-                assistant={currentAssistant}
-                toolStatus={toolStatus}
-                onBack={() => setActivePage("chat")}
-              />
-            ) : activePage === "memo" ? (
-              <MemoPage onBack={() => setActivePage("chat")} />
-            ) : activePage === "skills" ? (
-              <SkillPage onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
-            ) : activePage === "plugins" ? (
-              <PluginPage key={runtimeOrigin} onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
-            ) : activePage === "connectors" ? (
-              <ConnectorPage onBack={() => setActivePage("chat")} />
-            ) : activePage === "configuration" ? (
-              <ConfigurationPage
-                onBack={() => setActivePage("chat")}
-                onChangeOrigin={handleChangeRuntimeOrigin}
-                onOpenParticipants={() => {
-                  setAssistantSwitcherMode("participants")
-                  setActivePage("assistant-switcher")
-                }}
-                onOpenDutyAssistant={() => {
-                  setAssistantSwitcherMode("default")
-                  setActivePage("assistant-switcher")
-                }}
-                onOpenSelfAwake={() => setActivePage("selfAwake")}
-                onOpenMemo={() => setActivePage("memo")}
-                onOpenSkills={() => setActivePage("skills")}
-                onOpenConnectors={() => setActivePage("connectors")}
-                onOpenSettings={() => setActivePage("settings")}
-                onCharacterSaved={handleLocalCharacterSaved}
-              />
-            ) : activePage === "assistant-switcher" ? (
-              <AssistantSwitcherPage
-                currentAssistant={assistantSwitcherMode === "default" ? currentAssistant : conversationAssistant}
-                mode={assistantSwitcherMode}
-                sessionParticipantIDs={
-                  activeSession?.participants?.map((participant) => participant.assistantID) ??
-                  (draftParticipantIDs.length ? draftParticipantIDs : currentAssistant?.id ? [currentAssistant.id] : [])
-                }
-                onParticipantsChanged={async (assistantIds) => {
-                  await updateSessionParticipants(assistantIds)
-                }}
-                onAssistantChanged={(assistant) => {
-                  setCurrentAssistant(assistant)
-                  setCurrentAssistantError(undefined)
-                  setActiveCharacterAction(undefined)
-                }}
-                onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")}
-              />
-            ) : activePage === "settings" ? (
-              <SettingsPage
-                sessions={sessions}
-                activeSessionId={activeSessionId}
-                assistant={conversationAssistant}
-                assistantError={currentAssistantError}
-                activeCharacterAction={activeCharacterAction}
-                onBack={isSettingsWindow ? undefined : () => setActivePage("chat")}
-                onOpenAssistantSwitcher={() => {
-                  setAssistantSwitcherMode("session")
-                  setActivePage("assistant-switcher")
-                }}
-                onOpenSkills={() => setActivePage("skills")}
-                onOpenPlugins={() => setActivePage("plugins")}
-              />
-            ) : (
-              <ChatPage
-                sessions={sessions}
-                activeSessionId={activeSessionId}
-                activeSession={activeSession}
-                currentUser={currentUser}
-                assistant={conversationAssistant}
-                assistantError={currentAssistantError}
-                activeCharacterAction={activeCharacterAction}
-                isThinking={isThinking}
-                connectionError={connectionError}
-                runtimeError={[runtimeError, autoScrollError].filter(Boolean).join("；") || undefined}
-                activePendingPermissions={activePendingPermissions}
-                messagesScrollRef={messagesScrollRef}
-                messagesEndRef={messagesEndRef}
-                autoScrollEnabled={autoScrollEnabled}
-                autoScrollReady={autoScrollReady}
-                onAutoScrollChange={handleAutoScrollChange}
-                onLoadOlderMessages={handleLoadOlderMessages}
-                onSelectSession={selectRuntimeSession}
-                onDeleteSession={handleDeleteSession}
-                onRenameSession={handleRenameSession}
-                onNewSession={handleNewSession}
-                onSendMessage={handleSendMessage}
-                onCompact={handleCompactSession}
-                onAbort={handleAbortSession}
-                onFollowupSubagent={followupSubagent}
-                onGetSubagentDetails={getSubagentThreadDetails}
-                onInterruptSubagent={interruptSubagent}
-                onPermissionReply={handlePermissionReply}
-                permissionMode={permissionMode}
-                onPermissionModeChange={updatePermissionMode}
-                onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
-                onLogout={handleLogout}
-                onOpenAssistantSwitcher={() => {
-                  setAssistantSwitcherMode("participants")
-                  setActivePage("assistant-switcher")
-                }}
-                onOpenDutyAssistantSwitcher={() => {
-                  setAssistantSwitcherMode("default")
-                  setActivePage("assistant-switcher")
-                }}
-                onOpenSessionAssistantSwitcher={() => {
-                  setAssistantSwitcherMode("session")
-                  setActivePage("assistant-switcher")
-                }}
-                onOpenSettings={() => {
-                  setActivePage("settings")
-                }}
-                onOpenSelfAwake={() => {
-                  setActivePage("selfAwake")
-                }}
-                onOpenMemo={() => {
-                  setActivePage("memo")
-                }}
-                onOpenSkills={() => {
-                  setActivePage("skills")
-                }}
-                onOpenConnectors={() => {
-                  setActivePage("connectors")
-                }}
-                onOpenConfiguration={handleOpenConfiguration}
+        {/* Route replacement is immediate; dialogs retain their own exit animations. */}
+        {isQuestionWindow ? (
+          <div className="fixed inset-0 bg-bg">
+            {allPendingQuestions[0] && (
+              <QuestionDecisionOverlay
+                key={allPendingQuestions[0].id}
+                request={allPendingQuestions[0]}
+                onReply={handleQuestionReply}
+                onReject={handleQuestionReject}
+                fillWindow
               />
             )}
-          </AnimatePresence>
-        </LayoutGroup>
+          </div>
+        ) : isPetWindow || activePage === "pet" ? (
+          <PetSurfaceErrorBoundary surface={petSurface}>
+            <CharacterPage
+              surface={petSurface}
+              isThinking={isThinking}
+              activeSession={activeSession}
+              activeReplyMessage={activeReplyMessage}
+              activePendingPermissions={activePendingPermissions}
+              activePendingQuestions={activePendingQuestions}
+              historyOpen={historyOpen}
+              historyView={historyView}
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              dialogSegments={dialogSegments}
+              onSetHistoryOpen={setHistoryOpen}
+              onSetHistoryView={setHistoryView}
+              onSelectSession={selectRuntimeSession}
+              onSendMessage={handleSendMessage}
+              onCompact={handleCompactSession}
+              onAbort={handleAbortSession}
+              onPermissionReply={handlePermissionReply}
+              permissionMode={permissionMode}
+              onPermissionModeChange={updatePermissionMode}
+              onQuestionReply={handleQuestionReply}
+              onQuestionReject={handleQuestionReject}
+              onStartWindowDrag={startDesktopWindowDrag}
+              assistant={conversationAssistant}
+              assistantError={currentAssistantError}
+              activeCharacterAction={activeCharacterAction}
+              onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
+            />
+          </PetSurfaceErrorBoundary>
+        ) : activePage === "selfAwake" ? (
+          <SelfAwakePage
+            key={runtimeOrigin}
+            currentUser={currentUser}
+            assistant={currentAssistant}
+            toolStatus={toolStatus}
+            onBack={() => setActivePage("chat")}
+          />
+        ) : activePage === "memo" ? (
+          <MemoPage onBack={() => setActivePage("chat")} />
+        ) : activePage === "skills" ? (
+          <SkillPage onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
+        ) : activePage === "plugins" ? (
+          <PluginPage key={runtimeOrigin} onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
+        ) : activePage === "connectors" ? (
+          <ConnectorPage onBack={() => setActivePage("chat")} />
+        ) : activePage === "configuration" ? (
+          <ConfigurationPage
+            onBack={() => setActivePage("chat")}
+            onChangeOrigin={handleChangeRuntimeOrigin}
+            onOpenParticipants={() => {
+              setAssistantSwitcherMode("participants")
+              setActivePage("assistant-switcher")
+            }}
+            onOpenDutyAssistant={() => {
+              setAssistantSwitcherMode("default")
+              setActivePage("assistant-switcher")
+            }}
+            onOpenSelfAwake={() => setActivePage("selfAwake")}
+            onOpenMemo={() => setActivePage("memo")}
+            onOpenSkills={() => setActivePage("skills")}
+            onOpenConnectors={() => setActivePage("connectors")}
+            onOpenSettings={() => setActivePage("settings")}
+            onCharacterSaved={handleLocalCharacterSaved}
+          />
+        ) : activePage === "assistant-switcher" ? (
+          <AssistantSwitcherPage
+            currentAssistant={assistantSwitcherMode === "default" ? currentAssistant : conversationAssistant}
+            mode={assistantSwitcherMode}
+            sessionParticipantIDs={
+              activeSession?.participants?.map((participant) => participant.assistantID) ??
+              (draftParticipantIDs.length ? draftParticipantIDs : currentAssistant?.id ? [currentAssistant.id] : [])
+            }
+            onParticipantsChanged={async (assistantIds) => {
+              await updateSessionParticipants(assistantIds)
+            }}
+            onAssistantChanged={(assistant) => {
+              setCurrentAssistant(assistant)
+              setCurrentAssistantError(undefined)
+              setActiveCharacterAction(undefined)
+            }}
+            onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")}
+          />
+        ) : activePage === "settings" ? (
+          <SettingsPage
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            assistant={conversationAssistant}
+            assistantError={currentAssistantError}
+            activeCharacterAction={activeCharacterAction}
+            onBack={isSettingsWindow ? undefined : () => setActivePage("chat")}
+            onOpenAssistantSwitcher={() => {
+              setAssistantSwitcherMode("session")
+              setActivePage("assistant-switcher")
+            }}
+            onOpenSkills={() => setActivePage("skills")}
+            onOpenPlugins={() => setActivePage("plugins")}
+          />
+        ) : (
+          <ChatPage
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            activeSession={activeSession}
+            currentUser={currentUser}
+            assistant={conversationAssistant}
+            assistantError={currentAssistantError}
+            activeCharacterAction={activeCharacterAction}
+            isThinking={isThinking}
+            connectionError={connectionError}
+            runtimeError={[runtimeError, autoScrollError, backgroundError, appearanceError].filter(Boolean).join("；") || undefined}
+            activePendingPermissions={activePendingPermissions}
+            messagesScrollRef={messagesScrollRef}
+            messagesEndRef={messagesEndRef}
+            autoScrollEnabled={autoScrollEnabled}
+            autoScrollReady={autoScrollReady}
+            onAutoScrollChange={handleAutoScrollChange}
+            backgroundPreference={backgroundPreference}
+            backgroundImageUrl={backgroundImageUrl}
+            backgroundReady={backgroundReady}
+            backgroundUploading={backgroundUploading}
+            onBackgroundChange={setBackgroundPreference}
+            onBackgroundImageSelect={selectBackgroundImage}
+            appearancePreference={appearancePreference}
+            appearanceReady={appearanceReady}
+            onAppearanceChange={setAppearancePreference}
+            onLoadOlderMessages={handleLoadOlderMessages}
+            onSelectSession={selectRuntimeSession}
+            onDeleteSession={handleDeleteSession}
+            onRenameSession={handleRenameSession}
+            onNewSession={handleNewSession}
+            onSendMessage={handleSendMessage}
+            onCompact={handleCompactSession}
+            onAbort={handleAbortSession}
+            onFollowupSubagent={followupSubagent}
+            onGetSubagentDetails={getSubagentThreadDetails}
+            onInterruptSubagent={interruptSubagent}
+            onPermissionReply={handlePermissionReply}
+            permissionMode={permissionMode}
+            onPermissionModeChange={updatePermissionMode}
+            onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
+            onLogout={handleLogout}
+            onOpenAssistantSwitcher={() => {
+              setAssistantSwitcherMode("participants")
+              setActivePage("assistant-switcher")
+            }}
+            onOpenDutyAssistantSwitcher={() => {
+              setAssistantSwitcherMode("default")
+              setActivePage("assistant-switcher")
+            }}
+            onOpenSessionAssistantSwitcher={() => {
+              setAssistantSwitcherMode("session")
+              setActivePage("assistant-switcher")
+            }}
+            onOpenSettings={() => {
+              setActivePage("settings")
+            }}
+            onOpenSelfAwake={() => {
+              setActivePage("selfAwake")
+            }}
+            onOpenMemo={() => {
+              setActivePage("memo")
+            }}
+            onOpenSkills={() => {
+              setActivePage("skills")
+            }}
+            onOpenConnectors={() => {
+              setActivePage("connectors")
+            }}
+            onOpenConfiguration={handleOpenConfiguration}
+          />
+        )}
       </motion.div>
       <AnimatePresence>
         {previewImage && (
@@ -1174,12 +1243,12 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={screenTransition}
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/86 p-[4vw] backdrop-blur-lg"
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-scrim/86 p-[4vw] backdrop-blur-lg"
             onClick={() => setPreviewImage(undefined)}
           >
             <button
               onClick={() => setPreviewImage(undefined)}
-              className="absolute right-4 top-4 rounded-full border border-white/15 bg-white/10 p-2 text-white transition-colors hover:bg-white/20"
+              className="absolute right-4 top-4 rounded-full border border-highlight/15 bg-highlight/10 p-2 text-text transition-colors hover:bg-highlight/20"
               aria-label="关闭图片预览"
             >
               <X className="h-5 w-5" />

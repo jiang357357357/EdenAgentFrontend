@@ -42,9 +42,9 @@ export function SubagentRoleImport({ onSaved }: { onSaved: () => Promise<void> }
     <summary>导入旧角色审阅文件</summary>
     <p>选择离线导出的 JSON，勾选候选并核对目标。项目条目导入当前工作区；每批最多 32 项、512 KiB。候选是待确认配置，原文摘要不代替内容审阅。</p>
     <input aria-label="角色审阅 JSON" type="file" accept=".json,application/json" disabled={busy} onChange={event => void read(event.target.files?.[0])} />
-    {rows.map((row, index) => <label key={index} className="mt-2 block break-all"><input type="checkbox" disabled={busy || !row.entry || !selected.includes(index) && selected.length >= 32} checked={selected.includes(index)} onChange={event => { setSelected(previous => event.target.checked ? [...previous, index] : previous.filter(value => value !== index)); setPlan(null); setConfirmed(false) }} /> {row.label}{row.issue && <span className="text-red-700"> · {row.issue}</span>}</label>)}
+    {rows.map((row, index) => <label key={index} className="mt-2 block break-all"><input type="checkbox" disabled={busy || !row.entry || !selected.includes(index) && selected.length >= 32} checked={selected.includes(index)} onChange={event => { setSelected(previous => event.target.checked ? [...previous, index] : previous.filter(value => value !== index)); setPlan(null); setConfirmed(false) }} /> {row.label}{row.issue && <span className="text-danger"> · {row.issue}</span>}</label>)}
     <button disabled={busy || !selected.length} onClick={() => void preview()} className="mt-2 rounded border px-2 py-1">预览所选角色</button>
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
     {plan && <div className="mt-2">
       {plan.items.map(item => <details key={`${item.scope}:${item.name}`} className="mt-2 rounded border p-2"><summary>{item.name} · {item.scope === 'project' ? item.workspaceRoot : '当前世界用户配置'} · {item.replaces ? '覆盖已有配置' : '新增覆盖'}</summary><pre className="max-h-64 overflow-auto whitespace-pre-wrap">{JSON.stringify(item.definition, null, 2)}</pre></details>)}
       <label className="mt-2 block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我已核对角色内容、目标范围与覆盖项。</label>

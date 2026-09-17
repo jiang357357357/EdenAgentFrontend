@@ -28,7 +28,7 @@ function toneClass(tone: MetaPartCardData['tone']) {
     case 'accent':
       return 'border-accent/25 text-accent';
     case 'warning':
-      return 'border-amber-500/30 text-amber-400';
+      return 'border-warning/30 text-warning';
     case 'muted':
       return 'border-border text-text-muted';
     default:
@@ -110,7 +110,7 @@ export function MetaPartCard({ part }: MetaPartCardProps) {
     <div className="my-2 max-w-2xl overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-start gap-3 p-3 text-left transition-colors hover:bg-white/5"
+        className="flex w-full items-start gap-3 p-3 text-left transition-colors hover:bg-highlight/5"
       >
         <span className={cn('mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border bg-bg', toneClass(part.tone))}>
           {iconForType(part.type)}

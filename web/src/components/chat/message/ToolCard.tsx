@@ -103,33 +103,33 @@ export function ToolCard({
   const linkedBatches = coordinationBatches.filter((batch) => linkedBatchIDs.has(batch.batchID))
 
   return (
-    <div className="my-[0.65vh] w-full min-w-0 overflow-hidden rounded-[1.1vh] border border-border bg-card shadow-sm">
+    <div className="chat-trace my-[0.65vh] w-full min-w-0 overflow-hidden rounded-[1.1vh] border border-border bg-card shadow-sm">
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className="flex w-full min-w-0 items-center gap-[0.8vh] px-[1.15vh] py-[0.9vh] text-left font-sans text-[1.42vh] transition-colors hover:bg-violet-50/35"
+        className="chat-trace-heading flex w-full min-w-0 items-center gap-[0.55em] px-[0.8em] py-[0.65em] text-left font-sans text-[1.65vh] transition-colors hover:bg-accent/10"
         aria-expanded={expanded}
       >
-        <Wrench className={cn("h-[1.65vh] w-[1.65vh] shrink-0 text-violet-500", tool.status === "running" && "animate-pulse")} />
-        <span className="shrink-0 text-violet-600">工具:</span>
-        <span className="shrink-0 font-medium text-violet-700">{tool.name}</span>
-        {preview ? <span className="min-w-0 flex-1 truncate text-text-muted/65">{preview}</span> : <span className="flex-1" />}
+        <Wrench className={cn("h-[1.1em] w-[1.1em] shrink-0 text-accent", tool.status === "running" && "animate-pulse")} />
+        <span className="shrink-0 text-accent">工具:</span>
+        <span className="shrink-0 font-medium text-accent">{tool.name}</span>
+        {preview ? <span className="min-w-0 flex-1 truncate text-text-muted">{preview}</span> : <span className="flex-1" />}
         <span
           className={cn(
-            "shrink-0 rounded-full border px-[0.8vh] py-[0.12vh] text-[1.12vh]",
+            "shrink-0 rounded-full border px-[0.6em] py-[0.1em] text-[0.8em]",
             tool.status === "error" || tool.status === "aborted"
-              ? "border-red-200 text-red-500"
+              ? "border-danger/30 text-danger"
               : tool.status === "running"
-                ? "border-violet-200 text-violet-500"
+                ? "border-accent/40 text-accent"
                 : "border-border text-text-muted",
           )}
         >
           {statusLabel(tool.status)}
         </span>
-        {tool.duration ? <span className="shrink-0 text-[1.18vh] text-text-muted/60">{tool.duration}ms</span> : null}
-        {tool.status === "error" || tool.status === "aborted" ? <AlertCircle className="h-[1.5vh] w-[1.5vh] shrink-0 text-red-500" /> : null}
+        {tool.duration ? <span className="shrink-0 text-[0.8em] text-text-muted">{tool.duration}ms</span> : null}
+        {tool.status === "error" || tool.status === "aborted" ? <AlertCircle className="h-[1em] w-[1em] shrink-0 text-danger" /> : null}
         <ChevronRight
-          className={cn("h-[1.55vh] w-[1.55vh] shrink-0 text-text-muted/60 transition-transform", expanded && "rotate-90")}
+          className={cn("h-[1em] w-[1em] shrink-0 text-text-muted/60 transition-transform", expanded && "rotate-90")}
         />
       </button>
 
@@ -141,7 +141,7 @@ export function ToolCard({
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <div className="grid min-w-0 gap-[1vh] border-t border-border bg-violet-50/20 px-[1.2vh] py-[1.1vh]">
+            <div className="grid min-w-0 gap-[1vh] border-t border-border bg-accent-dim px-[1.2vh] py-[1.1vh]">
               <div className="flex flex-wrap gap-x-[1.2vh] text-[1.25vh] text-text-muted">
                 <span>状态：{statusLabel(tool.status)}</span>
                 {command?.exit_code !== undefined && command.exit_code !== null ? <span>退出码：{command.exit_code}</span> : null}
@@ -153,7 +153,7 @@ export function ToolCard({
                 <div className="grid gap-[0.35vh] rounded-[0.9vh] border border-border/70 bg-bg/75 px-[1vh] py-[0.8vh] font-mono text-[1.24vh]">
                   <div className="break-all text-text"><span className="select-none text-text-muted">$ </span>{command.command}</div>
                   {command.cwd ? <div className="break-all text-text-muted">cwd: {command.cwd}</div> : null}
-                  {command.session_id && command.status === "running" ? <div className="break-all text-violet-600">session: {command.session_id}</div> : null}
+                  {command.session_id && command.status === "running" ? <div className="break-all text-accent">session: {command.session_id}</div> : null}
                 </div>
               ) : null}
               {tool.input ? (
@@ -162,7 +162,7 @@ export function ToolCard({
                 </pre>
               ) : null}
               {tool.status === "running" && !tool.output && !tool.error ? (
-                <div className="rounded-[0.9vh] border border-violet-200/60 bg-violet-50/55 px-[1vh] py-[0.75vh] text-[1.28vh] text-violet-600">
+                <div className="rounded-[0.9vh] border border-accent/30 bg-accent-dim px-[1vh] py-[0.75vh] text-[1.28vh] text-accent">
                   正在执行中…
                 </div>
               ) : null}
@@ -174,12 +174,12 @@ export function ToolCard({
               ) : null}
               {command?.stderr ? (
                 <div className="grid gap-[0.4vh]">
-                  <span className="text-[1.18vh] font-medium uppercase tracking-wide text-red-500">stderr</span>
-                  <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[0.9vh] border border-red-200/60 bg-red-50/65 p-[0.9vh] font-mono text-[1.28vh] leading-[1.5] text-red-600">{command.stderr}</pre>
+                  <span className="text-[1.18vh] font-medium uppercase tracking-wide text-danger">stderr</span>
+                  <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[0.9vh] border border-danger/30 bg-danger-dim p-[0.9vh] font-mono text-[1.28vh] leading-[1.5] text-danger">{command.stderr}</pre>
                 </div>
               ) : null}
               {command?.truncated ? (
-                <div className="rounded-[0.8vh] border border-amber-200 bg-amber-50 px-[0.9vh] py-[0.65vh] text-[1.22vh] text-amber-700">
+                <div className="rounded-[0.8vh] border border-warning/30 bg-warning-dim px-[0.9vh] py-[0.65vh] text-[1.22vh] text-warning">
                   输出超过捕获上限，当前显示 {command.captured_chars ?? 0} 个字符。
                 </div>
               ) : null}
@@ -190,8 +190,8 @@ export function ToolCard({
                       <header className="flex min-w-0 items-center gap-[0.8vh] border-b border-border/70 px-[1vh] py-[0.7vh] text-[1.23vh]">
                         <span className="min-w-0 flex-1 truncate font-mono text-text">{file.movePath ? `${file.path} → ${file.movePath}` : file.path}</span>
                         {file.status ? <span className="shrink-0 text-text-muted">{file.status}</span> : null}
-                        <span className="shrink-0 font-mono text-emerald-600">+{file.additions ?? 0}</span>
-                        <span className="shrink-0 font-mono text-red-500">-{file.deletions ?? 0}</span>
+                        <span className="shrink-0 font-mono text-success">+{file.additions ?? 0}</span>
+                        <span className="shrink-0 font-mono text-danger">-{file.deletions ?? 0}</span>
                       </header>
                       {file.patch ? (
                         <pre className="max-h-[42vh] max-w-full overflow-auto whitespace-pre font-mono text-[1.18vh] leading-[1.55] text-text-muted">
@@ -200,9 +200,9 @@ export function ToolCard({
                               key={lineIndex}
                               className={cn(
                                 "block min-w-max px-[1vh]",
-                                line.startsWith("+") && !line.startsWith("+++") && "bg-emerald-50 text-emerald-800",
-                                line.startsWith("-") && !line.startsWith("---") && "bg-red-50 text-red-700",
-                                line.startsWith("@@") && "bg-sky-50 text-sky-700",
+                                line.startsWith("+") && !line.startsWith("+++") && "bg-success-dim text-success",
+                                line.startsWith("-") && !line.startsWith("---") && "bg-danger-dim text-danger",
+                                line.startsWith("@@") && "bg-info-dim text-info",
                               )}
                             >
                               {line || " "}
@@ -220,7 +220,7 @@ export function ToolCard({
                 </pre>
               ) : null}
               {tool.error ? (
-                <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[0.9vh] border border-red-200/60 bg-red-50/65 p-[0.9vh] font-mono text-[1.28vh] leading-[1.5] text-red-600">
+                <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[0.9vh] border border-danger/30 bg-danger-dim p-[0.9vh] font-mono text-[1.28vh] leading-[1.5] text-danger">
                   {tool.error}
                 </pre>
               ) : null}

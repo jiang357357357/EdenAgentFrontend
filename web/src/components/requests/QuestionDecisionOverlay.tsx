@@ -115,7 +115,7 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-[rgba(247,243,237,0.74)] p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-scrim/65 p-4 backdrop-blur-[2px]"
       aria-hidden={false}
     >
       <motion.div
@@ -128,7 +128,7 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
         tabIndex={-1}
         onKeyDown={handleKeyDown}
         className={cn(
-          "flex flex-col overflow-hidden rounded-[1.8vh] border border-stone-200/90 bg-card text-text shadow-[0_2.4vh_7vh_rgba(68,55,43,0.16),0_0.35vh_1.3vh_rgba(68,55,43,0.08)] outline-none",
+          "flex flex-col overflow-hidden rounded-[1.8vh] border border-border/90 bg-card text-text shadow-[0_2.4vh_7vh_color-mix(in_srgb,var(--color-scrim)_16%,transparent),0_0.35vh_1.3vh_color-mix(in_srgb,var(--color-scrim)_8%,transparent)] outline-none",
           fillWindow
             ? "h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)]"
             : "h-[74.5vh] max-h-[74.5vh] w-[32vw] min-w-[min(300px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)]",
@@ -179,8 +179,8 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
                               "flex cursor-pointer items-center gap-[1vw] rounded-[1vh] border px-[1vw] py-[1.35vh] transition-[border-color,background-color,box-shadow]",
                               option.description ? "min-h-[9vh]" : "min-h-[6.8vh]",
                               checked
-                                ? "border-accent/45 bg-accent/[0.06] shadow-[0_0_0_1px_rgba(217,119,6,0.08)]"
-                                : "border-border bg-card hover:border-stone-300 hover:bg-stone-50/60",
+                                ? "border-accent/45 bg-accent/[0.06] shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-accent)_8%,transparent)]"
+                                : "border-border bg-card hover:border-border hover:bg-border/60",
                               submitting && "cursor-wait opacity-70",
                             )}
                           >
@@ -192,7 +192,7 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
                               disabled={submitting !== null}
                               onChange={() => updateOption(questionIndex, option.label, item.multiple)}
                               className={cn(
-                                "h-[2.3vh] w-[2.3vh] flex-none accent-amber-600 outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
+                                "h-[2.3vh] w-[2.3vh] flex-none accent-warning outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
                                 item.multiple ? "rounded-[0.35vh]" : "rounded-full",
                               )}
                             />
@@ -230,7 +230,7 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
             </div>
 
             {error && (
-              <div role="alert" className="mt-[1.5vh] rounded-[1vh] border border-red-200 bg-red-50 px-[0.8vw] py-[1vh] text-[1.4vh] text-red-700">
+              <div role="alert" className="mt-[1.5vh] rounded-[1vh] border border-danger/30 bg-danger-dim px-[0.8vw] py-[1vh] text-[1.4vh] text-danger">
                 {error}
               </div>
             )}
@@ -240,7 +240,7 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
             <button
               type="submit"
               disabled={submitting !== null}
-              className="flex h-[5.4vh] w-full items-center justify-center rounded-[1vh] bg-accent px-[1vw] text-[1.8vh] font-semibold text-white shadow-[0_0.55vh_1.5vh_rgba(217,119,6,0.2)] transition-[background-color,box-shadow,transform,opacity] hover:bg-amber-700 hover:shadow-[0_0.8vh_1.9vh_rgba(217,119,6,0.25)] active:translate-y-px disabled:cursor-not-allowed disabled:bg-accent disabled:opacity-50 disabled:shadow-none"
+              className="flex h-[5.4vh] w-full items-center justify-center rounded-[1vh] bg-accent px-[1vw] text-[1.8vh] font-semibold text-on-accent shadow-[0_0.55vh_1.5vh_color-mix(in_srgb,var(--color-accent)_20%,transparent)] transition-[background-color,box-shadow,transform,opacity] hover:bg-accent-hover hover:shadow-[0_0.8vh_1.9vh_color-mix(in_srgb,var(--color-accent)_25%,transparent)] active:translate-y-px disabled:cursor-not-allowed disabled:bg-accent disabled:opacity-50 disabled:shadow-none"
             >
               {submitting === "reply" ? "正在提交…" : "确认选择"}
             </button>
@@ -248,7 +248,7 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
               type="button"
               disabled={submitting !== null}
               onClick={() => void handleReject()}
-              className="mt-[1.8vh] flex h-[4.5vh] w-full items-center justify-center rounded-[0.8vh] text-[1.65vh] text-text-lighter outline-none transition-colors hover:bg-stone-50 hover:text-text-muted focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-wait disabled:opacity-60"
+              className="mt-[1.8vh] flex h-[4.5vh] w-full items-center justify-center rounded-[0.8vh] text-[1.65vh] text-text-lighter outline-none transition-colors hover:bg-border hover:text-text-muted focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-wait disabled:opacity-60"
             >
               {submitting === "reject" ? "正在处理…" : "暂不处理"}
             </button>

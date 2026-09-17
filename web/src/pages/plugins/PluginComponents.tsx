@@ -22,8 +22,8 @@ export function PluginComponents({ plugin, onChanged }: { plugin: PluginInfo; on
         {plugin.versions.map(version => <option key={version.revision} value={version.revision}>{version.version} · {version.revision.slice(0, 12)}</option>)}
       </select>
     </label>
-    <p className="mt-2 text-stone-500">选择版本后插件保持停用，请审查权限与组件后再启用。</p>
+    <p className="mt-2 text-text-muted">选择版本后插件保持停用，请审查权限与组件后再启用。</p>
     <PluginAssets key={`${plugin.id}:${plugin.revision}`} id={plugin.id} revision={plugin.revision} />
-    {error && <p role="alert" className="mt-2 text-red-700">{error}</p>}
+    {error && <p role="alert" className="mt-2 text-danger">{error}</p>}
   </div>
 }

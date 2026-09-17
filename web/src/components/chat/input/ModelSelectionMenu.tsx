@@ -25,8 +25,8 @@ export function ModelSelectionMenu({ config, submitting, overlay, onSelect }: Pr
     {selection.options.map(option => <button key={option.id} type="button" role="menuitemradio" aria-checked={option.selected}
       disabled={submitting !== null || option.status === 'inactive'} onClick={() => onSelect(option, selection.target)}
       className={cn('flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left disabled:opacity-70',
-        option.selected ? overlay ? 'bg-white/10 text-stone-50' : 'bg-bg text-text' :
-          overlay ? 'text-stone-300 hover:bg-white/8' : 'text-text-muted hover:bg-bg')}>
+        option.selected ? overlay ? 'bg-highlight/10 text-text' : 'bg-bg text-text' :
+          overlay ? 'text-text hover:bg-highlight/8' : 'text-text-muted hover:bg-bg')}>
       <span className="min-w-0">
         <span className="block truncate text-sm font-medium">{submitting === option.id ? '正在切换...' : option.label}</span>
         <span className="mt-0.5 block truncate text-xs opacity-75">{option.providerName || option.provider}/{option.modelID}</span>

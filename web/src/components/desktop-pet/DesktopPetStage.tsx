@@ -196,13 +196,13 @@ export function DesktopPetStage({
           onPointerCancel={finishPetIconDrag}
           disabled={!onInputCollapsedChange || inputTransitioning}
           className={cn(
-            "absolute z-30 flex items-center justify-center rounded-full border border-white/25 bg-stone-950/70 text-stone-100 shadow-sm backdrop-blur-md transition-[background-color,border-color,border-radius] duration-150 hover:bg-stone-900/85 disabled:pointer-events-none",
+            "absolute z-30 flex items-center justify-center rounded-full border border-highlight/25 bg-overlay/70 text-text shadow-sm backdrop-blur-md transition-[background-color,border-color,border-radius] duration-150 hover:bg-surface-hover/85 disabled:pointer-events-none",
             bubbleOnly
               ? inputCollapsed
                 ? surface === "icon"
                   ? "inset-1 cursor-move"
                   : "inset-0 h-full w-full cursor-move"
-                : "right-[3cqh] top-[3cqh] h-[9cqh] w-[9cqh] border-transparent bg-transparent text-stone-300 hover:bg-white/10 hover:text-white"
+                : "right-[3cqh] top-[3cqh] h-[9cqh] w-[9cqh] border-transparent bg-transparent text-text hover:bg-highlight/10 hover:text-text"
               : "left-[1.4cqh] h-[4.4cqh] w-[4.4cqh]",
           )}
           style={bubbleOnly
@@ -274,11 +274,11 @@ export function DesktopPetStage({
             </CharacterPerformanceStage>
           ) : (
             <div className="flex h-full w-full items-center justify-center px-[8%]">
-              <div className="rounded-[3cqh] border border-white/20 bg-white/80 px-[6%] py-[4%] text-center text-stone-700 shadow-sm backdrop-blur">
-                <div className="font-serif text-[2.4cqh] text-stone-900">
+              <div className="rounded-[3cqh] border border-highlight/20 bg-card/80 px-[6%] py-[4%] text-center text-text shadow-sm backdrop-blur">
+                <div className="font-serif text-[2.4cqh] text-text">
                   {assistant ? "未配置立绘" : "未绑定默认助手"}
                 </div>
-                <p className="mt-[1.2cqh] text-[1.5cqh] leading-relaxed text-stone-500">
+                <p className="mt-[1.2cqh] text-[1.5cqh] leading-relaxed text-text-muted">
                   {assistantError ||
                     (assistant ? "请在角色编辑里添加待机动作图片。" : "请在 Core 助手管理里设置默认助手。")}
                 </p>

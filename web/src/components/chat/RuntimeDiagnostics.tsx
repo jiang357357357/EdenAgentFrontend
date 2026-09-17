@@ -32,7 +32,7 @@ function DiagnosticsDialog({ sessions, initialSessionId, onClose }: { sessions: 
     return () => { if (element.open) element.close() }
   }, [])
   return <dialog ref={dialog} aria-labelledby="runtime-diagnostics-title" onClose={event => { if (!event.currentTarget.open && event.currentTarget.isConnected) onClose() }}
-    className="fixed inset-0 m-auto max-h-[85vh] w-[min(48rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-2xl border border-border bg-card p-0 text-text shadow-2xl backdrop:bg-black/35">
+    className="fixed inset-0 m-auto max-h-[85vh] w-[min(48rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-2xl border border-border bg-card p-0 text-text shadow-2xl backdrop:bg-scrim/35">
     <div className="flex max-h-[85vh] flex-col">
       <header className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
         <h2 id="runtime-diagnostics-title" className="text-lg font-medium">运行诊断</h2>

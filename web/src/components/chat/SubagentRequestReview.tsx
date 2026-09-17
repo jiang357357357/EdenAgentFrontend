@@ -34,8 +34,8 @@ export function SubagentRequestReview({ agentId }: { agentId: string }) {
     <summary>模型请求用量核对 · {items.length}{cursor ? '+' : ''}</summary>
     <p className="mt-2">这里列出尚未取得完整用量回执的请求。在原执行结束后，根据供应商记录填写实际用量与证据；不能因为没有回复就填零。确认不会重发请求。</p>
     <button disabled={busy} onClick={() => void refresh()} className="mt-2 rounded border px-2 py-1">刷新</button>
-    {error && <p role="alert" className="text-red-700">{error}</p>}
-    {items.map(item => <button key={item.id} disabled={busy} onClick={() => { setSelected(item.id); setTokens(item.tokens == null ? '' : String(item.tokens)); setCost(item.costMicrousd == null ? '' : String(item.costMicrousd)); setNote(''); setConfirmed(false) }} className={`mt-2 block w-full rounded border p-2 text-left ${selected === item.id ? 'border-amber-500' : ''}`}>
+    {error && <p role="alert" className="text-danger">{error}</p>}
+    {items.map(item => <button key={item.id} disabled={busy} onClick={() => { setSelected(item.id); setTokens(item.tokens == null ? '' : String(item.tokens)); setCost(item.costMicrousd == null ? '' : String(item.costMicrousd)); setNote(''); setConfirmed(false) }} className={`mt-2 block w-full rounded border p-2 text-left ${selected === item.id ? 'border-warning/30' : ''}`}>
       {new Date(item.createdAt).toLocaleString()} · {item.executing ? '原执行尚未结束' : '用量待核对'}<br />{item.id}
     </button>)}
     {cursor && <button disabled={busy} onClick={() => void refresh(cursor)}>加载更多</button>}

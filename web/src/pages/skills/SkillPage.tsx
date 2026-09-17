@@ -1,3 +1,4 @@
+import { pageEnterMotion } from "../../lib/page-motion"
 import { SkillInstallDialog } from './SkillInstallDialog'
 import { SkillManagement } from "./SkillManagement"
 import { useSkillClient } from '../../lib/skill-client'
@@ -38,24 +39,24 @@ function SkillRow({
     <button
       type="button"
       onClick={onSelect}
-      className={`flex w-full items-start gap-3 rounded-xl border px-4 py-3.5 text-left transition ${selected ? "border-[#e27a00] bg-[#fff8ef] shadow-sm" : "border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50/70"}`}
+      className={`flex w-full items-start gap-3 rounded-xl border px-4 py-3.5 text-left transition ${selected ? "border-accent bg-accent-dim shadow-sm" : "border-border bg-card hover:border-border hover:bg-border/70"}`}
     >
-      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#fff1dc] text-[#d87300]">
+      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-dim text-accent">
         <Package className="h-[18px] w-[18px]" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="truncate text-sm font-semibold text-stone-800">{skill.displayName || skill.skillName}</h3>
-          {skill.builtin && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700">内置</span>}
+          <h3 className="truncate text-sm font-semibold text-text">{skill.displayName || skill.skillName}</h3>
+          {skill.builtin && <span className="rounded bg-warning-dim px-1.5 py-0.5 text-[11px] text-warning">内置</span>}
           <span
-            className={`ml-auto rounded-md px-2 py-0.5 text-[11px] ${!skill.available ? "bg-red-50 text-red-600" : skill.enabled ? "bg-emerald-50 text-emerald-700" : "bg-stone-100 text-stone-500"}`}
+            className={`ml-auto rounded-md px-2 py-0.5 text-[11px] ${!skill.available ? "bg-danger-dim text-danger" : skill.enabled ? "bg-success-dim text-success" : "bg-bg text-text-muted"}`}
           >
             {busy ? "处理中" : status}
           </span>
         </div>
-        <p className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500">{skill.description}</p>
-        {!!skill.missingTools?.length && <p className="mt-1 text-xs text-red-600">缺少可用工具：{skill.missingTools.join("、")}</p>}
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-stone-400">
+        <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{skill.description}</p>
+        {!!skill.missingTools?.length && <p className="mt-1 text-xs text-danger">缺少可用工具：{skill.missingTools.join("、")}</p>}
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-text-muted">
           <span>{skill.scope === "system" ? "系统范围" : skill.scope === "project" ? "当前项目" : "当前用户"}</span>
           <span>
             {skill.sourceType === "git"
@@ -69,7 +70,7 @@ function SkillRow({
           {skill.tools?.length ? <span>{skill.tools.length} 个工具</span> : null}
         </div>
       </div>
-      <ChevronRight className={`mt-2 h-4 w-4 shrink-0 ${selected ? "text-[#d87300]" : "text-stone-300"}`} />
+      <ChevronRight className={`mt-2 h-4 w-4 shrink-0 ${selected ? "text-accent" : "text-text"}`} />
     </button>
   )
 }
@@ -164,30 +165,28 @@ function ScopedSkillPage({ onBack }: { onBack: () => void }) {
   return (
     <motion.main
       key="skills"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="surface-scrollbars flex h-full min-h-0 flex-col bg-[#faf9f7] text-stone-800"
+      {...pageEnterMotion}
+      className="theme-page surface-scrollbars flex h-full min-h-0 flex-col bg-bg text-text"
     >
-      <div className="grid min-h-0 flex-1 grid-cols-[30%_31%_minmax(0,1fr)] bg-[#f7f6f3]">
-        <aside className="flex min-h-0 min-w-0 flex-col border-r border-stone-200 bg-[#fbfaf8] p-5">
+      <div className="grid min-h-0 flex-1 grid-cols-[30%_31%_minmax(0,1fr)] bg-bg">
+        <aside className="flex min-h-0 min-w-0 flex-col border-r border-border bg-bg p-5">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={onBack}
-              className="rounded-lg p-2 text-stone-500 hover:bg-stone-100"
+              className="rounded-lg p-2 text-text-muted hover:bg-border"
               aria-label="返回"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div>
               <h1 className="text-2xl font-semibold">技能</h1>
-              <p className="text-xs text-stone-400">工作流与能力包</p>
+              <p className="text-xs text-text-muted">工作流与能力包</p>
             </div>
           </div>
           <div className="mt-5 flex gap-2">
-            <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-stone-200 bg-white px-3">
-              <Search className="h-4 w-4 text-stone-400" />
+            <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-card px-3">
+              <Search className="h-4 w-4 text-text-muted" />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
@@ -195,7 +194,7 @@ function ScopedSkillPage({ onBack }: { onBack: () => void }) {
                 className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none"
               />
             </label>
-            <button type="button" disabled={loading} className="shrink-0 rounded-xl border border-stone-200 px-3 text-sm disabled:opacity-50"
+            <button type="button" disabled={loading} className="shrink-0 rounded-xl border border-border px-3 text-sm disabled:opacity-50"
               onClick={() => void rescan()}>
               刷新目录
             </button>
@@ -204,19 +203,19 @@ function ScopedSkillPage({ onBack }: { onBack: () => void }) {
               onClick={() => {
                 setInstallOpen(true)
               }}
-              className="shrink-0 rounded-xl bg-[#d87300] px-4 text-sm text-white hover:bg-[#c46600]"
+              className="shrink-0 rounded-xl bg-accent px-4 text-sm text-on-accent hover:bg-accent-hover"
             >
               安装技能
             </button>
           </div>
           {error && (
-            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            <div className="mt-3 rounded-xl border border-danger/30 bg-danger-dim px-3 py-2 text-xs text-danger">
               {error}
             </div>
           )}
           <div className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {loading && skills.length === 0 ? (
-              <div className="flex h-40 items-center justify-center text-sm text-stone-400">
+              <div className="flex h-40 items-center justify-center text-sm text-text-muted">
                 <LoaderCircle className="mr-2 h-5 w-5 animate-spin" />
                 读取技能目录
               </div>
@@ -232,28 +231,28 @@ function ScopedSkillPage({ onBack }: { onBack: () => void }) {
               ))
             )}
             {!loading && filteredSkills.length === 0 && (
-              <div className="py-16 text-center text-sm text-stone-400">没有符合条件的技能</div>
+              <div className="py-16 text-center text-sm text-text-muted">没有符合条件的技能</div>
             )}
           </div>
         </aside>
 
-        <section className="flex min-h-0 min-w-0 flex-col border-r border-stone-200 bg-[#f8f7f5] p-5">
+        <section className="flex min-h-0 min-w-0 flex-col border-r border-border bg-bg p-5">
           {selectedSkill ? (
             <>
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#fff0dc] text-[#d87300]">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-dim text-accent">
                   <Package className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
                   <h2 className="truncate text-lg font-semibold">
                     {selectedSkill.displayName || selectedSkill.skillName}
                   </h2>
-                  <p className="text-xs text-stone-400">{selectedToolNames.length} 个工具</p>
+                  <p className="text-xs text-text-muted">{selectedToolNames.length} 个工具</p>
                 </div>
               </div>
               <SkillManagement key={selectedSkill.id} skill={selectedSkill} onChanged={refresh} />
-              <label className="mt-4 flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3">
-                <Search className="h-4 w-4 text-stone-400" />
+              <label className="mt-4 flex items-center gap-2 rounded-xl border border-border bg-card px-3">
+                <Search className="h-4 w-4 text-text-muted" />
                 <input
                   value={toolQuery}
                   onChange={(event) => setToolQuery(event.target.value)}
@@ -270,80 +269,80 @@ function ScopedSkillPage({ onBack }: { onBack: () => void }) {
                       key={name}
                       type="button"
                       onClick={() => setSelectedToolName(name)}
-                      className={`flex w-full items-start gap-3 rounded-xl border p-4 text-left ${active ? "border-[#e27a00] bg-[#fff8ef]" : "border-stone-200 bg-white hover:bg-stone-50"}`}
+                      className={`flex w-full items-start gap-3 rounded-xl border p-4 text-left ${active ? "border-accent bg-accent-dim" : "border-border bg-card hover:bg-border"}`}
                     >
-                      <Wrench className="mt-0.5 h-5 w-5 shrink-0 text-stone-700" />
+                      <Wrench className="mt-0.5 h-5 w-5 shrink-0 text-text" />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <b className="truncate font-mono text-sm">{name}</b>
                           <span
-                            className={`ml-auto rounded px-2 py-0.5 text-[10px] ${tool?.exposure === "direct" ? "bg-blue-50 text-blue-600" : "bg-violet-50 text-violet-600"}`}
+                            className={`ml-auto rounded px-2 py-0.5 text-[10px] ${tool?.exposure === "direct" ? "bg-info-dim text-info" : "bg-accent-dim text-accent"}`}
                           >
                             {tool?.exposure === "direct" ? "直接" : "按需"}
                           </span>
                           <span
-                            className={`rounded px-2 py-0.5 text-[10px] ${tool?.requiresPermission ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}
+                            className={`rounded px-2 py-0.5 text-[10px] ${tool?.requiresPermission ? "bg-warning-dim text-warning" : "bg-success-dim text-success"}`}
                           >
                             {tool?.requiresPermission ? "需确认" : "只读"}
                           </span>
                         </div>
-                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500">
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">
                           {tool?.description || "工具信息暂不可用"}
                         </p>
                       </div>
                       <ChevronRight
-                        className={`mt-1 h-4 w-4 shrink-0 ${active ? "text-[#d87300]" : "text-stone-300"}`}
+                        className={`mt-1 h-4 w-4 shrink-0 ${active ? "text-accent" : "text-text"}`}
                       />
                     </button>
                   )
                 })}
                 {selectedToolNames.length === 0 && (
-                  <div className="py-16 text-center text-sm text-stone-400">此技能不直接提供工具</div>
+                  <div className="py-16 text-center text-sm text-text-muted">此技能不直接提供工具</div>
                 )}
               </div>
             </>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-stone-400">选择一个技能</div>
+            <div className="flex h-full items-center justify-center text-sm text-text-muted">选择一个技能</div>
           )}
         </section>
 
-        <section className="min-h-0 min-w-0 overflow-y-auto overflow-x-hidden bg-[#fcfbf9] p-6">
+        <section className="min-h-0 min-w-0 overflow-y-auto overflow-x-hidden bg-bg p-6">
           {selectedToolName ? (
             <div className="mx-auto max-w-4xl">
               <div className="flex items-start gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-stone-200 bg-[#fff8ee]">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-accent-dim">
                   <Wrench className="h-7 w-7" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <h2 className="font-mono text-2xl font-semibold">{selectedToolName}</h2>
-                  <p className="mt-1 text-sm text-stone-500">{selectedTool?.label || "工具"}</p>
+                  <p className="mt-1 text-sm text-text-muted">{selectedTool?.label || "工具"}</p>
                   <div className="mt-2 flex gap-2">
-                    <span className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-600">
+                    <span className="rounded bg-info-dim px-2 py-1 text-xs text-info">
                       {selectedTool?.exposure === "direct" ? "直接工具" : "按需工具"}
                     </span>
                     <span
-                      className={`rounded px-2 py-1 text-xs ${selectedTool?.requiresPermission ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}
+                      className={`rounded px-2 py-1 text-xs ${selectedTool?.requiresPermission ? "bg-warning-dim text-warning" : "bg-success-dim text-success"}`}
                     >
                       {selectedTool?.requiresPermission ? "需确认" : "只读"}
                     </span>
-                    <span className="rounded bg-stone-100 px-2 py-1 text-xs text-stone-500">
+                    <span className="rounded bg-bg px-2 py-1 text-xs text-text-muted">
                       {selectedTool?.source || "builtin"}
                     </span>
                   </div>
                 </div>
               </div>
-              <p className="mt-5 text-sm leading-7 text-stone-600">
+              <p className="mt-5 text-sm leading-7 text-text-muted">
                 {selectedTool?.description || "当前服务尚未返回此工具的详细说明。"}
               </p>
               <div className="mt-5 space-y-4">
-                <div className="rounded-2xl border border-stone-200 bg-white p-5">
+                <div className="rounded-2xl border border-border bg-card p-5">
                   <h3 className="flex items-center gap-2 text-sm font-semibold">
                     <Code2 className="h-4 w-4" />
                     参数
                   </h3>
-                  <div className="mt-3 overflow-hidden rounded-xl border border-stone-200">
+                  <div className="mt-3 overflow-hidden rounded-xl border border-border">
                     <table className="w-full text-left text-xs">
-                      <thead className="bg-stone-50 text-stone-500">
+                      <thead className="bg-bg text-text-muted">
                         <tr>
                           <th className="px-3 py-2">字段</th>
                           <th className="px-3 py-2">类型</th>
@@ -357,7 +356,7 @@ function ScopedSkillPage({ onBack }: { onBack: () => void }) {
                             | Record<string, Record<string, unknown>>
                             | undefined) ?? {},
                         ).map(([name, schema]) => (
-                          <tr key={name} className="border-t border-stone-200">
+                          <tr key={name} className="border-t border-border">
                             <td className="px-3 py-2 font-mono">{name}</td>
                             <td className="px-3 py-2">{String(schema.type || "any")}</td>
                             <td className="px-3 py-2">
@@ -365,40 +364,40 @@ function ScopedSkillPage({ onBack }: { onBack: () => void }) {
                                 ? "是"
                                 : "否"}
                             </td>
-                            <td className="px-3 py-2 text-stone-500">{String(schema.description || "")}</td>
+                            <td className="px-3 py-2 text-text-muted">{String(schema.description || "")}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                     {!Object.keys((selectedTool?.parameters?.properties as Record<string, unknown> | undefined) ?? {})
-                      .length && <div className="px-3 py-4 text-xs text-stone-400">无需参数</div>}
+                      .length && <div className="px-3 py-4 text-xs text-text-muted">无需参数</div>}
                   </div>
                 </div>
-                <div className="rounded-2xl border border-stone-200 bg-white p-5">
+                <div className="rounded-2xl border border-border bg-card p-5">
                   <h3 className="flex items-center gap-2 text-sm font-semibold">
                     <ShieldCheck className="h-4 w-4" />
                     权限与行为
                   </h3>
-                  <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-stone-200 text-xs">
+                  <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-bg text-xs">
                     {[
                       ["权限", selectedTool?.requiresPermission ? selectedToolName : "无需确认"],
                       ["暴露方式", selectedTool?.exposure === "direct" ? "直接可用" : "按需加载"],
                       ["命名空间", selectedTool?.namespace || "general"],
                       ["执行方式", selectedTool?.executionMode || "默认"],
                     ].map(([label, value]) => (
-                      <div key={label} className="bg-stone-50 px-3 py-3">
-                        <span className="text-stone-400">{label}</span>
-                        <p className="mt-1 font-medium text-stone-700">{value}</p>
+                      <div key={label} className="bg-bg px-3 py-3">
+                        <span className="text-text-muted">{label}</span>
+                        <p className="mt-1 font-medium text-text">{value}</p>
                       </div>
                     ))}
                   </div>
                 </div>
-                <div className="rounded-2xl border border-stone-200 bg-white p-5">
+                <div className="rounded-2xl border border-border bg-card p-5">
                   <h3 className="flex items-center gap-2 text-sm font-semibold">
                     <Code2 className="h-4 w-4" />
                     调用示例
                   </h3>
-                  <pre className="mt-3 overflow-x-auto rounded-xl bg-stone-50 p-4 font-mono text-xs text-stone-600">
+                  <pre className="mt-3 overflow-x-auto rounded-xl bg-bg p-4 font-mono text-xs text-text-muted">
                     {JSON.stringify(
                       Object.fromEntries(
                         Object.keys(
@@ -415,7 +414,7 @@ function ScopedSkillPage({ onBack }: { onBack: () => void }) {
                 <button
                   type="button"
                   onClick={() => void navigator.clipboard.writeText(selectedToolName)}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white py-3 text-sm"
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-sm"
                 >
                   <Clipboard className="h-4 w-4" />
                   复制工具名称
@@ -423,7 +422,7 @@ function ScopedSkillPage({ onBack }: { onBack: () => void }) {
                 <button
                   type="button"
                   onClick={onBack}
-                  className="flex flex-[1.4] items-center justify-center gap-2 rounded-xl bg-[#d87300] py-3 text-sm text-white"
+                  className="flex flex-[1.4] items-center justify-center gap-2 rounded-xl bg-accent py-3 text-sm text-on-accent"
                 >
                   <MessageSquare className="h-4 w-4" />
                   返回聊天中试用
@@ -431,7 +430,7 @@ function ScopedSkillPage({ onBack }: { onBack: () => void }) {
               </div>
             </div>
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-stone-400">选择一个工具查看详情</div>
+            <div className="flex h-full items-center justify-center text-sm text-text-muted">选择一个工具查看详情</div>
           )}
         </section>
       </div>

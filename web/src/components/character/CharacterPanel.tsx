@@ -30,7 +30,7 @@ export function CharacterPanel({ assistant, assistantError, activeAction, editin
   const memoryLobby = hasSpine && isMemoryLobbySpineAsset(spineAsset);
 
   return (
-    <aside className="flex h-[100vh] w-[34vw] flex-none items-end justify-center overflow-hidden border-l border-border bg-bg">
+    <aside className="flex h-[100vh] w-[34vw] flex-none items-end justify-center overflow-hidden border-l border-border bg-transparent">
       <div className="relative h-full w-full overflow-hidden">
         {hasVisual && character ? (
           <AdjustableCharacterView key={`${getStoredRuntimeOrigin()}:${character.id}`} storageKey={`eden-character-placement:${getStoredRuntimeOrigin()}:${character.id}`} editing={editing} nativeTransform={hasSpine}>

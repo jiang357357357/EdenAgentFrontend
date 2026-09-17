@@ -76,8 +76,8 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
       className={cn(
         'rounded-2xl border px-4 py-4',
         tone === 'overlay'
-          ? 'border-sky-300/15 bg-stone-950/78 text-stone-100 shadow-none backdrop-blur-md'
-          : 'border-sky-500/20 bg-card shadow-sm',
+          ? 'border-info/30 bg-overlay/78 text-text shadow-none backdrop-blur-md'
+          : 'border-info/20 bg-card shadow-sm',
       )}
     >
       <div className="flex items-start gap-3">
@@ -85,16 +85,16 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
           className={cn(
             'mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border',
             tone === 'overlay'
-              ? 'border-sky-300/20 bg-sky-300/10 text-sky-200'
-              : 'border-sky-500/25 bg-sky-500/10 text-sky-400',
+              ? 'border-info/30 bg-info/10 text-info'
+              : 'border-info/25 bg-info/10 text-info',
           )}
         >
           <HelpCircle className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={cn('text-[10px] uppercase tracking-[0.15em]', tone === 'overlay' ? 'text-sky-200/80' : 'text-sky-400')}>问题确认</span>
-            {request.tool && <span className={cn('text-xs', tone === 'overlay' ? 'text-stone-400' : 'text-text-muted')}>工具调用: {request.tool.callID}</span>}
+            <span className={cn('text-[10px] uppercase tracking-[0.15em]', tone === 'overlay' ? 'text-info/80' : 'text-info')}>问题确认</span>
+            {request.tool && <span className={cn('text-xs', tone === 'overlay' ? 'text-text-muted' : 'text-text-muted')}>工具调用: {request.tool.callID}</span>}
           </div>
 
           <div className="mt-3 space-y-4">
@@ -106,12 +106,12 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
                   className={cn(
                     'rounded-xl border px-3 py-3',
                     tone === 'overlay'
-                      ? 'border-white/10 bg-white/5'
+                      ? 'border-highlight/10 bg-highlight/5'
                       : 'border-border bg-bg',
                   )}
                 >
-                  <div className={cn('text-[10px] uppercase tracking-[0.15em]', tone === 'overlay' ? 'text-stone-400' : 'text-text-muted')}>{item.header}</div>
-                  <div className={cn('mt-1 text-sm', tone === 'overlay' ? 'text-stone-100' : 'text-text')}>{item.question}</div>
+                  <div className={cn('text-[10px] uppercase tracking-[0.15em]', tone === 'overlay' ? 'text-text-muted' : 'text-text-muted')}>{item.header}</div>
+                  <div className={cn('mt-1 text-sm', tone === 'overlay' ? 'text-text' : 'text-text')}>{item.question}</div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {item.options.map((option) => {
                       const active = picked.includes(option.label);
@@ -124,10 +124,10 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
                             'rounded-xl border px-3 py-2 text-left text-xs transition-colors',
                             active
                               ? tone === 'overlay'
-                                ? 'border-sky-300/35 bg-sky-300/10 text-stone-100'
+                                ? 'border-info/30 bg-info/10 text-text'
                                 : 'border-accent/35 bg-accent/10 text-text'
                               : tone === 'overlay'
-                                ? 'border-white/10 bg-black/10 text-stone-300 hover:border-white/20 hover:text-stone-100'
+                                ? 'border-highlight/10 bg-scrim/10 text-text hover:border-highlight/20 hover:text-text'
                                 : 'border-border bg-card text-text-muted hover:border-accent/30 hover:text-text',
                             submitting !== null && 'cursor-wait opacity-70',
                           )}
@@ -148,7 +148,7 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
                       className={cn(
                         'mt-3 w-full rounded-xl border px-3 py-2 text-sm outline-none transition-colors',
                         tone === 'overlay'
-                          ? 'border-white/10 bg-black/10 text-stone-100 placeholder:text-stone-500 focus:border-sky-300/35'
+                          ? 'border-highlight/10 bg-scrim/10 text-text placeholder:text-text-muted focus:border-info/30'
                           : 'border-border bg-card text-text placeholder:text-text-muted focus:border-accent/40',
                       )}
                     />
@@ -159,7 +159,7 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
           </div>
 
           {error && (
-            <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            <div className="mt-3 rounded-xl border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger">
               {error}
             </div>
           )}
@@ -171,7 +171,7 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
               className={cn(
                 'inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs transition-colors',
                 tone === 'overlay'
-                  ? 'border-sky-300/25 bg-sky-300/10 text-sky-200 hover:border-sky-300/40'
+                  ? 'border-info/30 bg-info/10 text-info hover:border-info/30'
                   : 'border-accent/25 bg-accent/10 text-accent hover:border-accent/40',
                 'disabled:cursor-not-allowed disabled:opacity-50',
               )}
@@ -185,8 +185,8 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
               className={cn(
                 'inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs transition-colors',
                 tone === 'overlay'
-                  ? 'border-white/10 bg-white/5 text-stone-300 hover:border-red-500/30 hover:text-red-300'
-                  : 'border-border bg-bg text-text-muted hover:border-red-500/30 hover:text-red-300',
+                  ? 'border-highlight/10 bg-highlight/5 text-text hover:border-danger/30 hover:text-danger'
+                  : 'border-border bg-bg text-text-muted hover:border-danger/30 hover:text-danger',
                 'disabled:cursor-wait disabled:opacity-60',
               )}
             >

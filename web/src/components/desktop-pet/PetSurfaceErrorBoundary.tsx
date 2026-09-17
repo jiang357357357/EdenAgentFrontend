@@ -30,12 +30,12 @@ export class PetSurfaceErrorBoundary extends Component<PetSurfaceErrorBoundaryPr
 
     return (
       <div className="flex h-full w-full items-center justify-center [container-type:size]">
-        <section className="flex h-full w-full flex-col items-center justify-center gap-[3cqh] rounded-[6cqh] border border-red-300/20 bg-stone-900/90 px-[6cqh] text-center text-stone-200 shadow-[0_2cqh_6cqh_rgba(0,0,0,0.28)] backdrop-blur-xl">
+        <section className="flex h-full w-full flex-col items-center justify-center gap-[3cqh] rounded-[6cqh] border border-danger/20 bg-overlay/90 px-[6cqh] text-center text-text shadow-[0_2cqh_6cqh_color-mix(in_srgb,var(--color-scrim)_28%,transparent)] backdrop-blur-xl">
           <p className="m-0 text-[4cqh]">聊天气泡渲染失败</p>
           <button
             type="button"
             onClick={this.retry}
-            className="rounded-full bg-orange-600 px-[5cqh] py-[2cqh] text-[3.5cqh] text-white hover:bg-orange-500"
+            className="rounded-full bg-accent px-[5cqh] py-[2cqh] text-[3.5cqh] text-on-accent hover:bg-accent-hover"
           >
             重新渲染
           </button>

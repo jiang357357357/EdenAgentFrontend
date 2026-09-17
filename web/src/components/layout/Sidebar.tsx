@@ -1,3 +1,4 @@
+import { SessionTitleDialog } from "./SessionTitleDialog"
 import {
   Brain,
   LogOut,
@@ -181,7 +182,7 @@ export function ActivityRail({
   onOpenSettings,
 }: ActivityRailProps) {
   return (
-    <nav className="flex h-full w-16 shrink-0 flex-col border-r border-border bg-bg" aria-label="主导航">
+    <nav className="flex h-full w-16 shrink-0 flex-col border-r border-border bg-transparent" aria-label="主导航">
       <div className="min-h-0 flex-1 overflow-y-auto pb-[0.6vh]">
         <ActivityButton label="文件" icon={FolderOpen} active={active === "files"} onClick={onOpenFiles} />
         <ActivityButton label="会话" icon={MessageSquare} active={active === "sessions"} onClick={onOpenSessions} />
@@ -257,6 +258,7 @@ export function Sidebar({
   onWorkspaceChanged,
 }: SidebarProps) {
   const [query, setQuery] = useState("")
+  const [renamingSession, setRenamingSession] = useState<{ id: string; title: string } | null>(null)
   const [activity, setActivity] = useState<"sessions" | "files">("sessions")
   const [workspaceName, setWorkspaceName] = useState("工作区")
   const [workspacePath, setWorkspacePath] = useState("")
@@ -389,7 +391,7 @@ export function Sidebar({
   }
 
   return (
-    <aside className="relative z-20 flex h-full w-[20vw] min-w-[280px] max-w-[360px] shrink-0 border-r border-border bg-bg">
+    <aside className="relative z-20 flex h-full w-[20vw] min-w-[280px] max-w-[360px] shrink-0 border-r border-border bg-bg/72 backdrop-blur-xl">
         <ActivityRail
           active={activity}
           onOpenFiles={() => setActivity("files")}
@@ -471,9 +473,7 @@ export function Sidebar({
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation()
-                          const title = window.prompt("重命名会话", session.title)?.trim()
-                          if (!title || title === session.title) return
-                          void onRename(session.id, title)
+                          setRenamingSession({ id: session.id, title: session.title })
                         }}
                         className="absolute right-[2.55vw] top-1/2 flex h-[4.2vh] w-[4.2vh] -translate-y-1/2 items-center justify-center rounded-[0.6vh] text-text-muted opacity-0 transition hover:bg-accent/10 hover:text-accent focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
                         aria-label={`重命名会话：${session.title}`}
@@ -488,7 +488,7 @@ export function Sidebar({
                           if (!window.confirm(`永久删除会话“${session.title}”？删除后无法恢复。`)) return
                           void onDelete(session.id)
                         }}
-                        className="absolute right-[0.35vw] top-1/2 flex h-[4.2vh] w-[4.2vh] -translate-y-1/2 items-center justify-center rounded-[0.6vh] text-text-muted opacity-0 transition hover:bg-red-500/10 hover:text-red-500 focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
+                        className="absolute right-[0.35vw] top-1/2 flex h-[4.2vh] w-[4.2vh] -translate-y-1/2 items-center justify-center rounded-[0.6vh] text-text-muted opacity-0 transition hover:bg-danger/10 hover:text-danger focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
                         aria-label={`永久删除会话：${session.title}`}
                         title="永久删除会话"
                       >
@@ -505,10 +505,10 @@ export function Sidebar({
             <div className="min-h-0 flex-1 overflow-y-auto py-2">
               {workspaceLoading ? <div className="px-4 py-6 text-sm text-text-muted">正在读取工作区…</div> : null}
               {workspaceError ? (
-                <div className="mx-3 my-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+                <div className="mx-3 my-3 rounded-lg border border-danger/30 bg-danger-dim px-3 py-3 text-sm text-danger">
                   <div className="break-words">{workspaceError}</div>
-                  {!workspacePath && <button type="button" onClick={() => void chooseWorkspace()} disabled={workspaceSwitching || Boolean(workspacePending)} className="mr-2 mt-2 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium hover:bg-red-100 disabled:opacity-50">重新选择文件夹</button>}
-                  <button type="button" onClick={retryWorkspace} className="mt-2 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium hover:bg-red-100">重新读取</button>
+                  {!workspacePath && <button type="button" onClick={() => void chooseWorkspace()} disabled={workspaceSwitching || Boolean(workspacePending)} className="mr-2 mt-2 rounded-md border border-danger/30 bg-card px-3 py-1.5 text-xs font-medium hover:bg-danger-dim disabled:opacity-50">重新选择文件夹</button>}
+                  <button type="button" onClick={retryWorkspace} className="mt-2 rounded-md border border-danger/30 bg-card px-3 py-1.5 text-xs font-medium hover:bg-danger-dim">重新读取</button>
                 </div>
               ) : null}
               {!workspaceLoading && workspaceLoaded && !workspacePath && !workspaceError ? (
@@ -517,7 +517,7 @@ export function Sidebar({
                   <p className="text-sm text-text-muted">尚未打开文件夹</p>
                   <p className="mt-2 text-xs leading-relaxed text-text-muted">选择项目文件夹后，即可浏览文件。</p>
                   <button type="button" onClick={() => void chooseWorkspace()} disabled={workspaceSwitching || Boolean(workspacePending)}
-                    className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm text-white disabled:opacity-50">
+                    className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm text-on-accent disabled:opacity-50">
                     {workspaceSwitching ? "正在选择…" : workspacePending ? "等待切换…" : "打开文件夹"}
                   </button>
                 </div>
@@ -528,6 +528,7 @@ export function Sidebar({
 
         </div>
 
+      {renamingSession && <SessionTitleDialog key={renamingSession.id} session={renamingSession} onSave={onRename} onClose={() => setRenamingSession(null)} />}
     </aside>
   )
 }

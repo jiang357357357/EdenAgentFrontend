@@ -7,7 +7,7 @@ export function SelfAwakeToolCard({ execution }: { execution: SelfAwakeToolExecu
   return <li className="rounded bg-bg/70 px-3 py-2 text-sm">
     <div className="flex items-center gap-2">
       <span className="min-w-0 font-medium">{title}</span>
-      <span className={`shrink-0 text-xs ${state === 'succeeded' ? 'text-emerald-600' : state === 'failed' ? 'text-red-600' : 'text-amber-600'}`}>
+      <span className={`shrink-0 text-xs ${state === 'succeeded' ? 'text-success' : state === 'failed' ? 'text-danger' : 'text-warning'}`}>
         {state === 'succeeded' ? '成功' : state === 'failed' ? '失败' : '执行中'}
       </span>
     </div>

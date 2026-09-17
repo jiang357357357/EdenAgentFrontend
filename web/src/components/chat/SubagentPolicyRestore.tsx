@@ -43,6 +43,6 @@ export function SubagentPolicyRestore({ agentId, onSaved }: { agentId: string; o
       <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我已核对源配置，确认映射未遗漏历史限制。</label>
       <button disabled={busy || !confirmed || !text || !note} onClick={() => void save()} className="mt-2 rounded border px-2 py-1">保存策略恢复记录</button>
       <p>保存会固定角色与技能、收窄预算；不会延长旧截止期限、确认模型归属或启动任务。</p></>}
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
   </details>
 }

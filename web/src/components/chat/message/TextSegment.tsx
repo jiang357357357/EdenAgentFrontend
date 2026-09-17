@@ -69,7 +69,7 @@ export function TextSegment({
   return (
     <div
       className={cn(
-        "relative text-[1.82vh] leading-[1.58]",
+        "chat-body-font relative text-[1.82vh] leading-[1.58]",
         isUser
           ? "rounded-[2vh] rounded-tr-[0.45vh] border border-border bg-card px-[2.05vh] py-[1.35vh] font-sans text-text"
           : "w-full max-w-none bg-transparent px-[2.05vh] py-[0.35vh] text-text prose",
@@ -90,7 +90,7 @@ export function TextSegment({
             </div>
             {canSpeak && clip?.status === "synthesizing" ? (
               <button type="button" onClick={() => onToggleSpeech?.(speechSegmentId, visibleContent, messageId, true)}
-                className="mb-[0.35vh] shrink-0 text-text-muted hover:text-red-500"
+                className="mb-[0.35vh] shrink-0 text-text-muted hover:text-danger"
                 aria-label="取消本条消息的语音合成" title="取消本条消息的语音合成">
                 <Square className="h-[1.8vh] w-[1.8vh] fill-current" />
               </button>
@@ -104,7 +104,7 @@ export function TextSegment({
                   playing
                     ? "bg-accent/10 text-accent"
                     : clip?.status === "error"
-                      ? "text-red-500"
+                      ? "text-danger"
                       : "text-text-muted hover:bg-bg hover:text-accent",
                 )}
                 aria-label={playing ? "暂停这段语音" : "播放这段语音"}

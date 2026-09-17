@@ -40,10 +40,10 @@ export function SlashCommandMenu({
       onWheel={() => onPointerActiveChange(false)}
       className={cn(
         "absolute inset-x-[2.2vh] bottom-[calc(100%+0.8vh)] z-40 max-h-[42vh] overflow-y-auto rounded-[1.8vh] border p-[0.7vh] shadow-xl backdrop-blur-xl",
-        overlay ? "border-white/12 bg-stone-950/92 text-stone-100" : "border-border bg-card/98 text-text",
+        overlay ? "border-highlight/12 bg-overlay/92 text-text" : "border-border bg-card/98 text-text",
       )}
     >
-      <div className={cn("px-[1.2vh] py-[0.8vh] text-[1.35vh]", overlay ? "text-stone-400" : "text-text-muted")}>命令</div>
+      <div className={cn("px-[1.2vh] py-[0.8vh] text-[1.35vh]", overlay ? "text-text-muted" : "text-text-muted")}>命令</div>
       {commands.map((command, index) => {
         const selected = index === selectedIndex
         return (
@@ -64,15 +64,15 @@ export function SlashCommandMenu({
             className={cn(
               "flex w-full items-center gap-[1.4vh] rounded-[1.25vh] px-[1.2vh] py-[1.05vh] text-left transition-colors",
               selected
-                ? overlay ? "bg-white/10 text-white" : "bg-[#fff7e8] text-text"
+                ? overlay ? "bg-highlight/10 text-text" : "bg-accent-dim text-text"
                 : overlay
-                  ? cn("text-stone-300", pointerActive && "hover:bg-white/8")
+                  ? cn("text-text", pointerActive && "hover:bg-highlight/8")
                   : cn("text-text-muted", pointerActive && "hover:bg-bg"),
             )}
           >
             <span className={cn(
               "flex h-[3.3vh] w-[3.3vh] flex-shrink-0 items-center justify-center rounded-[0.9vh] font-mono text-[1.8vh] font-semibold",
-              selected ? "bg-accent/12 text-accent" : overlay ? "bg-white/6 text-stone-400" : "bg-bg text-text-muted",
+              selected ? "bg-accent/12 text-accent" : overlay ? "bg-highlight/6 text-text-muted" : "bg-bg text-text-muted",
             )}>/</span>
             <span className="min-w-0 flex-1">
               <span className="block font-mono text-[1.65vh] font-medium text-current">/{command.name}</span>
@@ -84,7 +84,7 @@ export function SlashCommandMenu({
       })}
       <div className={cn(
         "mt-[0.45vh] border-t px-[1.2vh] py-[0.8vh] text-[1.15vh]",
-        overlay ? "border-white/8 text-stone-500" : "border-border/70 text-text-lighter",
+        overlay ? "border-highlight/8 text-text-muted" : "border-border/70 text-text-lighter",
       )}>
         ↑↓ 选择 · Tab 补全 · Enter 执行 · Esc 关闭
       </div>

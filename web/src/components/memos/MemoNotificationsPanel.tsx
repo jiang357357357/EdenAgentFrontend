@@ -42,12 +42,12 @@ export function MemoNotificationsPanel() {
   }
   const unread = items.filter(item => item.readAt === null).length
   return <div className="relative">
-    <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="rounded-full border border-stone-200 bg-white/70 px-4 py-2 text-sm text-text">
+    <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="rounded-full border border-border bg-card/70 px-4 py-2 text-sm text-text">
       到期提醒{unread ? ` (${unread})` : ''}
     </button>
     {open && <section aria-label="到期提醒" className="absolute right-0 top-12 z-50 max-h-[60vh] w-80 overflow-y-auto rounded-xl border border-border bg-bg p-4 text-sm text-text shadow-xl">
       <div className="mb-3 flex justify-between"><strong>提醒收件箱</strong><button type="button" onClick={() => setOpen(false)}>关闭</button></div>
-      {error && <p role="alert" className="mb-2 text-red-500">{error}</p>}
+      {error && <p role="alert" className="mb-2 text-danger">{error}</p>}
       {!items.length && !error && <p className="text-text-muted">暂无到期提醒</p>}
       {items.map(item => <article key={item.id} className="mb-3 border-b border-border pb-3">
         <p className="font-medium">{item.memo.title}</p><p className="whitespace-pre-wrap break-words">{item.memo.content}</p>

@@ -37,7 +37,7 @@ function MarkdownContentView({
         em: ({ children }) => <em className="italic text-accent/85">{children}</em>,
         hr: () => (
           <hr
-            className="my-[2.6vh] h-[3px] border-0 bg-gradient-to-r from-black/20 via-black/65 to-black/20"
+            className="my-[2.6vh] h-[3px] border-0 bg-gradient-to-r from-text/20 via-text/65 to-text/20"
             style={{
               clipPath:
                 "polygon(0 38%, 38% 30%, 50% 0, 62% 30%, 100% 38%, 100% 62%, 62% 70%, 50% 100%, 38% 70%, 0 62%)",
@@ -54,14 +54,14 @@ function MarkdownContentView({
         ),
         td: ({ children }) => <td className="border-t border-border px-[1.1vh] py-[0.75vh] align-top">{children}</td>,
         pre: ({ children }) => (
-          <pre className="my-[1.6vh] max-w-full overflow-x-auto rounded-[1.1vh] !bg-slate-800 p-[1.5vh] font-mono text-[0.88em] leading-[1.55] !text-stone-100 [&>code]:rounded-none [&>code]:!bg-transparent [&>code]:p-0 [&>code]:text-inherit">
+          <pre className="my-[1.6vh] max-w-full overflow-x-auto rounded-[1.1vh] !bg-code p-[1.5vh] font-mono text-[0.88em] leading-[1.55] !text-text [&>code]:rounded-none [&>code]:!bg-transparent [&>code]:p-0 [&>code]:text-inherit">
             {children}
           </pre>
         ),
         code: ({ children, className }) => {
           const inline = !className
           return inline ? (
-            <code className="indent-0 whitespace-pre-wrap break-words rounded-[0.45vh] border border-accent/15 bg-accent/[0.055] px-[0.55vh] py-[0.16vh] font-mono text-[0.9em] text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] before:content-none after:content-none [box-decoration-break:clone] [overflow-wrap:anywhere]">
+            <code className="indent-0 whitespace-pre-wrap break-words rounded-[0.45vh] border border-accent/15 bg-accent/[0.055] px-[0.55vh] py-[0.16vh] font-mono text-[0.9em] text-text shadow-[inset_0_1px_0_color-mix(in_srgb,var(--color-highlight)_18%,transparent)] before:content-none after:content-none [box-decoration-break:clone] [overflow-wrap:anywhere]">
               {children}
             </code>
           ) : (

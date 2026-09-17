@@ -305,7 +305,7 @@ export function CharacterPerformanceStage({ activeAction, className, contentClas
                   : { duration: 0.68, ease: [0.16, 1, 0.3, 1] }
               }
               className={cn(
-                "pointer-events-none absolute z-20 drop-shadow-[0_2px_3px_rgba(255,255,255,0.9)] drop-shadow-[0_2px_5px_rgba(0,0,0,0.16)]",
+                "pointer-events-none absolute z-20 drop-shadow-[0_2px_3px_color-mix(in_srgb,var(--color-highlight)_90%,transparent)] drop-shadow-[0_2px_5px_color-mix(in_srgb,var(--color-scrim)_16%,transparent)]",
                 effectClassName ?? "h-[8vh] w-[8vh]",
                 effectPosition(visibleEffect.anchor),
               )}

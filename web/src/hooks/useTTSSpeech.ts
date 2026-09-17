@@ -164,6 +164,7 @@ export function useTTSSpeech({
   const durationCacheRef = useRef<Map<string, number>>(new Map())
   const generationRef = useRef(0)
   const playbackGenerationRef = useRef(0)
+  const manualSpeechRef = useRef<{ messageId: string; segmentId: string } | null>(null)
   const cancelledMessagesRef = useRef(new Set<string>())
   const synthesisSchedulerRef = useRef(new SpeechSynthesisScheduler())
   const playbackQueueRef = useRef(new SpeechPlaybackQueue((error, taskId) => {
@@ -278,7 +279,21 @@ export function useTTSSpeech({
       pendingPlaybackCount: playbackQueueRef.current.pendingCount,
     })
     if (resetOutputGate) outputGateRef.current?.reset(false)
-    if (cancelPlaybackQueue) playbackGenerationRef.current += 1
+    if (cancelPlaybackQueue) {
+      playbackGenerationRef.current += 1
+      const manual = manualSpeechRef.current
+      manualSpeechRef.current = null
+      if (manual) {
+        synthesisSchedulerRef.current.cancelLane(manual.messageId)
+        messageGenerationsRef.current.set(manual.messageId, currentMessageGeneration(manual.messageId) + 1)
+        setClips(current => {
+          const clip = current[manual.segmentId]
+          return clip?.status === "synthesizing"
+            ? { ...current, [manual.segmentId]: { ...clip, status: "cancelled" } }
+            : current
+        })
+      }
+    }
     if (disableAutomaticPlayback) automaticPlaybackEnabledRef.current = false
     if (cancelSynthesis) {
       generationRef.current += 1
@@ -575,86 +590,6 @@ export function useTTSSpeech({
     }
   }
 
-  const synthesize = (segmentId: string, messageId: string, rawText: string, configId: number | null | undefined, autoPlay: boolean) => {
-    const voiceUrls = voiceUrlsRef.current
-    const chunks = speechChunksForTTS(rawText, mode)
-    if (!chunks.length || !sessionId || !messageId || typeof configId !== "number" || mode === "none") return
-
-    const generation = generationRef.current
-    const messageGeneration = currentMessageGeneration(messageId)
-    const groupIndex = Math.max(0, segments
-      .filter((segment) => segment.messageId === messageId)
-      .findIndex((segment) => segment.id === segmentId))
-    const segmentEpoch = segments.find((segment) => segment.id === segmentId)?.streamEpoch ?? 0
-    const persistenceGroupId = speechStreamKey(messageId, groupIndex, segmentEpoch)
-    const playbackGeneration = playbackGenerationRef.current
-    setClips((current) => ({ ...current, [segmentId]: { status: "synthesizing" } }))
-    const synthesis = (async () => {
-      const sources: string[] = []
-      for (const [index, text] of chunks.entries()) {
-        if (!isCurrentMessageGeneration(messageId, messageGeneration) || generation !== generationRef.current) throw new SpeechTaskCancelledError()
-        const source = await synthesisSchedulerRef.current.schedule(messageId, async (signal) => {
-          throwIfSpeechTaskCancelled(signal)
-          const result = await synthesizeSpeechSegment({
-            sessionId,
-            messageId,
-            segmentGroupId: persistenceGroupId,
-            groupIndex,
-            sequence: index,
-            text,
-            configId,
-            mode,
-          }, signal)
-          throwIfSpeechTaskCancelled(signal)
-          if (!result.audio_blob_id) throw new Error(`语音段 ${index + 1}/${chunks.length} 未返回音频`)
-          const resolved = await resolveVoiceBlobUrl(result.audio_blob_id, voiceUrls)
-          throwIfSpeechTaskCancelled(signal)
-          return resolved
-        })
-        sources.push(source)
-      }
-
-      if (!sources.length) throw new Error(`语音段 ${segmentId} 未返回音频`)
-      return sources
-    })()
-      .then((sources) => {
-        if (generation === generationRef.current && isCurrentMessageGeneration(messageId, messageGeneration)) {
-          setClips((current) => ({
-            ...current,
-            [segmentId]: { status: "ready", source: sources[0], sources },
-          }))
-        }
-        return sources
-      })
-      .catch((error) => {
-        if (isSpeechTaskCancelled(error) || !isCurrentMessageGeneration(messageId, messageGeneration) || generation !== generationRef.current) return null
-        const message = error instanceof Error ? error.message : String(error)
-        if (generation === generationRef.current && isCurrentMessageGeneration(messageId, messageGeneration)) {
-          setClips((current) => ({ ...current, [segmentId]: { status: "error", error: message } }))
-        }
-        console.warn("[Chat][TTS] 合成失败", error)
-        return null
-      })
-
-    if (!autoPlay) return synthesis
-    playbackQueueRef.current.enqueue({
-      id: `${segmentId}:complete:${generation}:${messageGeneration}`,
-      order: [Number.MAX_SAFE_INTEGER, 0],
-      scope: messageId,
-      run: async (signal) => {
-        const sources = await synthesis
-        if (
-          !sources ||
-          generation !== generationRef.current ||
-          playbackGeneration !== playbackGenerationRef.current ||
-          !isCurrentMessageGeneration(messageId, messageGeneration)
-        ) return
-        await playSources(segmentId, sources, generation, playbackGeneration, "auto", segmentId, 0, false, signal)
-      },
-    })
-    return synthesis
-  }
-
   const updateStreamingClip = (state: StreamingSpeechState) => {
     const segmentId = state.segmentId
     const sources = [...state.sources.entries()]
@@ -676,6 +611,7 @@ export function useTTSSpeech({
     text: string,
     chunkIndex: number,
     state: StreamingSpeechState,
+    intent: DesktopSpeechIntent = "auto",
   ) => {
     const configId = state.configId
     const voiceUrls = voiceUrlsRef.current
@@ -696,7 +632,7 @@ export function useTTSSpeech({
     })
 
     const request = synthesisSchedulerRef.current.schedule(messageId, async (signal) => {
-        if (!await authorizeAutomaticSpeechSynthesis(surface)) {
+        if (intent === "auto" && !await authorizeAutomaticSpeechSynthesis(surface)) {
           diagnose("synthesis-skipped", {
             reason: "not-preferred-surface",
             messageId,
@@ -775,7 +711,7 @@ export function useTTSSpeech({
         updateStreamingClip(state)
       })
 
-    if (!automaticPlaybackEnabledRef.current) return
+    if (intent === "auto" && !automaticPlaybackEnabledRef.current) return
     playbackQueueRef.current.enqueue({
       id: `${state.streamKey}:revision:${messageGeneration}:tts:${chunkIndex}`,
       order: [state.playbackOrder, chunkIndex],
@@ -799,10 +735,10 @@ export function useTTSSpeech({
           availableSources,
           generation,
           playbackGeneration,
-          "auto",
+          intent,
           `${state.streamKey}:tts:${chunkIndex}`,
           sourceIndex,
-          true,
+          intent === "auto",
           signal,
         )
       },
@@ -813,6 +749,7 @@ export function useTTSSpeech({
     if (cancelSynthesis) {
       cancelledMessagesRef.current.add(messageId)
       invalidateMessageSpeech(messageId, "user-cancelled-synthesis")
+      if (manualSpeechRef.current?.messageId === messageId) manualSpeechRef.current = null
       if (audioSegmentIdRef.current === segmentId || segments.some(segment => segment.messageId === messageId && segment.id === audioSegmentIdRef.current)) {
         stopPlayback({ cancelPlaybackQueue: false, disableAutomaticPlayback: false, resetOutputGate: false, reason: "user-cancelled-synthesis" })
       }
@@ -831,24 +768,48 @@ export function useTTSSpeech({
       }
       return
     }
-    if (!sources.length) {
-      const segmentConfigId = segments.find((segment) => segment.id === segmentId)?.configId
-      void synthesize(segmentId, messageId, rawText, segmentConfigId, false)?.then((synthesizedSources) => {
-        if (!synthesizedSources) return
-        stop(false)
-        void playSources(
-          segmentId,
-          synthesizedSources,
-          generationRef.current,
-          playbackGenerationRef.current,
-          "manual",
-        ).catch((error) => console.warn("[Chat][TTS] 播放失败", error))
+    // Ignore duplicate clicks while the first/next manual chunk is still loading.
+    if (manualSpeechRef.current?.segmentId === segmentId) return
+    if (!sources.length || clip?.status === "error" || clip?.status === "cancelled") {
+      const segment = segments.find((item) => item.id === segmentId)
+      const chunks = speechChunksForTTS(rawText, mode)
+      if (!sessionId || !chunks.length || typeof segment?.configId !== "number" || mode === "none") return
+      stop(false)
+      // Replace any automatic work for this message before starting a manual replay.
+      cancelledMessagesRef.current.add(messageId)
+      const messageGeneration = invalidateMessageSpeech(messageId, "manual-replay")
+      const groupIndex = Math.max(0, segments.filter(item => item.messageId === messageId).findIndex(item => item.id === segmentId))
+      const persistenceGroupId = speechStreamKey(messageId, groupIndex, segment.streamEpoch ?? 0)
+      const playbackGeneration = playbackGenerationRef.current
+      const streamKey = `${persistenceGroupId}:manual:${playbackGeneration}`
+      const state: StreamingSpeechState = {
+        messageId, segmentId, streamKey, persistenceGroupId, messageGeneration, groupIndex,
+        nextChunkIndex: chunks.length, pending: 0, sources: new Map(), complete: false,
+        configId: segment.configId, playbackOrder: nextStreamOrderRef.current++,
+      }
+      const manual = { messageId, segmentId }
+      manualSpeechRef.current = manual
+      playbackQueueRef.current.reserveGroup(streamKey, [state.playbackOrder])
+      for (const [index, text] of chunks.entries()) enqueueStreamingChunk(messageId, text, index, state, "manual")
+      state.complete = true
+      updateStreamingClip(state)
+      playbackQueueRef.current.sealGroup(streamKey)
+      outputGateRef.current?.holdUntil(playbackQueueRef.current.whenIdle())
+      void playbackQueueRef.current.whenIdle().then(() => {
+        if (manualSpeechRef.current === manual) manualSpeechRef.current = null
       })
       return
     }
     stop(false)
-    void playSources(segmentId, sources, generationRef.current, playbackGenerationRef.current, "manual")
-      .catch((error) => console.warn("[Chat][TTS] 播放失败", error))
+    const generation = generationRef.current
+    const playbackGeneration = playbackGenerationRef.current
+    playbackQueueRef.current.enqueue({
+      id: `${segmentId}:cached:${playbackGeneration}`,
+      order: [nextStreamOrderRef.current++, 0],
+      scope: messageId,
+      run: (signal) => playSources(segmentId, sources, generation, playbackGeneration, "manual", segmentId, 0, false, signal),
+    })
+    outputGateRef.current?.holdUntil(playbackQueueRef.current.whenIdle())
   }
 
   const seek = (segmentId: string, time: number) => {

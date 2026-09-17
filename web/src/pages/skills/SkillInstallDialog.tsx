@@ -60,29 +60,29 @@ export function SkillInstallDialog({ onClose, onInstalled }: { onClose(): void; 
     }
   }
   return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-5 backdrop-blur-sm">
-          <fieldset disabled={Boolean(busyID)} className="w-full max-w-xl rounded-2xl border border-stone-200 bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/25 p-5 backdrop-blur-sm">
+          <fieldset disabled={Boolean(busyID)} className="w-full max-w-xl rounded-2xl border border-border bg-card p-6 shadow-2xl">
             <div className="flex items-center">
               <div>
                 <h2 className="text-lg font-semibold">安装技能</h2>
-                <p className="mt-1 text-xs text-stone-500">先预检内容、权限与目录安全，再确认安装。</p>
+                <p className="mt-1 text-xs text-text-muted">先预检内容、权限与目录安全，再确认安装。</p>
               </div>
               <button
                 type="button"
                 onClick={() => onClose()}
-                className="ml-auto rounded-full p-2 text-stone-400 hover:bg-stone-100"
+                className="ml-auto rounded-full p-2 text-text-muted hover:bg-border"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl bg-stone-100 p-1">
+            <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl bg-bg p-1">
               <button
                 type="button"
                 onClick={() => {
                   setSourceType("local")
                   setPreview(null)
                 }}
-                className={`flex items-center justify-center gap-2 rounded-lg py-2 text-sm ${sourceType === "local" ? "bg-white text-[#d87300] shadow-sm" : "text-stone-500"}`}
+                className={`flex items-center justify-center gap-2 rounded-lg py-2 text-sm ${sourceType === "local" ? "bg-card text-accent shadow-sm" : "text-text-muted"}`}
               >
                 <FolderOpen className="h-4 w-4" />
                 本地目录
@@ -93,13 +93,13 @@ export function SkillInstallDialog({ onClose, onInstalled }: { onClose(): void; 
                   setSourceType("git")
                   setPreview(null)
                 }}
-                className={`flex items-center justify-center gap-2 rounded-lg py-2 text-sm ${sourceType === "git" ? "bg-white text-[#d87300] shadow-sm" : "text-stone-500"}`}
+                className={`flex items-center justify-center gap-2 rounded-lg py-2 text-sm ${sourceType === "git" ? "bg-card text-accent shadow-sm" : "text-text-muted"}`}
               >
                 <Github className="h-4 w-4" />
                 Git 仓库
               </button>
             </div>
-            <label className="mt-4 block text-xs font-medium text-stone-600">
+            <label className="mt-4 block text-xs font-medium text-text-muted">
               {sourceType === "local" ? "技能目录" : "仓库地址"}
             </label>
             <div className="mt-1 flex gap-2">
@@ -110,13 +110,13 @@ export function SkillInstallDialog({ onClose, onInstalled }: { onClose(): void; 
                   setPreview(null)
                 }}
                 placeholder={sourceType === "local" ? "/path/to/skill" : "https://github.com/owner/repo.git"}
-                className="min-w-0 flex-1 rounded-xl border border-stone-200 px-3 py-2.5 text-sm outline-none focus:border-amber-400"
+                className="min-w-0 flex-1 rounded-xl border border-border px-3 py-2.5 text-sm outline-none focus:border-warning/30"
               />
               {sourceType === "local" && (
                 <button
                   type="button"
                   onClick={() => void chooseDirectory()}
-                  className="rounded-xl border border-stone-200 px-3 text-stone-500 hover:bg-stone-50"
+                  className="rounded-xl border border-border px-3 text-text-muted hover:bg-border"
                 >
                   <FolderOpen className="h-4 w-4" />
                 </button>
@@ -131,7 +131,7 @@ export function SkillInstallDialog({ onClose, onInstalled }: { onClose(): void; 
                     setPreview(null)
                   }}
                   placeholder="分支/标签（可选）"
-                  className="rounded-xl border border-stone-200 px-3 py-2.5 text-sm outline-none focus:border-amber-400"
+                  className="rounded-xl border border-border px-3 py-2.5 text-sm outline-none focus:border-warning/30"
                 />
               )}
               <input
@@ -141,7 +141,7 @@ export function SkillInstallDialog({ onClose, onInstalled }: { onClose(): void; 
                   setPreview(null)
                 }}
                 placeholder="仓库内子目录（可选）"
-                className="rounded-xl border border-stone-200 px-3 py-2.5 text-sm outline-none focus:border-amber-400"
+                className="rounded-xl border border-border px-3 py-2.5 text-sm outline-none focus:border-warning/30"
               />
               <select
                 value={scope}
@@ -149,20 +149,20 @@ export function SkillInstallDialog({ onClose, onInstalled }: { onClose(): void; 
                   setScope(event.target.value as "user" | "project")
                   setPreview(null)
                 }}
-                className="rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-amber-400"
+                className="rounded-xl border border-border bg-card px-3 py-2.5 text-sm outline-none focus:border-warning/30"
               >
                 <option value="user">当前用户</option>
                 <option value="project">当前项目</option>
               </select>
             </div>
             {preview && (
-              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
+              <div className="mt-4 rounded-xl border border-success/30 bg-success-dim p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-success">
                   <ShieldCheck className="h-4 w-4" />
                   预检通过：{preview.displayName}
                 </div>
-                <p className="mt-1 text-xs leading-5 text-emerald-700">{preview.description}</p>
-                <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-emerald-700">
+                <p className="mt-1 text-xs leading-5 text-success">{preview.description}</p>
+                <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-success">
                   <span>{preview.skillName}</span>
                   <span>v{preview.version}</span>
                   <span>{preview.fileCount} 个文件</span>
@@ -171,12 +171,12 @@ export function SkillInstallDialog({ onClose, onInstalled }: { onClose(): void; 
                 </div>
               </div>
             )}
-            {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
+            {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => onClose()}
-                className="rounded-full px-4 py-2 text-sm text-stone-500 hover:bg-stone-100"
+                className="rounded-full px-4 py-2 text-sm text-text-muted hover:bg-border"
               >
                 取消
               </button>
@@ -185,7 +185,7 @@ export function SkillInstallDialog({ onClose, onInstalled }: { onClose(): void; 
                   type="button"
                   disabled={!sourceUri.trim() || busyID === "inspect"}
                   onClick={() => void inspect()}
-                  className="flex items-center gap-2 rounded-full bg-[#d87300] px-5 py-2 text-sm text-white disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-full bg-accent px-5 py-2 text-sm text-on-accent disabled:opacity-50"
                 >
                   {busyID === "inspect" && <LoaderCircle className="h-4 w-4 animate-spin" />}预检
                 </button>
@@ -194,7 +194,7 @@ export function SkillInstallDialog({ onClose, onInstalled }: { onClose(): void; 
                   type="button"
                   disabled={busyID === "install"}
                   onClick={() => void install()}
-                  className="flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2 text-sm text-white disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-full bg-success-solid px-5 py-2 text-sm text-on-solid disabled:opacity-50"
                 >
                   {busyID === "install" ? (
                     <LoaderCircle className="h-4 w-4 animate-spin" />

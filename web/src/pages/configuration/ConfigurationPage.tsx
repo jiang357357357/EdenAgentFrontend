@@ -1,3 +1,4 @@
+import { pageEnterMotion } from "../../lib/page-motion"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ObjectUrlScope } from "../../lib/object-url-scope"
 import {
@@ -758,7 +759,7 @@ export function ConfigurationPage({
   const selectedCharacterView = characterViews.find((view) => view.id === characterView) ?? characterViews[0]
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex h-screen min-h-0 bg-bg text-text">
+    <motion.div {...pageEnterMotion} className="theme-page flex h-screen min-h-0 bg-bg text-text">
       <ActivityRail
         active="configuration"
         onOpenFiles={onBack}
@@ -899,7 +900,7 @@ export function ConfigurationPage({
                       <NumberField label="重试次数" value={form.maxRetries} min={0} max={5} onChange={(value) => updateForm("maxRetries", value)} />
                       <label className="col-span-2 flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-sm lg:col-span-4">
                         <span><span className="block font-medium">支持图片输入</span><span className="text-xs text-text-muted">向模型发送图片附件</span></span>
-                        <input type="checkbox" checked={form.supportsImages} onChange={(event) => updateForm("supportsImages", event.target.checked)} className="h-4 w-4 accent-orange-600" />
+                        <input type="checkbox" checked={form.supportsImages} onChange={(event) => updateForm("supportsImages", event.target.checked)} className="h-4 w-4 accent-accent" />
                       </label>
                     </div>
                   ) : null}
@@ -909,13 +910,13 @@ export function ConfigurationPage({
                   <button type="button" onClick={() => void handleTest()} disabled={testing || loading} className="flex h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-medium hover:border-accent/40 hover:bg-accent/5 disabled:cursor-wait disabled:opacity-50">
                     {testing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} 测试连接
                   </button>
-                  <button type="button" onClick={() => void handleSave()} disabled={saving || loading} className="flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-white hover:bg-[#c66d05] disabled:cursor-wait disabled:opacity-50">
+                  <button type="button" onClick={() => void handleSave()} disabled={saving || loading} className="flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:cursor-wait disabled:opacity-50">
                     {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />}
                     {config?.server.restartSupported === false ? "保存配置" : "保存并重启后端"}
                   </button>
-                  {testResult !== null ? <span className="flex items-center gap-2 text-sm text-emerald-600"><Check className="h-4 w-4 rounded-full bg-emerald-100 p-0.5" />连接成功 · {testResult} ms</span> : null}
+                  {testResult !== null ? <span className="flex items-center gap-2 text-sm text-success"><Check className="h-4 w-4 rounded-full bg-success-dim p-0.5" />连接成功 · {testResult} ms</span> : null}
                 </div>
-                {error ? <div className="mt-3 flex items-start gap-2 text-sm text-red-600"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span className="break-words">{error}</span></div> : null}
+                {error ? <div className="mt-3 flex items-start gap-2 text-sm text-danger"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span className="break-words">{error}</span></div> : null}
               </section>
             </div>
           ) : section === "voice" ? (
@@ -992,7 +993,7 @@ export function ConfigurationPage({
                       {([[
                         "superResolution", "超分辨率", gsvForm.superResolution,
                       ], ["referenceFree", "无参考文本", gsvForm.referenceFree], ["freeze", "冻结推理", gsvForm.freeze]] as const).map(([key, label, checked]) => (
-                        <button key={key} type="button" role="switch" aria-checked={checked} onClick={() => patchGsvForm({ [key]: !checked })} className="flex h-11 items-center justify-between rounded-lg border border-border bg-card px-3 text-sm"><span>{label}</span><span className={cn("relative h-6 w-11 rounded-full transition-colors", checked ? "bg-accent" : "bg-stone-300")}><span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform", checked ? "translate-x-5" : "translate-x-0.5")} /></span></button>
+                        <button key={key} type="button" role="switch" aria-checked={checked} onClick={() => patchGsvForm({ [key]: !checked })} className="flex h-11 items-center justify-between rounded-lg border border-border bg-card px-3 text-sm"><span>{label}</span><span className={cn("relative h-6 w-11 rounded-full transition-colors", checked ? "bg-accent" : "bg-surface-disabled")}><span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-highlight shadow-sm transition-transform", checked ? "translate-x-5" : "translate-x-0.5")} /></span></button>
                       ))}
                     </div>
                   </ProfileSection>
@@ -1004,10 +1005,10 @@ export function ConfigurationPage({
 
                 <div className="mt-5 flex flex-wrap items-center gap-3">
                   <button type="button" onClick={() => void previewGsv()} disabled={gsvPreviewing || gsvTesting || gsvSaving || !gsvPreviewText.trim()} className="flex h-10 items-center gap-2 rounded-lg border border-accent/30 bg-accent/5 px-4 text-sm font-medium text-accent hover:bg-accent/10 disabled:cursor-wait disabled:opacity-50">{gsvPreviewing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Volume2 className="h-4 w-4" />} 合成并播放</button>
-                  <button type="button" onClick={() => void saveGsv()} disabled={gsvTesting || gsvSaving || gsvPreviewing} className="flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-white hover:bg-[#c66d05] disabled:cursor-wait disabled:opacity-50">{gsvSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />} 保存并应用</button>
-                  {gsvDiscovery ? <span className="flex items-center gap-2 text-sm text-emerald-600"><Check className="h-4 w-4" />已读取 · {gsvDiscovery.latencyMs} ms{gsvDiscovery.roles.length ? ` · ${gsvDiscovery.roles.length} 个角色` : ""}</span> : null}
-                  {gsvPreviewLatency !== null ? <span className="flex items-center gap-2 text-sm text-emerald-600"><Check className="h-4 w-4" />试听已开始 · 合成 {gsvPreviewLatency} ms</span> : null}
-                  {gsvSaved ? <span className="text-sm text-emerald-600">配置已应用到本地 TTS</span> : null}
+                  <button type="button" onClick={() => void saveGsv()} disabled={gsvTesting || gsvSaving || gsvPreviewing} className="flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:cursor-wait disabled:opacity-50">{gsvSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />} 保存并应用</button>
+                  {gsvDiscovery ? <span className="flex items-center gap-2 text-sm text-success"><Check className="h-4 w-4" />已读取 · {gsvDiscovery.latencyMs} ms{gsvDiscovery.roles.length ? ` · ${gsvDiscovery.roles.length} 个角色` : ""}</span> : null}
+                  {gsvPreviewLatency !== null ? <span className="flex items-center gap-2 text-sm text-success"><Check className="h-4 w-4" />试听已开始 · 合成 {gsvPreviewLatency} ms</span> : null}
+                  {gsvSaved ? <span className="text-sm text-success">配置已应用到本地 TTS</span> : null}
                 </div>
               </section>
 
@@ -1073,23 +1074,23 @@ export function ConfigurationPage({
                     </div>
                     <div className="mt-5 grid gap-3 md:grid-cols-2">
                       {([["autoFinish", "静音后自动完成", sttForm.autoFinish], ["autoSend", "完成后自动发送", sttForm.autoSend]] as const).map(([key, label, checked]) => (
-                        <button key={key} type="button" role="switch" aria-checked={checked} onClick={() => patchSttForm({ [key]: !checked })} className="flex h-11 items-center justify-between rounded-lg border border-border bg-card px-3 text-sm"><span>{label}</span><span className={cn("relative h-6 w-11 rounded-full transition-colors", checked ? "bg-accent" : "bg-stone-300")}><span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform", checked ? "translate-x-5" : "translate-x-0.5")} /></span></button>
+                        <button key={key} type="button" role="switch" aria-checked={checked} onClick={() => patchSttForm({ [key]: !checked })} className="flex h-11 items-center justify-between rounded-lg border border-border bg-card px-3 text-sm"><span>{label}</span><span className={cn("relative h-6 w-11 rounded-full transition-colors", checked ? "bg-accent" : "bg-surface-disabled")}><span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-highlight shadow-sm transition-transform", checked ? "translate-x-5" : "translate-x-0.5")} /></span></button>
                       ))}
                     </div>
                   </ProfileSection>
                 </div>
 
                 <div className="mt-5 flex flex-wrap items-center gap-3">
-                  <button type="button" onClick={() => void saveStt()} disabled={sttTesting || sttSaving} className="flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-white hover:bg-[#c66d05] disabled:cursor-wait disabled:opacity-50">{sttSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />} 保存并应用</button>
-                  {sttLatency !== null ? <span className="flex items-center gap-2 text-sm text-emerald-600"><Check className="h-4 w-4" />已读取 · {sttLatency} ms{sttDiscovery ? ` · ${sttDiscovery.models.length} 种引擎` : ""}</span> : null}
-                  {sttSaved ? <span className="text-sm text-emerald-600">配置已应用到本地 STT</span> : null}
+                  <button type="button" onClick={() => void saveStt()} disabled={sttTesting || sttSaving} className="flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:cursor-wait disabled:opacity-50">{sttSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />} 保存并应用</button>
+                  {sttLatency !== null ? <span className="flex items-center gap-2 text-sm text-success"><Check className="h-4 w-4" />已读取 · {sttLatency} ms{sttDiscovery ? ` · ${sttDiscovery.models.length} 种引擎` : ""}</span> : null}
+                  {sttSaved ? <span className="text-sm text-success">配置已应用到本地 STT</span> : null}
                 </div>
               </section>
 
               <section className="rounded-2xl border border-border bg-card p-[clamp(18px,2.2vw,30px)] shadow-sm">
                 <div className="mb-5 flex items-start justify-between gap-4">
                   <div><h3 className="font-semibold">播放与本地音频设备</h3><p className="mt-1 text-sm text-text-muted">控制合成后的播放方式，以及本机麦克风和扬声器。</p></div>
-                  <div aria-live="polite" className="flex min-h-8 items-center gap-2 rounded-full bg-bg px-3 text-xs text-text-muted">{voiceSaveState === "saving" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5 text-emerald-600" />}{voiceSaveState === "saving" ? "正在保存…" : "设备设置已保存"}</div>
+                  <div aria-live="polite" className="flex min-h-8 items-center gap-2 rounded-full bg-bg px-3 text-xs text-text-muted">{voiceSaveState === "saving" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5 text-success" />}{voiceSaveState === "saving" ? "正在保存…" : "设备设置已保存"}</div>
                 </div>
                 <div className="grid gap-5 lg:grid-cols-2">
                   <div className="rounded-xl border border-border bg-bg/30 p-5">
@@ -1098,14 +1099,14 @@ export function ConfigurationPage({
                       {([["none", "关闭"], ["text_only", "仅对话"], ["all", "全部内容"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => patchVoiceSettings({ ttsMode: value })} className={cn("h-10 border-r border-border text-sm last:border-r-0", voiceSettings.ttsMode === value ? "bg-accent/10 font-medium text-accent" : "bg-card text-text-muted hover:bg-bg")}>{label}</button>)}
                     </div>
                     <div className="mt-5"><Field label="声音输出设备"><select value={voiceSettings.audioOutputDeviceId} onChange={(event) => patchVoiceSettings({ audioOutputDeviceId: event.target.value })} className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-accent/60"><option value="default">系统默认输出</option>{audioDevices.filter((device) => device.kind === "audiooutput" && device.deviceId !== "default").map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `声音输出 ${index + 1}`}</option>)}</select></Field></div>
-                    <div className="mt-5"><Field label={`播放音量 · ${Math.round(voiceSettings.speechVolume)}%`}><input type="range" min={0} max={100} step={1} value={voiceSettings.speechVolume} onChange={(event) => patchVoiceSettings({ speechVolume: Number(event.target.value) })} className="h-11 w-full accent-orange-600" /></Field></div>
+                    <div className="mt-5"><Field label={`播放音量 · ${Math.round(voiceSettings.speechVolume)}%`}><input type="range" min={0} max={100} step={1} value={voiceSettings.speechVolume} onChange={(event) => patchVoiceSettings({ speechVolume: Number(event.target.value) })} className="h-11 w-full accent-accent" /></Field></div>
                   </div>
 
                   <div className="rounded-xl border border-border bg-bg/30 p-5">
                     <div className="mb-5 flex items-start gap-3">
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><Mic className="h-5 w-5" /></span>
                       <div className="min-w-0 flex-1"><h3 className="font-semibold">语音识别</h3><p className="mt-1 text-xs leading-5 text-text-muted">使用上方 GSV STT 配置进行实时转写。</p></div>
-                      <button type="button" role="switch" aria-checked={voiceSettings.voiceInputEnabled} onClick={() => patchVoiceSettings({ voiceInputEnabled: !voiceSettings.voiceInputEnabled })} className={cn("relative h-6 w-11 shrink-0 rounded-full transition-colors", voiceSettings.voiceInputEnabled ? "bg-accent" : "bg-stone-300")}><span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform", voiceSettings.voiceInputEnabled ? "translate-x-5" : "translate-x-0.5")} /></button>
+                      <button type="button" role="switch" aria-checked={voiceSettings.voiceInputEnabled} onClick={() => patchVoiceSettings({ voiceInputEnabled: !voiceSettings.voiceInputEnabled })} className={cn("relative h-6 w-11 shrink-0 rounded-full transition-colors", voiceSettings.voiceInputEnabled ? "bg-accent" : "bg-surface-disabled")}><span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-highlight shadow-sm transition-transform", voiceSettings.voiceInputEnabled ? "translate-x-5" : "translate-x-0.5")} /></button>
                     </div>
                     <Field label="麦克风">
                       <select disabled={!voiceSettings.voiceInputEnabled} value={voiceSettings.audioInputDeviceId} onChange={(event) => patchVoiceSettings({ audioInputDeviceId: event.target.value })} className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm outline-none disabled:opacity-50 focus:border-accent/60">
@@ -1119,7 +1120,7 @@ export function ConfigurationPage({
                   </div>
                 </div>
               </section>
-              {voiceError ? <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{voiceError}</span></div> : null}
+              {voiceError ? <div className="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger-dim p-4 text-sm text-danger"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{voiceError}</span></div> : null}
             </div>
           ) : section === "character" ? (
             <section className="mx-auto max-w-4xl rounded-2xl border border-border bg-card p-[clamp(18px,2.2vw,30px)] shadow-sm">
@@ -1130,9 +1131,9 @@ export function ConfigurationPage({
                 </div>
                 <div aria-live="polite" className={cn(
                   "flex min-h-8 items-center gap-2 rounded-full px-3 text-xs",
-                  error || characterSaveState === "error" || characterSaveState === "invalid" ? "bg-red-50 text-red-600" : "bg-bg text-text-muted",
+                  error || characterSaveState === "error" || characterSaveState === "invalid" ? "bg-danger-dim text-danger" : "bg-bg text-text-muted",
                 )}>
-                  {error || characterSaveState === "error" || characterSaveState === "invalid" ? <AlertCircle className="h-3.5 w-3.5" /> : characterSaveState === "saving" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : characterSaveState === "saved" ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : null}
+                  {error || characterSaveState === "error" || characterSaveState === "invalid" ? <AlertCircle className="h-3.5 w-3.5" /> : characterSaveState === "saving" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : characterSaveState === "saved" ? <Check className="h-3.5 w-3.5 text-success" /> : null}
                   {error || (characterSaveState === "pending" ? "等待自动保存…" : characterSaveState === "saving" ? "正在自动保存…" : characterSaveState === "saved" ? "已自动保存" : characterSaveState === "invalid" ? "角色名称不能为空" : characterSaveState === "error" ? "自动保存失败" : "修改后自动保存")}
                 </div>
               </div>
@@ -1149,7 +1150,7 @@ export function ConfigurationPage({
                   <button type="button" onClick={() => void chooseCharacterAvatar()} className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-border text-sm hover:border-accent/40 hover:bg-accent/5">
                     <Upload className="h-4 w-4" /> 选择头像
                   </button>
-                  {character.avatarPath ? <button type="button" onClick={() => updateCharacter("avatarPath", "")} className="mt-2 w-full text-xs text-text-muted hover:text-red-600">移除头像</button> : null}
+                  {character.avatarPath ? <button type="button" onClick={() => updateCharacter("avatarPath", "")} className="mt-2 w-full text-xs text-text-muted hover:text-danger">移除头像</button> : null}
                 </div>
 
                 <div className="space-y-4">
@@ -1252,7 +1253,7 @@ export function ConfigurationPage({
 
                 <ProfileSection title="高级角色指令" description="仅补充无法结构化表达的规则；优先填写上方字段">
                   <TextAreaField label="角色补充提示" value={character.systemPrompt} placeholder="工具与系统安全约束仍具有更高优先级" rows={7} mono onChange={(value) => updateCharacter("systemPrompt", value)} />
-                  <div className="mt-3 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800"><LockKeyhole className="mt-1 h-4 w-4 shrink-0" />补充提示只用于无法结构化表达的角色规则，不会覆盖权限审批、工具真实性与系统安全约束。</div>
+                  <div className="mt-3 flex items-start gap-3 rounded-lg border border-warning/30 bg-warning-dim px-4 py-3 text-sm leading-6 text-warning"><LockKeyhole className="mt-1 h-4 w-4 shrink-0" />补充提示只用于无法结构化表达的角色规则，不会覆盖权限审批、工具真实性与系统安全约束。</div>
                 </ProfileSection>
               </div> : null}
 
@@ -1268,7 +1269,7 @@ export function ConfigurationPage({
                       role="radio"
                       aria-checked={character.visualPreference === "static"}
                       onClick={() => updateCharacter("visualPreference", "static")}
-                      className={cn("h-10 px-4 text-sm", character.visualPreference === "static" ? "bg-accent text-white" : "bg-card text-text-muted hover:bg-bg")}
+                      className={cn("h-10 px-4 text-sm", character.visualPreference === "static" ? "bg-accent text-on-accent" : "bg-card text-text-muted hover:bg-bg")}
                     >静态立绘</button>
                     <button
                       type="button"
@@ -1276,7 +1277,7 @@ export function ConfigurationPage({
                       aria-checked={character.visualPreference === "spine"}
                       disabled={!character.spine}
                       onClick={() => updateCharacter("visualPreference", "spine")}
-                      className={cn("h-10 border-l border-border px-4 text-sm", character.visualPreference === "spine" ? "bg-accent text-white" : "bg-card text-text-muted hover:bg-bg", !character.spine && "cursor-not-allowed opacity-45")}
+                      className={cn("h-10 border-l border-border px-4 text-sm", character.visualPreference === "spine" ? "bg-accent text-on-accent" : "bg-card text-text-muted hover:bg-bg", !character.spine && "cursor-not-allowed opacity-45")}
                     >Spine</button>
                   </div>
                 </div>
@@ -1290,7 +1291,7 @@ export function ConfigurationPage({
                           <div className="mt-1 truncate text-xs text-text-muted">{character.standingImagePath ? fileName(character.standingImagePath) : "尚未选择 PNG、WebP 或 JPG"}</div>
                         </div>
                         <div className="flex gap-2">
-                          {character.standingImagePath ? <button type="button" onClick={() => updateCharacter("standingImagePath", "")} className="h-9 rounded-lg px-3 text-xs text-text-muted hover:bg-card hover:text-red-600">移除</button> : null}
+                          {character.standingImagePath ? <button type="button" onClick={() => updateCharacter("standingImagePath", "")} className="h-9 rounded-lg px-3 text-xs text-text-muted hover:bg-card hover:text-danger">移除</button> : null}
                           <button type="button" onClick={() => void chooseStandingImage()} className="h-9 rounded-lg border border-border bg-card px-3 text-xs hover:border-accent/40 hover:bg-accent/5">选择图片</button>
                         </div>
                       </div>
@@ -1303,7 +1304,7 @@ export function ConfigurationPage({
                           <div className="mt-1 truncate text-xs text-text-muted">{character.spine ? character.spine.directory || fileName(character.spine.atlasPath) : "选择包含骨骼、atlas 和纹理的目录"}</div>
                         </div>
                         <div className="flex gap-2">
-                          {character.spine ? <button type="button" onClick={() => setCharacter((current) => ({ ...current, spine: null, visualPreference: "static" }))} className="h-9 rounded-lg px-3 text-xs text-text-muted hover:bg-card hover:text-red-600">移除</button> : null}
+                          {character.spine ? <button type="button" onClick={() => setCharacter((current) => ({ ...current, spine: null, visualPreference: "static" }))} className="h-9 rounded-lg px-3 text-xs text-text-muted hover:bg-card hover:text-danger">移除</button> : null}
                           <button type="button" onClick={() => void chooseSpineDirectory()} className="h-9 rounded-lg border border-border bg-card px-3 text-xs hover:border-accent/40 hover:bg-accent/5">导入目录</button>
                         </div>
                       </div>
@@ -1338,7 +1339,7 @@ export function ConfigurationPage({
                     </div>
                   </div>
 
-                  <div className="flex min-h-72 items-end justify-center overflow-hidden rounded-xl border border-border bg-[radial-gradient(circle_at_50%_35%,rgba(234,126,10,0.09),transparent_60%)]">
+                  <div className="flex min-h-72 items-end justify-center overflow-hidden rounded-xl border border-border bg-[radial-gradient(circle_at_50%_35%,color-mix(in_srgb,var(--color-accent)_9%,transparent),transparent_60%)]">
                     {previewCharacter && (character.standingImagePath || character.spine) ? (
                       <CharacterVisualRenderer character={previewCharacter} displayName={character.name || "本地角色"} preferredSpineLayout={character.spine?.layout ?? "standee"} renderQuality="preview" className="relative h-72 w-full" />
                     ) : (
@@ -1360,7 +1361,7 @@ export function ConfigurationPage({
                   <FolderOpen className="h-4 w-4" /> 打开本地目录
                 </button>
               ) : null}
-              {section === "workspace" ? <button type="button" onClick={onBack} className="mt-6 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-[#c66d05]">前往文件管理</button> : null}
+              {section === "workspace" ? <button type="button" onClick={onBack} className="mt-6 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent hover:bg-accent-hover">前往文件管理</button> : null}
             </section>
           )}
         </div>

@@ -17,6 +17,6 @@ export function SubagentWorkspaceRestore({ agentId, onSaved }: { agentId: string
     <button disabled={busy} onClick={() => void load()} className="rounded border px-2 py-1">读取当前工作区</button>
     {root && <><p className="break-all">{root}</p><label><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我确认这是该任务的工作区。</label>
       <button disabled={busy || !confirmed} onClick={() => void save()} className="ml-2 rounded border px-2 py-1">记录归属</button></>}
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
   </details>
 }

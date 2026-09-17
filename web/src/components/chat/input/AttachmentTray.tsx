@@ -22,7 +22,7 @@ export function AttachmentTray({ attachments, onRemove, overlay }: AttachmentTra
           className={cn(
             "absolute z-30 flex max-w-[calc(100%-4vh)] gap-2 overflow-x-auto rounded-[1.6vh] border p-[0.8vh] shadow-lg backdrop-blur-md",
             overlay
-              ? "left-[2vh] top-[1.5vh] border-white/12 bg-stone-950/70"
+              ? "left-[2vh] top-[1.5vh] border-highlight/12 bg-overlay/70"
               : "bottom-[calc(100%-1.2vh)] left-[2vh] border-border/80 bg-card/95",
           )}
         >

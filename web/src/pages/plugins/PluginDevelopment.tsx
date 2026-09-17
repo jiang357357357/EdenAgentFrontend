@@ -40,9 +40,9 @@ export function PluginDevelopment({ onChanged }: { onChanged: () => Promise<void
       setResult('已恢复到编辑器。备份中的旧修订不作为覆盖授权；保存同名已有草稿前须重新读取并核对。')
     } catch (reason) { setError(String(reason)) } finally { setBusy(false) }
   }
-  return <section className="mb-6 rounded-xl border border-stone-200 bg-white p-4">
+  return <section className="mb-6 rounded-xl border border-border bg-card p-4">
     <h2 className="font-medium">插件开发与版本</h2>
-    <p className="mt-1 text-xs text-stone-500">编辑清单与 TypeScript 源码。保存、验证、运行测试、安装分别操作；验证与声明测试绑定已保存草稿修订；安装要求该构建版本已有成功测试记录。</p>
+    <p className="mt-1 text-xs text-text-muted">编辑清单与 TypeScript 源码。保存、验证、运行测试、安装分别操作；验证与声明测试绑定已保存草稿修订；安装要求该构建版本已有成功测试记录。</p>
     <PluginDraftHelp onTemplate={(nextManifest, nextSource) => {
       if (busy || !canReplace()) return
       setId(''); setManifest(nextManifest); setSource(nextSource); setDraftRevision(null); edited()
@@ -69,10 +69,10 @@ export function PluginDevelopment({ onChanged }: { onChanged: () => Promise<void
       <button disabled={busy || !saved || !draftRevision} onClick={() => void run(() => api.test(id, draftRevision!))} className="rounded border px-3 py-1 disabled:opacity-40">运行声明测试</button>
       <button disabled={busy || !saved || !revision} onClick={() => void run(async () => { const value = await api.install(id, revision); await onChanged(); return value })} className="rounded border px-3 py-1 disabled:opacity-40">安装此版本</button>
     </div>
-    {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
-    {result && <pre className="mt-3 max-h-52 overflow-auto whitespace-pre-wrap rounded bg-stone-50 p-2 text-xs">{result}</pre>}
+    {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
+    {result && <pre className="mt-3 max-h-52 overflow-auto whitespace-pre-wrap rounded bg-bg p-2 text-xs">{result}</pre>}
     <label className="mt-4 block text-xs">只读工作区（填写后点击下方授权按钮；未声明权限的插件留空）<input value={readRoot} onChange={event => setReadRoot(event.target.value)} className="mt-1 w-full rounded border p-2" /></label>
-    <div className="mt-3 space-y-2">{versions.filter(version => !id || version.id === id).map(version => <div key={`${version.id}:${version.revision}`} className="flex flex-wrap items-center gap-3 rounded bg-stone-50 p-2 text-xs">
+    <div className="mt-3 space-y-2">{versions.filter(version => !id || version.id === id).map(version => <div key={`${version.id}:${version.revision}`} className="flex flex-wrap items-center gap-3 rounded bg-bg p-2 text-xs">
       <span className="flex-1">{version.id} · {version.version} · {version.revision.slice(0, 12)}{version.active ? ' · 已启用' : ''}</span>
       <button disabled={busy} onClick={() => void run(() => api.version(version.id, version.revision))}>查看源码与报告</button>
       <button disabled={busy || !readRoot} onClick={() => void run(() => api.grant(version.id, version.revision, readRoot))}>授权此版本读取工作区</button>

@@ -12,7 +12,7 @@ export function SessionPanelDialog({ title, onClose, children }: { title: string
   }, [])
   return createPortal(<dialog ref={dialog} aria-labelledby={titleId}
     onClose={event => { if (!event.currentTarget.open && event.currentTarget.isConnected) onClose() }}
-    className="fixed inset-0 m-auto max-h-[85vh] w-[min(48rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-2xl border border-border bg-card p-0 text-text shadow-2xl backdrop:bg-black/35">
+    className="fixed inset-0 m-auto max-h-[85vh] w-[min(48rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-2xl border border-border bg-card p-0 text-text shadow-2xl backdrop:bg-scrim/35">
     <div className="flex max-h-[85vh] flex-col">
       <header className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
         <h2 id={titleId} className="text-lg font-medium">{title}</h2>

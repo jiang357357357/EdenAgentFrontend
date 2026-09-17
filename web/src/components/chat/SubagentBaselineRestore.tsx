@@ -33,6 +33,6 @@ export function SubagentBaselineRestore({ agentId, onSaved }: { agentId: string;
       <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我已核对累计范围，确认上述总量及依据。</label>
       <button disabled={busy || !confirmed || tokens === '' || cost === '' || !note.trim()} onClick={() => void save()} className="mt-2 rounded border px-2 py-1">保存历史用量确认</button>
       <p>已知值保留，未知值只能补齐且不能减少已记录用量；发生增量后须继续核对祖先总量，不会自动重复累加。</p></>}
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
   </details>
 }

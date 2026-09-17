@@ -22,11 +22,11 @@ export function LoginPage({ onLogin, isSubmitting = false, error }: LoginPagePro
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      className="relative flex h-[100vh] w-[100vw] items-center justify-center overflow-hidden bg-[linear-gradient(135deg,#f7f5f1_0%,#f2eee7_48%,#eef3f0_100%)] p-[3.2vh] text-text"
+      className="relative flex h-[100vh] w-[100vw] items-center justify-center overflow-hidden bg-bg p-[3.2vh] text-text"
     >
-      <div className="pointer-events-none fixed inset-0 opacity-[0.38] [background-image:linear-gradient(rgba(120,113,108,0.13)_1px,transparent_1px),linear-gradient(90deg,rgba(120,113,108,0.1)_1px,transparent_1px)] [background-size:3vw_3vw]" />
+      <div className="pointer-events-none fixed inset-0 opacity-[0.38] [background-image:linear-gradient(color-mix(in_srgb,var(--color-scrim)_13%,transparent)_1px,transparent_1px),linear-gradient(90deg,color-mix(in_srgb,var(--color-scrim)_10%,transparent)_1px,transparent_1px)] [background-size:3vw_3vw]" />
 
-      <main className="relative w-[min(92vw,52vh)] overflow-hidden rounded-[2.4vh] border border-white/80 bg-white/82 shadow-[0_3vh_8vh_rgba(41,37,36,0.12)] backdrop-blur">
+      <main className="relative w-[min(92vw,52vh)] overflow-hidden rounded-[2.4vh] border border-border bg-card/95 shadow-[0_3vh_8vh_color-mix(in_srgb,var(--color-scrim)_12%,transparent)] backdrop-blur">
         <div className="absolute inset-x-0 top-0 h-[0.55vh] bg-accent" />
 
         <section className="flex min-h-[58vh] items-center px-[4vh] py-[5vh]">
@@ -42,7 +42,7 @@ export function LoginPage({ onLogin, isSubmitting = false, error }: LoginPagePro
             <form className="space-y-[2.5vh]" onSubmit={handleSubmit}>
               <label className="block">
                 <span className="mb-[1vh] block text-[2.1vh] text-text-muted">用户名</span>
-                <div className="flex h-[8.5vh] items-center gap-[1.4vh] rounded-[1.7vh] border border-border bg-card/92 px-[2vh] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-colors focus-within:border-accent/50">
+                <div className="flex h-[8.5vh] items-center gap-[1.4vh] rounded-[1.7vh] border border-border bg-card/92 px-[2vh] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--color-highlight)_5%,transparent)] transition-colors focus-within:border-accent/50">
                   <UserRound className="h-[2.6vh] w-[2.6vh] text-text-muted" />
                   <input
                     type="text"
@@ -58,7 +58,7 @@ export function LoginPage({ onLogin, isSubmitting = false, error }: LoginPagePro
 
               <label className="block">
                 <span className="mb-[1vh] block text-[2.1vh] text-text-muted">密码</span>
-                <div className="flex h-[8.5vh] items-center gap-[1.4vh] rounded-[1.7vh] border border-border bg-card/92 px-[2vh] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-colors focus-within:border-accent/50">
+                <div className="flex h-[8.5vh] items-center gap-[1.4vh] rounded-[1.7vh] border border-border bg-card/92 px-[2vh] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--color-highlight)_5%,transparent)] transition-colors focus-within:border-accent/50">
                   <LockKeyhole className="h-[2.6vh] w-[2.6vh] text-text-muted" />
                   <input
                     type="password"
@@ -73,7 +73,7 @@ export function LoginPage({ onLogin, isSubmitting = false, error }: LoginPagePro
               </label>
 
               {error ? (
-                <div className="rounded-[1.7vh] border border-red-200 bg-red-50 px-[1.5vw] py-[1.8vh] text-[2.1vh] text-red-700">
+                <div className="rounded-[1.7vh] border border-danger/30 bg-danger-dim px-[1.5vw] py-[1.8vh] text-[2.1vh] text-danger">
                   {error}
                 </div>
               ) : null}
@@ -81,7 +81,7 @@ export function LoginPage({ onLogin, isSubmitting = false, error }: LoginPagePro
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex h-[8.5vh] w-full items-center justify-center gap-[1.2vh] rounded-[1.7vh] border border-accent bg-accent px-[2vh] text-[2.25vh] font-medium text-white shadow-sm transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex h-[8.5vh] w-full items-center justify-center gap-[1.2vh] rounded-[1.7vh] border border-accent bg-accent px-[2vh] text-[2.25vh] font-medium text-on-accent shadow-sm transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSubmitting ? <Loader className="h-[2.7vh] w-[2.7vh] animate-spin" /> : null}
                 {isSubmitting ? '登录中...' : '登录'}

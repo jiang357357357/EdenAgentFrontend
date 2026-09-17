@@ -34,6 +34,6 @@ export function InputOutcomeReview({ sessionId }: { sessionId: string }) {
       <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我已核对原记录并确认此处理结果。</label>
       <button disabled={busy || !confirmed || !note.trim()} onClick={() => void resolve()} className="mt-2 rounded border px-2 py-1">保存输入处置</button>
       <p>原输入、回合错误与工具记录保留。不自动重发输入；需要后续工作时应另行明确提交。</p></>}
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
   </details>
 }

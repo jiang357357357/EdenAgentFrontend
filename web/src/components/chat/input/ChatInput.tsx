@@ -288,7 +288,7 @@ export function ChatInput({
         "sticky bottom-0 z-10",
         overlay
           ? "bg-transparent p-0 [container-type:size]"
-          : "mx-auto w-[90%] bg-gradient-to-t from-bg via-bg/95 to-transparent pt-[1.2vh] pb-[2.8vh]",
+          : "mx-auto w-[90%] bg-transparent pt-[1.2vh] pb-[2.8vh]",
       )}
       style={overlay ? { height: standaloneOverlay ? "100%" : `${overlayHeight ?? (overlayCompact ? 20 : 40)}vh` } : undefined}
     >
@@ -312,7 +312,7 @@ export function ChatInput({
         </AnimatePresence>
 
         <div
-          style={overlay ? { backgroundColor: `rgba(28, 25, 23, ${Math.max(30, Math.min(100, overlayOpacity)) / 100})` } : undefined}
+          style={overlay ? { backgroundColor: `color-mix(in srgb, var(--color-overlay) ${Math.max(30, Math.min(100, overlayOpacity))}%, transparent)` } : undefined}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -320,13 +320,13 @@ export function ChatInput({
             "transition-colors",
             overlay
               ? cn(
-                  "relative h-full overflow-hidden border bg-stone-950/30 shadow-none backdrop-blur-md focus-within:border-white/25",
+                  "relative h-full overflow-hidden border bg-overlay/30 shadow-none backdrop-blur-md focus-within:border-highlight/25",
                   standaloneOverlay ? "rounded-[10cqh]" : "rounded-[3.3vh]",
-                  draggingFiles ? "border-orange-300/70 ring-2 ring-orange-300/30" : "border-white/12",
+                  draggingFiles ? "border-accent/70 ring-2 ring-accent/30" : "border-highlight/12",
                 )
               : cn(
                   "relative min-h-[20vh] overflow-visible rounded-[3.3vh] border bg-card/96 shadow-sm backdrop-blur-md focus-within:border-border",
-                  draggingFiles ? "border-orange-300/70 ring-2 ring-orange-300/25" : "border-border",
+                  draggingFiles ? "border-accent/70 ring-2 ring-accent/25" : "border-border",
                 ),
           )}
         >
@@ -411,7 +411,7 @@ export function ChatInput({
               "resize-none overflow-x-hidden overflow-y-hidden bg-transparent outline-none leading-relaxed select-text",
               overlay
                 ? cn(
-                    "absolute inset-0 box-border h-full max-h-none min-h-0 w-full overflow-hidden text-stone-100 placeholder:text-stone-400/55 [&::-webkit-scrollbar]:hidden",
+                    "absolute inset-0 box-border h-full max-h-none min-h-0 w-full overflow-hidden text-text placeholder:text-text-muted/55 [&::-webkit-scrollbar]:hidden",
                     standaloneOverlay ? "px-[8cqh] pb-[8cqh] pt-[8cqh]" : "px-[2.8vh] pt-[2.7vh]",
                   )
                 : "relative block box-border min-h-[13.3vh] w-full overflow-hidden pl-[2.8vh] pr-[10vh] pt-[2.7vh] text-[2.2vh] text-text placeholder:text-text-muted/65 [&::-webkit-scrollbar]:hidden",
@@ -477,7 +477,7 @@ export function ChatInput({
               className={cn(
                 "absolute left-[2.8vh] z-30 max-w-[calc(100%-5.6vh)] truncate text-[1.35vh]",
                 hideComposerFooter ? "bottom-[1.5vh]" : "bottom-[7.1vh]",
-                overlay ? "text-red-200" : "text-red-600",
+                overlay ? "text-danger" : "text-danger",
               )}
             >
               {permissionError}
@@ -493,7 +493,7 @@ export function ChatInput({
               className={cn(
                 "absolute left-[2.8vh] z-30 max-w-[calc(100%-5.6vh)] truncate text-[1.35vh]",
                 hideComposerFooter ? "bottom-[1.5vh]" : "bottom-[7.1vh]",
-                overlay ? "text-red-200" : "text-red-600",
+                overlay ? "text-danger" : "text-danger",
               )}
             >
               {slashCommandError}

@@ -7,13 +7,14 @@ let runtimeOriginRevision = 0
 let observedOrigin: RuntimeOrigin | null = null
 if (typeof window !== 'undefined') {
   observedOrigin = getStoredRuntimeOrigin()
+  window.addEventListener('edenagent:account-changed', () => { runtimeOriginRevision++ })
   window.addEventListener('edenagent:runtime-origin-changed', () => {
     const next = getStoredRuntimeOrigin()
     if ((next ?? 'mon') !== (observedOrigin ?? 'mon')) runtimeOriginRevision++
     observedOrigin = next
   })
   window.addEventListener('storage', event => {
-    if (event.key !== null && event.key !== RUNTIME_ORIGIN_STORAGE_KEY) return
+    if (event.key !== null && event.key !== RUNTIME_ORIGIN_STORAGE_KEY && event.key !== 'agent.auth_token') return
     // Storage events can arrive after another change; do not collapse away-and-back transitions.
     runtimeOriginRevision++
     observedOrigin = getStoredRuntimeOrigin()

@@ -34,7 +34,7 @@ export function ContextContentDialog({ sessionId, draft, onClose }: { sessionId?
         <button type="button" disabled={loading} onClick={() => setRevision(value => value + 1)} className="shrink-0 rounded border border-border px-3 py-1 disabled:opacity-50">刷新</button>
       </div>
       {loading && <p role="status">正在读取上下文…</p>}
-      {error && <p role="alert" className="text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-danger">{error}</p>}
       {!loading && !error && requests.length === 0 && <p>尚无模型请求，发送消息后可查看实际上下文。</p>}
       {requests.length > 1 && <label className="block">角色请求
         <select className="ml-2 rounded border border-border bg-card p-2" value={selected} onChange={event => setSelected(event.target.value)}>

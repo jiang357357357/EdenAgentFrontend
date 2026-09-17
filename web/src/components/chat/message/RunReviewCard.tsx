@@ -18,8 +18,8 @@ export function RunReviewCard({ review }: { review: RunReview }) {
         <span className="min-w-0 flex-1 truncate text-[1.25vh] text-text-muted">
           {review.files.length} 个文件 · {review.snapshot ? "最终工作区快照" : "本轮操作汇总"}
         </span>
-        <span className="font-mono text-[1.25vh] text-emerald-600">+{review.additions}</span>
-        <span className="font-mono text-[1.25vh] text-red-500">-{review.deletions}</span>
+        <span className="font-mono text-[1.25vh] text-success">+{review.additions}</span>
+        <span className="font-mono text-[1.25vh] text-danger">-{review.deletions}</span>
         <ChevronRight className={cn("h-[1.6vh] w-[1.6vh] text-text-muted transition-transform", expanded && "rotate-90")} />
       </button>
       {expanded ? (
@@ -29,8 +29,8 @@ export function RunReviewCard({ review }: { review: RunReview }) {
               <summary className="flex cursor-pointer list-none items-center gap-[0.75vh] px-[1vh] py-[0.75vh] text-[1.25vh]">
                 <span className="min-w-0 flex-1 truncate font-mono text-text">{file.movePath ? `${file.path} → ${file.movePath}` : file.path}</span>
                 {file.patches.length > 1 ? <span className="text-text-muted">{file.patches.length} 次变更</span> : null}
-                <span className="font-mono text-emerald-600">+{file.additions}</span>
-                <span className="font-mono text-red-500">-{file.deletions}</span>
+                <span className="font-mono text-success">+{file.additions}</span>
+                <span className="font-mono text-danger">-{file.deletions}</span>
               </summary>
               {file.patches.map((entry, patchIndex) => (
                 <div key={`${entry.toolID}:${patchIndex}`} className="border-t border-border/70">
@@ -39,9 +39,9 @@ export function RunReviewCard({ review }: { review: RunReview }) {
                     {entry.patch.split("\n").map((line, lineIndex) => (
                       <span key={lineIndex} className={cn(
                         "block min-w-max px-[1vh]",
-                        line.startsWith("+") && !line.startsWith("+++") && "bg-emerald-50 text-emerald-800",
-                        line.startsWith("-") && !line.startsWith("---") && "bg-red-50 text-red-700",
-                        line.startsWith("@@") && "bg-sky-50 text-sky-700",
+                        line.startsWith("+") && !line.startsWith("+++") && "bg-success-dim text-success",
+                        line.startsWith("-") && !line.startsWith("---") && "bg-danger-dim text-danger",
+                        line.startsWith("@@") && "bg-info-dim text-info",
                       )}>{line || " "}</span>
                     ))}
                   </pre>

@@ -25,6 +25,6 @@ export function SubagentDeadlineRestore({ agentId, deadline, onSaved }: { agentI
     <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我明确允许延长此旧任务期限。</label>
     <button disabled={busy || !confirmed || !note.trim() || !Number.isFinite(minutes) || minutes < 1 || minutes > 1440} onClick={() => void renew()} className="mt-2 rounded border px-2 py-1">确认续期</button>
     <p>此操作记录原期限与续期原因，不重置用量、不增加调用/费用预算，也不启动任务；父任务已过期时先处理父任务。</p>
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
   </details>
 }

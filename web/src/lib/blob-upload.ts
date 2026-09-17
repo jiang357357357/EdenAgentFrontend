@@ -21,7 +21,7 @@ async function readMetadata(response: Response): Promise<unknown> {
 }
 
 /** Timeout/cancellation does not prove the server failed to store the upload. Never auto-retry. */
-export async function uploadBlob(baseUrl: string, capabilityToken: string, content: Blob, signal?: AbortSignal): Promise<BlobInfo> {
+export async function uploadBlob(baseUrl: string, capabilityToken: string, content: Blob, signal?: AbortSignal, coreToken?: string): Promise<BlobInfo> {
   const base = new URL(baseUrl)
   if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) throw new Error('Invalid Blob service URL')
   if (!/^[A-Za-z0-9_-]{32,}$/.test(capabilityToken)) throw new Error('Invalid Blob capability token')
@@ -33,7 +33,7 @@ export async function uploadBlob(baseUrl: string, capabilityToken: string, conte
     combined.throwIfAborted()
     const response = await fetch(`${base.href.replace(/\/$/, '')}/blobs`, {
       method: 'POST', redirect: 'error', credentials: 'omit', cache: 'no-store', signal: combined,
-      headers: { Authorization: `Bearer ${capabilityToken}`, 'Content-Type': mime }, body: content,
+      headers: { Authorization: `Bearer ${capabilityToken}`, 'Content-Type': mime, ...(coreToken ? { 'x-eden-core-token': coreToken } : {}) }, body: content,
     })
     if (!response.ok) {
       await response.body?.cancel().catch(() => {})

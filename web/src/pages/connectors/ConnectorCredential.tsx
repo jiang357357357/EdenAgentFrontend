@@ -30,13 +30,13 @@ export function ConnectorCredential({ id, onChanged }: { id: string; onChanged?:
     finally { if (current === epoch.current) setBusy(false) }
   }
   if (status && !status.supported && !status.configured) return null
-  return <section className="my-4 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+  return <section className="my-4 rounded-xl border border-border bg-card p-4 text-sm">
     <div className="flex justify-between"><h3 className="font-medium">身份凭据</h3>
       <button type="button" disabled={busy} onClick={() => setRefresh(value => value + 1)}>刷新</button></div>
-    {error && <p role="alert" className="mt-2 text-red-700">{error}</p>}
+    {error && <p role="alert" className="mt-2 text-danger">{error}</p>}
     {status && <>
       <p className="mt-2">{status.configured ? '已配置私有凭据' : '尚未配置凭据'}</p>
-      <p className="mt-2 text-xs text-stone-500">凭据只用于当前世界的此身份。修改后连接器将停用，需要重新授权并启用。</p>
+      <p className="mt-2 text-xs text-text-muted">凭据只用于当前世界的此身份。修改后连接器将停用，需要重新授权并启用。</p>
       <label className="mt-3 block">令牌或 Admin 密码
         <input type="password" autoComplete="new-password" spellCheck={false} maxLength={16384} value={secret}
           disabled={busy || !status.supported} onChange={event => setSecret(event.target.value)} className="mt-1 w-full rounded border px-3 py-2" /></label>

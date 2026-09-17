@@ -1,3 +1,4 @@
+import { pageEnterMotion } from "../../lib/page-motion"
 import { RuntimeDiagnostics } from '../../components/chat/RuntimeDiagnostics'
 import type { Session } from '../../types'
 import { useEffect, useRef, useState } from "react"
@@ -53,17 +54,6 @@ import { cn } from "../../lib/utils"
 import { listPlugins } from "../../lib/agent-client"
 import type { PluginUiContributionInfo } from "../../generated/eden-agent-rpc"
 
-const screenMotion = {
-  initial: { opacity: 0, x: 12 },
-  animate: { opacity: 1, x: 0 },
-  exit: { opacity: 0, x: 16 },
-}
-
-const transition = {
-  duration: 0.22,
-  ease: [0.16, 1, 0.3, 1],
-} as const
-
 type SettingsSection = "pet" | "input" | "advanced" | "about"
 type SaveState = "idle" | "saving" | "saved"
 
@@ -114,22 +104,22 @@ function PetInputPreview({ opacity, height, fontScale }: { opacity: number; heig
   const fontRatio = Math.max(70, Math.min(140, fontScale)) / 100
   return (
     <div
-      className="relative flex flex-col overflow-hidden rounded-[6cqh] border border-white/15 text-stone-100 shadow-sm backdrop-blur-md"
+      className="relative flex flex-col overflow-hidden rounded-[6cqh] border border-highlight/15 text-text shadow-sm backdrop-blur-md"
       style={{
         height: `${Math.max(28, Math.min(50, height + 16))}cqh`,
-        backgroundColor: `rgba(28, 25, 23, ${Math.max(30, Math.min(100, opacity)) / 100})`,
+        backgroundColor: `color-mix(in srgb, var(--color-overlay) ${Math.max(30, Math.min(100, opacity))}%, transparent)`,
       }}
       aria-label="桌宠快捷输入框预览"
     >
       <div className="min-h-0 flex-1 px-[6cqh] py-[5cqh]" style={{ fontSize: `${2 * fontRatio}cqh` }}>
-        <p className="text-stone-200">今天需要我做什么？</p>
-        <p className="mt-[4cqh] rounded-[3cqh] bg-orange-600/70 px-[4cqh] py-[2cqh] text-right text-white">
+        <p className="text-text">今天需要我做什么？</p>
+        <p className="mt-[4cqh] rounded-[3cqh] bg-accent-dim px-[4cqh] py-[2cqh] text-right text-text">
           继续优化桌宠交互
         </p>
       </div>
-      <div className="flex h-[24%] items-center gap-[3cqh] border-t border-white/12 px-[5cqh]">
-        <span className="min-w-0 flex-1 text-stone-400" style={{ fontSize: `${2 * fontRatio}cqh` }}>输入消息…</span>
-        <span className="flex aspect-square h-[62%] items-center justify-center rounded-full bg-orange-600 text-white">
+      <div className="flex h-[24%] items-center gap-[3cqh] border-t border-highlight/12 px-[5cqh]">
+        <span className="min-w-0 flex-1 text-text-muted" style={{ fontSize: `${2 * fontRatio}cqh` }}>输入消息…</span>
+        <span className="flex aspect-square h-[62%] items-center justify-center rounded-full bg-accent text-on-accent">
           <ArrowUp className="h-[52%] w-[52%]" />
         </span>
       </div>
@@ -141,7 +131,7 @@ function wallpaperStyle(environment: DesktopEnvironmentPreview | null): CSSPrope
   const fileUrl = resolveDesktopFileUrl(environment?.wallpaper.filePath)
   const mode = environment?.wallpaper.mode ?? "zoom"
   const style: CSSProperties = {
-    backgroundColor: environment?.wallpaper.primaryColor || "#1c1917",
+    backgroundColor: environment?.wallpaper.primaryColor || "var(--color-overlay)",
     backgroundImage: fileUrl ? `url("${fileUrl}")` : undefined,
     backgroundPosition: "center",
     backgroundRepeat: "no-repeat",
@@ -188,7 +178,7 @@ function DesktopPanelPreview({ environment }: { environment: DesktopEnvironmentP
   return (
     <div
       className={cn(
-        "absolute z-30 flex items-center justify-between bg-stone-950/88 px-[0.7%] text-white shadow-[0_-0.1cqh_1cqh_rgba(0,0,0,0.28)] backdrop-blur-sm",
+        "absolute z-30 flex items-center justify-between bg-overlay/88 px-[0.7%] text-text shadow-[0_-0.1cqh_1cqh_color-mix(in_srgb,var(--color-scrim)_28%,transparent)] backdrop-blur-sm",
         vertical && "flex-col px-0 py-[0.7%]",
         panel.autoHide && "opacity-65",
       )}
@@ -198,7 +188,7 @@ function DesktopPanelPreview({ environment }: { environment: DesktopEnvironmentP
       <div className={cn("flex h-full items-center gap-[0.55cqh]", vertical && "h-auto w-full flex-col")}>
         {configured.includes("menu@cinnamon.org") ? <Menu className="h-[52%] w-auto min-w-0" /> : null}
         {configured.includes("grouped-window-list@cinnamon.org") ? (
-          <div className={cn("h-[58%] w-[12%] rounded-sm bg-white/12", vertical && "h-[8%] w-[58%]")} />
+          <div className={cn("h-[58%] w-[12%] rounded-sm bg-highlight/12", vertical && "h-[8%] w-[58%]")} />
         ) : null}
       </div>
       <div className={cn("flex h-full items-center gap-[0.65cqh]", vertical && "h-auto w-full flex-col")}>
@@ -229,14 +219,14 @@ function ToggleRow({ label, description, value, disabled, onChange }: ToggleRowP
         onClick={() => onChange(!value)}
         className={cn(
           "relative h-8 w-[3.25rem] shrink-0 rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-45",
-          value ? "border-accent bg-accent" : "border-border bg-[#e7e5e4]",
+          value ? "border-accent bg-accent" : "border-border bg-border",
         )}
         aria-label={label}
         aria-pressed={value}
       >
         <span
           className={cn(
-            "absolute top-1/2 h-[75%] aspect-square -translate-y-1/2 rounded-full bg-white shadow-sm transition-[left]",
+            "absolute top-1/2 h-[75%] aspect-square -translate-y-1/2 rounded-full bg-highlight shadow-sm transition-[left]",
             value ? "left-[46.15%]" : "left-[7.69%]",
           )}
         />
@@ -258,7 +248,7 @@ function RangeControl({ label, value, min, max, step = 1, unit = "", marks = [],
             "text-[clamp(0.75rem,1.25cqh,0.8125rem)] tabular-nums",
             compact
               ? "rounded-full bg-accent-dim px-[3%] py-[1%] font-medium text-accent"
-              : "rounded-md border border-border bg-[#fafaf9] px-3 py-1 text-text-muted",
+              : "rounded-md border border-border bg-bg px-3 py-1 text-text-muted",
           )}
         >
           {value}
@@ -309,7 +299,7 @@ function RadioRow({
       aria-checked={checked}
       disabled={disabled}
       onClick={onChange}
-      className="flex w-full items-center gap-[6%] rounded-lg px-[4%] py-[4%] text-left transition-colors hover:bg-[#fafaf9] focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-45"
+      className="flex w-full items-center gap-[6%] rounded-lg px-[4%] py-[4%] text-left transition-colors hover:bg-bg focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-45"
     >
       <span
         className={cn(
@@ -330,7 +320,7 @@ function WindowControls() {
       <button
         type="button"
         onClick={() => void minimizeDesktopWindow()}
-        className="flex w-16 items-center justify-center text-text-muted transition-colors hover:bg-[#f1f0ef] hover:text-text"
+        className="flex w-16 items-center justify-center text-text-muted transition-colors hover:bg-border hover:text-text"
         aria-label="最小化"
       >
         <Minus className="h-4 w-4" />
@@ -338,7 +328,7 @@ function WindowControls() {
       <button
         type="button"
         onClick={() => void toggleMaximizeDesktopWindow()}
-        className="flex w-16 items-center justify-center text-text-muted transition-colors hover:bg-[#f1f0ef] hover:text-text"
+        className="flex w-16 items-center justify-center text-text-muted transition-colors hover:bg-border hover:text-text"
         aria-label="最大化或还原"
       >
         <Square className="h-3.5 w-3.5" />
@@ -346,7 +336,7 @@ function WindowControls() {
       <button
         type="button"
         onClick={() => void closeDesktopWindow()}
-        className="flex w-16 items-center justify-center text-text-muted transition-colors hover:bg-red-500 hover:text-white"
+        className="flex w-16 items-center justify-center text-text-muted transition-colors hover:bg-danger-solid hover:text-text"
         aria-label="关闭"
       >
         <X className="h-4 w-4" />
@@ -648,17 +638,16 @@ export function SettingsPage({
   return (
     <motion.div
       key="settings-control-center"
-      {...screenMotion}
-      transition={transition}
-      className="fixed inset-0 z-10 flex h-screen w-screen flex-col overflow-hidden bg-[#fafaf9] font-sans text-text [container-type:size]"
+      {...pageEnterMotion}
+      className="theme-page fixed inset-0 z-10 flex h-screen w-screen flex-col overflow-hidden bg-bg font-sans text-text [container-type:size]"
     >
-      <header className="desktop-drag-region flex h-[10%] shrink-0 items-center justify-between border-b border-border bg-white pl-6 xl:pl-9">
+      <header className="desktop-drag-region flex h-[10%] shrink-0 items-center justify-between border-b border-border bg-card pl-6 xl:pl-9">
         <div className="flex min-w-0 items-center gap-6">
           {onBack ? (
             <button
               type="button"
               onClick={onBack}
-              className="desktop-no-drag flex h-10 w-10 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-[#f5f5f4] hover:text-accent"
+              className="desktop-no-drag flex h-10 w-10 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-border hover:text-accent"
               aria-label="返回"
             >
               <ArrowLeft className="h-5 w-5" />
@@ -672,7 +661,7 @@ export function SettingsPage({
             {saveState === "saving" ? (
               <LoaderCircle className="h-5 w-5 animate-spin text-accent" />
             ) : (
-              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+              <CheckCircle2 className="h-5 w-5 text-success" />
             )}
             <span>{saveLabel}</span>
           </div>
@@ -682,16 +671,16 @@ export function SettingsPage({
       </header>
 
       <div className="min-h-0 flex-1 p-[2%]">
-        <div className="grid h-full w-full min-h-0 grid-cols-1 overflow-hidden rounded-2xl border border-border bg-white shadow-[0_0.75cqh_2.8cqh_rgba(41,37,36,0.04)] md:grid-cols-[42%_58%]">
+        <div className="grid h-full w-full min-h-0 grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card shadow-[0_0.75cqh_2.8cqh_color-mix(in_srgb,var(--color-scrim)_4%,transparent)] md:grid-cols-[42%_58%]">
               <section className="flex h-[52vh] min-h-0 flex-col border-b border-border p-[4%] md:h-full md:border-r md:border-b-0">
                 <h2 className="mb-4 text-[clamp(0.9375rem,1.65cqh,1.0625rem)] font-semibold text-text">桌宠预览</h2>
                 <div
                   ref={previewSurfaceRef}
-                  className="relative flex w-full shrink-0 items-start justify-center overflow-hidden border border-[#eadfce] bg-[#eeeae4]"
+                  className="relative flex w-full shrink-0 items-start justify-center overflow-hidden border border-accent/25 bg-bg"
                   style={{ aspectRatio: desktopAspectRatio ?? 16 / 9 }}
                 >
                   {desktopEnvironment && desktopAspectRatio ? (
-                    <div className="relative h-full w-full overflow-hidden bg-stone-900 shadow-sm [container-type:size]">
+                    <div className="relative h-full w-full overflow-hidden bg-overlay shadow-sm [container-type:size]">
                       <div className="absolute inset-0" style={wallpaperStyle(desktopEnvironment)} aria-label="当前桌面壁纸" />
                       {petPreviewPlacement ? (
                         <div
@@ -763,7 +752,7 @@ export function SettingsPage({
                             const next = Number(raw)
                             patchSettings({ [key]: raw === "" || !Number.isFinite(next) ? null : next })
                           }}
-                          className="h-[4.2cqh] w-full min-w-0 rounded-lg border border-border bg-[#fafaf9] px-[6%] text-text outline-none focus:border-accent"
+                          className="h-[4.2cqh] w-full min-w-0 rounded-lg border border-border bg-bg px-[6%] text-text outline-none focus:border-accent"
                         />
                       </label>
                     ))}
@@ -799,7 +788,7 @@ export function SettingsPage({
                   <div>
                 <div className="flex items-center justify-between gap-4 py-5">
                   <div className="flex min-w-0 items-center gap-4">
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-[#fff9f1]">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-accent-dim">
                       <img src={avatarUrl} alt={characterName} className="h-full w-full object-cover object-top" />
                     </div>
                     <div className="min-w-0">
@@ -823,7 +812,7 @@ export function SettingsPage({
                   type="button"
                   onClick={onOpenSkills}
                   disabled={!onOpenSkills}
-                  className="mb-5 flex w-full items-center gap-3 rounded-xl border border-border bg-[#fafaf9] px-4 py-3 text-left transition hover:border-accent/40 hover:bg-accent-dim disabled:opacity-50"
+                  className="mb-5 flex w-full items-center gap-3 rounded-xl border border-border bg-bg px-4 py-3 text-left transition hover:border-accent/40 hover:bg-accent-dim disabled:opacity-50"
                 >
                   <Package className="h-5 w-5 text-accent" />
                   <span className="min-w-0 flex-1">
@@ -837,7 +826,7 @@ export function SettingsPage({
                   type="button"
                   onClick={onOpenPlugins}
                   disabled={!onOpenPlugins}
-                  className="mb-5 flex w-full items-center gap-3 rounded-xl border border-border bg-[#fafaf9] px-4 py-3 text-left transition hover:border-accent/40 hover:bg-accent-dim disabled:opacity-50"
+                  className="mb-5 flex w-full items-center gap-3 rounded-xl border border-border bg-bg px-4 py-3 text-left transition hover:border-accent/40 hover:bg-accent-dim disabled:opacity-50"
                 >
                   <Package className="h-5 w-5 text-accent" />
                   <span className="min-w-0 flex-1">
@@ -963,7 +952,7 @@ export function SettingsPage({
                 </button>
               </div>
               {pluginCards.map((item) => (
-                <div key={`${item.componentId}:${item.id}`} className={`mt-3 rounded-xl border px-4 py-3 ${item.tone === "success" ? "border-emerald-200 bg-emerald-50" : item.tone === "warning" ? "border-amber-200 bg-amber-50" : "border-sky-200 bg-sky-50"}`}>
+                <div key={`${item.componentId}:${item.id}`} className={`mt-3 rounded-xl border px-4 py-3 ${item.tone === "success" ? "border-success/30 bg-success-dim" : item.tone === "warning" ? "border-warning/30 bg-warning-dim" : "border-info/30 bg-info-dim"}`}>
                   <div className="text-sm font-medium text-text">{item.title}</div>
                   <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-text-muted">{item.body}</p>
                 </div>
@@ -973,11 +962,11 @@ export function SettingsPage({
 
           {activeSection === "about" ? (
             <div className="flex h-full w-full items-center justify-center">
-              <div className="w-full rounded-2xl border border-border bg-white px-8 py-10 text-center shadow-[0_0.75cqh_2.8cqh_rgba(41,37,36,0.04)]">
+              <div className="w-full rounded-2xl border border-border bg-card px-8 py-10 text-center shadow-[0_0.75cqh_2.8cqh_color-mix(in_srgb,var(--color-scrim)_4%,transparent)]">
                 <img src="/favicon-256.png" alt="Eden Agent" className="mx-auto h-20 w-20 object-contain" />
                 <h2 className="mt-5 text-2xl font-semibold text-text">Eden Agent</h2>
                 <p className="mt-2 text-sm text-text-muted">你的本地 AI 伙伴</p>
-                <div className="mx-auto mt-6 flex w-[72%] items-start gap-3 rounded-xl bg-[#fafaf9] p-4 text-left text-sm leading-6 text-text-muted">
+                <div className="mx-auto mt-6 flex w-[72%] items-start gap-3 rounded-xl bg-bg p-4 text-left text-sm leading-6 text-text-muted">
                   <Bell className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
                   <span>设置会保存在本地，并实时同步到桌宠窗口。</span>
                 </div>

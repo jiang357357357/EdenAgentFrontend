@@ -1,25 +1,26 @@
 @import "tailwindcss";
+@import "./theme.css";
 @plugin "@tailwindcss/typography";
-
-@theme {
-  --color-bg: #f5f5f4;
-  --color-card: #ffffff;
-  --color-border: #e7e5e4;
-  --color-accent: #d97706;
-  --color-accent-dim: rgba(217, 119, 6, 0.15);
-  --color-text: #292524;
-  --color-text-muted: #78716c;
-  --color-text-lighter: #a8a29e;
-
-  --font-serif: "Georgia", serif;
-  --font-sans: "Helvetica Neue", Arial, sans-serif;
-}
 
 @layer base {
   body {
+    color-scheme: var(--interface-color-scheme, dark);
     background-color: var(--color-bg);
     color: var(--color-text);
     font-family: var(--font-sans);
+  }
+
+  :where(input, textarea, select) {
+    accent-color: var(--color-accent);
+  }
+
+  :where(select option, select optgroup) {
+    background-color: var(--color-input);
+    color: var(--color-text);
+  }
+
+  :where(button, input, textarea, select, a):focus-visible {
+    outline-color: var(--color-accent);
   }
 
   html.character-transparent,
@@ -71,14 +72,14 @@
 
   .settings-range::-webkit-slider-runnable-track {
     height: 0.5rem;
-    border: 0.0625rem solid #78716c;
+    border: 0.0625rem solid var(--color-border);
     border-radius: 999rem;
     background: linear-gradient(
       to right,
       var(--color-accent) 0,
       var(--color-accent) var(--range-progress),
-      #44403c var(--range-progress),
-      #44403c 100%
+      var(--color-surface-hover) var(--range-progress),
+      var(--color-surface-hover) 100%
     );
   }
 
@@ -91,7 +92,7 @@
     border: 0.125rem solid var(--color-accent);
     border-radius: 999rem;
     background: var(--color-accent);
-    box-shadow: 0 0.0625rem 0.1875rem rgba(41, 37, 36, 0.18);
+    box-shadow: 0 0.0625rem 0.1875rem color-mix(in srgb, var(--color-scrim) 18%, transparent);
   }
 
   .settings-range:focus-visible {
@@ -112,7 +113,7 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background-color: rgba(120, 113, 108, 0.3);
+    background-color: var(--color-scrollbar);
     border-radius: 0.625rem;
   }
 
@@ -123,7 +124,7 @@
   .surface-scrollbars,
   .surface-scrollbars * {
     scrollbar-width: thin;
-    scrollbar-color: rgba(120, 113, 108, 0.32) transparent;
+    scrollbar-color: var(--color-scrollbar) transparent;
   }
 
   .surface-scrollbars::-webkit-scrollbar,
@@ -143,11 +144,140 @@
     border: 2px solid transparent;
     border-radius: 999px;
     background-clip: padding-box;
-    background-color: rgba(120, 113, 108, 0.3);
+    background-color: var(--color-scrollbar);
   }
 
   .surface-scrollbars::-webkit-scrollbar-thumb:hover,
   .surface-scrollbars *::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(217, 119, 6, 0.72);
+    background-color: var(--color-accent);
   }
+}
+
+/* Bundled wallpaper keeps the main interface independent of local file paths. */
+.interface-background {
+  isolation: isolate;
+  background-color: var(--color-bg);
+}
+
+.interface-background::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -32px;
+  pointer-events: none;
+  background-image: var(--interface-background-image, url("./assets/interface-background.jpg"));
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: var(--interface-background-opacity, 1);
+  filter: blur(var(--interface-background-blur, 0px));
+}
+
+.interface-dark {
+  color-scheme: var(--interface-color-scheme, dark);
+}
+
+/* Keep every Markdown token on the application theme. The typography plugin
+   otherwise injects its light palette for headings, links and strong text. */
+.prose {
+  --tw-prose-body: var(--color-text);
+  --tw-prose-headings: var(--color-text);
+  --tw-prose-lead: var(--color-text-muted);
+  --tw-prose-links: var(--color-accent);
+  --tw-prose-bold: var(--color-text);
+  --tw-prose-counters: var(--color-text-muted);
+  --tw-prose-bullets: var(--color-text-muted);
+  --tw-prose-hr: var(--color-border);
+  --tw-prose-quotes: var(--color-text);
+  --tw-prose-quote-borders: var(--color-border);
+  --tw-prose-captions: var(--color-text-muted);
+  --tw-prose-kbd: var(--color-text);
+  --tw-prose-code: var(--color-text);
+  --tw-prose-pre-code: var(--color-text);
+  --tw-prose-pre-bg: var(--color-code);
+  --tw-prose-th-borders: var(--color-border);
+  --tw-prose-td-borders: var(--color-border);
+}
+
+/* Most interface typography uses viewport units. Component and conversation text
+   have separate persisted scales so changing one never moves the other. */
+.interface-dark .text-xs { font-size: calc(0.75rem * var(--interface-component-font-scale, 1)); }
+.interface-dark .text-sm { font-size: calc(0.875rem * var(--interface-component-font-scale, 1)); }
+.interface-dark .text-base { font-size: calc(1rem * var(--interface-component-font-scale, 1)); }
+.interface-dark .text-lg { font-size: calc(1.125rem * var(--interface-component-font-scale, 1)); }
+.interface-dark .text-2xl { font-size: calc(1.5rem * var(--interface-component-font-scale, 1)); }
+.interface-dark .text-\[1vh\] { font-size: calc(1vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.02vh\] { font-size: calc(1.02vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.1vh\] { font-size: calc(1.1vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.12vh\] { font-size: calc(1.12vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.15vh\] { font-size: calc(1.15vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.18vh\] { font-size: calc(1.18vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.2vh\] { font-size: calc(1.2vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.22vh\] { font-size: calc(1.22vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.23vh\] { font-size: calc(1.23vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.24vh\] { font-size: calc(1.24vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.25vh\] { font-size: calc(1.25vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.28vh\] { font-size: calc(1.28vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.3vh\] { font-size: calc(1.3vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.34vh\] { font-size: calc(1.34vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.35vh\] { font-size: calc(1.35vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.38vh\] { font-size: calc(1.38vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.4vh\] { font-size: calc(1.4vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.42vh\] { font-size: calc(1.42vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.45vh\] { font-size: calc(1.45vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.48vh\] { font-size: calc(1.48vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.5vh\] { font-size: calc(1.5vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.55vh\] { font-size: calc(1.55vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.58vh\] { font-size: calc(1.58vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.6vh\] { font-size: calc(1.6vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.65vh\] { font-size: calc(1.65vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.7vh\] { font-size: calc(1.7vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.8vh\] { font-size: calc(1.8vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.82vh\] { font-size: calc(1.82vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.85vh\] { font-size: calc(1.85vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[1\.9vh\] { font-size: calc(1.9vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[2\.2vh\] { font-size: calc(2.2vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[2\.25vh\] { font-size: calc(2.25vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[2\.35vh\] { font-size: calc(2.35vh + var(--interface-component-font-delta)); }
+.interface-dark .text-\[2\.8vh\] { font-size: calc(2.8vh + var(--interface-component-font-delta)); }
+
+.interface-dark .chat-body-font {
+  font-size: calc(1.82vh + var(--interface-chat-font-delta));
+}
+
+.interface-dark .chat-thinking-font {
+  font-size: calc(1.48vh + var(--interface-chat-font-delta));
+}
+
+/* Execution traces belong to conversation text, including expanded tool details. */
+.interface-dark .chat-trace {
+  --interface-component-font-delta: var(--interface-chat-font-delta, 0px);
+}
+
+.chat-trace-heading {
+  font-size: max(14px, 1.65vh);
+  line-height: 1.5;
+}
+
+.interface-dark .chat-trace-heading {
+  font-size: max(12px, calc(max(14px, 1.65vh) + var(--interface-chat-font-delta, 0px)));
+}
+
+/* The appearance menu must keep a stable size while its sliders update the UI. */
+.interface-dark .appearance-controls {
+  --interface-component-font-scale: 1;
+  --interface-component-font-delta: 0px;
+}
+
+.interface-background > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Page gradients stay on page surfaces; cards retain a stable reading background. */
+.theme-page, .interface-background {
+  background-image: var(--page-gradient);
+}
+:root[data-background-mode="theme"] .interface-background::before {
+  display: none;
 }

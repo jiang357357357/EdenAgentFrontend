@@ -40,7 +40,7 @@ export function VoiceConversationPanel({
       aria-label={paused ? "语音对话已暂停" : waitingForAssistant ? "正在等待助手回复" : status === "recording" ? `正在转写，已录音 ${elapsedLabel}` : "正在连接语音服务"}
     >
       <div className="flex h-[58%] items-center justify-center gap-[1.5vh] border-r border-border/75 px-[8%]">
-        <span className="flex h-[6.2vh] w-[6.2vh] flex-shrink-0 items-center justify-center rounded-full bg-accent text-white shadow-[0_0_0_0.9vh_rgba(217,119,6,0.10)] transition-transform" style={{ transform: `scale(${1 + level * 0.1})` }}>
+        <span className="flex h-[6.2vh] w-[6.2vh] flex-shrink-0 items-center justify-center rounded-full bg-accent text-on-accent shadow-[0_0_0_0.9vh_color-mix(in_srgb,var(--color-accent)_10%,transparent)] transition-transform" style={{ transform: `scale(${1 + level * 0.1})` }}>
           {paused ? <Pause className="h-[3vh] w-[3vh]" /> : status === "recording" ? <Mic className="h-[3vh] w-[3vh]" /> : <LoaderCircle className="h-[3vh] w-[3vh] animate-spin" />}
         </span>
         <span className="min-w-0">
@@ -59,7 +59,7 @@ export function VoiceConversationPanel({
         <div className="mt-[1.2vh] flex h-[2.6vh] w-full items-center overflow-hidden">
           <VoiceLevelWaveform level={level} active={!paused && status === "recording"} />
         </div>
-        {error ? <div className="mt-[0.6vh] truncate text-[1.45vh] text-red-500">{error}</div> : null}
+        {error ? <div className="mt-[0.6vh] truncate text-[1.45vh] text-danger">{error}</div> : null}
       </div>
 
       <div className="flex h-[58%] items-center justify-evenly border-l border-border/75 px-[5%]">
@@ -71,7 +71,7 @@ export function VoiceConversationPanel({
           aria-label={paused ? "继续语音对话" : "暂停语音对话"}
           title={paused ? "继续语音对话" : "暂停语音对话"}
         >
-          <span className="flex h-[5.3vh] w-[5.3vh] items-center justify-center rounded-full bg-accent text-white">
+          <span className="flex h-[5.3vh] w-[5.3vh] items-center justify-center rounded-full bg-accent text-on-accent">
             {paused ? <Play className="h-[2.7vh] w-[2.7vh] fill-current" /> : <Pause className="h-[2.7vh] w-[2.7vh] fill-current" />}
           </span>
           <span className="text-[1.55vh]">{paused ? "继续" : "暂停"}</span>
@@ -84,7 +84,7 @@ export function VoiceConversationPanel({
           aria-label="结束语音对话"
           title="结束语音对话"
         >
-          <span className="flex h-[5.3vh] w-[5.3vh] items-center justify-center rounded-full bg-bg transition-colors group-hover:bg-stone-200">
+          <span className="flex h-[5.3vh] w-[5.3vh] items-center justify-center rounded-full bg-bg transition-colors group-hover:bg-border">
             <X className="h-[2.7vh] w-[2.7vh]" />
           </span>
           <span className="text-[1.55vh]">结束语音</span>

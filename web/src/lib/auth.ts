@@ -435,12 +435,15 @@ export function clearAuth(options: { preserveRuntimeOrigin?: boolean } = {}) {
   window.localStorage.removeItem(TOKEN_KEY)
   window.localStorage.removeItem(USER_KEY)
   window.localStorage.removeItem(EXPIRES_KEY)
+  window.dispatchEvent(new Event('edenagent:account-changed'))
   if (!options.preserveRuntimeOrigin) clearRuntimeOrigin()
 }
 
 export function saveAuth(payload: { token: string; user: AuthUser; expiresAt?: string }) {
+  const previousToken = getStoredToken()
   window.localStorage.setItem(TOKEN_KEY, payload.token)
   window.localStorage.setItem(USER_KEY, JSON.stringify(payload.user))
+  if (previousToken !== payload.token) window.dispatchEvent(new Event('edenagent:account-changed'))
   if (payload.expiresAt) {
     window.localStorage.setItem(EXPIRES_KEY, payload.expiresAt)
   } else {

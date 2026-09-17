@@ -22,19 +22,19 @@ export function PluginHistory({ id, versions }: { id: string; versions: PluginVe
       <button disabled={busy || !from || !to} onClick={() => void run(async () => setDiff(await api.diff(id, from, to)))} className="rounded border px-3 disabled:opacity-40">对比</button>
       <button disabled={busy} onClick={() => void run(async () => setLogs(await api.logs(id)))} className="rounded border px-3">刷新运行记录</button>
     </div>
-    {error && <p role="alert" className="mt-2 text-red-700">{error}</p>}
+    {error && <p role="alert" className="mt-2 text-danger">{error}</p>}
     {diff && <div className="mt-3 grid gap-3 lg:grid-cols-2">{(['manifest', 'source'] as const).map(key => <div key={key}>
       <b>{key === 'manifest' ? '清单' : '源码'}{diff[key].changed ? ` · 从第 ${diff[key].startLine} 行开始变化` : ' · 无变化'}</b>
-      <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap rounded bg-stone-50 p-2">
-        {diff[key].removed.map((line, index) => <span key={`r${index}`} className="block bg-red-50 text-red-800">- {line}</span>)}
-        {diff[key].added.map((line, index) => <span key={`a${index}`} className="block bg-emerald-50 text-emerald-800">+ {line}</span>)}
+      <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap rounded bg-bg p-2">
+        {diff[key].removed.map((line, index) => <span key={`r${index}`} className="block bg-danger-dim text-danger">- {line}</span>)}
+        {diff[key].added.map((line, index) => <span key={`a${index}`} className="block bg-success-dim text-success">+ {line}</span>)}
       </pre>
     </div>)}</div>}
     {logs && <div className="mt-3 space-y-2">
-      {!logs.items.length && <p className="text-stone-500">暂无运行记录</p>}
-      {logs.items.map(item => <div key={item.seq} className="rounded bg-stone-50 p-2">
+      {!logs.items.length && <p className="text-text-muted">暂无运行记录</p>}
+      {logs.items.map(item => <div key={item.seq} className="rounded bg-bg p-2">
         <b>{item.action} · {item.state}</b><span className="ml-2">{new Date(item.startedAt).toLocaleString()}</span>
-        <div className="text-stone-500">{item.revision?.slice(0, 12) ?? '版本未确定'}{item.finishedAt === null ? '' : ` · ${item.finishedAt - item.startedAt} ms`}{item.errorCode ? ` · ${item.errorCode}` : ''}</div>
+        <div className="text-text-muted">{item.revision?.slice(0, 12) ?? '版本未确定'}{item.finishedAt === null ? '' : ` · ${item.finishedAt - item.startedAt} ms`}{item.errorCode ? ` · ${item.errorCode}` : ''}</div>
       </div>)}
       {logs.hasMore && logs.nextCursor !== null && <button disabled={busy} onClick={() => void run(async () => { const page = await api.logs(id, logs.nextCursor!); setLogs({ ...page, items: [...logs.items, ...page.items] }) })}>加载更早记录</button>}
     </div>}

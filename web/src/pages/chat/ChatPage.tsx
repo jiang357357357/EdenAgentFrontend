@@ -1,4 +1,6 @@
-import { RuntimeDiagnostics } from '../../components/chat/RuntimeDiagnostics'
+import { pageEnterMotion } from "../../lib/page-motion"
+import { RuntimeDiagnostics } from "../../components/chat/RuntimeDiagnostics"
+import { BackgroundControls } from "../../components/chat/BackgroundControls"
 import { SubagentPanel } from "../../components/chat/SubagentPanel"
 import { Move, File, Lock, LockOpen, MessageSquare, X } from "lucide-react"
 import { motion } from "motion/react"
@@ -25,6 +27,8 @@ import { readWorkspaceFile, type WorkspaceEntry, type WorkspaceFileContent } fro
 import { messageGroupPosition, messageRenderKey } from "../../lib/message-grouping"
 import { buildRunReviewIndex } from "../../lib/run-review"
 import { getStoredRuntimeOrigin } from "../../lib/runtime-origin"
+import type { BackgroundPreference } from "../../lib/use-background-preference"
+import type { AppearancePreference } from "../../lib/use-appearance-preference"
 import { cn } from "../../lib/utils"
 import type {
   PendingPermission,
@@ -34,17 +38,6 @@ import type {
   Session,
   SubagentThreadDetails,
 } from "../../types"
-
-const fullScreenMotion = {
-  initial: { opacity: 0, x: -18, filter: "blur(3px)" },
-  animate: { opacity: 1, x: 0, filter: "blur(0px)" },
-  exit: { opacity: 0, x: -26, filter: "blur(3px)" },
-}
-
-const screenTransition = {
-  duration: 0.28,
-  ease: [0.16, 1, 0.3, 1],
-} as const
 
 const VISIBLE_CONVERSATION_TURNS = 10
 const CONVERSATION_TURN_STEP = 5
@@ -76,6 +69,15 @@ interface ChatPageProps {
   autoScrollReady?: boolean
   autoScrollEnabled: boolean
   onAutoScrollChange: (enabled: boolean) => void
+  backgroundPreference: BackgroundPreference
+  backgroundImageUrl?: string
+  backgroundReady: boolean
+  backgroundUploading: boolean
+  onBackgroundChange: (value: BackgroundPreference) => void
+  onBackgroundImageSelect: (file: File) => Promise<void>
+  appearancePreference: AppearancePreference
+  appearanceReady: boolean
+  onAppearanceChange: (value: AppearancePreference) => void
   onLoadOlderMessages: () => Promise<void>
   onSelectSession: (id: string) => void
   onDeleteSession: (id: string) => Promise<void>
@@ -120,6 +122,15 @@ export function ChatPage({
   autoScrollReady = true,
   autoScrollEnabled,
   onAutoScrollChange,
+  backgroundPreference,
+  backgroundImageUrl,
+  backgroundReady,
+  backgroundUploading,
+  onBackgroundChange,
+  onBackgroundImageSelect,
+  appearancePreference,
+  appearanceReady,
+  onAppearanceChange,
   onLoadOlderMessages,
   onSelectSession,
   onDeleteSession,
@@ -170,10 +181,14 @@ export function ChatPage({
   const messageAnchorRefs = useRef(new Map<string, HTMLSpanElement>())
   const windowScrollAdjustmentRef = useRef<{ anchorID: string; viewportTop: number } | undefined>(undefined)
   const [characterEditing, setCharacterEditing] = useState(false)
-  useEffect(() => { setCharacterEditing(false) }, [assistant?.character?.id])
+  useEffect(() => {
+    setCharacterEditing(false)
+  }, [assistant?.character?.id])
   useEffect(() => {
     if (!characterEditing) return
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setCharacterEditing(false) }
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setCharacterEditing(false)
+    }
     window.addEventListener("keydown", close)
     return () => window.removeEventListener("keydown", close)
   }, [characterEditing])
@@ -206,10 +221,7 @@ export function ChatPage({
         ? Math.max(0, visibleTurnStart - CONVERSATION_TURN_STEP)
         : Math.min(latestWindowStart, visibleTurnStart + CONVERSATION_TURN_STEP)
     if (nextStart === visibleTurnStart) return false
-    const anchorID =
-      direction === "older"
-        ? renderedMessages[0]?.id
-        : messages[turnStarts[nextStart]]?.id
+    const anchorID = direction === "older" ? renderedMessages[0]?.id : messages[turnStarts[nextStart]]?.id
     const anchor = anchorID ? messageAnchorRefs.current.get(anchorID) : undefined
     if (anchorID && anchor) {
       windowScrollAdjustmentRef.current = { anchorID, viewportTop: anchor.getBoundingClientRect().top }
@@ -331,9 +343,8 @@ export function ChatPage({
   const contextTokenEstimate = activeSession?.contextTokens ?? visibleTokenEstimate
   const localTTSConfigId = getStoredRuntimeOrigin() === "local" ? 0 : undefined
   const localSTTConfigId = getStoredRuntimeOrigin() === "local" ? 0 : undefined
-  const soloTTSConfigId = participantCount === 1
-    ? activeSession?.participants?.[0]?.ttsConfigID ?? localTTSConfigId
-    : undefined
+  const soloTTSConfigId =
+    participantCount === 1 ? (activeSession?.participants?.[0]?.ttsConfigID ?? localTTSConfigId) : undefined
   const messageSpeechSegments = (message?: MessageData): SpeechSegment[] => {
     if (!message) return []
     if (message.segments?.length) {
@@ -401,10 +412,7 @@ export function ChatPage({
     }
   }
   const activeSpeechMessages = useMemo(
-    () =>
-      messages
-        .slice(Math.max(lastUserMessageIndex + 1, 0))
-        .filter((message) => message.role === "assistant"),
+    () => messages.slice(Math.max(lastUserMessageIndex + 1, 0)).filter((message) => message.role === "assistant"),
     [lastUserMessageIndex, messages],
   )
   const activeSpeechSegments = useMemo(
@@ -453,9 +461,18 @@ export function ChatPage({
   return (
     <motion.div
       key="chat-with-character"
-      {...fullScreenMotion}
-      transition={screenTransition}
-      className="fixed inset-0 z-10 flex h-[100vh] w-[100vw] overflow-hidden bg-bg font-sans text-text"
+      {...pageEnterMotion}
+      className="theme-page fixed inset-0 z-10 flex h-[100vh] w-[100vw] overflow-hidden bg-bg interface-background interface-dark font-sans text-text"
+      style={
+        {
+          "--interface-background-opacity": backgroundPreference.opacity / 100,
+          "--interface-background-blur": `${backgroundPreference.blur}px`,
+          "--interface-component-font-scale": appearancePreference.componentFontScale / 100,
+          "--interface-component-font-delta": `${(appearancePreference.componentFontScale - 100) / 10}px`,
+          "--interface-chat-font-delta": `${(appearancePreference.chatFontScale - 100) / 10}px`,
+          ...(backgroundImageUrl ? { "--interface-background-image": `url(${backgroundImageUrl})` } : {}),
+        } as React.CSSProperties
+      }
     >
       <Sidebar
         sessions={sessions}
@@ -489,102 +506,130 @@ export function ChatPage({
         )}
       >
         {openSessionIds.length || openFiles.length ? (
-          <div className="flex h-10 min-w-0 border-b border-border bg-bg">
-            <div
-              className="flex min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
-              role="tablist"
-              aria-label="工作标签"
-            >
-            {openSessionIds.map((sessionId) => {
-              const session = sessions.find((item) => item.id === sessionId)
-              if (!session) return null
-              const tabKey = `session:${sessionId}`
-              const active = activeTab === tabKey
-              return (
-                <div
-                  key={tabKey}
-                  className={cn(
-                    "group flex h-10 min-w-[9rem] max-w-[15rem] shrink-0 items-center border-r border-border",
-                    active && "border-t-2 border-t-accent bg-card",
-                  )}
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => {
-                      setActiveTab(tabKey)
-                      onSelectSession(sessionId)
-                    }}
-                    className="flex min-w-0 flex-1 items-center gap-2 px-3 text-sm text-text-muted hover:text-text"
-                    title={session.title}
+          <div className="flex h-10 min-w-0 border-b border-border bg-bg/80">
+            <div className="flex min-w-0 flex-1 overflow-x-auto overflow-y-hidden" role="tablist" aria-label="工作标签">
+              {openSessionIds.map((sessionId) => {
+                const session = sessions.find((item) => item.id === sessionId)
+                if (!session) return null
+                const tabKey = `session:${sessionId}`
+                const active = activeTab === tabKey
+                return (
+                  <div
+                    key={tabKey}
+                    className={cn(
+                      "group flex h-10 min-w-[9rem] max-w-[15rem] shrink-0 items-center border-r border-border",
+                      active && "border-t-2 border-t-accent bg-card",
+                    )}
                   >
-                    <MessageSquare className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{session.title}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => closeWorkspaceSession(sessionId)}
-                    className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted opacity-60 hover:bg-bg hover:text-text group-hover:opacity-100"
-                    aria-label={`关闭会话标签 ${session.title}`}
-                    title="关闭标签"
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => {
+                        setActiveTab(tabKey)
+                        onSelectSession(sessionId)
+                      }}
+                      className="flex min-w-0 flex-1 items-center gap-2 px-3 text-sm text-text-muted hover:text-text"
+                      title={session.title}
+                    >
+                      <MessageSquare className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{session.title}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => closeWorkspaceSession(sessionId)}
+                      className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted opacity-60 hover:bg-bg hover:text-text group-hover:opacity-100"
+                      aria-label={`关闭会话标签 ${session.title}`}
+                      title="关闭标签"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )
+              })}
+              {openFiles.map((file) => {
+                const tabKey = `file:${file.path}`
+                const active = activeTab === tabKey
+                return (
+                  <div
+                    key={tabKey}
+                    className={cn(
+                      "group flex h-10 min-w-[9rem] max-w-[15rem] shrink-0 items-center border-r border-border",
+                      active && "border-t-2 border-t-accent bg-card",
+                    )}
                   >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              )
-            })}
-            {openFiles.map((file) => {
-              const tabKey = `file:${file.path}`
-              const active = activeTab === tabKey
-              return (
-                <div
-                  key={tabKey}
-                  className={cn(
-                    "group flex h-10 min-w-[9rem] max-w-[15rem] shrink-0 items-center border-r border-border",
-                    active && "border-t-2 border-t-accent bg-card",
-                  )}
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => setActiveTab(tabKey)}
-                    className="flex min-w-0 flex-1 items-center gap-2 px-3 text-sm text-text-muted hover:text-text"
-                    title={file.path}
-                  >
-                    <File className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{file.name}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => closeWorkspaceFile(file.path)}
-                    className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted opacity-60 hover:bg-bg hover:text-text group-hover:opacity-100"
-                    aria-label={`关闭 ${file.name}`}
-                    title="关闭"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              )
-            })}
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setActiveTab(tabKey)}
+                      className="flex min-w-0 flex-1 items-center gap-2 px-3 text-sm text-text-muted hover:text-text"
+                      title={file.path}
+                    >
+                      <File className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{file.name}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => closeWorkspaceFile(file.path)}
+                      className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted opacity-60 hover:bg-bg hover:text-text group-hover:opacity-100"
+                      aria-label={`关闭 ${file.name}`}
+                      title="关闭"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )
+              })}
             </div>
-            <div className="ml-auto flex h-10 shrink-0 items-center bg-bg px-1.5">
-              {activeSessionId && !activeFile && <MemoryCandidatesPanel key={`memory-${activeSessionId}`} sessionId={activeSessionId} />}
-              {activeSessionId && !activeFile && <SubagentPanel key={`subagents-${activeSessionId}`} sessionId={activeSessionId} />}
-              <button type="button" onClick={() => setCharacterEditing(value => !value)}
-                aria-pressed={characterEditing} aria-label="调整角色位置" title={characterEditing ? "结束调整角色位置（Esc）" : "调整角色位置和大小"}
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${characterEditing ? "bg-accent/10 text-accent" : "text-text-muted hover:bg-bg hover:text-text"}`}>
+            <div className="ml-auto flex h-10 shrink-0 items-center bg-bg/80 px-1.5">
+              {activeSessionId && !activeFile && (
+                <MemoryCandidatesPanel key={`memory-${activeSessionId}`} sessionId={activeSessionId} />
+              )}
+              {activeSessionId && !activeFile && (
+                <SubagentPanel key={`subagents-${activeSessionId}`} sessionId={activeSessionId} />
+              )}
+              <button
+                type="button"
+                onClick={() => setCharacterEditing((value) => !value)}
+                aria-pressed={characterEditing}
+                aria-label="调整角色位置"
+                title={characterEditing ? "结束调整角色位置（Esc）" : "调整角色位置和大小"}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${characterEditing ? "bg-accent/10 text-accent" : "text-text-muted hover:bg-bg hover:text-text"}`}
+              >
                 <Move className="h-4 w-4" />
               </button>
-              {activeSessionId && !activeFile && <RuntimeDiagnostics key={`diagnostics-${activeSessionId}`} iconOnly sessions={sessions} activeSessionId={activeSessionId} />}
+              {activeSessionId && !activeFile && (
+                <RuntimeDiagnostics
+                  key={`diagnostics-${activeSessionId}`}
+                  iconOnly
+                  sessions={sessions}
+                  activeSessionId={activeSessionId}
+                />
+              )}
+              <BackgroundControls
+                value={backgroundPreference}
+                ready={backgroundReady}
+                uploading={backgroundUploading}
+                appearance={appearancePreference}
+                appearanceReady={appearanceReady}
+                onChange={onBackgroundChange}
+                onAppearanceChange={onAppearanceChange}
+                onSelectImage={onBackgroundImageSelect}
+              />
               <button
                 type="button"
                 onClick={() => onAutoScrollChange(!autoScrollEnabled)}
                 disabled={Boolean(activeFile) || !autoScrollReady}
                 aria-pressed={autoScrollEnabled}
                 aria-label={autoScrollEnabled ? "关闭新消息自动滚动" : "开启新消息自动滚动"}
-                title={activeFile ? "文件标签不使用自动滚动" : autoScrollEnabled ? "新消息自动滚动：开启" : "新消息自动滚动：关闭"}
+                title={
+                  activeFile
+                    ? "文件标签不使用自动滚动"
+                    : autoScrollEnabled
+                      ? "新消息自动滚动：开启"
+                      : "新消息自动滚动：关闭"
+                }
                 className={cn(
                   "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
                   autoScrollEnabled && !activeFile
@@ -606,7 +651,7 @@ export function ChatPage({
             {fileLoadingPath === activeFile.path ? (
               <div className="p-6 text-sm text-text-muted">正在读取文件…</div>
             ) : fileError ? (
-              <div className="p-6 text-sm text-red-600">{fileError}</div>
+              <div className="p-6 text-sm text-danger">{fileError}</div>
             ) : activeFileContent?.truncated ? (
               <div className="p-6 text-sm text-text-muted">文件超过 1 MB，暂不在编辑区预览。</div>
             ) : activeFileContent?.binary ? (
@@ -626,7 +671,6 @@ export function ChatPage({
                 const element = event.currentTarget
                 if (windowScrollAdjustmentRef.current) return
                 if (element.scrollTop <= 96) {
-                  if (autoScrollEnabled) onAutoScrollChange(false)
                   if (moveConversationWindow("older")) return
                   if (activeSession?.hasMoreMessages && !activeSession.loadingOlderMessages) {
                     // Pin the current first turn before the reducer prepends the
@@ -647,18 +691,27 @@ export function ChatPage({
             >
               <div className="mx-auto w-[95%] px-[1vw]">
                 {runtimeError ? (
-                  <div role="alert" className="my-3 flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <div
+                    role="alert"
+                    className="my-3 flex items-center justify-between gap-4 rounded-lg border border-warning/30 bg-warning-dim p-3 text-sm text-warning"
+                  >
                     <span>操作未完成：{runtimeError}</span>
                     {activeSessionId && /会话助手（ID：.+）已不在 Mon Core 中/.test(runtimeError) ? (
-                      <button type="button" onClick={onOpenSessionAssistantSwitcher}
-                        className="shrink-0 rounded-md border border-amber-300 bg-white px-3 py-1.5 font-medium text-amber-800 hover:bg-amber-100">
+                      <button
+                        type="button"
+                        onClick={onOpenSessionAssistantSwitcher}
+                        className="shrink-0 rounded-md border border-warning/30 bg-card px-3 py-1.5 font-medium text-warning hover:bg-warning-dim"
+                      >
                         重新选择助手
                       </button>
                     ) : null}
                   </div>
                 ) : null}
                 {activeSession?.modelRetry ? (
-                  <div role="status" className="my-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800">
+                  <div
+                    role="status"
+                    className="my-3 rounded-lg border border-accent/30 bg-accent-dim p-3 text-sm text-accent"
+                  >
                     模型连接中断，正在重试（{activeSession.modelRetry.attempt}/{activeSession.modelRetry.maxAttempts}）
                   </div>
                 ) : null}
@@ -692,7 +745,9 @@ export function ChatPage({
                   </div>
                 ) : (
                   <div className="min-h-full py-[4vh]">
-                    {(visibleTurnStart > 0 || activeSession?.hasMoreMessages || activeSession?.loadingOlderMessages) && (
+                    {(visibleTurnStart > 0 ||
+                      activeSession?.hasMoreMessages ||
+                      activeSession?.loadingOlderMessages) && (
                       <div
                         className="flex h-[4.5vh] items-center justify-center text-[1.45vh] text-text-muted"
                         role="status"
@@ -824,9 +879,13 @@ export function ChatPage({
                   onPermissionModeChange={onPermissionModeChange}
                   voiceInputEnabled={petSettings.voiceInputEnabled}
                   audioInputDeviceId={petSettings.audioInputDeviceId}
-                  sttConfigId={participantCount === 1
-                    ? activeSession?.participants?.[0]?.sttConfigID ?? assistant?.character?.stt_config_id ?? localSTTConfigId
-                    : assistant?.character?.stt_config_id ?? localSTTConfigId}
+                  sttConfigId={
+                    participantCount === 1
+                      ? (activeSession?.participants?.[0]?.sttConfigID ??
+                        assistant?.character?.stt_config_id ??
+                        localSTTConfigId)
+                      : (assistant?.character?.stt_config_id ?? localSTTConfigId)
+                  }
                   halfDuplexOutputActive={taskRunning || speech.autoPlaybackPending}
                   contextTokenEstimate={contextTokenEstimate}
                   tokenBreakdown={activeSession?.tokenBreakdown}
@@ -841,7 +900,7 @@ export function ChatPage({
 
       {activePendingPermissions.length > 0 && typeof document !== "undefined"
         ? createPortal(
-            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 p-4 backdrop-blur-[2px]">
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-scrim/35 p-4 backdrop-blur-[2px]">
               <div className="grid max-h-[80vh] w-full max-w-2xl gap-3 overflow-y-auto">
                 {activePendingPermissions.map((request) => (
                   <PermissionRequestCard
@@ -857,7 +916,12 @@ export function ChatPage({
           )
         : null}
 
-      <CharacterPanel editing={characterEditing} assistant={assistant} assistantError={assistantError} activeAction={activeCharacterAction} />
+      <CharacterPanel
+        editing={characterEditing}
+        assistant={assistant}
+        assistantError={assistantError}
+        activeAction={activeCharacterAction}
+      />
     </motion.div>
   )
 }

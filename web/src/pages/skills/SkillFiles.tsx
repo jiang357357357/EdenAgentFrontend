@@ -46,7 +46,7 @@ export function SkillFiles({ skill, files }: { skill: InstalledSkill; files: str
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
   return <details className="mt-3">
-    <summary className="cursor-pointer text-stone-600">查看支持文件（{files.length}）</summary>
+    <summary className="cursor-pointer text-text-muted">查看支持文件（{files.length}）</summary>
     <label className="mt-2 block">文件
       <select value={selected} onChange={event => setSelected(event.target.value)} className="ml-2 max-w-full rounded border p-1">
         <option value="">选择文件</option>
@@ -54,12 +54,12 @@ export function SkillFiles({ skill, files }: { skill: InstalledSkill; files: str
       </select>
     </label>
     {loading && <p className="mt-2">正在读取…</p>}
-    {error && <p role="alert" className="mt-2 text-red-700">{error}</p>}
+    {error && <p role="alert" className="mt-2 text-danger">{error}</p>}
     {preview && <div className="mt-2">
-      <div className="flex gap-3"><span>{preview.bytes.byteLength} 字节</span><button type="button" onClick={download} className="text-amber-700">下载原文件</button></div>
-      {preview.text === null ? <p className="mt-2 text-stone-500">此文件不支持文本预览。</p> : <>
+      <div className="flex gap-3"><span>{preview.bytes.byteLength} 字节</span><button type="button" onClick={download} className="text-warning">下载原文件</button></div>
+      {preview.text === null ? <p className="mt-2 text-text-muted">此文件不支持文本预览。</p> : <>
         <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words">{preview.text.slice(0, 65536)}</pre>
-        {preview.text.length > 65536 && <p className="text-stone-500">仅展示前 65536 个字符，下载可查看完整文件。</p>}
+        {preview.text.length > 65536 && <p className="text-text-muted">仅展示前 65536 个字符，下载可查看完整文件。</p>}
       </>}
     </div>}
   </details>

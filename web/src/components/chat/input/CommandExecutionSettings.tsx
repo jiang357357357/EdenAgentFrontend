@@ -32,7 +32,7 @@ function ScopedCommandExecutionSettings() {
     <section className="border-t border-current/15 px-3 py-3 text-xs" aria-label="终端执行边界">
       <p className="mb-2 font-medium">终端执行边界 · {origin === 'mon' ? '伊甸园' : '尘世'}</p>
       {loading && <p role="status">正在检查终端…</p>}
-      {error && <p role="alert" className="mb-2 text-red-500">{error}</p>}
+      {error && <p role="alert" className="mb-2 text-danger">{error}</p>}
       {!loading && !current && (
         <button type="button" className="underline" onClick={() => setReload((value) => value + 1)}>重新读取</button>
       )}

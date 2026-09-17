@@ -1,3 +1,4 @@
+import { pageEnterMotion } from "../../lib/page-motion"
 import {
   ArrowLeft,
   Bot,
@@ -34,12 +35,6 @@ import {
 } from "../../lib/auth"
 import { hasAssistantDetail } from "../../lib/assistant-detail"
 import { cn } from "../../lib/utils"
-
-const pageMotion = {
-  initial: { opacity: 0, x: 18, filter: "blur(3px)" },
-  animate: { opacity: 1, x: 0, filter: "blur(0px)" },
-  exit: { opacity: 0, x: 24, filter: "blur(3px)" },
-}
 
 const transition = {
   duration: 0.28,
@@ -184,7 +179,7 @@ function AssistantAvatar({ assistant, className }: { assistant: CoreAssistant; c
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#ded8d0] bg-[#fffaf3] text-accent",
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-card text-accent",
         className,
       )}
       aria-hidden="true"
@@ -221,28 +216,28 @@ function AssistantRow({
       onClick={onSelect}
       className={cn(
         "group relative flex min-h-[8.8vh] w-full items-center gap-[1.1vw] px-[1.35vw] py-[1.15vh] text-left outline-none transition-colors",
-        selected ? "bg-[#fff2df]" : "hover:bg-[#f9f4ec] focus-visible:bg-[#f9f4ec]",
+        selected ? "bg-accent-dim" : "hover:bg-surface-hover focus-visible:bg-surface-hover",
       )}
     >
       {selected ? <span className="absolute inset-y-0 left-0 w-[0.22vw] min-w-[3px] bg-accent" /> : null}
       <AssistantAvatar assistant={assistant} className="h-[6.2vh] w-[6.2vh]" />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-[0.65vw]">
-          <span className="truncate text-[2.1vh] font-medium text-[#302b27]">{assistantName(assistant)}</span>
+          <span className="truncate text-[2.1vh] font-medium text-text">{assistantName(assistant)}</span>
           {current ? (
-            <span className="shrink-0 rounded-[0.35vh] bg-[#fff0dc] px-[0.5vw] py-[0.2vh] text-[1.38vh] text-accent">
+            <span className="shrink-0 rounded-[0.35vh] bg-accent-dim px-[0.5vw] py-[0.2vh] text-[1.38vh] text-accent">
               当前助手
             </span>
           ) : null}
         </span>
-        <span className="mt-[0.42vh] block truncate text-[1.65vh] text-[#8a8179]">
+        <span className="mt-[0.42vh] block truncate text-[1.65vh] text-text-muted">
           {assistantSignature(assistant)}
         </span>
       </span>
       {multi ? (
         <span className={cn(
           "flex h-[2.7vh] w-[2.7vh] shrink-0 items-center justify-center rounded-full border",
-          checked ? "border-accent bg-accent text-white" : "border-[#d8d1c9] bg-white/70 text-transparent",
+          checked ? "border-accent bg-accent text-on-accent" : "border-border bg-card/70 text-transparent",
         )}>
           <Check className="h-[1.7vh] w-[1.7vh]" strokeWidth={2.3} />
         </span>
@@ -571,9 +566,8 @@ export function AssistantSwitcherPage({
   return (
     <motion.div
       key="assistant-switcher"
-      {...pageMotion}
-      transition={transition}
-      className="fixed inset-0 z-20 flex h-[100vh] w-[100vw] flex-col overflow-hidden bg-[#fbfaf7] font-sans text-[#2d2926]"
+      {...pageEnterMotion}
+      className="theme-page fixed inset-0 z-20 flex h-[100vh] w-[100vw] flex-col overflow-hidden bg-bg font-sans text-text"
     >
       <img
         src={paperTexture}
@@ -583,13 +577,13 @@ export function AssistantSwitcherPage({
         draggable={false}
       />
       <div className="relative z-10 flex min-h-0 flex-1">
-      <aside className="flex h-full w-[28vw] min-w-[270px] max-w-[34vw] flex-none flex-col border-r border-[#e2ddd7] bg-[#fffefa]/84 backdrop-blur-[2px]">
+      <aside className="flex h-full w-[28vw] min-w-[270px] max-w-[34vw] flex-none flex-col border-r border-border bg-card/84 backdrop-blur-[2px]">
         <div className="shrink-0 px-[2.15vw] pb-[1.7vh] pt-[3.2vh]">
           <div className="flex items-center gap-[1.15vw]">
             <button
               type="button"
               onClick={onBack}
-              className="flex h-[4.7vh] w-[4.7vh] items-center justify-center rounded-[0.65vh] text-[#6f6a65] outline-none transition-colors hover:bg-[#f5efe7] hover:text-[#2d2926] focus-visible:ring-2 focus-visible:ring-accent/45"
+              className="flex h-[4.7vh] w-[4.7vh] items-center justify-center rounded-[0.65vh] text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text focus-visible:ring-2 focus-visible:ring-accent/45"
               aria-label="返回"
             >
               <ArrowLeft className="h-[2.65vh] w-[2.65vh]" strokeWidth={1.8} />
@@ -598,13 +592,13 @@ export function AssistantSwitcherPage({
               {mode === "participants" ? "会话参与者" : "切换助手"}
             </h1>
           </div>
-          <label className="mt-[2.2vh] flex h-[4.9vh] items-center gap-[0.7vw] rounded-[0.7vh] border border-[#ddd7d0] bg-white/75 px-[1vw] text-[#8d857e] transition-colors focus-within:border-accent/60 focus-within:bg-white focus-within:ring-2 focus-within:ring-accent/10">
+          <label className="mt-[2.2vh] flex h-[4.9vh] items-center gap-[0.7vw] rounded-[0.7vh] border border-border bg-card/75 px-[1vw] text-text-muted transition-colors focus-within:border-accent/60 focus-within:bg-card focus-within:ring-2 focus-within:ring-accent/10">
             <Search className="h-[2vh] w-[2vh] shrink-0" strokeWidth={1.8} />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索助手名称或描述"
-              className="min-w-0 flex-1 bg-transparent text-[1.48vh] text-[#3e3935] outline-none placeholder:text-[#aaa39c]"
+              className="min-w-0 flex-1 bg-transparent text-[1.48vh] text-text outline-none placeholder:text-text-muted"
               aria-label="搜索助手"
             />
           </label>
@@ -612,17 +606,17 @@ export function AssistantSwitcherPage({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-[1.45vw] pb-[2vh]">
           {loading ? (
-            <div className="flex h-[28vh] items-center justify-center gap-[0.8vw] text-[1.5vh] text-[#8a8179]">
+            <div className="flex h-[28vh] items-center justify-center gap-[0.8vw] text-[1.5vh] text-text-muted">
               <LoaderCircle className="h-[2.2vh] w-[2.2vh] animate-spin text-accent" />
               正在读取助手名册…
             </div>
           ) : filteredAssistants.length === 0 ? (
-            <div className="px-[1vw] py-[5vh] text-center text-[1.5vh] leading-relaxed text-[#8a8179]">
+            <div className="px-[1vw] py-[5vh] text-center text-[1.5vh] leading-relaxed text-text-muted">
               没有找到匹配的助手
             </div>
           ) : (
             <section aria-labelledby="all-assistants-title">
-              <h2 id="all-assistants-title" className="px-[0.8vw] pb-[0.8vh] text-[1.72vh] font-medium text-[#777069]">
+              <h2 id="all-assistants-title" className="px-[0.8vw] pb-[0.8vh] text-[1.72vh] font-medium text-text-muted">
                 全部助手
               </h2>
               <div role="listbox" aria-label="全部助手" className="overflow-hidden rounded-[0.55vh]">
@@ -654,7 +648,7 @@ export function AssistantSwitcherPage({
       </aside>
 
       <main className="relative min-w-0 flex-1 overflow-hidden">
-        <header className="absolute inset-x-0 top-0 z-20 flex h-[8.2vh] items-center justify-end border-b border-[#e2ddd7] bg-[#fffefa]/72 px-[2.6vw] backdrop-blur-[3px]">
+        <header className="absolute inset-x-0 top-0 z-20 flex h-[8.2vh] items-center justify-end border-b border-border bg-card/72 px-[2.6vw] backdrop-blur-[3px]">
           {selectedAssistant ? (
             <button
               type="button"
@@ -668,8 +662,8 @@ export function AssistantSwitcherPage({
               className={cn(
                 "flex h-[4.8vh] min-w-[10.5vw] items-center justify-center rounded-[0.62vh] px-[1.35vw] text-[1.62vh] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2",
                 mode !== "participants" && ((selectedIsCurrent && !appearanceDirty) || !selectedVisualReady)
-                  ? "cursor-default border border-[#e1dbd4] bg-[#f4f0eb] text-[#8b837c]"
-                  : "bg-accent text-white shadow-[0_0.25vh_0.7vh_rgba(180,95,0,0.16)] hover:bg-[#c86e05] active:bg-[#b86204]",
+                  ? "cursor-default border border-border bg-bg text-text-muted"
+                  : "bg-accent text-on-accent shadow-[0_0.25vh_0.7vh_color-mix(in_srgb,var(--color-accent)_16%,transparent)] hover:bg-accent-hover active:bg-accent-active",
               )}
             >
               {switchingId === selectedAssistant.id ? (
@@ -695,30 +689,30 @@ export function AssistantSwitcherPage({
         {selectedAssistant ? (
           <div className="relative h-full">
             <section className="relative z-10 w-[560px] max-w-[48vw] pb-[5vh] pl-[4vw] pt-[13.2vh]">
-              <h2 className="font-serif text-[4.8vh] font-semibold leading-none tracking-[-0.025em] text-[#24201e]">
+              <h2 className="font-serif text-[4.8vh] font-semibold leading-none tracking-[-0.025em] text-text">
                 {assistantName(selectedAssistant)}
               </h2>
               <p
-                className="mt-[2vh] max-w-[46vw] truncate text-[2.15vh] leading-[1.7] text-[#49423d]"
+                className="mt-[2vh] max-w-[46vw] truncate text-[2.15vh] leading-[1.7] text-text"
                 title={assistantSignature(selectedAssistant)}
               >
                 {assistantSignature(selectedAssistant)}
               </p>
 
-              <dl className="mt-[4.6vh] max-w-[43vw] border-y border-[#e5dfd8]" style={{ width: 390 }}>
-                <div className="grid min-h-[8.4vh] grid-cols-[2.75vh_9vw_minmax(0,1fr)] items-center gap-[1.15vw] border-b border-[#e5dfd8]">
-                  <Smile className="h-[2.65vh] w-[2.65vh] text-[#777069]" strokeWidth={1.7} />
-                  <dt className="text-[1.82vh] text-[#746d66]">角色性格</dt>
-                  <dd className="truncate text-[1.9vh] text-[#4c4641]">{personalitySummary(selectedAssistant)}</dd>
+              <dl className="mt-[4.6vh] max-w-[43vw] border-y border-border" style={{ width: 390 }}>
+                <div className="grid min-h-[8.4vh] grid-cols-[2.75vh_9vw_minmax(0,1fr)] items-center gap-[1.15vw] border-b border-border">
+                  <Smile className="h-[2.65vh] w-[2.65vh] text-text-muted" strokeWidth={1.7} />
+                  <dt className="text-[1.82vh] text-text-muted">角色性格</dt>
+                  <dd className="truncate text-[1.9vh] text-text">{personalitySummary(selectedAssistant)}</dd>
                 </div>
-                <div className="grid min-h-[8.4vh] grid-cols-[2.75vh_9vw_minmax(0,1fr)] items-center gap-[1.15vw] border-b border-[#e5dfd8]">
-                  <Sparkles className="h-[2.65vh] w-[2.65vh] text-[#777069]" strokeWidth={1.7} />
-                  <dt className="text-[1.82vh] text-[#746d66]">当前模型</dt>
-                  <dd className="truncate text-[1.9vh] text-[#4c4641]">{modelLabel(selectedAssistant)}</dd>
+                <div className="grid min-h-[8.4vh] grid-cols-[2.75vh_9vw_minmax(0,1fr)] items-center gap-[1.15vw] border-b border-border">
+                  <Sparkles className="h-[2.65vh] w-[2.65vh] text-text-muted" strokeWidth={1.7} />
+                  <dt className="text-[1.82vh] text-text-muted">当前模型</dt>
+                  <dd className="truncate text-[1.9vh] text-text">{modelLabel(selectedAssistant)}</dd>
                 </div>
                 <div className="grid min-h-[9.4vh] grid-cols-[2.75vh_9vw_minmax(0,1fr)] items-center gap-[1.15vw]">
-                  <BriefcaseBusiness className="h-[2.65vh] w-[2.65vh] text-[#777069]" strokeWidth={1.7} />
-                  <dt className="text-[1.82vh] text-[#746d66]">可用能力</dt>
+                  <BriefcaseBusiness className="h-[2.65vh] w-[2.65vh] text-text-muted" strokeWidth={1.7} />
+                  <dt className="text-[1.82vh] text-text-muted">可用能力</dt>
                   <dd className="flex items-center gap-[0.75vw]">
                     {[
                       { label: "文件", icon: FileText },
@@ -729,7 +723,7 @@ export function AssistantSwitcherPage({
                       return (
                         <span
                           key={capability.label}
-                          className="flex h-[4.7vh] items-center gap-[0.5vw] rounded-[0.65vh] border border-[#ddd7d0] bg-white/55 px-[0.9vw] text-[1.62vh] text-[#56504a]"
+                          className="flex h-[4.7vh] items-center gap-[0.5vw] rounded-[0.65vh] border border-border bg-card/55 px-[0.9vw] text-[1.62vh] text-text"
                         >
                           <Icon className="h-[2.05vh] w-[2.05vh]" strokeWidth={1.7} />
                           {capability.label}
@@ -743,17 +737,17 @@ export function AssistantSwitcherPage({
               {showAppearanceControls ? (
                 <section className="mt-[3.2vh] w-[34vw] max-w-[560px]" aria-labelledby="appearance-settings-title">
                   <div className="flex items-center justify-between">
-                    <h3 id="appearance-settings-title" className="flex items-center gap-[0.55vw] text-[1.72vh] font-medium text-[#4d4742]">
-                      <Shirt className="h-[2vh] w-[2vh] text-[#777069]" strokeWidth={1.7} />
+                    <h3 id="appearance-settings-title" className="flex items-center gap-[0.55vw] text-[1.72vh] font-medium text-text">
+                      <Shirt className="h-[2vh] w-[2vh] text-text-muted" strokeWidth={1.7} />
                       外观设置
                     </h3>
-                    <span className="text-[1.35vh] text-[#958c84]">
+                    <span className="text-[1.35vh] text-text-muted">
                       当前：{selectedAppearance.costume?.name ?? "默认服装"} · {selectedAppearance.layout === "memory-lobby" ? "记忆大厅" : "普通立绘"}
                     </span>
                   </div>
 
                   <div className="mt-[1.2vh] grid grid-cols-2 gap-[1vw]">
-                    <label className="grid gap-[0.55vh] text-[1.42vh] text-[#756e67]">
+                    <label className="grid gap-[0.55vh] text-[1.42vh] text-text-muted">
                       服装
                       <select
                         value={String(selectedAppearance.costumeId ?? "")}
@@ -771,7 +765,7 @@ export function AssistantSwitcherPage({
                           )
                           setNotice(undefined)
                         }}
-                        className="h-[4.6vh] w-full rounded-[0.65vh] border border-[#ded8d0] bg-white/75 px-[0.8vw] text-[1.52vh] text-[#4d4640] outline-none transition-colors hover:border-[#c9c0b7] focus:border-accent/60 focus:ring-2 focus:ring-accent/10"
+                        className="h-[4.6vh] w-full rounded-[0.65vh] border border-border bg-card/75 px-[0.8vw] text-[1.52vh] text-text outline-none transition-colors hover:border-border focus:border-accent/60 focus:ring-2 focus:ring-accent/10"
                         aria-label="选择服装"
                       >
                         {selectedCostumes.map((costume) => (
@@ -782,7 +776,7 @@ export function AssistantSwitcherPage({
                       </select>
                     </label>
 
-                    <label className="grid gap-[0.55vh] text-[1.42vh] text-[#756e67]">
+                    <label className="grid gap-[0.55vh] text-[1.42vh] text-text-muted">
                       展示模式
                       <select
                         value={selectedAppearance.layout}
@@ -794,7 +788,7 @@ export function AssistantSwitcherPage({
                           )
                           setNotice(undefined)
                         }}
-                        className="h-[4.6vh] w-full rounded-[0.65vh] border border-[#ded8d0] bg-white/75 px-[0.8vw] text-[1.52vh] text-[#4d4640] outline-none transition-colors hover:border-[#c9c0b7] focus:border-accent/60 focus:ring-2 focus:ring-accent/10"
+                        className="h-[4.6vh] w-full rounded-[0.65vh] border border-border bg-card/75 px-[0.8vw] text-[1.52vh] text-text outline-none transition-colors hover:border-border focus:border-accent/60 focus:ring-2 focus:ring-accent/10"
                         aria-label="选择展示模式"
                       >
                         <option value="standee" disabled={!selectedCostumeLayouts.includes("standee")}>普通立绘</option>
@@ -805,7 +799,7 @@ export function AssistantSwitcherPage({
                 </section>
               ) : null}
 
-              <div className={cn("flex items-center gap-[0.65vw] text-[1.5vh] text-[#817970]", showAppearanceControls ? "mt-[2.8vh]" : "mt-[5.2vh]") }>
+              <div className={cn("flex items-center gap-[0.65vw] text-[1.5vh] text-text-muted", showAppearanceControls ? "mt-[2.8vh]" : "mt-[5.2vh]") }>
                 <ShieldCheck className="h-[1.95vh] w-[1.95vh]" strokeWidth={1.7} />
                 {mode === "participants"
                   ? `已选择 ${selectedIds.length} 位助手；历史消息会保留各自说话人身份`
@@ -814,7 +808,7 @@ export function AssistantSwitcherPage({
 
               {notice ? (
                 <div
-                  className="mt-[2vh] max-w-[39vw] rounded-[0.6vh] border border-emerald-200 bg-emerald-50/80 px-[1vw] py-[1vh] text-[1.4vh] text-emerald-700"
+                  className="mt-[2vh] max-w-[39vw] rounded-[0.6vh] border border-success/30 bg-success-dim px-[1vw] py-[1vh] text-[1.4vh] text-success"
                   style={{ width: 310 }}
                   role="status"
                 >
@@ -823,7 +817,7 @@ export function AssistantSwitcherPage({
               ) : null}
               {error ? (
                 <div
-                  className="mt-[2vh] max-w-[39vw] rounded-[0.6vh] border border-red-200 bg-red-50/80 px-[1vw] py-[1vh] text-[1.4vh] text-red-700"
+                  className="mt-[2vh] max-w-[39vw] rounded-[0.6vh] border border-danger/30 bg-danger-dim px-[1vw] py-[1vh] text-[1.4vh] text-danger"
                   style={{ width: 310 }}
                   role="alert"
                 >
@@ -848,7 +842,7 @@ export function AssistantSwitcherPage({
                     }}
                     transition={transition}
                     aria-hidden={!isVisible}
-                    className="absolute inset-0 h-full w-full drop-shadow-[0_1.2vh_1.2vh_rgba(73,58,45,0.08)]"
+                    className="absolute inset-0 h-full w-full drop-shadow-[0_1.2vh_1.2vh_color-mix(in_srgb,var(--color-scrim)_8%,transparent)]"
                     style={{ zIndex: isDisplayed ? 2 : 0 }}
                   >
                     <CharacterVisualRenderer
@@ -870,7 +864,7 @@ export function AssistantSwitcherPage({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: visualTransitionPhase === "leaving" ? 0 : 1 }}
                   transition={transition}
-                  className="mb-[15vh] flex flex-col items-center gap-[1.3vh] text-[#938a82]"
+                  className="mb-[15vh] flex flex-col items-center gap-[1.3vh] text-text-muted"
                 >
                   <Bot className="h-[7vh] w-[7vh]" strokeWidth={1.3} />
                   <span className="text-[1.5vh]">尚未配置角色立绘</span>
@@ -882,7 +876,7 @@ export function AssistantSwitcherPage({
             </figure>
           </div>
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-[1.5vh] text-[#847b73]">
+          <div className="flex h-full flex-col items-center justify-center gap-[1.5vh] text-text-muted">
             {loading ? <LoaderCircle className="h-[3.4vh] w-[3.4vh] animate-spin text-accent" /> : <Bot className="h-[4.5vh] w-[4.5vh]" />}
             <p className="text-[1.7vh]">{loading ? "正在读取助手名册…" : error || "还没有可用的助手"}</p>
           </div>

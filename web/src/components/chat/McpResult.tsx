@@ -41,12 +41,12 @@ export function McpResult({ sessionId, operationId, state }: { sessionId: string
   return <div className="mt-2">
     <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}>{open ? '收起结果' : '查看已保存结果'}</button>
     {open && <div className="mt-2 space-y-2">
-      {error && <p role="alert" className="text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-danger">{error}</p>}
       {view && !view.parts.length && <p>此操作尚无已保存结果。</p>}
       {view?.parts.map(part => <div key={part.index} className="rounded border p-2">
         <p>{part.kind}{part.mimeType ? ` · ${part.mimeType}` : ''}</p>
         {part.text !== null && <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs">{part.text}</pre>}
-        {part.truncated && <p className="text-xs text-stone-500">预览已截断，可下载完整内容。</p>}
+        {part.truncated && <p className="text-xs text-text-muted">预览已截断，可下载完整内容。</p>}
         <button type="button" disabled={busy} onClick={() => void download(part.index)}>下载内容</button>
         {part.binary && part.mimeType && /^(audio\/(wav|x-wav|mpeg|ogg|webm|mp4)|image\/(png|jpeg|gif|webp))$/.test(part.mimeType)
           && <button type="button" className="ml-3" disabled={busy} onClick={() => void download(part.index, true)}>预览媒体</button>}

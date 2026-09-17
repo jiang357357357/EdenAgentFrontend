@@ -26,23 +26,23 @@ export function SkillManagement({ skill, onChanged }: { skill: InstalledSkill; o
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
     finally { setBusy(false) }
   }
-  return <div className="mt-4 rounded-xl border border-stone-200 bg-white p-3 text-xs">
+  return <div className="mt-4 rounded-xl border border-border bg-card p-3 text-xs">
     <div className="flex flex-wrap items-center gap-3">
-      <button type="button" disabled={busy} onClick={() => void change(false)} className="text-amber-700 disabled:opacity-50">
+      <button type="button" disabled={busy} onClick={() => void change(false)} className="text-warning disabled:opacity-50">
         {skill.enabled ? '停用技能' : '启用技能'}
       </button>
-      <button type="button" disabled={busy || skill.builtin || skill.discovered} onClick={() => setConfirmDelete(true)} className="text-red-700 disabled:opacity-50">卸载</button>
+      <button type="button" disabled={busy || skill.builtin || skill.discovered} onClick={() => setConfirmDelete(true)} className="text-danger disabled:opacity-50">卸载</button>
     </div>
-    {(skill.builtin || skill.discovered) && <p className="mt-2 text-stone-500">目录发现的技能可在当前世界停用；移除时需调整源目录。</p>}
+    {(skill.builtin || skill.discovered) && <p className="mt-2 text-text-muted">目录发现的技能可在当前世界停用；移除时需调整源目录。</p>}
     {confirmDelete && <div className="mt-3 space-x-3">
       <span>卸载“{skill.displayName || skill.skillName}”？</span>
-      <button type="button" disabled={busy} onClick={() => void change(true)} className="text-red-700">确认卸载</button>
+      <button type="button" disabled={busy} onClick={() => void change(true)} className="text-danger">确认卸载</button>
       <button type="button" disabled={busy} onClick={() => setConfirmDelete(false)}>取消</button>
     </div>}
-    {error && <p role="alert" className="mt-2 text-red-700">{error}</p>}
+    {error && <p role="alert" className="mt-2 text-danger">{error}</p>}
     <details className="mt-3">
-      <summary className="cursor-pointer text-stone-600">查看技能说明</summary>
-      <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words text-stone-600">{content || '暂无正文'}</pre>
+      <summary className="cursor-pointer text-text-muted">查看技能说明</summary>
+      <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words text-text-muted">{content || '暂无正文'}</pre>
     </details>
     <SkillFiles key={`${skill.id}:${skill.contentHash}:${skill.workspaceRoot}`} skill={skill} files={files} />
   </div>

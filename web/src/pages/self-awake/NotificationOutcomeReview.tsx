@@ -30,6 +30,6 @@ export function NotificationOutcomeReview({ runId }: { runId: string }) {
       <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我已核对原记录并确认此处置。</label>
       <button disabled={busy || !confirmed || !note.trim()} onClick={() => void resolve()} className="my-2 rounded border px-2 py-1">保存核对结果</button>
     </>}
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
   </details>
 }

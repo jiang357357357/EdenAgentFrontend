@@ -45,6 +45,6 @@ export function SubagentModelRestore({ agentId, onSaved }: { agentId: string; on
       <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我确认此模型归属与选择，可用于该旧任务的后续恢复。</label>
       <button disabled={busy || !confirmed || !note.trim()} onClick={() => void apply()} className="mt-2 rounded border px-2 py-1">保存模型恢复确认</button>
       <p>此操作保存待激活配置，不调用模型，不重开会话或重发任务。</p></>}
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
   </details>
 }

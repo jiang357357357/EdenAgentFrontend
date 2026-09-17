@@ -41,7 +41,7 @@ export function AdjustableCharacterView({ storageKey, editing, children, nativeT
     <div className="absolute inset-0" style={nativeTransform ? undefined : { transform: `translate(${placement.x * 100}%, ${placement.y * 100}%) scale(${placement.scale})`, transformOrigin: '50% 50%' }}>
       <CharacterPlacementContext.Provider value={nativeTransform ? placement : null}>{children}</CharacterPlacementContext.Provider>
     </div>
-    {storageError ? <p role="alert" className="absolute bottom-3 left-3 right-3 z-30 rounded border border-red-200 bg-card p-2 text-sm text-red-600">{storageError}</p> : null}
+    {storageError ? <p role="alert" className="absolute bottom-3 left-3 right-3 z-30 rounded border border-danger/30 bg-card p-2 text-sm text-danger">{storageError}</p> : null}
     {editing ? <>
       <div ref={overlay} className="absolute inset-0 z-20 cursor-move touch-none select-none" aria-label="拖动角色，滚轮缩放"
         onPointerDown={event => {

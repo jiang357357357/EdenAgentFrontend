@@ -276,6 +276,7 @@ export type ApiSelfAwakeRun = {
   mood: string
   current_desire: string
   should_interrupt_user: boolean
+  next_wake_job_state?: string | null
   next_wake_at?: string | null
   next_wake_after_minutes?: number | null
   next_wake_reason: string
@@ -332,6 +333,7 @@ export type ApiMemoInput = {
   priority?: ApiMemoPriority
   remind_at?: string | null
   due_at?: string | null
+  snoozed_until?: string | null
   repeat_rule?: string
   metadata?: Record<string, unknown>
 }
@@ -1738,13 +1740,11 @@ function mapSelfAwakeRunForView(run: SelfAwakeRunInfo): ApiSelfAwakeRun {
   const trigger = recordValue(request.trigger)
   const environment = recordValue(request.environment)
   const decision = recordValue(run.decision)
-  const nextWake = recordValue(decision.next_wake)
+  const plan = run.scheduledWake
   const author = recordValue(run.authorSnapshot)
-  const afterMinutes = typeof nextWake.after_minutes === "number" ? nextWake.after_minutes : undefined
+  const afterMinutes = plan ? Math.max(0, Math.round((plan.dueAt - plan.createdAt) / 60_000)) : undefined
   const completedAt = epochIso(run.completedAt)
-  const nextWakeAt = afterMinutes === undefined || !completedAt
-    ? undefined
-    : new Date(Date.parse(completedAt) + afterMinutes * 60_000).toISOString()
+  const nextWakeAt = plan ? epochIso(plan.dueAt) : undefined
   const actionType = optionalText(decision.action)
   const actionPayload = recordValue(decision.action_payload)
   const actionMessage = optionalText(actionPayload.message)
@@ -1778,9 +1778,10 @@ function mapSelfAwakeRunForView(run: SelfAwakeRunInfo): ApiSelfAwakeRun {
     mood: optionalText(decision.mood) ?? "",
     current_desire: optionalText(decision.current_desire) ?? "",
     should_interrupt_user: decision.should_interrupt_user === true,
+    next_wake_job_state: plan?.state ?? null,
     next_wake_at: nextWakeAt ?? null,
     next_wake_after_minutes: afterMinutes ?? null,
-    next_wake_reason: optionalText(nextWake.reason) ?? "",
+    next_wake_reason: plan?.reason ?? "",
     error: run.lastError ?? "",
     created_at: epochIso(run.createdAt),
     updated_at: epochIso(run.updatedAt),
@@ -1830,6 +1831,7 @@ export async function createMemo(input: ApiMemoInput) {
     kind: input.kind ?? "note", status: input.status ?? "active", priority: input.priority ?? "normal",
     ...(input.remind_at ? { remindAt: Date.parse(input.remind_at) } : {}),
     ...(input.due_at ? { dueAt: Date.parse(input.due_at) } : {}),
+    ...(input.snoozed_until ? { snoozedUntil: Date.parse(input.snoozed_until) } : {}),
     repeatRule: input.repeat_rule ?? "", relatedSessionId: "", metadata: (input.metadata ?? {}) as JsonValue }))
   return mapMemoForView(memo) as ApiMemo
 }
@@ -1843,6 +1845,7 @@ export async function updateMemo(id: number, input: Partial<ApiMemoInput>) {
   if (input.priority !== undefined) patch.priority = input.priority
   if (input.remind_at !== undefined) patch.remindAt = input.remind_at ? Date.parse(input.remind_at) : null
   if (input.due_at !== undefined) patch.dueAt = input.due_at ? Date.parse(input.due_at) : null
+  if (input.snoozed_until !== undefined) patch.snoozedUntil = input.snoozed_until ? Date.parse(input.snoozed_until) : null
   if (input.repeat_rule !== undefined) patch.repeatRule = input.repeat_rule
   if (input.metadata !== undefined) patch.metadata = input.metadata as JsonValue
   return mapMemoForView(await rpcRequest("memo.update", { id, patch: memoPatchSchema.parse(patch) })) as ApiMemo

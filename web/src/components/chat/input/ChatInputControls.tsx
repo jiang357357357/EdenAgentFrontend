@@ -10,7 +10,6 @@ export function SendButton({
   canSend,
   disabled,
   dialogMode,
-  overlay,
   onSend,
 }: {
   canSend: boolean
@@ -30,11 +29,9 @@ export function SendButton({
       disabled={!enabled}
       className={cn(
         "flex h-[5.2vh] w-[5.2vh] flex-shrink-0 items-center justify-center rounded-full shadow-none transition-[background-color,color,opacity] disabled:cursor-not-allowed",
-        overlay
-          ? "bg-stone-300/70 text-stone-800 hover:bg-stone-200 disabled:bg-stone-300/50 disabled:text-stone-700/70"
-          : enabled
-            ? "bg-accent text-white hover:bg-[#c66d05]"
-            : "bg-stone-200/75 text-text-muted/60",
+        enabled
+          ? "bg-accent text-on-accent hover:bg-accent-hover"
+          : "bg-surface-disabled text-text-disabled",
       )}
       aria-label="发送"
       title="发送"
@@ -54,8 +51,8 @@ export function StopButton({ overlay, onStop }: { overlay: boolean; onStop: () =
       className={cn(
         "flex h-[5.2vh] w-[5.2vh] flex-shrink-0 items-center justify-center rounded-full transition-colors",
         overlay
-          ? "bg-stone-200/80 text-stone-800 hover:bg-stone-100"
-          : "bg-stone-200/85 text-stone-700 hover:bg-stone-300/85",
+          ? "bg-surface-disabled/80 text-text hover:bg-surface-hover"
+          : "bg-surface-hover text-text hover:bg-border",
       )}
       aria-label="停止生成"
       title="停止生成"
@@ -101,7 +98,7 @@ export function TokenMeter({
         type="button"
         className={cn(
           "relative flex h-[6vh] w-[6vh] items-center justify-center rounded-full bg-card text-[1.8vh] font-medium tabular-nums outline-none transition-transform hover:scale-[1.04] focus-visible:scale-[1.04]",
-          warning ? "text-red-600" : "text-text-muted",
+          warning ? "text-danger" : "text-text-muted",
         )}
         aria-label={`上下文占用约 ${Math.round(contextPercent)}%，${authoritativeContextTokens} tokens，上限 ${contextWindow}；本次待发送输入约 ${inputTokens} tokens`}
         onDoubleClick={() => setContextOpen(true)}
@@ -114,7 +111,7 @@ export function TokenMeter({
         <Circle
           className={cn(
             "absolute inset-[0.15vh] h-[calc(100%-0.3vh)] w-[calc(100%-0.3vh)] -rotate-90",
-            warning ? "text-red-500" : "text-accent",
+            warning ? "text-danger" : "text-accent",
           )}
           strokeWidth={2.15}
           strokeDasharray={`${contextArcLength} 64`}
@@ -180,8 +177,8 @@ export function TokenMeter({
           <strong className="font-medium tabular-nums">{formatTokenCount(contextWindow)}</strong>
           {contextOverage > 0 && (
             <>
-              <span className="text-red-600">超出预算</span>
-              <strong className="font-medium tabular-nums text-red-600">+{formatTokenCount(contextOverage)}</strong>
+              <span className="text-danger">超出预算</span>
+              <strong className="font-medium tabular-nums text-danger">+{formatTokenCount(contextOverage)}</strong>
             </>
           )}
         </span>
@@ -236,12 +233,13 @@ export function VoiceLevelWaveform({ level, active }: { level: number; active: b
         context.beginPath()
         context.moveTo(0, centerY)
         context.lineTo(width, centerY)
-        context.strokeStyle = "rgba(217, 119, 6, 0.28)"
+        context.strokeStyle = getComputedStyle(canvas).getPropertyValue("--color-accent").trim()
+        context.globalAlpha = 0.28
         context.lineWidth = Math.max(1, ratio * 0.8)
         context.stroke()
 
         const slot = width / history.length
-        context.strokeStyle = "rgba(217, 119, 6, 0.92)"
+        context.globalAlpha = 0.92
         context.lineWidth = Math.max(1, slot * 0.32)
         context.lineCap = "round"
         history.forEach((sample, index) => {
@@ -253,6 +251,7 @@ export function VoiceLevelWaveform({ level, active }: { level: number; active: b
           context.lineTo(x, centerY + halfHeight)
           context.stroke()
         })
+        context.globalAlpha = 1
       }
       if (shouldContinue()) animationFrame = window.requestAnimationFrame(draw)
       else animationFrame = 0

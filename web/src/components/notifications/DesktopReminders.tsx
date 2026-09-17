@@ -42,7 +42,7 @@ export function DesktopReminders({ origin }: { origin: RuntimeOrigin }) {
   }
   if (!items.length) return null
   return <aside aria-label="角色提醒" className="fixed bottom-5 right-5 z-[90] flex max-h-[70vh] w-80 flex-col gap-3 overflow-auto">
-    {error && <p role="alert" className="rounded-lg bg-bg p-2 text-sm text-red-500">{error}</p>}
+    {error && <p role="alert" className="rounded-lg bg-bg p-2 text-sm text-danger">{error}</p>}
     {items.slice(0, 3).map(item => <section key={item.id} className="rounded-xl border border-border bg-bg p-4 text-text shadow-xl">
       <h2 className="font-medium">{item.title}</h2>
       <p className="mt-2 whitespace-pre-wrap break-words text-sm">{item.message}</p>

@@ -1,10 +1,12 @@
-import { cancellableSpeechRequest } from './cancellable-speech-request'
-import { compactionMessage, compactionCommandMessage } from './compaction-message'
+import { getStoredToken } from "./auth"
+import { cancellableSpeechRequest } from "./cancellable-speech-request"
+import { compactionMessage, compactionCommandMessage } from "./compaction-message"
 import { modelContextUsage } from "./model-context-usage"
-import { EdenAgentRpcClient } from './rpc-client'
-import { uploadAttachmentBatch } from './attachment-upload'
-import { initializeResultSchema, rpcNotifications } from '@eden/api'
-import type { MemoInfo } from '@eden/api'
+import { EdenAgentRpcClient } from "./rpc-client"
+import { uploadAttachmentBatch } from "./attachment-upload"
+import { uploadBlob } from "./blob-upload"
+import { initializeResultSchema, rpcNotifications } from "@eden/api"
+import type { MemoInfo } from "@eden/api"
 import { blobReference } from "./blob-reference"
 import {
   EDEN_AGENT_TOKEN_PROTOCOL_PREFIX,
@@ -12,7 +14,7 @@ import {
   type AttachmentRef,
 } from "../generated/eden-agent-rpc"
 import { getStoredRuntimeOrigin, getRuntimeOriginRevision } from "./runtime-origin"
-import type { SessionEventInput as SessionEvent } from './session-event'
+import type { SessionEventInput as SessionEvent } from "./session-event"
 import type { ObjectUrlScope } from "./object-url-scope"
 import type {
   CompanionDirectorExecution,
@@ -32,17 +34,19 @@ import type {
   SessionParticipant,
 } from "./agent-client"
 
-const env = (import.meta as unknown as {
-  env?: {
-    DEV?: boolean
-    VITE_EDEN_AGENT_BASE_URL?: string
-    VITE_EDEN_AGENT_CAPABILITY_TOKEN?: string
-    VITE_EDEN_AGENT_MON_BASE_URL?: string
-    VITE_EDEN_AGENT_LOCAL_BASE_URL?: string
-    VITE_EDEN_AGENT_MON_CAPABILITY_TOKEN?: string
-    VITE_EDEN_AGENT_LOCAL_CAPABILITY_TOKEN?: string
+const env = (
+  import.meta as unknown as {
+    env?: {
+      DEV?: boolean
+      VITE_EDEN_AGENT_BASE_URL?: string
+      VITE_EDEN_AGENT_CAPABILITY_TOKEN?: string
+      VITE_EDEN_AGENT_MON_BASE_URL?: string
+      VITE_EDEN_AGENT_LOCAL_BASE_URL?: string
+      VITE_EDEN_AGENT_MON_CAPABILITY_TOKEN?: string
+      VITE_EDEN_AGENT_LOCAL_CAPABILITY_TOKEN?: string
+    }
   }
-}).env
+).env
 
 type RuntimeOrigin = "mon" | "local"
 const desktopBaseUrls: Partial<Record<RuntimeOrigin, string>> = {}
@@ -52,9 +56,10 @@ function currentRuntimeOrigin(): RuntimeOrigin {
 }
 
 export function agentHttpBaseUrl(origin: RuntimeOrigin = currentRuntimeOrigin()): string {
-  const configured = origin === "local"
-    ? env?.VITE_EDEN_AGENT_LOCAL_BASE_URL
-    : env?.VITE_EDEN_AGENT_MON_BASE_URL ?? env?.VITE_EDEN_AGENT_BASE_URL
+  const configured =
+    origin === "local"
+      ? env?.VITE_EDEN_AGENT_LOCAL_BASE_URL
+      : (env?.VITE_EDEN_AGENT_MON_BASE_URL ?? env?.VITE_EDEN_AGENT_BASE_URL)
   const fallback = origin === "local" ? "http://127.0.0.1:40093" : "http://127.0.0.1:40092"
   return (configured ?? desktopBaseUrls[origin] ?? fallback).replace(/\/$/, "")
 }
@@ -68,13 +73,29 @@ let connectedRevision = -1
 let connectingRevision = -1
 const eventListeners = new Set<(event: SessionEvent) => void>()
 const statusListeners = new Set<(connected: boolean, error?: string) => void>()
+function closeAccountConnection() {
+  connectionGeneration++
+  client?.close()
+  client = undefined
+  connection = undefined
+  connectedOrigin = undefined
+  connectingOrigin = undefined
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("edenagent:account-changed", closeAccountConnection)
+  window.addEventListener("storage", (event) => {
+    if (event.key === null || event.key === "agent.auth_token") closeAccountConnection()
+  })
+}
 const reconnectInitialDelayMs = 500
 const reconnectMaxDelayMs = 10_000
 
 async function capabilityToken(origin: RuntimeOrigin = currentRuntimeOrigin()): Promise<string> {
-  const configured = (origin === "local"
-    ? env?.VITE_EDEN_AGENT_LOCAL_CAPABILITY_TOKEN
-    : env?.VITE_EDEN_AGENT_MON_CAPABILITY_TOKEN ?? env?.VITE_EDEN_AGENT_CAPABILITY_TOKEN)?.trim()
+  const configured = (
+    origin === "local"
+      ? env?.VITE_EDEN_AGENT_LOCAL_CAPABILITY_TOKEN
+      : (env?.VITE_EDEN_AGENT_MON_CAPABILITY_TOKEN ?? env?.VITE_EDEN_AGENT_CAPABILITY_TOKEN)
+  )?.trim()
   if (configured) return configured
   const desktop = await window.edenAgentDesktop?.getAgentCapability?.(origin)
   if (desktop?.token) {
@@ -107,15 +128,28 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
     const next = new EdenAgentRpcClient()
     try {
       const token = await capabilityToken(requestedOrigin)
-      if (revision !== getRuntimeOriginRevision()) throw new Error("World changed while resolving connection capability")
+      if (revision !== getRuntimeOriginRevision())
+        throw new Error("World changed while resolving connection capability")
       const websocketUrl = `${agentHttpBaseUrl(requestedOrigin).replace(/^http/, "ws")}/rpc`
-      const initialized = initializeResultSchema.parse(await next.connect(websocketUrl, token, "dev", requestedOrigin))
+      const initialized = initializeResultSchema.parse(
+        await next.connect(
+          websocketUrl,
+          token,
+          "dev",
+          requestedOrigin,
+          requestedOrigin === "mon" ? (getStoredToken() ?? undefined) : undefined,
+        ),
+      )
       if (initialized.runtimeOrigin !== requestedOrigin) {
         throw new Error(
           `Eden Agent runtime origin mismatch: requested ${requestedOrigin}, received ${initialized.runtimeOrigin}`,
         )
       }
-      if (generation !== connectionGeneration || revision !== getRuntimeOriginRevision() || currentRuntimeOrigin() !== requestedOrigin) {
+      if (
+        generation !== connectionGeneration ||
+        revision !== getRuntimeOriginRevision() ||
+        currentRuntimeOrigin() !== requestedOrigin
+      ) {
         throw new Error("Eden Agent runtime changed while the connection was initializing")
       }
     } catch (error) {
@@ -124,9 +158,13 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
     }
     const lastSequences = new Map<string, bigint>()
     next.on("session.event", (raw) => {
-      if (client !== next || revision !== getRuntimeOriginRevision() || currentRuntimeOrigin() !== requestedOrigin) return
-      const parsed = rpcNotifications['session.event'].safeParse(raw)
-      if (!parsed.success) { next.close(); return }
+      if (client !== next || revision !== getRuntimeOriginRevision() || currentRuntimeOrigin() !== requestedOrigin)
+        return
+      const parsed = rpcNotifications["session.event"].safeParse(raw)
+      if (!parsed.success) {
+        next.close()
+        return
+      }
       const event = parsed.data
       const sequence = BigInt(event.seq)
       const previous = lastSequences.get(event.sessionId)
@@ -143,8 +181,9 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
       for (const listener of eventListeners) listener(event)
     })
     next.on("server.warning", (raw) => {
-      if (client !== next || revision !== getRuntimeOriginRevision() || currentRuntimeOrigin() !== requestedOrigin) return
-      const parsed = rpcNotifications['server.warning'].safeParse(raw)
+      if (client !== next || revision !== getRuntimeOriginRevision() || currentRuntimeOrigin() !== requestedOrigin)
+        return
+      const parsed = rpcNotifications["server.warning"].safeParse(raw)
       if (!parsed.success || parsed.data.code === "event_stream_lagged") next.close()
     })
     next.onClose(() => {
@@ -182,12 +221,25 @@ export async function rpcRequest<K extends keyof RpcMethodMap>(
   return rpcRequestForOrigin(currentRuntimeOrigin(), method, params)
 }
 
-export async function rpcRequestForOrigin<K extends keyof RpcMethodMap>(origin: RuntimeOrigin, method: K, params: RpcMethodMap[K]["params"], revision = getRuntimeOriginRevision()): Promise<RpcMethodMap[K]["result"]> {
-  if (currentRuntimeOrigin() !== origin || getRuntimeOriginRevision() !== revision) throw new Error("当前世界已切换，请重新打开")
+export async function rpcRequestForOrigin<K extends keyof RpcMethodMap>(
+  origin: RuntimeOrigin,
+  method: K,
+  params: RpcMethodMap[K]["params"],
+  revision = getRuntimeOriginRevision(),
+): Promise<RpcMethodMap[K]["result"]> {
+  if (currentRuntimeOrigin() !== origin || getRuntimeOriginRevision() !== revision)
+    throw new Error("当前世界已切换，请重新打开")
   const current = await connectedClient()
-  if (currentRuntimeOrigin() !== origin || getRuntimeOriginRevision() !== revision || connectedOrigin !== origin || current !== client) throw new Error("当前世界已切换，请重新打开")
+  if (
+    currentRuntimeOrigin() !== origin ||
+    getRuntimeOriginRevision() !== revision ||
+    connectedOrigin !== origin ||
+    current !== client
+  )
+    throw new Error("当前世界已切换，请重新打开")
   const result = await requestWithContract(current, method, params)
-  if (currentRuntimeOrigin() !== origin || getRuntimeOriginRevision() !== revision || current !== client) throw new Error("世界切换前的请求结果未确认，请刷新后核对，勿自动重试")
+  if (currentRuntimeOrigin() !== origin || getRuntimeOriginRevision() !== revision || current !== client)
+    throw new Error("世界切换前的请求结果未确认，请刷新后核对，勿自动重试")
   return result
 }
 
@@ -215,13 +267,32 @@ export async function createRealtimeSttSocket(sessionId: string): Promise<WebSoc
   const origin = currentRuntimeOrigin()
   const revision = getRuntimeOriginRevision()
   const token = await capabilityToken(origin)
-  if (currentRuntimeOrigin() !== origin || getRuntimeOriginRevision() !== revision) throw new Error('World changed while opening realtime speech')
+  if (currentRuntimeOrigin() !== origin || getRuntimeOriginRevision() !== revision)
+    throw new Error("World changed while opening realtime speech")
   const url = new URL(`${agentHttpBaseUrl(origin).replace(/^http/, "ws")}/voice/stt/realtime`)
   url.searchParams.set("session_id", sessionId)
-  return new WebSocket(url, [
+  const socket = new WebSocket(url, [
     EDEN_AGENT_WEBSOCKET_PROTOCOL,
     `${EDEN_AGENT_TOKEN_PROTOCOL_PREFIX}${token}`,
+    ...(origin === "mon"
+      ? [
+          `eden-core.${btoa(getStoredToken() ?? "")
+            .replaceAll("+", "-")
+            .replaceAll("/", "_")
+            .replaceAll("=", "")}`,
+        ]
+      : []),
   ])
+  const changed = () => {
+    if (revision !== getRuntimeOriginRevision()) socket.close()
+  }
+  window.addEventListener("edenagent:account-changed", changed)
+  window.addEventListener("storage", changed)
+  socket.addEventListener("close", () => {
+    window.removeEventListener("edenagent:account-changed", changed)
+    window.removeEventListener("storage", changed)
+  })
+  return socket
 }
 
 export function resolveVoiceBlobUrl(blobId: string, scope: ObjectUrlScope): Promise<string> {
@@ -230,18 +301,25 @@ export function resolveVoiceBlobUrl(blobId: string, scope: ObjectUrlScope): Prom
 
 export function resolveRuntimeBlobUrl(blobId: string, origin: "mon" | "local", scope: ObjectUrlScope): Promise<string> {
   if (origin !== currentRuntimeOrigin()) return Promise.reject(new Error("Attachment belongs to another world"))
-  const cacheKey = `${origin}:${blobId}`
+  const revision = getRuntimeOriginRevision()
+  const cacheKey = `${origin}:${revision}:${blobId}`
   return scope.resolve(cacheKey, async (signal) => {
-    if (origin !== currentRuntimeOrigin()) throw new Error("Attachment belongs to another world")
+    if (origin !== currentRuntimeOrigin() || revision !== getRuntimeOriginRevision())
+      throw new Error("Attachment belongs to another account or world")
     const token = await capabilityToken(origin)
-    if (origin !== currentRuntimeOrigin()) throw new Error("World changed while loading attachment")
+    if (origin !== currentRuntimeOrigin() || revision !== getRuntimeOriginRevision())
+      throw new Error("Account or world changed while loading attachment")
     const response = await fetch(`${agentHttpBaseUrl(origin)}/blobs/${encodeURIComponent(blobId)}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(origin === "mon" ? { "x-eden-core-token": getStoredToken() ?? "" } : {}),
+      },
       signal,
     })
     if (!response.ok) throw new Error(`Unable to read attachment: ${response.status}`)
     const blob = await response.blob()
-    if (origin !== currentRuntimeOrigin()) throw new Error("World changed while loading attachment")
+    if (origin !== currentRuntimeOrigin() || revision !== getRuntimeOriginRevision())
+      throw new Error("Account or world changed while loading attachment")
     return blob
   })
 }
@@ -279,7 +357,7 @@ export async function subscribeRpcEvents(
 
   const scheduleReconnect = () => {
     if (disposed || connected || reconnectTimer) return
-    const delay = Math.min(reconnectInitialDelayMs * (2 ** reconnectAttempt), reconnectMaxDelayMs)
+    const delay = Math.min(reconnectInitialDelayMs * 2 ** reconnectAttempt, reconnectMaxDelayMs)
     reconnectAttempt += 1
     reconnectTimer = setTimeout(() => {
       reconnectTimer = undefined
@@ -311,10 +389,27 @@ export async function subscribeRpcEvents(
 }
 
 export async function uploadAttachments(
-  attachments: Array<PromptAttachment | string>, signal?: AbortSignal,
+  attachments: Array<PromptAttachment | string>,
+  signal?: AbortSignal,
 ): Promise<AttachmentRef[]> {
   const origin = currentRuntimeOrigin()
   return uploadAttachmentBatch(attachments, origin, agentHttpBaseUrl(origin), () => capabilityToken(origin), signal)
+}
+
+export async function uploadRuntimeBlob(content: Blob, signal?: AbortSignal) {
+  const origin = currentRuntimeOrigin()
+  const revision = getRuntimeOriginRevision()
+  const token = await capabilityToken(origin)
+  if (origin !== currentRuntimeOrigin() || revision !== getRuntimeOriginRevision()) throw new Error("账号或世界已切换")
+  const result = await uploadBlob(
+    agentHttpBaseUrl(origin),
+    token,
+    content,
+    signal,
+    origin === "mon" ? (getStoredToken() ?? undefined) : undefined,
+  )
+  if (origin !== currentRuntimeOrigin() || revision !== getRuntimeOriginRevision()) throw new Error("账号或世界已切换")
+  return result
 }
 
 type JsonObject = Record<string, unknown>
@@ -328,20 +423,21 @@ function apiParticipants(value: unknown): SessionParticipant[] {
     if (assistantID === undefined) return []
     const profile = jsonObject(participant.profile)
     const character = jsonObject(profile?.character)
-    return [{
-      assistantID,
-      assistantName: optionalString(participant.assistantName) ?? "",
-      characterID: optionalID(participant.characterId ?? participant.characterID),
-      characterName: optionalString(participant.characterName),
-      signature: optionalString(participant.signature),
-      avatarUrl: optionalString(participant.avatarUrl),
-      standingImageUrl: optionalString(participant.standingImageUrl),
-      ttsConfigID: participant.ttsConfigId == null ? undefined : Number(participant.ttsConfigId),
-      sttConfigID: participant.sttConfigId == null
-        ? optionalNumber(character?.stt_config_id)
-        : Number(participant.sttConfigId),
-      position: optionalNumber(participant.position) ?? 0,
-    }]
+    return [
+      {
+        assistantID,
+        assistantName: optionalString(participant.assistantName) ?? "",
+        characterID: optionalID(participant.characterId ?? participant.characterID),
+        characterName: optionalString(participant.characterName),
+        signature: optionalString(participant.signature),
+        avatarUrl: optionalString(participant.avatarUrl),
+        standingImageUrl: optionalString(participant.standingImageUrl),
+        ttsConfigID: participant.ttsConfigId == null ? undefined : Number(participant.ttsConfigId),
+        sttConfigID:
+          participant.sttConfigId == null ? optionalNumber(character?.stt_config_id) : Number(participant.sttConfigId),
+        position: optionalNumber(participant.position) ?? 0,
+      },
+    ]
   })
 }
 
@@ -388,9 +484,7 @@ function apiTokenBreakdown(value: unknown): import("../types").TokenBreakdown {
 }
 
 function jsonObject(value: unknown): JsonObject | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as JsonObject
-    : undefined
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : undefined
 }
 
 function sessionEventMessage(event: SessionEvent): JsonObject | undefined {
@@ -483,7 +577,9 @@ function apiOrchestration(value: unknown): ApiOrchestration | undefined {
   const replyToBeat = orchestration.replyToBeat === null ? null : optionalNumber(orchestration.replyToBeat)
   return {
     ...(optionalString(orchestration.planID) ? { planID: optionalString(orchestration.planID) } : {}),
-    ...(optionalString(orchestration.directorSource) ? { directorSource: optionalString(orchestration.directorSource) } : {}),
+    ...(optionalString(orchestration.directorSource)
+      ? { directorSource: optionalString(orchestration.directorSource) }
+      : {}),
     ...(orchestration.directorDiagnostic === null
       ? { directorDiagnostic: null }
       : optionalString(orchestration.directorDiagnostic)
@@ -491,7 +587,9 @@ function apiOrchestration(value: unknown): ApiOrchestration | undefined {
         : {}),
     ...(scene ? { scene } : {}),
     ...(execution ? { execution } : {}),
-    ...(optionalNumber(orchestration.beatIndex) === undefined ? {} : { beatIndex: optionalNumber(orchestration.beatIndex) }),
+    ...(optionalNumber(orchestration.beatIndex) === undefined
+      ? {}
+      : { beatIndex: optionalNumber(orchestration.beatIndex) }),
     ...(optionalString(orchestration.speechAct) ? { speechAct: optionalString(orchestration.speechAct) } : {}),
     ...(optionalString(orchestration.addressTo) ? { addressTo: optionalString(orchestration.addressTo) } : {}),
     ...(replyToBeat === undefined ? {} : { replyToBeat }),
@@ -552,7 +650,17 @@ export function mapAgentThreadForView(value: unknown): SubagentThread | undefine
   const status = subagentStatus(agent?.status)
   const createdAt = optionalTimestamp(agent?.createdAt)
   const updatedAt = optionalTimestamp(agent?.updatedAt)
-  if (!agent || !id || !rootSessionID || !agentPath || !taskName || !role || !status || createdAt === undefined || updatedAt === undefined) {
+  if (
+    !agent ||
+    !id ||
+    !rootSessionID ||
+    !agentPath ||
+    !taskName ||
+    !role ||
+    !status ||
+    createdAt === undefined ||
+    updatedAt === undefined
+  ) {
     return undefined
   }
   const config = jsonObject(agent.config)
@@ -586,48 +694,68 @@ export function mapAgentThreadForView(value: unknown): SubagentThread | undefine
   }
 }
 
-function messageParts(
-  sessionID: string,
-  messageID: string,
-  message: JsonObject,
-  completedAt?: number,
-): ApiPart[] {
+function messageParts(sessionID: string, messageID: string, message: JsonObject, completedAt?: number): ApiPart[] {
   const rawContent = message.content
-  const blocks = typeof rawContent === "string"
-    ? [{ type: "text", text: rawContent }]
-    : Array.isArray(rawContent) ? rawContent.flatMap((block) => {
-        const object = jsonObject(block)
-        return object ? [object] : []
-      }) : []
+  const blocks =
+    typeof rawContent === "string"
+      ? [{ type: "text", text: rawContent }]
+      : Array.isArray(rawContent)
+        ? rawContent.flatMap((block) => {
+            const object = jsonObject(block)
+            return object ? [object] : []
+          })
+        : []
   return blocks.flatMap((block, index): ApiPart[] => {
     const id = `${messageID}-part-${index}`
     if (block.type === "text") {
-      return [{
-        id,
-        messageID,
-        sessionID,
-        type: "text",
-        text: String(block.text ?? ""),
-        ...(completedAt === undefined ? {} : { time: { end: completedAt } }),
-      }]
+      return [
+        {
+          id,
+          messageID,
+          sessionID,
+          type: "text",
+          text: String(block.text ?? ""),
+          ...(completedAt === undefined ? {} : { time: { end: completedAt } }),
+        },
+      ]
     }
     if (block.type === "thinking") {
-      return [{
-        id,
-        messageID,
-        sessionID,
-        type: "reasoning",
-        text: String(block.thinking ?? ""),
-        source: "model",
-        ...(completedAt === undefined ? {} : { time: { end: completedAt } }),
-      }]
+      return [
+        {
+          id,
+          messageID,
+          sessionID,
+          type: "reasoning",
+          text: String(block.thinking ?? ""),
+          source: "model",
+          ...(completedAt === undefined ? {} : { time: { end: completedAt } }),
+        },
+      ]
     }
     if (block.type === "image") {
-      return [{ id, messageID, sessionID, type: "file", mime: String(block.mimeType ?? "image/png"), url: `data:${String(block.mimeType ?? "image/png")};base64,${String(block.data ?? "")}` }]
+      return [
+        {
+          id,
+          messageID,
+          sessionID,
+          type: "file",
+          mime: String(block.mimeType ?? "image/png"),
+          url: `data:${String(block.mimeType ?? "image/png")};base64,${String(block.data ?? "")}`,
+        },
+      ]
     }
     if (block.type === "attachment" && typeof block.blobId === "string" && typeof block.mime === "string") {
-      return [{ id, messageID, sessionID, type: "file", mime: block.mime,
-        url: blobReference(currentRuntimeOrigin(), block.blobId), ...(typeof block.filename === "string" ? { filename: block.filename } : {}) }]
+      return [
+        {
+          id,
+          messageID,
+          sessionID,
+          type: "file",
+          mime: block.mime,
+          url: blobReference(currentRuntimeOrigin(), block.blobId),
+          ...(typeof block.filename === "string" ? { filename: block.filename } : {}),
+        },
+      ]
     }
     if (block.type === "sticker") {
       const stickerID = Number(block.stickerID ?? block.stickerId)
@@ -635,24 +763,32 @@ function messageParts(
       const name = optionalString(block.name)
       const url = optionalString(block.url)
       if (!Number.isFinite(stickerID) || !Number.isFinite(characterID) || !name || !url) return []
-      return [{
-        id,
-        messageID,
-        sessionID,
-        type: "sticker",
-        stickerID,
-        characterID,
-        name,
-        url,
-        ...(optionalString(block.mime) ? { mime: optionalString(block.mime) } : {}),
-        ...(optionalString(block.alt) ? { alt: optionalString(block.alt) } : {}),
-      }]
+      return [
+        {
+          id,
+          messageID,
+          sessionID,
+          type: "sticker",
+          stickerID,
+          characterID,
+          name,
+          url,
+          ...(optionalString(block.mime) ? { mime: optionalString(block.mime) } : {}),
+          ...(optionalString(block.alt) ? { alt: optionalString(block.alt) } : {}),
+        },
+      ]
     }
     if (block.type === "toolCall") {
-      return [{
-        id: String(block.id ?? id), messageID, sessionID, type: "tool", tool: String(block.name ?? "tool"),
-        state: { status: "running", input: block.arguments ?? {} },
-      }]
+      return [
+        {
+          id: String(block.id ?? id),
+          messageID,
+          sessionID,
+          type: "tool",
+          tool: String(block.name ?? "tool"),
+          state: { status: "running", input: block.arguments ?? {} },
+        },
+      ]
     }
     return []
   })
@@ -713,19 +849,20 @@ export function apiMessage(event: SessionEvent, messageID = sessionEventMessageI
   const turnID = event.turnId == null ? undefined : String(event.turnId)
   const speaker = apiSpeaker(message.speaker)
   const orchestration = apiOrchestration(message.orchestration)
-  const info: ApiMessageInfo = role === "user"
-    ? { id: messageID, role, ...(turnID ? { turnID } : {}), time: { created } }
-    : {
-        id: messageID,
-        role,
-        ...(turnID ? { turnID } : {}),
-        modelID: optionalString(message.model) ?? "",
-        providerID: optionalString(message.provider) ?? "",
-        ...(speaker ? { speaker } : {}),
-        ...(orchestration ? { orchestration } : {}),
-        time: { created, completed: event.eventType.endsWith("message_end") ? Number(event.createdAt) : undefined },
-        ...(message.errorMessage ? { error: { message: modelFailureMessage(String(message.errorMessage)) } } : {}),
-      }
+  const info: ApiMessageInfo =
+    role === "user"
+      ? { id: messageID, role, ...(turnID ? { turnID } : {}), time: { created } }
+      : {
+          id: messageID,
+          role,
+          ...(turnID ? { turnID } : {}),
+          modelID: optionalString(message.model) ?? "",
+          providerID: optionalString(message.provider) ?? "",
+          ...(speaker ? { speaker } : {}),
+          ...(orchestration ? { orchestration } : {}),
+          time: { created, completed: event.eventType.endsWith("message_end") ? Number(event.createdAt) : undefined },
+          ...(message.errorMessage ? { error: { message: modelFailureMessage(String(message.errorMessage)) } } : {}),
+        }
   return {
     info,
     parts: messageParts(
@@ -738,15 +875,29 @@ export function apiMessage(event: SessionEvent, messageID = sessionEventMessageI
 }
 
 export function mapMemoForView(memo: MemoInfo): JsonObject {
-  const iso = (value: number | null | undefined) => value == null ? null : new Date(Number(value)).toISOString()
+  const iso = (value: number | null | undefined) => (value == null ? null : new Date(Number(value)).toISOString())
   return {
-    id: Number(memo.id), user: 0, title: memo.title, content: memo.content, kind: memo.kind,
-    status: memo.status, priority: memo.priority, remind_at: iso(memo.remindAt), due_at: iso(memo.dueAt),
-    repeat_rule: memo.repeatRule, source: memo.source, related_session_id: memo.relatedSessionId,
-    related_message_id: "", semantic_task_id: "", last_triggered_at: iso(memo.lastTriggeredAt),
-    snoozed_until: iso(memo.snoozedUntil), trigger_at: iso(memo.snoozedUntil ?? memo.remindAt ?? memo.dueAt),
-    completed_at: iso(memo.completedAt), metadata: memo.metadata,
-    created_at: iso(memo.createdAt), updated_at: iso(memo.updatedAt),
+    id: Number(memo.id),
+    user: 0,
+    title: memo.title,
+    content: memo.content,
+    kind: memo.kind,
+    status: memo.status,
+    priority: memo.priority,
+    remind_at: iso(memo.remindAt),
+    due_at: iso(memo.dueAt),
+    repeat_rule: memo.repeatRule,
+    source: memo.source,
+    related_session_id: memo.relatedSessionId,
+    related_message_id: "",
+    semantic_task_id: "",
+    last_triggered_at: iso(memo.lastTriggeredAt),
+    snoozed_until: iso(memo.snoozedUntil),
+    trigger_at: iso(memo.snoozedUntil ?? memo.remindAt ?? memo.dueAt),
+    completed_at: iso(memo.completedAt),
+    metadata: memo.metadata,
+    created_at: iso(memo.createdAt),
+    updated_at: iso(memo.updatedAt),
   }
 }
 
@@ -766,23 +917,28 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
   }
   if (event.eventType === "character.action.changed") {
     const value = event.payload as JsonObject
-    return [{ type: "character.action.changed", properties: {
-      sessionID,
-      characterID: value.characterID ?? value.characterId ?? null,
-      characterName: value.characterName,
-      action: value.action,
-      group: value.group ?? null,
-      groupItem: value.groupItem ?? null,
-      imageUrl: value.imageUrl,
-      reason: value.reason,
-      source: value.source,
-      motion: value.motion,
-      effect: value.effect,
-      intensity: value.intensity,
-      effectAnchor: value.effectAnchor,
-      performanceID: value.performanceID,
-      time: value.time ?? Number(event.createdAt),
-    } }]
+    return [
+      {
+        type: "character.action.changed",
+        properties: {
+          sessionID,
+          characterID: value.characterID ?? value.characterId ?? null,
+          characterName: value.characterName,
+          action: value.action,
+          group: value.group ?? null,
+          groupItem: value.groupItem ?? null,
+          imageUrl: value.imageUrl,
+          reason: value.reason,
+          source: value.source,
+          motion: value.motion,
+          effect: value.effect,
+          intensity: value.intensity,
+          effectAnchor: value.effectAnchor,
+          performanceID: value.performanceID,
+          time: value.time ?? Number(event.createdAt),
+        },
+      },
+    ]
   }
   if (event.eventType === "character.sticker.sent") {
     const value = event.payload as JsonObject
@@ -793,56 +949,80 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
     const name = optionalString(part.name)
     const url = optionalString(part.url ?? part.imageUrl ?? part.image_url)
     if (!Number.isFinite(stickerID) || !Number.isFinite(characterID) || !name || !url) return []
-    return [{ type: "message.part.updated", properties: {
-      sessionID,
-      part: {
-        id: `${event.id}-sticker`,
-        messageID,
-        sessionID,
-        type: "sticker",
-        stickerID,
-        characterID,
-        name,
-        url,
-        ...(optionalString(part.mime) ? { mime: optionalString(part.mime) } : {}),
-        ...(optionalString(part.alt ?? part.description) ? { alt: optionalString(part.alt ?? part.description) } : {}),
+    return [
+      {
+        type: "message.part.updated",
+        properties: {
+          sessionID,
+          part: {
+            id: `${event.id}-sticker`,
+            messageID,
+            sessionID,
+            type: "sticker",
+            stickerID,
+            characterID,
+            name,
+            url,
+            ...(optionalString(part.mime) ? { mime: optionalString(part.mime) } : {}),
+            ...(optionalString(part.alt ?? part.description)
+              ? { alt: optionalString(part.alt ?? part.description) }
+              : {}),
+          },
+        },
       },
-    } }]
+    ]
   }
   if (event.eventType === "session.deleted") {
     return [{ type: "session.deleted", properties: { sessionID } }]
   }
   if (event.eventType === "session.title_updated") {
     const value = event.payload as JsonObject
-    return [{ type: "session.title_updated", properties: {
-      sessionID,
-      title: String(value.title ?? "新会话"),
-      titleSource: String(value.titleSource ?? "generated"),
-      updatedAt: Number(event.createdAt),
-    } }]
+    return [
+      {
+        type: "session.title_updated",
+        properties: {
+          sessionID,
+          title: String(value.title ?? "新会话"),
+          titleSource: String(value.titleSource ?? "generated"),
+          updatedAt: Number(event.createdAt),
+        },
+      },
+    ]
   }
   if (event.eventType === "model.response") {
     const usage = modelContextUsage(event.payload)
-    return usage ? [{ type: "session.context_usage", properties: { sessionID, ...usage, updatedAt: Number(event.createdAt) } }] : []
+    return usage
+      ? [{ type: "session.context_usage", properties: { sessionID, ...usage, updatedAt: Number(event.createdAt) } }]
+      : []
   }
   if (event.eventType === "context.usage_updated") {
     const value = event.payload as JsonObject
     const contextTokens = Number(value.contextTokens ?? 0)
-    return [{ type: "session.context_usage", properties: {
-      sessionID,
-      contextTokens: Number.isFinite(contextTokens) ? Math.max(0, contextTokens) : 0,
-      tokenBreakdown: apiTokenBreakdown(value.tokenBreakdown),
-      phase: value.phase,
-      updatedAt: value.updatedAt ?? Number(event.createdAt),
-    } }]
+    return [
+      {
+        type: "session.context_usage",
+        properties: {
+          sessionID,
+          contextTokens: Number.isFinite(contextTokens) ? Math.max(0, contextTokens) : 0,
+          tokenBreakdown: apiTokenBreakdown(value.tokenBreakdown),
+          phase: value.phase,
+          updatedAt: value.updatedAt ?? Number(event.createdAt),
+        },
+      },
+    ]
   }
   if (event.eventType === "session.participants_updated") {
     const value = event.payload as JsonObject
-    return [{ type: "session.participants_updated", properties: {
-      sessionID,
-      participants: apiParticipants(value.participants),
-      updatedAt: Number(event.createdAt),
-    } }]
+    return [
+      {
+        type: "session.participants_updated",
+        properties: {
+          sessionID,
+          participants: apiParticipants(value.participants),
+          updatedAt: Number(event.createdAt),
+        },
+      },
+    ]
   }
   if (
     event.eventType === "session.assistant_handoff.requested" ||
@@ -856,22 +1036,28 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
         ? "completed"
         : "failed"
     const participant = apiParticipants([value.participant])[0]
-    const handoff = { type: "session.assistant_handoff", properties: {
-      sessionID,
-      status,
-      jobID: optionalString(value.jobId ?? value.jobID),
-      assistantID: optionalID(value.assistantId ?? value.assistantID),
-      participant,
-      error: optionalString(value.error),
-      updatedAt: Number(event.createdAt),
-    } }
+    const handoff = {
+      type: "session.assistant_handoff",
+      properties: {
+        sessionID,
+        status,
+        jobID: optionalString(value.jobId ?? value.jobID),
+        assistantID: optionalID(value.assistantId ?? value.assistantID),
+        participant,
+        error: optionalString(value.error),
+        updatedAt: Number(event.createdAt),
+      },
+    }
     if (status !== "failed") return [handoff]
     return [
       handoff,
-      { type: "session.error", properties: {
-        sessionID,
-        error: { message: optionalString(value.error) ?? "助手切换失败" },
-      } },
+      {
+        type: "session.error",
+        properties: {
+          sessionID,
+          error: { message: optionalString(value.error) ?? "助手切换失败" },
+        },
+      },
     ]
   }
   if (event.eventType === "turn.started") {
@@ -892,21 +1078,33 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
   }
   if (event.eventType === "turn.failed" || event.eventType === "input.interrupted") {
     return [
-      { type: "session.error", properties: { sessionID, error: { message: modelFailureMessage(String((event.payload as JsonObject).reason ?? "Turn failed")) } } },
+      {
+        type: "session.error",
+        properties: {
+          sessionID,
+          error: { message: modelFailureMessage(String((event.payload as JsonObject).reason ?? "Turn failed")) },
+        },
+      },
       { type: "session.status", properties: { sessionID, status: { type: "idle" } } },
     ]
   }
   if (event.eventType === "agent.stream_reset") {
-    return [{
-      type: "message.stream_reset",
-      properties: {
-        sessionID,
-        messageID: messageID ?? event.id,
-        reason: String((event.payload as JsonObject).reason ?? "Model stream restarted"),
+    return [
+      {
+        type: "message.stream_reset",
+        properties: {
+          sessionID,
+          messageID: messageID ?? event.id,
+          reason: String((event.payload as JsonObject).reason ?? "Model stream restarted"),
+        },
       },
-    }]
+    ]
   }
-  if (event.eventType.startsWith("agent.message_") || event.eventType === "agent.session_compact" || event.eventType === "input.queued") {
+  if (
+    event.eventType.startsWith("agent.message_") ||
+    event.eventType === "agent.session_compact" ||
+    event.eventType === "input.queued"
+  ) {
     const message = apiMessage(event, messageID)
     if (!message) return []
     return [
@@ -916,50 +1114,89 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
   }
   if (event.eventType === "permission.requested") {
     const value = event.payload as JsonObject
-    return [{ type: "permission.asked", properties: {
-      id: value.id,
-      sessionID,
-      permission: value.capability,
-      patterns: [String(value.resource ?? "")],
-      metadata: value.request ?? {},
-      always: [String(value.resource ?? "")],
-    } }]
+    return [
+      {
+        type: "permission.asked",
+        properties: {
+          id: value.id,
+          sessionID,
+          permission: value.capability,
+          patterns: [String(value.resource ?? "")],
+          metadata: value.request ?? {},
+          always: [String(value.resource ?? "")],
+        },
+      },
+    ]
   }
   if (event.eventType === "permission.resolved") {
-    return [{ type: "permission.replied", properties: {
-      sessionID, requestID: (event.payload as JsonObject).requestId, reply: "once",
-    } }]
+    return [
+      {
+        type: "permission.replied",
+        properties: {
+          sessionID,
+          requestID: (event.payload as JsonObject).requestId,
+          reply: "once",
+        },
+      },
+    ]
   }
   if (event.eventType === "question.requested") {
     const value = event.payload as JsonObject
-    return [{ type: "question.asked", properties: {
-      id: value.id, sessionID, questions: value.questions,
-    } }]
+    return [
+      {
+        type: "question.asked",
+        properties: {
+          id: value.id,
+          sessionID,
+          questions: value.questions,
+        },
+      },
+    ]
   }
   if (event.eventType === "question.resolved") {
     const value = event.payload as JsonObject
-    return [{ type: "question.replied", properties: {
-      sessionID, requestID: value.requestId, answers: value.answers,
-    } }]
+    return [
+      {
+        type: "question.replied",
+        properties: {
+          sessionID,
+          requestID: value.requestId,
+          answers: value.answers,
+        },
+      },
+    ]
   }
   if (event.eventType === "media.requested") {
     const value = event.payload as JsonObject
     const request = (value.request ?? {}) as JsonObject
-    return [{ type: value.kind === "camera" ? "camera_capture.requested" : "screen_capture.requested",
-      properties: { id: value.id, sessionID, ...request } }]
+    return [
+      {
+        type: value.kind === "camera" ? "camera_capture.requested" : "screen_capture.requested",
+        properties: { id: value.id, sessionID, ...request },
+      },
+    ]
   }
   if (event.eventType === "media.resolved") {
     const value = event.payload as JsonObject
-    return [{ type: value.kind === "camera" ? "camera_capture.replied" : "screen_capture.replied",
-      properties: { requestID: value.id, sessionID, result: value.result, error: value.error } }]
+    return [
+      {
+        type: value.kind === "camera" ? "camera_capture.replied" : "screen_capture.replied",
+        properties: { requestID: value.id, sessionID, result: value.result, error: value.error },
+      },
+    ]
   }
-  if (event.eventType.startsWith("subagent.") && !(event.eventType.startsWith("subagent.agent_"))) {
+  if (event.eventType.startsWith("subagent.") && !event.eventType.startsWith("subagent.agent_")) {
     const agent = mapAgentThreadForView(jsonObject(event.payload)?.agent)
     if (!agent) return []
-    return [{ type: event.eventType, properties: {
-      sessionID,
-      agent,
-    } }]
+    return [
+      {
+        type: event.eventType,
+        properties: {
+          sessionID,
+          agent,
+        },
+      },
+    ]
   }
   return []
 }
@@ -967,21 +1204,26 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
 function modelFailureMessage(message: string): string {
   if (/^terminated$/i.test(message.trim())) return "模型连接意外中断，请重试。"
   if (/stream ended|ended without/i.test(message)) return "模型响应流提前结束，请重试。"
-  if (/fetch failed|ECONNRESET|socket hang up|connection (?:was )?(?:closed|lost)/i.test(message)) return "模型网络连接失败，请重试。"
+  if (/fetch failed|ECONNRESET|socket hang up|connection (?:was )?(?:closed|lost)/i.test(message))
+    return "模型网络连接失败，请重试。"
   return message
 }
-import { requestWithContract, type RpcMethodMap } from './rpc-contracts'
+import { requestWithContract, type RpcMethodMap } from "./rpc-contracts"
 
 /** Send cancellation on the same connection as synthesis, even during a world switch. */
-export async function requestSpeechSynthesis(params: RpcMethodMap['voice.tts.synthesize']['params'], signal?: AbortSignal) {
-  const origin = currentRuntimeOrigin(), revision = getRuntimeOriginRevision()
+export async function requestSpeechSynthesis(
+  params: RpcMethodMap["voice.tts.synthesize"]["params"],
+  signal?: AbortSignal,
+) {
+  const origin = currentRuntimeOrigin(),
+    revision = getRuntimeOriginRevision()
   signal?.throwIfAborted()
   const connection = await connectedClient()
   signal?.throwIfAborted()
-  if (origin !== currentRuntimeOrigin() || revision !== getRuntimeOriginRevision()) throw new Error('当前世界已切换')
+  if (origin !== currentRuntimeOrigin() || revision !== getRuntimeOriginRevision()) throw new Error("当前世界已切换")
   return cancellableSpeechRequest(
-    requestId => requestWithContract(connection, 'voice.tts.synthesize', { ...params, requestId }),
-    requestId => requestWithContract(connection, 'voice.tts.cancel', { sessionId: params.sessionId, requestId }),
+    (requestId) => requestWithContract(connection, "voice.tts.synthesize", { ...params, requestId }),
+    (requestId) => requestWithContract(connection, "voice.tts.cancel", { sessionId: params.sessionId, requestId }),
     signal,
   )
 }

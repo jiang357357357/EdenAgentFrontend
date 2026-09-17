@@ -14,7 +14,7 @@ export class EdenAgentRpcClient {
   constructor(private readonly requestTimeoutMs = 120000, private readonly connectTimeoutMs = 15000) {
     if (![requestTimeoutMs, connectTimeoutMs].every(value => Number.isSafeInteger(value) && value > 0)) throw new Error('RPC timeouts must be positive integers')
   }
-  async connect(url: string, capabilityToken: string, clientVersion = 'dev', runtimeOrigin: RuntimeOrigin = 'mon'): Promise<InitializeResult> {
+  async connect(url: string, capabilityToken: string, clientVersion = 'dev', runtimeOrigin: RuntimeOrigin = 'mon', coreToken?: string): Promise<InitializeResult> {
     if (this.socket) throw new Error('Eden Agent RPC client is already connected')
     const socket = new WebSocket(url, [websocketProtocol, `${tokenProtocolPrefix}${capabilityToken}`])
     this.socket = socket
@@ -30,7 +30,7 @@ export class EdenAgentRpcClient {
       })
       if (this.socket !== socket) throw new Error('RPC connection was replaced before initialization')
       const result = initializeResultSchema.parse(await this.request('initialize', {
-        protocolVersion, clientName: 'eden-agent-web', clientVersion, capabilities: ['session-events'], runtimeOrigin,
+        protocolVersion, clientName: 'eden-agent-web', clientVersion, capabilities: ['session-events'], runtimeOrigin, ...(coreToken ? { coreToken } : {}),
       }))
       if (this.socket !== socket) throw new Error('RPC connection closed during initialization')
       return result

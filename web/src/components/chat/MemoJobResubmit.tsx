@@ -19,6 +19,6 @@ export function MemoJobResubmit({ job }: { job: JobInfo }) {
     <textarea aria-label="备忘提醒重提依据" disabled={busy} value={note} onChange={event => { setNote(event.target.value); setConfirmed(false) }} placeholder="说明原提醒处置及再次提醒的原因" className="mt-2 w-full rounded border p-2" />
     <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我明确要求再次投递此提醒，可能立即触发通知或对话。</label>
     <button disabled={busy || !confirmed || !note.trim() || Boolean(result)} onClick={() => void submit()} className="mt-2 rounded border px-2 py-1">确认重新提交提醒</button>
-    <p>迁移审阅模式禁止执行此操作。</p>{result && <p role="status">{result}</p>}{error && <p role="alert" className="text-red-700">{error}</p>}
+    <p>迁移审阅模式禁止执行此操作。</p>{result && <p role="status">{result}</p>}{error && <p role="alert" className="text-danger">{error}</p>}
   </div>
 }

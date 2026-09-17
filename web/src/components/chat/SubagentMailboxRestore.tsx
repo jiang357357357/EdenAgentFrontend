@@ -36,6 +36,6 @@ export function SubagentMailboxRestore({ sessionId }: { sessionId: string }) {
       <textarea aria-label="历史信箱处理依据" disabled={busy} value={note} onChange={event => { setNote(event.target.value); setConfirmed(false) }} placeholder="说明归属核对或归档原因" className="mt-2 w-full rounded border p-2" />
       <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我确认以上处理决定。</label>
       <button disabled={busy || !confirmed || !note.trim()} onClick={() => void resolve()} className="mt-2 rounded border px-2 py-1">保存信箱处理</button></div>}
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
   </details>
 }

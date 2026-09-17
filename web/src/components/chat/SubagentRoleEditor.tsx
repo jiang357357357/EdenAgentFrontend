@@ -43,8 +43,8 @@ export function SubagentRoleEditor({ role, onSaved }: { role: string; onSaved: (
     <button disabled={busy} onClick={() => void load()} className="mt-2 rounded border px-2 py-1">读取所选角色</button>
     {loaded && <><textarea aria-label="角色 JSON 配置" disabled={busy} value={text} maxLength={100000} onChange={event => setText(event.target.value)} className="mt-2 h-64 w-full rounded border p-2 font-mono" />
       <button disabled={busy || !text.trim()} onClick={() => void save()} className="rounded border px-2 py-1">保存角色配置</button>
-      {loaded.revision && <button disabled={busy} onClick={() => void remove()} className="ml-2 rounded border px-2 py-1 text-red-700">移除所选范围的 {loaded.name} 配置</button>}
+      {loaded.revision && <button disabled={busy} onClick={() => void remove()} className="ml-2 rounded border px-2 py-1 text-danger">移除所选范围的 {loaded.name} 配置</button>}
       <p>移除项目覆盖后恢复用户或内置配置，已有任务快照保留。</p></>}
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
   </details>
 }

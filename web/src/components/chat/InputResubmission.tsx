@@ -25,6 +25,6 @@ export function InputResubmission({ sessionId, id }: { sessionId: string; id: st
       <textarea aria-label="重新提交原因" disabled={busy} value={note} onChange={event => { setNote(event.target.value); setConfirmed(false) }} placeholder="说明重新执行原因及原副作用的核对结果" className="mt-2 w-full rounded border p-2" />
       <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我明确要求按以上内容创建新的输入并执行。</label>
       <button disabled={busy || !confirmed || !note.trim() || Boolean(result)} onClick={() => void submit()} className="mt-2 rounded border px-2 py-1">确认重新提交</button></>}
-    {result && <p role="status">{result}</p>}{error && <p role="alert" className="text-red-700">{error}</p>}
+    {result && <p role="status">{result}</p>}{error && <p role="alert" className="text-danger">{error}</p>}
   </details>
 }

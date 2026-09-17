@@ -41,6 +41,6 @@ export function JobOutcomeReview({ sessionId, kind, title = '作业结果与恢�
       <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我已核对记录并确认此处置。</label>
       <button disabled={busy || !confirmed || !note.trim()} onClick={() => void resolve()} className="mt-2 rounded border px-2 py-1">保存作业结果确认</button>
       <p>不重发作业；停止后续投递不代表之前没有副作用。关联输入须先处理，未知工具操作仍须单独核对。</p></>}
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
   </details>
 }

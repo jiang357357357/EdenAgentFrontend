@@ -1,3 +1,4 @@
+import { pageEnterMotion } from "../../lib/page-motion"
 import { SelfAwakeModelCalls } from "./SelfAwakeModelCalls"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
@@ -33,17 +34,6 @@ import type { RpcMethodMap } from "../../lib/rpc-contracts"
 type SelfAwakeScheduleInfo = RpcMethodMap["self_awake.list"]["result"]["schedule"]
 import { selfAwakeObservations, selfAwakeToolExecutions, type SelfAwakeToolExecution } from "../../lib/self-awake-context"
 import { formatLocalMonthDayTime, formatLocalWeekday } from "../../lib/time"
-
-const screenMotion = {
-  initial: { opacity: 0, x: 18, filter: "blur(3px)" },
-  animate: { opacity: 1, x: 0, filter: "blur(0px)" },
-  exit: { opacity: 0, x: 26, filter: "blur(3px)" },
-}
-
-const transition = {
-  duration: 0.28,
-  ease: [0.16, 1, 0.3, 1],
-} as const
 
 interface SelfAwakePageProps {
   currentUser?: AuthUser | null
@@ -110,9 +100,9 @@ const eventLabels: Record<string, string> = {
 const selfAwakePageSize = 20
 
 function toneTextClass(tone: StatusTone) {
-  if (tone === "ok") return "text-emerald-600"
-  if (tone === "warn") return "text-amber-600"
-  if (tone === "danger") return "text-red-600"
+  if (tone === "ok") return "text-success"
+  if (tone === "warn") return "text-warning"
+  if (tone === "danger") return "text-danger"
   return "text-text-muted"
 }
 
@@ -518,15 +508,11 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
   return (
     <motion.div
       key="self-awake"
-      {...screenMotion}
-      transition={transition}
-      className="fixed inset-0 z-10 flex h-[100vh] w-[100vw] flex-col overflow-hidden bg-bg bg-cover bg-center font-sans text-text"
-      style={{
-        backgroundImage: `linear-gradient(rgba(250, 250, 249, 0.88), rgba(250, 250, 249, 0.88)), url(${journalWorkspaceBackground})`,
-      }}
+      {...pageEnterMotion}
+      className="theme-page fixed inset-0 z-10 flex h-[100vh] w-[100vw] flex-col overflow-hidden bg-bg bg-cover bg-center font-sans text-text"
     >
       {executionRunId && <SelfAwakeExecutionDialog runId={executionRunId} onClose={closeExecution} />}
-      <header className="flex h-[9.2vh] shrink-0 items-center justify-between border-b border-white/45 bg-bg/76 px-[3vw] shadow-sm backdrop-blur-xl">
+      <header className="flex h-[9.2vh] shrink-0 items-center justify-between border-b border-highlight/45 bg-bg/76 px-[3vw] shadow-sm backdrop-blur-xl">
         <div className="flex min-w-0 items-center gap-[1.2vw]">
           <button
             type="button"
@@ -596,11 +582,11 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
       {activeView === "overview" ? (
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-[2.4vw] pb-[2.1vh] pt-[1.8vh]">
           <div className="grid min-h-0 flex-1 grid-cols-[24.3vw_minmax(0,1fr)] gap-[1.25vw]">
-            <aside className="flex min-h-0 flex-col overflow-hidden rounded-[0.8vh] border border-border/90 bg-card/94 shadow-[0_0.35vh_1.4vh_rgba(41,37,36,0.06)]">
+            <aside className="flex min-h-0 flex-col overflow-hidden rounded-[0.8vh] border border-border/90 bg-card/94 shadow-[0_0.35vh_1.4vh_color-mix(in_srgb,var(--color-scrim)_6%,transparent)]">
               <div className="flex h-[6.2vh] shrink-0 items-center border-b border-border px-[1.35vw] font-serif text-[2.15vh] text-text">近期自醒</div>
               <div className="min-h-0 flex-1 overflow-y-auto" style={{ scrollbarGutter: "stable" }}>
                 {error ? (
-                  <div className="m-[1vw] flex items-start gap-[0.65vw] rounded-[0.7vh] border border-red-200 bg-red-50 p-[1vh] text-[1.55vh] text-red-700">
+                  <div className="m-[1vw] flex items-start gap-[0.65vw] rounded-[0.7vh] border border-danger/30 bg-danger-dim p-[1vh] text-[1.55vh] text-danger">
                     <AlertCircle className="mt-[0.1vh] h-[1.7vh] w-[1.7vh] shrink-0" />
                     {error}
                   </div>
@@ -652,7 +638,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
               ) : null}
             </aside>
 
-            <section className="min-h-0 overflow-hidden rounded-[0.8vh] border border-border/90 bg-card/95 shadow-[0_0.35vh_1.4vh_rgba(41,37,36,0.06)]">
+            <section className="min-h-0 overflow-hidden rounded-[0.8vh] border border-border/90 bg-card/95 shadow-[0_0.35vh_1.4vh_color-mix(in_srgb,var(--color-scrim)_6%,transparent)]">
               {selectedRun ? (
                 <div className="grid h-full min-h-0 grid-cols-[minmax(0,1.33fr)_minmax(22vw,0.9fr)]">
                   <article className="flex min-h-0 flex-col overflow-hidden px-[2.2vw] py-[2.6vh]">
@@ -710,28 +696,22 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                           <div key={label} className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">{label}</dt><dd className="truncate" title={String(value)}>{value || "未记录"}</dd></div>
                         ))}
                       </dl>
-                      <div className="mt-[1.45vh] border-t border-border/70 pt-[1.25vh] text-[1.72vh] leading-relaxed">
-                        <h4 className="text-text-muted">模型请求与工具调用</h4>
-                        {toolExecutionsLoading ? <p className="mt-[0.75vh] text-text-muted">正在读取执行记录…</p> : null}
-                        {!toolExecutionsLoading && toolExecutionsError ? <p className="mt-[0.75vh] text-red-600">{toolExecutionsError}</p> : null}
-                        {!toolExecutionsLoading && !toolExecutionsError && selectedToolExecutions.length === 0 ? (
-                          <p className="mt-[0.75vh] text-text-muted">本轮未调用工具。</p>
-                        ) : null}
-                        {executionRecord && !toolExecutionsLoading && !toolExecutionsError ? <SelfAwakeModelCalls record={executionRecord} /> : null}
-                      </div>
+
                     </section>
 
                     <section className="mt-[2.4vh] border-t border-border pt-[2.1vh]">
-                      <h3 className="border-l-[0.22vw] border-accent pl-[0.75vw] font-serif text-[2.55vh] text-text">后续</h3>
-                      <dl className="mt-[1.8vh] space-y-[1.1vh] text-[1.9vh] leading-relaxed">
-                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">下次醒来</dt><dd>{formatDateTime(selectedRun.next_wake_at)}</dd></div>
+                      <h3 className="border-l-[0.22vw] border-accent pl-[0.75vw] font-serif text-[2.55vh] text-text">本轮定时记录</h3>
+                      {selectedRun.next_wake_at ? <dl className="mt-[1.8vh] space-y-[1.1vh] text-[1.9vh] leading-relaxed">
+                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">计划时间</dt><dd>{formatDateTime(selectedRun.next_wake_at)}</dd></div>
                         <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">间隔估计</dt><dd>{formatMinutes(selectedRun.next_wake_after_minutes)}</dd></div>
                         <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">原因说明</dt><dd>{trimText(selectedRun.next_wake_reason, "没有记录原因。")}</dd></div>
-                      </dl>
+                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">任务状态</dt><dd>{({ queued: "已保存", running: "执行中", dispatched: "已提交执行", completed: "已处理", cancelled: "已取消或替换", failed: "失败", unknown: "待确认" } as Record<string, string>)[selectedRun.next_wake_job_state ?? ""] ?? "未记录"}</dd></div>
+                      </dl> : <p className="mt-[1.8vh] text-text-muted">本轮没有保存定时任务。</p>}
+                      <p className="mt-[1vh] text-sm text-text-muted">此处为本轮安排记录，当前生效的时间以顶部自动调度为准。</p>
                     </section>
 
                     {selectedRun.error || selectedAction?.error ? (
-                      <div className="mt-[1.8vh] rounded-[0.6vh] border border-red-200 bg-red-50 p-[0.85vh] text-[1.4vh] text-red-700">{selectedRun.error || selectedAction?.error}</div>
+                      <div className="mt-[1.8vh] rounded-[0.6vh] border border-danger/30 bg-danger-dim p-[0.85vh] text-[1.4vh] text-danger">{selectedRun.error || selectedAction?.error}</div>
                     ) : null}
 
                     <div className="mt-[2.2vh] border-t border-border pt-[1.7vh]">
@@ -747,6 +727,15 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                         <pre className="mt-[1vh] max-h-[20vh] overflow-auto rounded-[0.6vh] bg-bg p-[0.85vh] text-[1.18vh] leading-relaxed text-text-muted">{JSON.stringify(selectedRun, null, 2)}</pre>
                       ) : null}
                     </div>
+                    <div className="mt-[1.45vh] border-t border-border/70 pt-[1.25vh] text-[1.72vh] leading-relaxed">
+                      <h4 className="text-text-muted">模型请求与工具调用</h4>
+                      {toolExecutionsLoading ? <p className="mt-[0.75vh] text-text-muted">正在读取执行记录…</p> : null}
+                      {!toolExecutionsLoading && toolExecutionsError ? <p className="mt-[0.75vh] text-danger">{toolExecutionsError}</p> : null}
+                      {!toolExecutionsLoading && !toolExecutionsError && selectedToolExecutions.length === 0 ? (
+                        <p className="mt-[0.75vh] text-text-muted">本轮未调用工具。</p>
+                      ) : null}
+                      {executionRecord && !toolExecutionsLoading && !toolExecutionsError ? <SelfAwakeModelCalls record={executionRecord} /> : null}
+                    </div>
                   </aside>
                 </div>
               ) : (
@@ -760,8 +749,8 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
           </div>
         </main>
       ) : (
-        <main className="grid min-h-0 flex-1 grid-cols-[31.8vw_minmax(0,1fr)] overflow-hidden bg-[#fbfaf7]">
-          <aside className="flex min-h-0 flex-col overflow-hidden border-r border-[#ded8cf] bg-[rgba(255,255,255,0.82)]">
+        <main className="grid min-h-0 flex-1 grid-cols-[31.8vw_minmax(0,1fr)] overflow-hidden bg-bg">
+          <aside className="flex min-h-0 flex-col overflow-hidden border-r border-border bg-card/90">
             <div className="flex shrink-0 items-baseline gap-[0.85vw] px-[3vw] pb-[1.8vh] pt-[2.7vh]">
               <div className="shrink-0 font-serif text-[2.5vh] text-text">手帐目录</div>
               <div className="min-w-0 truncate text-[1.75vh] text-text-muted">
@@ -775,7 +764,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
               </div>
             </div>
 
-            <div className="mx-[2.55vw] mb-[1.6vh] flex h-[4.45vh] shrink-0 items-center gap-[0.72vw] rounded-[0.7vh] border border-[#ddd5c9] bg-white/86 px-[0.88vw] shadow-[0_0.18vh_0.55vh_rgba(65,54,42,0.10)] focus-within:border-accent/55 focus-within:ring-2 focus-within:ring-accent/10">
+            <div className="mx-[2.55vw] mb-[1.6vh] flex h-[4.45vh] shrink-0 items-center gap-[0.72vw] rounded-[0.7vh] border border-border bg-card/86 px-[0.88vw] shadow-[0_0.18vh_0.55vh_color-mix(in_srgb,var(--color-scrim)_10%,transparent)] focus-within:border-accent/55 focus-within:ring-2 focus-within:ring-accent/10">
               <Search className="h-[1.8vh] w-[1.8vh] shrink-0 text-accent" />
               <input
                 value={diarySearch}
@@ -798,9 +787,9 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
               )}
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto border-t border-[#e5dfd6] pb-[2vh]" style={{ scrollbarGutter: "stable" }}>
+            <div className="min-h-0 flex-1 overflow-y-auto border-t border-border pb-[2vh]" style={{ scrollbarGutter: "stable" }}>
               {error ? (
-                <div className="m-[1.2vw] rounded-[0.7vh] border border-red-200 bg-red-50 p-[1.2vh] text-[1.6vh] leading-relaxed text-red-700">{error}</div>
+                <div className="m-[1.2vw] rounded-[0.7vh] border border-danger/30 bg-danger-dim p-[1.2vh] text-[1.6vh] leading-relaxed text-danger">{error}</div>
               ) : null}
               {!loading && !error && allDiaryEntries.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center px-[3vw] text-center text-text-muted">
@@ -810,7 +799,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                 </div>
               ) : null}
               {!loading && !error && allDiaryEntries.length > 0 && diaryEntries.length === 0 ? (
-                <div className="mx-[2.55vw] mt-[2vh] border-y border-dashed border-[#ddd2c1] py-[2vh] text-center">
+                <div className="mx-[2.55vw] mt-[2vh] border-y border-dashed border-border py-[2vh] text-center">
                   <Search className="mx-auto mb-[0.9vh] h-[3.1vh] w-[3.1vh] text-accent/70" />
                   <div className="font-serif text-[2vh] text-text">没有找到日记</div>
                   <div className="mt-[0.5vh] text-[1.45vh] text-text-muted">换个关键词试试。</div>
@@ -824,7 +813,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                     <button
                       type="button"
                       onClick={() => setExpandedDiaryYears((current) => toggleExpanded(current, year.yearKey))}
-                      className="flex h-[5.6vh] w-full items-center gap-[0.7vw] px-[3vw] text-left outline-none transition-colors hover:bg-[#fff9ef] focus-visible:bg-[#fff8ec] focus-visible:text-accent"
+                      className="flex h-[5.6vh] w-full items-center gap-[0.7vw] px-[3vw] text-left outline-none transition-colors hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:text-accent"
                     >
                       <span className="min-w-0 flex-1 truncate font-serif text-[2.55vh] text-text">{diaryYearTitle(year.yearKey)}</span>
                       <span className="text-[1.7vh] text-text-muted">{year.count} 篇</span>
@@ -838,7 +827,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                           <button
                             type="button"
                             onClick={() => setExpandedDiaryMonths((current) => toggleExpanded(current, month.monthKey))}
-                            className="flex h-[5.1vh] w-full items-center gap-[0.7vw] pl-[3.8vw] pr-[3vw] text-left outline-none transition-colors hover:bg-[#fff9ef] focus-visible:bg-[#fff8ec] focus-visible:text-accent"
+                            className="flex h-[5.1vh] w-full items-center gap-[0.7vw] pl-[3.8vw] pr-[3vw] text-left outline-none transition-colors hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:text-accent"
                           >
                             <span className="min-w-0 flex-1 truncate font-serif text-[2.38vh] text-text">{diaryMonthTitle(month.monthKey)}</span>
                             <span className="text-[1.68vh] text-text-muted">{month.count} 篇</span>
@@ -857,7 +846,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                                     setExpandedDiaryDates((current) => toggleExpanded(current, day.dateKey))
                                     if (!dayExpanded) setSelectedRunId(day.entries[0]?.run.id)
                                   }}
-                                  className="flex h-[4.75vh] w-full items-center gap-[0.75vw] border-b border-[#e7dfd3] text-left outline-none transition-colors hover:text-accent focus-visible:bg-[#fff8ec] focus-visible:text-accent"
+                                  className="flex h-[4.75vh] w-full items-center gap-[0.75vw] border-b border-border text-left outline-none transition-colors hover:text-accent focus-visible:bg-surface-hover focus-visible:text-accent"
                                 >
                                   <span className="font-serif text-[2.08vh] text-text">{diaryMonthDay(day.dateKey).month}{diaryMonthDay(day.dateKey).day}日</span>
                                   <span className="min-w-0 flex-1 text-[1.7vh] text-text-muted">{diaryWeekday(day.dateKey)}</span>
@@ -878,9 +867,9 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                                           }}
                                           className={`flex h-[4.05vh] w-full items-center gap-[0.75vw] rounded-[0.45vh] px-[1.15vw] text-left transition-colors ${
                                             selected
-                                              ? "bg-[#fff0d6] text-text shadow-[0_0.12vh_0.38vh_rgba(217,119,6,0.16)]"
-                                              : "text-text hover:bg-[#fff8ec]"
-                                          } outline-none focus-visible:bg-[#fff0d6]`}
+                                              ? "bg-accent-dim text-text shadow-[0_0.12vh_0.38vh_color-mix(in_srgb,var(--color-accent)_16%,transparent)]"
+                                              : "text-text hover:bg-surface-hover"
+                                          } outline-none focus-visible:bg-accent-dim`}
                                         >
                                           <span className={`h-[0.72vh] w-[0.72vh] shrink-0 rounded-full ${selected ? "bg-accent" : "bg-transparent"}`} />
                                           <span className={`w-[3.5vw] shrink-0 text-[1.62vh] ${selected ? "text-accent" : "text-text-muted"}`}>{formatClock(timestamp)}</span>
@@ -893,7 +882,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                                       <button
                                         type="button"
                                         onClick={() => setExpandedDiaryEntryDates((current) => toggleExpanded(current, day.dateKey))}
-                                        className="flex h-[3.55vh] w-full items-center gap-[0.45vw] px-[1.15vw] text-left text-[1.62vh] text-text-muted outline-none transition-colors hover:bg-[#fff8ec] hover:text-accent focus-visible:bg-[#fff8ec] focus-visible:text-accent"
+                                        className="flex h-[3.55vh] w-full items-center gap-[0.45vw] px-[1.15vw] text-left text-[1.62vh] text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-accent focus-visible:bg-surface-hover focus-visible:text-accent"
                                         aria-expanded={allDayEntriesExpanded}
                                       >
                                         <span className="font-serif text-[1.84vh] tracking-[0.12em]">{allDayEntriesExpanded ? "收起" : "…"}</span>
@@ -918,7 +907,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                   type="button"
                   onClick={() => void loadRuns(currentPage + 1, true)}
                   disabled={loadingMore}
-                  className="mx-[3vw] mt-[1vh] flex h-[4.15vh] w-[calc(100%_-_6vw)] items-center justify-center gap-[0.55vw] border-y border-dashed border-[#ddd2c1] text-[1.62vh] text-text-muted transition-colors hover:text-accent disabled:cursor-wait disabled:opacity-60"
+                  className="mx-[3vw] mt-[1vh] flex h-[4.15vh] w-[calc(100%_-_6vw)] items-center justify-center gap-[0.55vw] border-y border-dashed border-border text-[1.62vh] text-text-muted transition-colors hover:text-accent disabled:cursor-wait disabled:opacity-60"
                 >
                   <RefreshCw className={`h-[1.55vh] w-[1.55vh] ${loadingMore ? "animate-spin" : ""}`} />
                   {loadingMore ? "正在加载" : "加载更多"}
@@ -928,53 +917,55 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
           </aside>
 
           <section
-            className="min-h-0 overflow-hidden bg-[#fbf8f0]"
+            className="min-h-0 overflow-hidden bg-bg"
             style={{
-              backgroundImage: `linear-gradient(rgba(255, 253, 248, 0.84), rgba(255, 253, 248, 0.84)), url(${journalWorkspaceBackground})`,
+              backgroundImage: `linear-gradient(color-mix(in srgb, var(--color-card) 94%, transparent), color-mix(in srgb, var(--color-card) 94%, transparent)), url(${journalWorkspaceBackground})`,
               backgroundPosition: "center",
               backgroundSize: "145% auto",
             }}
           >
             {selectedRun && selectedDiary ? (
               <article className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] px-[3.1vw] pb-[3.2vh] pt-[4.8vh]">
-                <div className="pointer-events-none absolute right-[3.4vw] top-[5.4vh] rounded-full bg-emerald-100/85 px-[1vw] py-[0.62vh] text-[1.55vh] text-emerald-600">
+                <div className="pointer-events-none absolute right-[3.4vw] top-[5.4vh] rounded-full bg-success-dim px-[1vw] py-[0.62vh] text-[1.55vh] text-success">
                   {selectedStatus.label}
                 </div>
 
-                <header className="flex items-start gap-[1.8vw] border-b border-dashed border-[#d8cdbb] pb-[3.2vh] pr-[7vw]">
-                  <div className="relative flex h-[10.6vh] w-[4.1vw] shrink-0 flex-col items-center justify-center rounded-[0.85vh] border border-[#e4dbcd] bg-white/78 font-serif shadow-[0_0.42vh_0.75vh_rgba(63,51,38,0.12)]">
+                <header className="flex items-start gap-[1.8vw] border-b border-dashed border-border pb-[3.2vh] pr-[7vw]">
+                  <div className="relative flex h-[10.6vh] w-[4.1vw] shrink-0 flex-col items-center justify-center rounded-[0.85vh] border border-border bg-card/78 font-serif shadow-[0_0.42vh_0.75vh_color-mix(in_srgb,var(--color-scrim)_12%,transparent)]">
                     <span className="text-[1.38vh] text-text-muted">{diaryDateStamp(selectedDiary.created_at ?? selectedRun.finished_at).month}</span>
                     <span className="mt-[0.3vh] text-[3.2vh] leading-none text-text">{diaryDateStamp(selectedDiary.created_at ?? selectedRun.finished_at).day}</span>
                   </div>
-                  <div className="min-w-0 pt-[1.25vh]">
-                    <h2 className="font-serif text-[clamp(24px,1.75vw,30px)] leading-[1.18] tracking-[-0.02em] text-[#211e1b]">{selectedDiary.title || "一次自醒"}</h2>
+                  <div className="min-w-0 flex-1 pt-[1.25vh]">
+                    <div className="flex items-center gap-4">
+                      <h2 className="min-w-0 break-words font-serif text-[clamp(24px,1.75vw,30px)] leading-[1.18] tracking-[-0.02em] text-text">{selectedDiary.title || "一次自醒"}</h2>
+                      <button type="button" onClick={() => setExecutionRunId(selectedRun.id)} className="shrink-0 whitespace-nowrap rounded border border-border px-3 py-1 text-accent">执行记录</button>
+                    </div>
                     <div className="mt-[1.2vh] text-[1.82vh] text-text-muted">{selectedAuthorName} 写于 {formatDateTime(selectedDiary.created_at ?? selectedRun.finished_at)}</div>
-                    <button type="button" onClick={() => setExecutionRunId(selectedRun.id)} className="mt-3 rounded border border-border px-3 py-1 text-accent">执行记录</button>
                   </div>
                 </header>
 
                 <div
-                  className="min-h-0 overflow-y-auto border-b border-dashed border-[#d8cdbb] px-[1.85vw] py-[3.2vh]"
+                  className="min-h-0 overflow-y-auto border-b border-dashed border-border px-[1.85vw] py-[3.2vh]"
                   style={{ scrollbarGutter: "stable" }}
                 >
-                  <p className="whitespace-pre-wrap font-serif text-[clamp(14px,0.88vw,16px)] leading-[2] tracking-[0.015em] text-[#302b27]">
+                  <p className="whitespace-pre-wrap font-serif text-[clamp(14px,0.88vw,16px)] leading-[2] tracking-[0.015em] text-text">
                     {trimText(selectedDiary.content, "没有写入日记。")}
                   </p>
                 </div>
 
                 <footer className="flex flex-wrap items-center gap-[1.45vw] pt-[2.8vh] text-[1.52vh]">
-                  <div className="rounded-[0.55vh] border border-[#ded5c8] bg-white/38 px-[1.15vw] py-[0.92vh]">
+                  <div className="rounded-[0.55vh] border border-border bg-card/38 px-[1.15vw] py-[0.92vh]">
                     <span className="mr-[0.65vw] text-text-muted">状态</span>
                     <span className="text-text">{selectedStatus.label}</span>
                   </div>
-                  <div className="rounded-[0.55vh] border border-[#ded5c8] bg-white/38 px-[1.15vw] py-[0.92vh]">
-                    <span className="mr-[0.65vw] text-text-muted">下次醒来</span>
-                    <span className="text-text">{selectedRun.next_wake_at ? formatDateTime(selectedRun.next_wake_at) : formatMinutes(selectedRun.next_wake_after_minutes)}</span>
+                  <div className="rounded-[0.55vh] border border-border bg-card/38 px-[1.15vw] py-[0.92vh]">
+                    <span className="mr-[0.65vw] text-text-muted">本轮定时</span>
+                    <span className="text-text">{selectedRun.next_wake_at ? formatDateTime(selectedRun.next_wake_at) : "本轮未设置"}</span>
                   </div>
-                  <div className="rounded-[0.55vh] border border-[#ded5c8] bg-white/38 px-[1.15vw] py-[0.92vh]">
-                    <span className="mr-[0.65vw] text-text-muted">安排</span>
-                    <span className="text-text">{actionLabels[selectedAction?.action_type || ""] || selectedAction?.action_type || "未记录"}</span>
-                  </div>
+                  {selectedAction?.action_type && <div className="rounded-[0.55vh] border border-border bg-card/38 px-[1.15vw] py-[0.92vh]">
+                    <span className="mr-[0.65vw] text-text-muted">历史动作</span>
+                    <span className="text-text">{actionLabels[selectedAction.action_type] || selectedAction.action_type}</span>
+                  </div>}
                 </footer>
               </article>
             ) : (

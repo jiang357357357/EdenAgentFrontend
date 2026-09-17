@@ -61,8 +61,8 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
       className={cn(
         'w-full max-w-full min-w-0 overflow-hidden rounded-2xl border px-4 py-4',
         tone === 'overlay'
-          ? 'border-orange-300/15 bg-stone-950/78 text-stone-100 shadow-none backdrop-blur-md'
-          : 'border-amber-500/20 bg-card shadow-sm',
+          ? 'border-warning/30 bg-overlay/78 text-text shadow-none backdrop-blur-md'
+          : 'border-warning/20 bg-card shadow-sm',
       )}
     >
       <div className="flex min-w-0 items-start gap-3">
@@ -70,20 +70,20 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
           className={cn(
             'mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border',
             tone === 'overlay'
-              ? 'border-orange-300/20 bg-orange-300/10 text-orange-200'
-              : 'border-amber-500/25 bg-amber-500/10 text-amber-400',
+              ? 'border-accent/30 bg-accent/10 text-accent'
+              : 'border-warning/25 bg-warning/10 text-warning',
           )}
         >
           <ShieldAlert className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={cn('text-[10px] uppercase tracking-[0.15em]', tone === 'overlay' ? 'text-orange-200/80' : 'text-amber-400')}>权限请求</span>
-            {request.tool?.callID && <span className={cn('text-xs', tone === 'overlay' ? 'text-stone-400' : 'text-text-muted')}>工具调用：{request.tool.callID}</span>}
+            <span className={cn('text-[10px] uppercase tracking-[0.15em]', tone === 'overlay' ? 'text-accent/80' : 'text-warning')}>权限请求</span>
+            {request.tool?.callID && <span className={cn('text-xs', tone === 'overlay' ? 'text-text-muted' : 'text-text-muted')}>工具调用：{request.tool.callID}</span>}
           </div>
-          <div id={titleId} className={cn('mt-1 text-base font-medium', tone === 'overlay' ? 'text-stone-50' : 'text-text')}>{request.permission}</div>
+          <div id={titleId} className={cn('mt-1 text-base font-medium', tone === 'overlay' ? 'text-text' : 'text-text')}>{request.permission}</div>
 
-          <div className={cn('mt-3 rounded-xl border px-3 py-3 text-xs', tone === 'overlay' ? 'border-white/10 bg-white/5 text-stone-300' : 'border-border bg-bg text-text-muted')}>
+          <div className={cn('mt-3 rounded-xl border px-3 py-3 text-xs', tone === 'overlay' ? 'border-highlight/10 bg-highlight/5 text-text' : 'border-border bg-bg text-text-muted')}>
             <div className="grid gap-2 sm:grid-cols-[5rem_minmax(0,1fr)]">
               <span>操作范围</span><span className="break-all font-mono text-current">{patternSummary}</span>
               {agentPath && <><span>执行智能体</span><span className="break-all font-mono text-current">{agentPath}</span></>}
@@ -93,7 +93,7 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
           </div>
 
           {error && (
-            <div role="alert" className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</div>
+            <div role="alert" className="mt-3 rounded-xl border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger">{error}</div>
           )}
 
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
@@ -102,7 +102,7 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
             onClick={() => void handleReply('reject')}
             disabled={submitting !== null}
             aria-busy={submitting === 'reject'}
-            className={cn('mr-auto inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-xs transition-colors', tone === 'overlay' ? 'border-white/10 bg-white/5 text-stone-300 hover:border-red-500/30 hover:text-red-300' : 'border-border bg-bg text-text-muted hover:border-red-500/30 hover:text-red-500', 'disabled:cursor-wait disabled:opacity-60')}
+            className={cn('mr-auto inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-xs transition-colors', tone === 'overlay' ? 'border-highlight/10 bg-highlight/5 text-text hover:border-danger/30 hover:text-danger' : 'border-border bg-bg text-text-muted hover:border-danger/30 hover:text-danger', 'disabled:cursor-wait disabled:opacity-60')}
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
             {submitting === 'reject' ? '处理中' : '拒绝'}
@@ -115,8 +115,8 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
             className={cn(
               'inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-xs font-medium transition-colors',
               tone === 'overlay'
-                ? 'border-orange-300/35 bg-orange-300/15 text-orange-100 hover:border-orange-300/50 hover:bg-orange-300/20'
-                : 'border-accent bg-accent text-white hover:border-amber-700 hover:bg-amber-700',
+                ? 'border-accent/30 bg-accent/15 text-accent hover:border-accent/40 hover:bg-accent/20'
+                : 'border-accent bg-accent text-on-accent hover:border-accent/40 hover:bg-accent-hover',
               'disabled:cursor-wait disabled:opacity-60',
             )}
           >
@@ -132,7 +132,7 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
               className={cn(
                 'inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-xs transition-colors',
                 tone === 'overlay'
-                  ? 'border-white/10 bg-white/5 text-stone-100 hover:border-orange-300/30 hover:bg-orange-300/10'
+                  ? 'border-highlight/10 bg-highlight/5 text-text hover:border-accent/40 hover:bg-accent/10'
                   : 'border-border bg-bg text-text hover:border-accent/40 hover:text-accent',
                 'disabled:cursor-wait disabled:opacity-60',
               )}

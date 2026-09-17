@@ -122,7 +122,7 @@ export function MessageBubble({
                 className={cn(
                   "rounded-full px-[0.55vh] py-[0.1vh] text-[1.25vh] font-medium",
                   message.deliveryState === "failed"
-                    ? "bg-red-100 text-red-700"
+                    ? "bg-danger-dim text-danger"
                     : "bg-accent/10 text-accent",
                 )}
               >
@@ -134,7 +134,7 @@ export function MessageBubble({
               </span>
             ) : null}
             {!isUser && message.completionState === "provisional" ? (
-              <span className="rounded-full bg-amber-100 px-[0.55vh] py-[0.1vh] text-[1.25vh] font-medium text-amber-700">
+              <span className="rounded-full bg-warning-dim px-[0.55vh] py-[0.1vh] text-[1.25vh] font-medium text-warning">
                 阶段性回复 · 后台处理中
               </span>
             ) : null}
@@ -324,7 +324,7 @@ export function MessageBubble({
         )}
 
         {isUser && message.deliveryState === "failed" && message.error ? (
-          <div role="alert" className="px-[0.45vh] text-[1.45vh] text-red-600">
+          <div role="alert" className="px-[0.45vh] text-[1.45vh] text-danger">
             发送失败：{message.error.message || "未知错误"}
           </div>
         ) : null}

@@ -149,12 +149,12 @@ export function DesktopPetChatBubble({
   return (
     <div className="flex h-full w-full flex-col gap-[3cqh] [container-type:size]" style={{ fontSize: `${3.5 * fontRatio}cqh` }}>
       <section
-        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[6cqh] border border-white/12 bg-stone-900/90 text-stone-100 shadow-[0_2cqh_6cqh_rgba(0,0,0,0.28)] backdrop-blur-xl"
-        style={{ backgroundColor: `rgba(28,25,23,${Math.max(30, Math.min(100, opacity)) / 100})` }}
+        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[6cqh] border border-highlight/12 bg-overlay/90 text-text shadow-[0_2cqh_6cqh_color-mix(in_srgb,var(--color-scrim)_28%,transparent)] backdrop-blur-xl"
+        style={{ backgroundColor: `color-mix(in srgb, var(--color-overlay) ${Math.max(30, Math.min(100, opacity))}%, transparent)` }}
       >
         <div
           ref={scrollRef}
-          className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-[6cqh] pb-[3cqh] pt-[6cqh] [scrollbar-color:rgba(168,162,158,0.45)_transparent] [scrollbar-width:thin]"
+          className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-[6cqh] pb-[3cqh] pt-[6cqh] [scrollbar-color:var(--color-scrollbar)_transparent] [scrollbar-width:thin]"
         >
           {visibleSegments.length > 0 ? (
             <div className="grid gap-[2cqh]">
@@ -171,33 +171,33 @@ export function DesktopPetChatBubble({
                   return (
                     <div
                       key={`${segment.speaker}-${index}-thinking`}
-                      className={cn("min-w-0 text-stone-400", startsNewSpeaker && "mt-[4cqh]")}
+                      className={cn("min-w-0 text-text-muted", startsNewSpeaker && "mt-[4cqh]")}
                     >
                       <button
                         type="button"
                         onClick={() => toggleSegment(segmentID)}
-                        className="flex w-full min-w-0 items-center gap-[2cqh] text-left transition-colors hover:text-stone-200"
+                        className="flex w-full min-w-0 items-center gap-[2cqh] text-left transition-colors hover:text-text"
                         aria-expanded={expanded}
                       >
                         <TraceIcon
                           className={cn(
                             "h-[4.5cqh] w-[4.5cqh] shrink-0",
-                            isThinkingSegment ? "text-orange-500" : "text-sky-400",
+                            isThinkingSegment ? "text-accent" : "text-info",
                           )}
                         />
-                        <span className={cn("shrink-0", isThinkingSegment ? "text-orange-400" : "text-sky-300")}>
+                        <span className={cn("shrink-0", isThinkingSegment ? "text-accent" : "text-info")}>
                           {traceLabel}
                         </span>
                         <span className="min-w-0 flex-1 truncate">{traceContent}</span>
                         <ChevronRight
                           className={cn(
-                            "h-[4cqh] w-[4cqh] shrink-0 text-stone-500 transition-transform",
+                            "h-[4cqh] w-[4cqh] shrink-0 text-text-muted transition-transform",
                             expanded && "rotate-90",
                           )}
                         />
                       </button>
                       {expanded ? (
-                        <div className="mt-[2cqh] whitespace-pre-wrap rounded-[3cqh] border border-white/8 bg-black/20 px-[4cqh] py-[3cqh] leading-[1.55] text-stone-300 [overflow-wrap:anywhere]">
+                        <div className="mt-[2cqh] whitespace-pre-wrap rounded-[3cqh] border border-highlight/8 bg-scrim/20 px-[4cqh] py-[3cqh] leading-[1.55] text-text [overflow-wrap:anywhere]">
                           {traceContent}
                         </div>
                       ) : null}
@@ -210,54 +210,54 @@ export function DesktopPetChatBubble({
                   return (
                     <div
                       key={`${segment.speaker}-${index}-${segment.tool.id}`}
-                      className={cn("min-w-0 text-stone-400", startsNewSpeaker && "mt-[4cqh]")}
+                      className={cn("min-w-0 text-text-muted", startsNewSpeaker && "mt-[4cqh]")}
                     >
                       <button
                         type="button"
                         onClick={() => toggleSegment(segmentID)}
-                        className="flex w-full min-w-0 items-center gap-[2cqh] text-left transition-colors hover:text-stone-200"
+                        className="flex w-full min-w-0 items-center gap-[2cqh] text-left transition-colors hover:text-text"
                         aria-expanded={expanded}
                       >
-                        <Wrench className="h-[4.5cqh] w-[4.5cqh] shrink-0 text-violet-400" />
-                        <span className="shrink-0 text-violet-300">工具:</span>
-                        <span className="min-w-0 flex-1 truncate text-violet-300">{segment.tool.name}</span>
+                        <Wrench className="h-[4.5cqh] w-[4.5cqh] shrink-0 text-accent" />
+                        <span className="shrink-0 text-accent">工具:</span>
+                        <span className="min-w-0 flex-1 truncate text-accent">{segment.tool.name}</span>
                         <span
                           className={cn(
                             "shrink-0 rounded-full border px-[2cqh] py-[0.7cqh] text-[0.82em]",
                             segment.tool.status === "error" || segment.tool.status === "aborted"
-                              ? "border-red-400/30 bg-red-400/10 text-red-300"
-                              : "border-white/12 bg-white/5 text-stone-400",
+                              ? "border-danger/30 bg-danger/10 text-danger"
+                              : "border-highlight/12 bg-highlight/5 text-text-muted",
                           )}
                         >
                           {toolStatus(segment.tool.status)}
                         </span>
                         {segment.tool.duration ? (
-                          <span className="shrink-0 font-mono text-[0.82em] tracking-[0.08em] text-stone-500">
+                          <span className="shrink-0 font-mono text-[0.82em] tracking-[0.08em] text-text-muted">
                             {segment.tool.duration}MS
                           </span>
                         ) : null}
                         <ChevronRight
                           className={cn(
-                            "h-[4cqh] w-[4cqh] shrink-0 text-stone-500 transition-transform",
+                            "h-[4cqh] w-[4cqh] shrink-0 text-text-muted transition-transform",
                             expanded && "rotate-90",
                           )}
                         />
                       </button>
                       {expanded ? (
-                        <div className="mt-[2cqh] grid gap-[2cqh] rounded-[3cqh] border border-white/8 bg-black/20 px-[4cqh] py-[3cqh] text-stone-300">
+                        <div className="mt-[2cqh] grid gap-[2cqh] rounded-[3cqh] border border-highlight/8 bg-scrim/20 px-[4cqh] py-[3cqh] text-text">
                           <div>状态：{toolStatus(segment.tool.status)}</div>
                           {segment.tool.input ? (
-                            <pre className="min-w-0 max-w-full whitespace-pre-wrap rounded-[2cqh] bg-black/20 p-[2.5cqh] [overflow-wrap:anywhere]">
+                            <pre className="min-w-0 max-w-full whitespace-pre-wrap rounded-[2cqh] bg-scrim/20 p-[2.5cqh] [overflow-wrap:anywhere]">
                               {segment.tool.input}
                             </pre>
                           ) : null}
                           {segment.tool.output ? (
-                            <pre className="min-w-0 max-w-full whitespace-pre-wrap rounded-[2cqh] bg-black/20 p-[2.5cqh] [overflow-wrap:anywhere]">
+                            <pre className="min-w-0 max-w-full whitespace-pre-wrap rounded-[2cqh] bg-scrim/20 p-[2.5cqh] [overflow-wrap:anywhere]">
                               {segment.tool.output}
                             </pre>
                           ) : null}
                           {segment.tool.error ? (
-                            <pre className="min-w-0 max-w-full whitespace-pre-wrap rounded-[2cqh] bg-red-950/30 p-[2.5cqh] text-red-200 [overflow-wrap:anywhere]">
+                            <pre className="min-w-0 max-w-full whitespace-pre-wrap rounded-[2cqh] bg-danger/30 p-[2.5cqh] text-danger [overflow-wrap:anywhere]">
                               {segment.tool.error}
                             </pre>
                           ) : null}
@@ -283,14 +283,14 @@ export function DesktopPetChatBubble({
                     )}
                   >
                     {assistant ? (
-                      <div className="flex w-full min-w-0 items-end gap-[2cqh] pt-[0.5cqh] text-stone-100">
+                      <div className="flex w-full min-w-0 items-end gap-[2cqh] pt-[0.5cqh] text-text">
                         <div className="min-w-0 flex-1">
                           <DesktopPetMarkdown content={content} />
                         </div>
                         {speechSegmentID && speechMessageID && speechClip?.status === "synthesizing" ? (
                           <button type="button" onClick={() => toggleSpeechClip(speechSegmentID, speechMessageID, content, true)}
                             aria-label="取消本条消息的语音合成"
-                            className="mb-[0.2cqh] inline-flex h-[5cqh] w-[5cqh] shrink-0 text-stone-500"
+                            className="mb-[0.2cqh] inline-flex h-[5cqh] w-[5cqh] shrink-0 text-text-muted"
                             title="取消本条消息的语音合成"
                           >
                             <Square className="h-full w-full fill-current" />
@@ -303,8 +303,8 @@ export function DesktopPetChatBubble({
                             className={cn(
                               "mb-[0.2cqh] inline-flex h-[5cqh] w-[5cqh] shrink-0 items-center justify-center rounded-full transition-colors",
                               speechClipPlaying
-                                ? "bg-orange-500/15 text-orange-400 hover:bg-orange-500/25"
-                                : "text-stone-400 hover:bg-white/8 hover:text-stone-200",
+                                ? "bg-accent/15 text-accent hover:bg-accent/25"
+                                : "text-text-muted hover:bg-highlight/8 hover:text-text",
                             )}
                             aria-label={speechClipPlaying ? "暂停这段语音" : "播放这段语音"}
                             title={speechClipPlaying ? "暂停" : "播放"}
@@ -318,7 +318,7 @@ export function DesktopPetChatBubble({
                         ) : null}
                       </div>
                     ) : (
-                      <p className="max-w-[86%] whitespace-pre-wrap py-[0.5cqh] text-center font-serif text-[0.94em] leading-[1.4] text-stone-500 [overflow-wrap:anywhere]">
+                      <p className="max-w-[86%] whitespace-pre-wrap py-[0.5cqh] text-center font-serif text-[0.94em] leading-[1.4] text-text-muted [overflow-wrap:anywhere]">
                         {content}
                       </p>
                     )}
@@ -327,20 +327,20 @@ export function DesktopPetChatBubble({
               })}
             </div>
           ) : (
-            <div className="flex items-center text-stone-200">
+            <div className="flex items-center text-text">
               <span>今天需要我做什么？</span>
             </div>
           )}
           {isThinking ? (
-            <div className="mt-[4cqh] flex items-center gap-[2cqh] text-stone-400">
+            <div className="mt-[4cqh] flex items-center gap-[2cqh] text-text-muted">
               <LoaderCircle className="h-[5cqh] w-[5cqh] animate-spin" />
               <span>正在处理…</span>
             </div>
           ) : null}
         </div>
 
-        <div className="flex h-[22%] min-h-0 shrink-0 items-center gap-[3cqh] border-t border-white/8 px-[5cqh] py-[3cqh]">
-          <div className="flex h-full min-w-0 flex-1 items-center gap-[2cqh] rounded-[5cqh] border border-white/20 px-[4cqh] focus-within:border-white/35">
+        <div className="flex h-[22%] min-h-0 shrink-0 items-center gap-[3cqh] border-t border-highlight/8 px-[5cqh] py-[3cqh]">
+          <div className="flex h-full min-w-0 flex-1 items-center gap-[2cqh] rounded-[5cqh] border border-highlight/20 px-[4cqh] focus-within:border-highlight/35">
             <input
               ref={inputRef}
               value={input}
@@ -380,7 +380,7 @@ export function DesktopPetChatBubble({
                       ? "正在完成转写…"
                       : "输入消息…"
               }
-              className="min-w-0 flex-1 bg-transparent text-stone-100 outline-none placeholder:text-stone-400"
+              className="min-w-0 flex-1 bg-transparent text-text outline-none placeholder:text-text-muted"
             />
             {voiceInputEnabled ? (
               <button
@@ -390,10 +390,10 @@ export function DesktopPetChatBubble({
                 className={cn(
                   "flex h-[8cqh] w-[8cqh] shrink-0 items-center justify-center rounded-full transition-[color,background-color,transform] disabled:cursor-wait",
                   voiceStatus === "recording"
-                    ? "bg-red-500/18 text-red-400"
+                    ? "bg-danger/18 text-danger"
                     : voiceError
-                      ? "text-red-400 hover:bg-red-500/10"
-                      : "text-stone-400 hover:bg-white/8 hover:text-stone-200",
+                      ? "text-danger hover:bg-danger/10"
+                      : "text-text-muted hover:bg-highlight/8 hover:text-text",
                 )}
                 style={{ transform: voiceStatus === "recording" ? `scale(${1 + voiceLevel * 0.12})` : undefined }}
                 aria-label={voiceStatus === "recording" ? "停止录音" : "开始语音输入"}
@@ -414,10 +414,10 @@ export function DesktopPetChatBubble({
             onClick={() => void (isThinking ? onAbort() : send())}
             disabled={!isThinking && !canSend}
             className={cn(
-              "flex aspect-square h-full max-h-[12cqh] items-center justify-center rounded-full text-white transition-colors disabled:text-white/75",
+              "flex aspect-square h-full max-h-[12cqh] items-center justify-center rounded-full transition-colors disabled:text-text-disabled",
               isThinking
-                ? "bg-stone-600 hover:bg-stone-500"
-                : "bg-orange-600 hover:bg-orange-500 disabled:bg-orange-600/60",
+                ? "bg-surface-hover text-text hover:bg-border"
+                : "bg-accent text-on-accent hover:bg-accent-hover disabled:bg-surface-disabled",
             )}
             aria-label={isThinking ? "停止生成" : "发送"}
             title={isThinking ? "停止生成" : "发送"}
@@ -432,9 +432,9 @@ export function DesktopPetChatBubble({
       </section>
 
       {attentionVisible ? (
-        <section className="flex h-[22%] min-h-0 shrink-0 items-center gap-[3cqh] rounded-[5cqh] border border-white/10 bg-stone-800/88 px-[5cqh] text-stone-100 shadow-[0_1.5cqh_4cqh_rgba(0,0,0,0.22)] backdrop-blur-xl">
-          <Info className="h-[5cqh] w-[5cqh] shrink-0 text-stone-300" />
-          <span className="min-w-0 flex-1 truncate text-stone-200">
+        <section className="flex h-[22%] min-h-0 shrink-0 items-center gap-[3cqh] rounded-[5cqh] border border-highlight/10 bg-overlay/88 px-[5cqh] text-text shadow-[0_1.5cqh_4cqh_color-mix(in_srgb,var(--color-scrim)_22%,transparent)] backdrop-blur-xl">
+          <Info className="h-[5cqh] w-[5cqh] shrink-0 text-text" />
+          <span className="min-w-0 flex-1 truncate text-text">
             {permission ? `需要权限：${permission.permission}` : question?.questions[0]?.question || "需要你的确认"}
           </span>
           {permission ? (
@@ -443,7 +443,7 @@ export function DesktopPetChatBubble({
                 type="button"
                 onClick={() => void replyPermission("once")}
                 disabled={Boolean(submitting)}
-                className="shrink-0 px-[2cqh] py-[2cqh] font-medium text-orange-400 disabled:opacity-50"
+                className="shrink-0 px-[2cqh] py-[2cqh] font-medium text-accent disabled:opacity-50"
               >
                 {submitting === "once" ? "处理中" : "允许一次"}
               </button>
@@ -451,7 +451,7 @@ export function DesktopPetChatBubble({
                 type="button"
                 onClick={() => void replyPermission("reject")}
                 disabled={Boolean(submitting)}
-                className="shrink-0 px-[2cqh] py-[2cqh] text-stone-300 disabled:opacity-50"
+                className="shrink-0 px-[2cqh] py-[2cqh] text-text disabled:opacity-50"
               >
                 拒绝
               </button>
@@ -464,7 +464,7 @@ export function DesktopPetChatBubble({
                   type="button"
                   onClick={() => void replyQuestion(option.label)}
                   disabled={Boolean(submitting)}
-                  className="shrink-0 px-[2cqh] py-[2cqh] text-orange-400 disabled:opacity-50"
+                  className="shrink-0 px-[2cqh] py-[2cqh] text-accent disabled:opacity-50"
                 >
                   {option.label}
                 </button>
@@ -473,7 +473,7 @@ export function DesktopPetChatBubble({
                 type="button"
                 onClick={() => void onQuestionReject(question!.id)}
                 disabled={Boolean(submitting)}
-                className="shrink-0 px-[2cqh] py-[2cqh] text-stone-300 disabled:opacity-50"
+                className="shrink-0 px-[2cqh] py-[2cqh] text-text disabled:opacity-50"
               >
                 暂不处理
               </button>

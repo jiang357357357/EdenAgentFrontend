@@ -71,7 +71,7 @@ export function OperationPanel({ sessionId }: { sessionId: string }) {
         <button type="button" disabled={Boolean(busy)} onClick={() => setRefresh(value => value + 1)}>刷新</button>
       </div>
       <p className="text-xs">显示最近 100 条记录。结果未知表示执行可能已发生，请先核对文件或外部服务；下方决定只更新审阅记录，不立即执行工具。</p>
-      {error && <p role="alert" className="text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-danger">{error}</p>}
       {notice && <p role="status">{notice}</p>}
       {!items && !error && <p>读取中…</p>}
       {items?.length === 0 && <p>暂无符合条件的操作。</p>}

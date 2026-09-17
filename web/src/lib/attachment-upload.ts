@@ -1,17 +1,22 @@
+import { getStoredToken } from './auth'
+import { getRuntimeOriginRevision } from './runtime-origin'
 import { uploadBlob } from './blob-upload'
 import { getStoredRuntimeOrigin, RUNTIME_ORIGIN_STORAGE_KEY, type RuntimeOrigin } from './runtime-origin'
 import type { PromptAttachment } from '../types'
 
 export async function uploadAttachmentBatch(attachments: Array<PromptAttachment | string>, origin: RuntimeOrigin,
   baseUrl: string, token: () => Promise<string>, signal?: AbortSignal) {
+  const revision = getRuntimeOriginRevision()
+  const coreToken = origin === "mon" ? getStoredToken() ?? undefined : undefined
   const controller = new AbortController()
   const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal
   const checkWorld = () => {
-    if ((getStoredRuntimeOrigin() ?? 'mon') !== origin) controller.abort(new Error('World changed while uploading attachments'))
+    if ((getStoredRuntimeOrigin() ?? 'mon') !== origin || revision !== getRuntimeOriginRevision()) controller.abort(new Error('World changed while uploading attachments'))
   }
-  const storage = (event: StorageEvent) => { if (event.key === null || event.key === RUNTIME_ORIGIN_STORAGE_KEY) checkWorld() }
+  const storage = (event: StorageEvent) => { if (event.key === null || event.key === RUNTIME_ORIGIN_STORAGE_KEY || event.key === 'agent.auth_token') checkWorld() }
   window.addEventListener('edenagent:runtime-origin-changed', checkWorld)
   window.addEventListener('storage', storage)
+  window.addEventListener('edenagent:account-changed', checkWorld)
   const timer = setTimeout(() => controller.abort(new Error('Attachment batch timed out; upload results may be unconfirmed')), 120000)
   try {
     checkWorld(); combined.throwIfAborted()
@@ -29,7 +34,7 @@ export async function uploadAttachmentBatch(attachments: Array<PromptAttachment 
           const source = await response.blob()
           checkWorld(); combined.throwIfAborted()
           const blob = source.type ? source : new Blob([source], { type: item.mime || 'application/octet-stream' })
-          const info = await uploadBlob(baseUrl, capability, blob, combined)
+          const info = await uploadBlob(baseUrl, capability, blob, combined, coreToken)
           checkWorld(); combined.throwIfAborted()
           return { blobId: info.id, mime: info.mime, ...(item.filename ? { filename: item.filename } : {}) }
         } catch (error) { controller.abort(error); throw error }
@@ -45,5 +50,6 @@ export async function uploadAttachmentBatch(attachments: Array<PromptAttachment 
     clearTimeout(timer); controller.abort()
     window.removeEventListener('edenagent:runtime-origin-changed', checkWorld)
     window.removeEventListener('storage', storage)
+    window.removeEventListener('edenagent:account-changed', checkWorld)
   }
 }

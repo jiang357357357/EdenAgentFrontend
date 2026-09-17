@@ -18,9 +18,9 @@ const statusText: Record<SubagentStatus, string> = {
 
 function StatusIcon({ status }: { status: SubagentStatus }) {
   if (status === "running") return <LoaderCircle className="h-[1.7vh] w-[1.7vh] animate-spin text-accent" />
-  if (status === "completed") return <Check className="h-[1.7vh] w-[1.7vh] text-emerald-600" />
+  if (status === "completed") return <Check className="h-[1.7vh] w-[1.7vh] text-success" />
   if (status === "failed" || status === "interrupted" || status === "cancelled") {
-    return <OctagonX className="h-[1.7vh] w-[1.7vh] text-red-500" />
+    return <OctagonX className="h-[1.7vh] w-[1.7vh] text-danger" />
   }
   return <Circle className="h-[1.5vh] w-[1.5vh] text-text-muted" />
 }
@@ -145,7 +145,7 @@ export function SubagentActivityCard({
     <section className={cn(
       "overflow-hidden border-border bg-card/95",
       embedded
-        ? "border-t bg-violet-50/10"
+        ? "border-t bg-accent-dim"
         : "mx-auto my-[2.2vh] w-[86%] rounded-[1.4vh] border shadow-sm",
     )}>
       <button
@@ -162,7 +162,7 @@ export function SubagentActivityCard({
           {running ? `${running} 个运行中` : `${completed} 个已完成`}{failed ? ` · ${failed} 个失败` : ""}
         </span>
         {activeBatch ? (
-          <span className="rounded-full bg-amber-100 px-[0.55vw] py-[0.15vh] text-[1.3vh] text-amber-700">
+          <span className="rounded-full bg-warning-dim px-[0.55vw] py-[0.15vh] text-[1.3vh] text-warning">
             {activeBatch.status === "aggregating"
                 ? "正在整合"
               : activeBatch.status === "aggregation_failed"
@@ -199,7 +199,7 @@ export function SubagentActivityCard({
                     </span>
                   ) : null}
                   {thread.metadata?.requiredForFinal === true ? (
-                    <span className="rounded-full bg-amber-100 px-[0.45vw] py-[0.1vh] text-[1.25vh] text-amber-700">
+                    <span className="rounded-full bg-warning-dim px-[0.45vw] py-[0.1vh] text-[1.25vh] text-warning">
                       最终回复所需
                     </span>
                   ) : null}
@@ -246,7 +246,7 @@ export function SubagentActivityCard({
                   {onInterrupt && ["created", "queued", "running", "waiting"].includes(thread.status) ? (
                     <button
                       type="button"
-                      className="rounded-md border border-border px-[0.55vw] py-[0.2vh] text-[1.35vh] text-text-muted hover:border-red-300 hover:text-red-600 disabled:cursor-wait disabled:opacity-50"
+                      className="rounded-md border border-border px-[0.55vw] py-[0.2vh] text-[1.35vh] text-text-muted hover:border-danger/30 hover:text-danger disabled:cursor-wait disabled:opacity-50"
                       disabled={interrupting === thread.agentPath}
                       onClick={async (event) => {
                         event.stopPropagation()
@@ -272,7 +272,7 @@ export function SubagentActivityCard({
                     {metadataText(thread, "thinkingLevel") ? ` · 推理 ${metadataText(thread, "thinkingLevel")}` : ""}
                   </div>
                 ) : null}
-                {thread.error ? <p className="mt-[0.6vh] text-[1.45vh] text-red-600">{thread.error}</p> : null}
+                {thread.error ? <p className="mt-[0.6vh] text-[1.45vh] text-danger">{thread.error}</p> : null}
                 {thread.result?.summary ? (
                   <p className="mt-[0.6vh] line-clamp-2 text-[1.5vh] leading-relaxed text-text-muted">
                     {thread.result.summary}
@@ -307,7 +307,7 @@ export function SubagentActivityCard({
                     <button
                       type="submit"
                       disabled={!followupText.trim() || submittingFollowup}
-                      className="rounded-md bg-accent px-[0.75vw] py-[0.4vh] text-[1.35vh] text-white disabled:opacity-45"
+                      className="rounded-md bg-accent px-[0.75vw] py-[0.4vh] text-[1.35vh] text-on-accent disabled:opacity-45"
                     >
                       {submittingFollowup ? "提交中" : "提交"}
                     </button>
@@ -334,7 +334,7 @@ export function SubagentActivityCard({
                       ) : null}
                     </div>
                     {details.checkpoint?.budgetUsage?.exceededReason ? (
-                      <p className="mt-[0.55vh] text-[1.35vh] text-red-600">
+                      <p className="mt-[0.55vh] text-[1.35vh] text-danger">
                         {details.checkpoint.budgetUsage.exceededReason}
                       </p>
                     ) : null}
@@ -349,10 +349,10 @@ export function SubagentActivityCard({
                           />
                         ) : (
                           <div key={item.id} className="flex items-center gap-[0.8vh] rounded-[0.85vh] border border-border bg-card px-[1vh] py-[0.7vh] text-[1.28vh]">
-                            <Wrench className={cn("h-[1.5vh] w-[1.5vh] text-violet-500", item.status === "running" && "animate-pulse")} />
-                            <span className="text-violet-600">工具:</span>
-                            <span className="font-medium text-violet-700">{item.name}</span>
-                            <span className={cn("ml-auto", item.status === "error" ? "text-red-500" : "text-text-muted")}>
+                            <Wrench className={cn("h-[1.5vh] w-[1.5vh] text-accent", item.status === "running" && "animate-pulse")} />
+                            <span className="text-accent">工具:</span>
+                            <span className="font-medium text-accent">{item.name}</span>
+                            <span className={cn("ml-auto", item.status === "error" ? "text-danger" : "text-text-muted")}>
                               {item.status === "running" ? "运行中" : item.status === "error" ? "失败" : "完成"}
                             </span>
                           </div>
@@ -364,9 +364,9 @@ export function SubagentActivityCard({
               </div>
             </div>
           ))}
-          {detailError ? <p className="py-[0.7vh] text-[1.4vh] text-red-600">{detailError}</p> : null}
-          {followupError ? <p className="py-[0.7vh] text-[1.4vh] text-red-600">{followupError}</p> : null}
-          {interruptError ? <p className="py-[0.7vh] text-[1.4vh] text-red-600">{interruptError}</p> : null}
+          {detailError ? <p className="py-[0.7vh] text-[1.4vh] text-danger">{detailError}</p> : null}
+          {followupError ? <p className="py-[0.7vh] text-[1.4vh] text-danger">{followupError}</p> : null}
+          {interruptError ? <p className="py-[0.7vh] text-[1.4vh] text-danger">{interruptError}</p> : null}
             </div>
           </motion.div>
         ) : null}

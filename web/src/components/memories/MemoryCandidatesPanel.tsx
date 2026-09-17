@@ -66,7 +66,7 @@ export function MemoryCandidatesPanel({ sessionId }: { sessionId: string }) {
     {open && <SessionPanelDialog title="记忆候选" onClose={() => setOpen(false)}>
       {!loading && !error && <p className="mb-2 text-xs text-text-muted">本页 {page.items.reduce((count, item) => count + item.candidates.length, 0)} 条候选记忆</p>}
       <p className="mb-3 text-xs text-text-muted">候选尚未成为长期记忆。重新审批后，由你决定是否保存。</p>
-      {error && <p role="alert" className="mb-2 text-red-500">{error}</p>}
+      {error && <p role="alert" className="mb-2 text-danger">{error}</p>}
       {notice && <p role="status" className="mb-2 text-xs text-text-muted">{notice}</p>}
       {loading ? <p role="status">正在读取…</p> : page.items.length ? page.items.map(item => <article key={item.id} className="mb-3 rounded border border-border p-3">
         <p className="mb-2 text-xs text-text-muted">角色 {item.actorId || item.scopeKey} · {new Date(item.createdAt).toLocaleString()}</p>

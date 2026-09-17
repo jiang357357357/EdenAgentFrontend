@@ -111,7 +111,7 @@ export function DirectorPlanCard({ run, participants }: DirectorPlanCardProps) {
                       {avatar ? <img src={avatar} alt="" className="h-full w-full object-cover object-top" /> : name.slice(0, 1)}
                     </span>
                     <span>{name}</span>
-                    {completed ? <Check className="h-[1.25vh] w-[1.25vh] text-emerald-600" /> : null}
+                    {completed ? <Check className="h-[1.25vh] w-[1.25vh] text-success" /> : null}
                   </span>
                 </span>
               )

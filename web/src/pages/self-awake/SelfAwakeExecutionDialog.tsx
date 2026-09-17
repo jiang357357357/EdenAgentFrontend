@@ -61,7 +61,7 @@ export function SelfAwakeExecutionDialog({ runId, onClose }: { runId: string; on
     const link = document.createElement("a"); link.href = url; link.download = `self-awake-${runId}.json`; link.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6" onClick={event => { if (event.target === event.currentTarget) onClose() }}>
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/35 p-6" onClick={event => { if (event.target === event.currentTarget) onClose() }}>
     <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="self-awake-execution-title" className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-xl bg-card p-6 shadow-xl">
       <div className="flex items-center gap-3 border-b border-border pb-4">
         <h2 id="self-awake-execution-title" className="flex-1 text-xl">本次自醒 · 执行记录</h2>
@@ -70,14 +70,14 @@ export function SelfAwakeExecutionDialog({ runId, onClose }: { runId: string; on
         <button ref={close} onClick={onClose} aria-label="关闭执行记录"><X /></button>
       </div>
       <div className="overflow-y-auto py-4 space-y-4 text-sm">
-        {error ? <p role="alert" className="text-red-600">{error}</p> : !data ? <p>正在读取执行记录…</p> : <>
+        {error ? <p role="alert" className="text-danger">{error}</p> : !data ? <p>正在读取执行记录…</p> : <>
           <p>状态：{statuses[String(run.status)] ?? String(run.status ?? "未知")} · 尝试 {String(run.attempts ?? 0)} 次 · 调用工具 {String(events.filter(event => event.kind === "agent.tool_execution_start").length)} 次</p>
           <p className="break-all text-text-muted">记录标识：{data.path}</p>
           <p>触发原因：{String(object(object(run.request).trigger).reason ?? "未记录")}</p>
           {diaries.map((diary, index) => <section key={index}><h3 className="font-semibold">{String(diary.title ?? "工作日记")}</h3><p className="mt-2 whitespace-pre-wrap">{String(diary.content ?? "")}</p></section>)}
           {!diaries.length && <p>本轮尚无日记记录。</p>}
           {decision.action != null && <p>行动决策：{actions[String(decision.action)] ?? String(decision.action)}</p>}
-          {run.lastError != null && <p className="text-red-600">{String(run.lastError)}</p>}
+          {run.lastError != null && <p className="text-danger">{String(run.lastError)}</p>}
           {notification.state != null && <section className="rounded border border-border p-3">
             <h3 className="font-semibold">联系用户</h3>
             <p>发送状态：{({ delivered: "渠道已接收", pending: "等待发送或重试", failed: "发送失败", suppressed: "本次未发送" } as Record<string, string>)[String(notification.state)] ?? String(notification.state)}</p>

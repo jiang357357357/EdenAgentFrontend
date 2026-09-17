@@ -21,6 +21,6 @@ export function SubagentReopenRestore({ agentId, onSaved }: { agentId: string; o
     <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我确认恢复条件已经处理，允许重开此子会话。</label>
     <button disabled={busy || !confirmed || !note.trim()} onClick={() => void reopen()} className="mt-2 rounded border px-2 py-1">确认重开</button>
     <p>重开不会自动重发旧任务。需要继续工作时另行发送续接指令；迁移模式仍禁止执行任务。</p>
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
   </details>
 }

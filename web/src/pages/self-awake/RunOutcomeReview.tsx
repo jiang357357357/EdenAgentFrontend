@@ -26,6 +26,6 @@ export function RunOutcomeReview({ runId }: { runId: string }) {
       <label className="block"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> 我已核对原记录，确认上述处置。</label>
       <button disabled={busy || !confirmed || !note.trim()} onClick={() => void resolve()} className="my-2 rounded border px-2 py-1">保存处置</button></>}
     {preview && preview.state !== 'interrupted' && <p role="status">当前状态：{preview.state}。刷新自醒列表可查看最新记录。</p>}
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
   </div>
 }

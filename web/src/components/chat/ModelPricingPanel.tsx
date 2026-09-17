@@ -39,7 +39,7 @@ export function ModelPricingPanel({ sessionId }: { sessionId: string }) {
     </select>
     {['actor', 'actor_vision'].includes(target) && <input aria-label="助手 ID" placeholder="助手 ID" disabled={busy} value={assistantId} onChange={event => { setAssistantId(event.target.value); setLoaded(null) }} className="ml-2 rounded border p-1" />}
     <button disabled={busy} onClick={() => void load()} className="ml-2 rounded border px-2 py-1">读取当前模型</button>
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-danger">{error}</p>}
     {loaded && <div className="mt-2 space-y-2">
       <p>{loaded.info.provider}/{loaded.info.modelId} · {loaded.info.rates ? '已有单价' : '单价未知'}</p>
       {fields.map(field => <label key={field} className="block">{labels[field]} <input type="number" min={0} step="any" disabled={busy} value={rates[field]} onChange={event => setRates(previous => ({ ...previous, [field]: event.target.value }))} className="rounded border p-1" /></label>)}

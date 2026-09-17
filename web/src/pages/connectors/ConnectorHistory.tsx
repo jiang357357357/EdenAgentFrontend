@@ -26,7 +26,7 @@ export function ConnectorHistory({ id }: { id: string }) {
       if (epoch.current === current && detailRequest.current === request) setDetail(result)
     } catch (reason) { if (epoch.current === current) setError(String(reason)) }
   }
-  return <section className="my-3 rounded-xl border bg-white p-3 text-sm">
+  return <section className="my-3 rounded-xl border bg-card p-3 text-sm">
     <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}>事件与调用记录</button>
     {open && <div className="mt-3 space-y-2">
       <div className="flex gap-3">{(['events', 'operations'] as const).map(value => <button type="button" key={value} aria-pressed={tab === value}
@@ -42,8 +42,8 @@ export function ConnectorHistory({ id }: { id: string }) {
         {item.error && <p>{item.error}</p>}
         {tab === 'events' && <button type="button" onClick={() => void inspect(item.id)}>查看事件内容</button>}
       </li>)}</ul>
-      {detail && <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-stone-50 p-2 text-xs">{JSON.stringify(detail.payload, null, 2)}</pre>}
-      {tab === 'operations' && <p className="text-xs text-stone-500">结果未确认的调用可能已产生外部影响，请先核对游戏或服务状态。</p>}
+      {detail && <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-bg p-2 text-xs">{JSON.stringify(detail.payload, null, 2)}</pre>}
+      {tab === 'operations' && <p className="text-xs text-text-muted">结果未确认的调用可能已产生外部影响，请先核对游戏或服务状态。</p>}
       {before !== undefined && <button type="button" onClick={() => setBefore(undefined)}>最新记录</button>}
       {page?.nextCursor != null && <button type="button" onClick={() => setBefore(page.nextCursor!)}>更早记录</button>}
     </div>}

@@ -33,7 +33,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="mt-6 rounded-full bg-accent px-5 py-2 text-sm text-white hover:opacity-90"
+            className="mt-6 rounded-full bg-accent px-5 py-2 text-sm text-on-accent hover:opacity-90"
           >
             重新加载
           </button>

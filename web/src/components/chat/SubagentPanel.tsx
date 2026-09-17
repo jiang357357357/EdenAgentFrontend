@@ -60,7 +60,7 @@ function ScopedSubagentPanel({ sessionId }: { sessionId: string }) {
     <button type="button" onClick={() => setOpen(true)} aria-label={`子任务，共 ${agents.length} 个`} title={`子任务 · ${agents.length}`} aria-haspopup="dialog"
       className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-card hover:text-text">
       <Network className="h-4 w-4" />
-      {agents.length > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 rounded-full bg-accent px-1 text-[10px] leading-4 text-white">{agents.length > 99 ? '99+' : agents.length}</span>}
+      {agents.length > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 rounded-full bg-accent px-1 text-[10px] leading-4 text-on-accent">{agents.length > 99 ? '99+' : agents.length}</span>}
     </button>
     {open && <SessionPanelDialog title="子任务" onClose={() => setOpen(false)}>
       <LocalModelProfiles key={sessionId} />
@@ -80,8 +80,8 @@ function ScopedSubagentPanel({ sessionId }: { sessionId: string }) {
       </div>
       <p className="mt-2">{roles.find(item => item.name === role)?.sandboxMode === 'read-only' ? '只读角色限制可用工具；子任务不能扩大父级策略。' : '工具仍需宿主审批，子任务权限独立。'} 响应后累计用量，达到上限后停止后续调用；已在途的响应可能超过上限。费用上限要求模型已配置单价。角色最多 {roles.find(item => item.name === role)?.maxTurns ?? '—'} 轮，按较小预算执行。</p>
       <button disabled={busy || !name || !task || !roles.some(item => item.name === role)} onClick={() => void run(async () => { const value = await rpcRequest('agent.spawn', { sessionId, ...(actorId ? { actorId } : {}), taskName: name, message: task, role, idempotencyKey: spawnKey, maxTurns, maxModelRequests, maxToolCalls, maxTokens, maxCostMicrousd: maxCostMicrousd === '' ? null : Number(maxCostMicrousd), timeoutMs: minutes * 60000 }); setSelected(value.id); setName(''); setTask(''); setSpawnKey(crypto.randomUUID()) })} className="mt-1 rounded border px-3 py-1 disabled:opacity-40">创建子任务</button>
-      {error && <p role="alert" className="mt-2 text-red-700">{error}</p>}
-      <div className="mt-3 space-y-2">{agents.map(item => <button key={item.id} onClick={() => setSelected(item.id)} className={`block w-full rounded border p-2 text-left ${selected === item.id ? 'border-amber-500' : 'border-stone-200'}`}><b>{item.agentPath}</b> · {item.status}</button>)}</div>
+      {error && <p role="alert" className="mt-2 text-danger">{error}</p>}
+      <div className="mt-3 space-y-2">{agents.map(item => <button key={item.id} onClick={() => setSelected(item.id)} className={`block w-full rounded border p-2 text-left ${selected === item.id ? 'border-warning/30' : 'border-border'}`}><b>{item.agentPath}</b> · {item.status}</button>)}</div>
       {agent && <div className="mt-3 border-t pt-3">
         {agent.parentActorId && <p>父会话模型来源角色：{agent.parentActorId}</p>}
         <p className="break-all">任务工作区：{agent.workspaceRoot === null ? '尚待核对' : agent.workspaceRoot || '创建时未选择工作区'}</p>
@@ -101,13 +101,13 @@ function ScopedSubagentPanel({ sessionId }: { sessionId: string }) {
         <p>Token：{agent.usage.tokensUnknown ? '用量待核对' : agent.usage.tokens}/{agent.config.maxTokens} · 估算费用：{agent.usage.costUnknown ? '单价或用量未知' : `${agent.usage.costMicrousd} 微美元`}{agent.config.maxCostMicrousd == null ? '（未设置费用上限）' : ` / ${agent.config.maxCostMicrousd} 微美元`}</p>
         {agent.recoveryState && agent.recoveryState !== 'ready' && <p>迁移前任务已保留，上下文、模型和策略尚待恢复；当前不能启动续接。</p>}
         {agent.deadlineAt != null && <p>截止时间：{new Date(Number(agent.deadlineAt)).toLocaleString()}</p>}
-        {agent.error && <p className="text-red-700">{agent.error}</p>}
+        {agent.error && <p className="text-danger">{agent.error}</p>}
         {agent.result && <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words">{typeof agent.result === 'string' ? agent.result : JSON.stringify(agent.result, null, 2)}</pre>}
         <textarea aria-label="子任务消息" disabled={busy} value={message} onChange={event => { setMessage(event.target.value); setMessageKey(crypto.randomUUID()) }} maxLength={16000} placeholder="发送消息或续接任务" className="mt-2 w-full rounded border p-2" />
         <div className="mt-2 flex flex-wrap gap-3">
           <button disabled={busy || !message} onClick={() => void run(async () => { await rpcRequest('agent.send', { agentId: agent.id, message, idempotencyKey: messageKey }); setMessage(''); setMessageKey(crypto.randomUUID()) })}>仅发消息</button>
           <button disabled={busy || !message || Boolean(agent.recoveryState && agent.recoveryState !== 'ready') || ['queued', 'running'].includes(agent.status)} onClick={() => void run(async () => { await rpcRequest('agent.followup', { agentId: agent.id, message, idempotencyKey: messageKey }); setMessage(''); setMessageKey(crypto.randomUUID()) })}>启动续接</button>
-          <button disabled={busy || !['queued', 'running'].includes(agent.status)} onClick={() => void run(() => rpcRequest('agent.interrupt', { agentId: agent.id }))} className="text-red-700">中断任务</button>
+          <button disabled={busy || !['queued', 'running'].includes(agent.status)} onClick={() => void run(() => rpcRequest('agent.interrupt', { agentId: agent.id }))} className="text-danger">中断任务</button>
         </div>
       </div>}
     </SessionPanelDialog>}
