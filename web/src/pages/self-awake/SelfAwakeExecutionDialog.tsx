@@ -1,3 +1,4 @@
+import { DiaryContent } from "./DiaryContent"
 import { useEffect, useRef, useState } from "react"
 import { X, Download, RefreshCw } from "lucide-react"
 import { getSelfAwakeExecution } from "../../lib/agent-client"
@@ -51,6 +52,7 @@ export function SelfAwakeExecutionDialog({ runId, onClose }: { runId: string; on
   }, [runId, refresh])
   const record = object(data?.record)
   const run = object(record.run)
+  const plan = object(run.scheduledWake)
   const decision = object(run.decision)
   const notification = object(record.notificationHistory)
   const events = Array.isArray(record.events) ? record.events.map(object) : []
@@ -74,8 +76,14 @@ export function SelfAwakeExecutionDialog({ runId, onClose }: { runId: string; on
           <p>状态：{statuses[String(run.status)] ?? String(run.status ?? "未知")} · 尝试 {String(run.attempts ?? 0)} 次 · 调用工具 {String(events.filter(event => event.kind === "agent.tool_execution_start").length)} 次</p>
           <p className="break-all text-text-muted">记录标识：{data.path}</p>
           <p>触发原因：{String(object(object(run.request).trigger).reason ?? "未记录")}</p>
-          {diaries.map((diary, index) => <section key={index}><h3 className="font-semibold">{String(diary.title ?? "工作日记")}</h3><p className="mt-2 whitespace-pre-wrap">{String(diary.content ?? "")}</p></section>)}
-          {!diaries.length && <p>本轮尚无日记记录。</p>}
+          {diaries.map((diary, index) => <section key={index}><h3 className="font-semibold">{String(diary.title ?? "日记")}</h3><DiaryContent className="mt-2" content={String(diary.content ?? "")} /></section>)}
+          {!diaries.length && <p>{run.diaryCleared ? "日记已清除，执行记录仍保留。" : "本轮未写入日记。"}</p>}
+          {plan.dueAt != null && <section className="rounded border border-border p-3">
+            <h3 className="font-semibold">历史定时安排</h3>
+            <p>计划时间：{new Date(Number(plan.dueAt)).toLocaleString()}</p>
+            <p className="whitespace-pre-wrap">当时备注：{String(plan.reason || "未记录")}</p>
+            <p className="text-text-muted">这是本轮历史记录，当前生效时间以页面顶部为准。</p>
+          </section>}
           {decision.action != null && <p>行动决策：{actions[String(decision.action)] ?? String(decision.action)}</p>}
           {run.lastError != null && <p className="text-danger">{String(run.lastError)}</p>}
           {notification.state != null && <section className="rounded border border-border p-3">

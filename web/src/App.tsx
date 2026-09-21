@@ -991,8 +991,8 @@ export default function App() {
     await respondPermission(requestID, reply, message)
   }
 
-  const handleQuestionReply = async (requestID: string, answers: string[][]) => {
-    await answerQuestion(requestID, answers)
+  const handleQuestionReply = async (requestID: string, answers: string[][], supplementary?: string[]) => {
+    await answerQuestion(requestID, answers, supplementary)
   }
 
   const handleQuestionReject = async (requestID: string) => {

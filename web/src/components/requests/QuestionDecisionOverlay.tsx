@@ -5,7 +5,7 @@ import { cn } from "../../lib/utils"
 
 interface QuestionDecisionOverlayProps {
   request: PendingQuestion
-  onReply: (requestID: string, answers: string[][]) => Promise<void>
+  onReply: (requestID: string, answers: string[][], supplementary?: string[]) => Promise<void>
   onReject: (requestID: string) => Promise<void>
   fillWindow?: boolean
 }
@@ -23,16 +23,22 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
   const [submitting, setSubmitting] = useState<"reply" | "reject" | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    setSelected({})
+    setCustom({})
+    setSubmitting(null)
+    setError(null)
+  }, [request.id])
+
   const answers = useMemo(
-    () =>
-      request.questions.map((_, index) => {
-        const picked = selected[index] ?? []
-        const customValue = custom[index]?.trim()
-        return customValue ? [...picked, customValue] : picked
-      }),
-    [custom, request.questions, selected],
+    () => request.questions.map((_, index) => selected[index] ?? []),
+    [request.questions, selected],
   )
-  const canSubmit = answers.length > 0 && answers.every((answer) => answer.length > 0)
+  const supplementary = useMemo(
+    () => request.questions.map((item, index) => item.custom !== false ? custom[index]?.trim() ?? '' : ''),
+    [request.questions, custom],
+  )
+  const canSubmit = answers.length > 0 && answers.every((answer, index) => answer.length > 0 || Boolean(supplementary[index]))
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -50,7 +56,7 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
     setSubmitting("reply")
     setError(null)
     try {
-      await onReply(request.id, answers)
+      await onReply(request.id, answers, supplementary)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError))
       setSubmitting(null)
@@ -101,7 +107,7 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
           ? picked.includes(label)
             ? picked.filter((item) => item !== label)
             : [...picked, label]
-          : [label],
+          : picked.includes(label) ? [] : [label],
       }
     })
   }
@@ -169,6 +175,7 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
                       {item.question}
                     </legend>
 
+                    {!item.multiple && <p className="mb-[1vh] text-[1.3vh] text-text-muted">单选，点击已选项可取消</p>}
                     <div className="space-y-[1.25vh]">
                       {item.options.map((option) => {
                         const checked = picked.includes(option.label)
@@ -185,7 +192,7 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
                             )}
                           >
                             <input
-                              type={item.multiple ? "checkbox" : "radio"}
+                              type="checkbox"
                               name={`question-${request.id}-${questionIndex}`}
                               value={option.label}
                               checked={checked}
@@ -214,9 +221,11 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
                         <span className="mb-[0.8vh] block text-[1.45vh] font-medium text-text-muted">补充说明（可选）</span>
                         <textarea
                           value={custom[questionIndex] ?? ""}
-                          onChange={(event) =>
-                            setCustom((current) => ({ ...current, [questionIndex]: event.target.value }))
-                          }
+                          onChange={(event) => {
+                            const value = event.currentTarget.value
+                            setCustom((current) => ({ ...current, [questionIndex]: value }))
+                          }}
+                          maxLength={4000}
                           disabled={submitting !== null}
                           rows={2}
                           placeholder="请输入补充说明（可选）"

@@ -103,6 +103,8 @@ function createActivityPresenceService({
   let token = ""
   let clientId = ""
   let heartbeatTimer = null
+  let refreshTimer = null
+  let refreshInFlight = false
   let publishInFlight = false
   let publishQueued = false
   let systemSuspended = false
@@ -133,6 +135,7 @@ function createActivityPresenceService({
   }
 
   async function collectActivityPresenceFacts() {
+    const capturedAt = now().toISOString()
     const foregroundWindow = await readForegroundWindowFacts({ platform, environment, execFileAsync, readText })
     const collectionErrors = []
     if (foregroundWindow.error) collectionErrors.push(`foreground_window: ${foregroundWindow.error}`)
@@ -147,7 +150,7 @@ function createActivityPresenceService({
     const rendererFacts = combinedRendererActivityFacts(rendererActivityFacts)
     const windows = getWindows()
     return {
-      captured_at: now().toISOString(),
+      captured_at: capturedAt,
       system_input: { idle_seconds: idleSeconds },
       session: {
         locked: sessionLocked,
@@ -198,13 +201,17 @@ function createActivityPresenceService({
     }
     publishInFlight = true
     try {
+      const ownerToken = token
+      const ownerClientId = clientId
       const payload = await collectActivityPresenceFacts()
+      if (token !== ownerToken || clientId !== ownerClientId) return false
       await coreRequest("/api/users/me/activity-presence/", {
         method: "PUT",
+        signal: AbortSignal.timeout(5000),
         headers: {
-          ...authHeader(token),
+          ...authHeader(ownerToken),
           "content-type": "application/json",
-          ...(clientId ? { "X-MON-CLIENT-ID": clientId } : {}),
+          ...(ownerClientId ? { "X-MON-CLIENT-ID": ownerClientId } : {}),
         },
         body: JSON.stringify(payload),
       })
@@ -221,12 +228,29 @@ function createActivityPresenceService({
     }
   }
 
+  async function pollActivityRefresh() {
+    if (!token || isQuitting() || refreshInFlight) return
+    const ownerToken = token
+    refreshInFlight = true
+    try {
+      const result = await coreRequest("/api/users/me/activity-presence/?refresh-request=1", {
+        headers: authHeader(ownerToken), signal: AbortSignal.timeout(5000),
+      })
+      if (token === ownerToken && result?.refresh_requested) await publishActivityPresence()
+    } catch (error) {
+      if (!isQuitting()) logger.warn(`[Eden Agent][ActivityPresence] 刷新请求检查失败: ${error?.message || error}`)
+    } finally { refreshInFlight = false }
+  }
+
   function startActivityPresence(nextToken, nextClientId = "") {
     token = String(nextToken || "")
     clientId = String(nextClientId || "")
     if (heartbeatTimer) clearIntervalFn(heartbeatTimer)
     heartbeatTimer = setIntervalFn(() => void publishActivityPresence(), 60_000)
     heartbeatTimer.unref?.()
+    if (refreshTimer) clearIntervalFn(refreshTimer)
+    refreshTimer = setIntervalFn(() => void pollActivityRefresh(), 2000)
+    refreshTimer.unref?.()
     void publishActivityPresence()
   }
 
@@ -235,6 +259,8 @@ function createActivityPresenceService({
     clientId = ""
     if (heartbeatTimer) clearIntervalFn(heartbeatTimer)
     heartbeatTimer = null
+    if (refreshTimer) clearIntervalFn(refreshTimer)
+    refreshTimer = null
   }
 
   function updateRendererActivityFacts(webContents, input) {
@@ -291,6 +317,7 @@ function createActivityPresenceService({
     attachWindowActivityEvents,
     collectActivityPresenceFacts,
     publishActivityPresence,
+    pollActivityRefresh,
     startActivityPresence,
     startActivityPresenceSystemEvents,
     stopActivityPresence,

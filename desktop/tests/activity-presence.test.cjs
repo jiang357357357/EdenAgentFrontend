@@ -126,7 +126,7 @@ test("starting activity presence schedules and publishes authenticated updates",
   service.startActivityPresence("token-1", "client-1")
   await new Promise((resolve) => setImmediate(resolve))
 
-  assert.equal(intervals.length, 1)
+  assert.equal(intervals.length, 2)
   assert.equal(intervals[0].interval, 60_000)
   assert.equal(intervals[0].unrefCalled, true)
   assert.equal(requests.length, 1)
@@ -165,4 +165,24 @@ test("inactive initialization is not activity and real transitions retain values
   assert.equal(events.length, 2)
   assert.deepEqual(events[0].changes.voice_recording, { from: false, to: true })
   assert.deepEqual(events[1].changes.voice_recording, { from: true, to: false })
+})
+
+
+test("on-demand refresh performs a new authenticated collection", async () => {
+  const calls = []
+  const { service } = createService({ coreRequest: async (url, options) => {
+    calls.push({ url, options })
+    return { refresh_requested: true }
+  } })
+  service.startActivityPresence("refresh-token")
+  await new Promise(resolve => setImmediate(resolve))
+  calls.length = 0
+  await service.pollActivityRefresh()
+  assert.equal(calls[0].url, "/api/users/me/activity-presence/?refresh-request=1")
+  assert.equal(calls[1].options.method, "PUT")
+  assert.equal(JSON.parse(calls[1].options.body).system_input.idle_seconds, 12)
+  service.stopActivityPresence()
+  calls.length = 0
+  await service.pollActivityRefresh()
+  assert.equal(calls.length, 0)
 })

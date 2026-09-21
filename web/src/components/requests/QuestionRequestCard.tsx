@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { HelpCircle, Send, X } from 'lucide-react';
 import type { PendingQuestion } from '../../types';
 import { cn } from '../../lib/utils';
 
 interface QuestionRequestCardProps {
   request: PendingQuestion;
-  onReply: (requestID: string, answers: string[][]) => Promise<void>;
+  onReply: (requestID: string, answers: string[][], supplementary?: string[]) => Promise<void>;
   onReject: (requestID: string) => Promise<void>;
   tone?: 'default' | 'overlay';
 }
@@ -16,17 +16,22 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
   const [submitting, setSubmitting] = useState<'reply' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const answers = useMemo(
-    () =>
-      request.questions.map((item, index) => {
-        const picks = selected[index] ?? [];
-        const customValue = custom[index]?.trim();
-        return customValue ? [...picks, customValue] : picks;
-      }),
-    [custom, request.questions, selected],
-  );
+  useEffect(() => {
+    setSelected({})
+    setCustom({})
+    setSubmitting(null)
+    setError(null)
+  }, [request.id])
 
-  const canSubmit = answers.length > 0 && answers.every((answer) => answer.length > 0);
+  const answers = useMemo(
+    () => request.questions.map((_, index) => selected[index] ?? []),
+    [request.questions, selected],
+  )
+  const supplementary = useMemo(
+    () => request.questions.map((item, index) => item.custom !== false ? custom[index]?.trim() ?? '' : ''),
+    [request.questions, custom],
+  )
+  const canSubmit = answers.length > 0 && answers.every((answer, index) => answer.length > 0 || Boolean(supplementary[index]))
 
   function toggleOption(questionIndex: number, label: string, multiple?: boolean) {
     setSelected((prev) => {
@@ -47,11 +52,11 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
   }
 
   async function handleReply() {
-    if (!canSubmit) return;
+    if (submitting || !canSubmit) return;
     setSubmitting('reply');
     setError(null);
     try {
-      await onReply(request.id, answers);
+      await onReply(request.id, answers, supplementary);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
     } finally {
@@ -60,6 +65,7 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
   }
 
   async function handleReject() {
+    if (submitting) return;
     setSubmitting('reject');
     setError(null);
     try {
@@ -118,6 +124,8 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
                       return (
                         <button
                           key={option.label}
+                          type="button"
+                          aria-pressed={active}
                           onClick={() => toggleOption(index, option.label, item.multiple)}
                           disabled={submitting !== null}
                           className={cn(
@@ -142,7 +150,11 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
                   {item.custom !== false && (
                     <input
                       value={custom[index] ?? ''}
-                      onChange={(event) => setCustom((prev) => ({ ...prev, [index]: event.target.value }))}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        setCustom((prev) => ({ ...prev, [index]: value }));
+                      }}
+                      maxLength={4000}
                       disabled={submitting !== null}
                       placeholder="自定义回答"
                       className={cn(

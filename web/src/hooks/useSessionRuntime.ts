@@ -557,8 +557,8 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     }
   }, [isRuntimeReady, state.sessions]);
 
-  const answerQuestion = useCallback(async (requestID: string, answers: string[][]) => {
-    await replyQuestion(requestID, answers);
+  const answerQuestion = useCallback(async (requestID: string, answers: string[][], supplementary?: string[]) => {
+    await replyQuestion(requestID, answers, supplementary);
   }, []);
 
   const dismissQuestion = useCallback(async (requestID: string) => {

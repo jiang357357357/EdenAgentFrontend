@@ -72,7 +72,7 @@ interface CharacterPageProps {
   onPermissionReply: (requestID: string, reply: "once" | "always" | "reject", message?: string) => Promise<void>
   permissionMode: PermissionMode
   onPermissionModeChange: (mode: PermissionMode) => Promise<void>
-  onQuestionReply: (requestID: string, answers: string[][]) => Promise<void>
+  onQuestionReply: (requestID: string, answers: string[][], supplementary?: string[]) => Promise<void>
   onQuestionReject: (requestID: string) => Promise<void>
   onStartWindowDrag: () => Promise<void> | void
   assistant?: CoreAssistant | null

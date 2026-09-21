@@ -1,6 +1,8 @@
+import { DiaryContent } from "./DiaryContent"
+import { SelfAwakeDiaryClearButton } from "./SelfAwakeDiaryClearButton"
 import { pageEnterMotion } from "../../lib/page-motion"
 import { SelfAwakeModelCalls } from "./SelfAwakeModelCalls"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Activity,
   AlarmClock,
@@ -199,14 +201,6 @@ function mergeRuns(existing: ApiSelfAwakeRun[], incoming: ApiSelfAwakeRun[]) {
   return [...existing, ...incoming.filter((run) => !seen.has(run.id))]
 }
 
-function formatMinutes(minutes?: number | null) {
-  if (minutes === null || minutes === undefined || !Number.isFinite(minutes)) return "未安排"
-  if (minutes < 60) return `${minutes} 分钟后`
-  const hours = minutes / 60
-  if (Number.isInteger(hours)) return `${hours} 小时后`
-  return `${hours.toFixed(1)} 小时后`
-}
-
 function trimText(value?: string | null, fallback = "未记录") {
   const text = value?.trim()
   return text || fallback
@@ -265,7 +259,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalRuns, setTotalRuns] = useState(0)
-  const [activeView, setActiveView] = useState<SelfAwakeView>("overview")
+  const [activeView, setActiveView] = useState<SelfAwakeView>("diary")
   const [expandedDiaryYears, setExpandedDiaryYears] = useState<string[]>([])
   const [expandedDiaryMonths, setExpandedDiaryMonths] = useState<string[]>([])
   const [expandedDiaryDates, setExpandedDiaryDates] = useState<string[]>([])
@@ -282,13 +276,16 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | undefined>()
   const searchQuery = diarySearch.trim()
+  const loadVersion = useRef(0)
 
   const loadRuns = useCallback(async (page = 1, append = false) => {
+    const version = ++loadVersion.current
     if (append) setLoadingMore(true)
     else setLoading(true)
     setError(undefined)
     try {
-      const pageData = await listSelfAwakeRunsPage({ page, pageSize: selfAwakePageSize, q: searchQuery })
+      const pageData = await listSelfAwakeRunsPage({ page, pageSize: selfAwakePageSize, q: searchQuery, diariesOnly: activeView === "diary" })
+      if (version !== loadVersion.current) return
       setWakeSchedule(pageData.schedule ?? null)
       setScheduleError(false)
       setCurrentPage(pageData.current_page)
@@ -303,13 +300,25 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
         return nextRuns
       })
     } catch (loadError) {
+      if (version !== loadVersion.current) return
       setScheduleError(true)
       setError(getErrorMessage(loadError, "读取自醒记录失败。"))
     } finally {
-      setLoading(false)
-      setLoadingMore(false)
+      if (version === loadVersion.current) { setLoading(false); setLoadingMore(false) }
     }
-  }, [searchQuery])
+  }, [searchQuery, activeView])
+
+  const onDiariesCleared = useCallback(async () => {
+    ++loadVersion.current
+    setRuns([])
+    setSelectedRunId(undefined)
+    setTotalRuns(0)
+    setCurrentPage(1)
+    setTotalPages(0)
+    setExecutionRunId(null)
+    setExecutionRecord(null)
+    await loadRuns()
+  }, [loadRuns])
 
   useEffect(() => {
     void loadRuns()
@@ -528,10 +537,11 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
           </div>
           <div className="min-w-0">
             <h1 className="truncate font-serif text-[2.8vh] text-text">自醒</h1>
-            <p className="truncate text-[1.7vh] text-text-muted">后台观察、工作日记、下次醒来。</p>
+            <p className="truncate text-[1.7vh] text-text-muted">自己的时间、日记、下次醒来。</p>
           </div>
         </div>
         <div className="flex items-center gap-[0.8vw]">
+          <SelfAwakeDiaryClearButton onCleared={onDiariesCleared} />
           <div
             className="flex min-w-0 items-center gap-[0.6vw] rounded-[0.75vh] border border-accent/20 bg-card px-[1.1vw] py-[0.65vh] text-accent shadow-sm"
             title={scheduleError ? "无法读取最新自动调度，请稍后刷新" : ["自动调度状态，与下方所选自醒记录的执行结果独立。", wakeTime ? formatDateTime(wakeTime) : "", wakeSchedule?.reason].filter(Boolean).join(" · ")}
@@ -545,8 +555,8 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
           </div>
           <div className="flex overflow-hidden rounded-[0.75vh] border border-border bg-card shadow-sm">
             {[
-              { key: "overview" as const, label: "概览" },
               { key: "diary" as const, label: "日记" },
+              { key: "overview" as const, label: "执行记录" },
             ].map((item) => (
               <button
                 key={item.key}
@@ -583,7 +593,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-[2.4vw] pb-[2.1vh] pt-[1.8vh]">
           <div className="grid min-h-0 flex-1 grid-cols-[24.3vw_minmax(0,1fr)] gap-[1.25vw]">
             <aside className="flex min-h-0 flex-col overflow-hidden rounded-[0.8vh] border border-border/90 bg-card/94 shadow-[0_0.35vh_1.4vh_color-mix(in_srgb,var(--color-scrim)_6%,transparent)]">
-              <div className="flex h-[6.2vh] shrink-0 items-center border-b border-border px-[1.35vw] font-serif text-[2.15vh] text-text">近期自醒</div>
+              <div className="flex h-[6.2vh] shrink-0 items-center border-b border-border px-[1.35vw] font-serif text-[2.15vh] text-text">自醒执行记录</div>
               <div className="min-h-0 flex-1 overflow-y-auto" style={{ scrollbarGutter: "stable" }}>
                 {error ? (
                   <div className="m-[1vw] flex items-start gap-[0.65vw] rounded-[0.7vh] border border-danger/30 bg-danger-dim p-[1vh] text-[1.55vh] text-danger">
@@ -650,11 +660,9 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                     </div>
 
                     <div className="mt-[2.4vh] flex min-h-0 flex-1 flex-col">
-                      <h3 className="border-l-[0.22vw] border-accent pl-[0.8vw] font-serif text-[2.08vh] text-text">工作日记</h3>
+                      <h3 className="border-l-[0.22vw] border-accent pl-[0.8vw] font-serif text-[2.08vh] text-text">日记</h3>
                       <div className="mt-[1.8vh] min-h-0 flex-1 overflow-y-auto pr-[0.8vw]" style={{ scrollbarGutter: "stable" }}>
-                        <p className="whitespace-pre-wrap font-serif text-[1.75vh] leading-[2.05] text-text">
-                          {trimText(selectedDiary?.content, selectedAction?.action_type === "observe_only" ? "本轮仅观察，未写入工作日记。" : "本轮未写入工作日记。")}
-                        </p>
+                        <DiaryContent className="font-serif text-[1.75vh] leading-[2.05]" content={trimText(selectedDiary?.content, selectedRun.diary_cleared ? "日记已清除，执行记录仍保留。" : "本轮未写入日记。")} />
                         {selectedObservations.length > 0 ? (
                           <section className="mt-[2.4vh]">
                             <h3 className="border-l-[0.22vw] border-accent pl-[0.8vw] font-serif text-[2.08vh] text-text">本轮观察</h3>
@@ -699,16 +707,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
 
                     </section>
 
-                    <section className="mt-[2.4vh] border-t border-border pt-[2.1vh]">
-                      <h3 className="border-l-[0.22vw] border-accent pl-[0.75vw] font-serif text-[2.55vh] text-text">本轮定时记录</h3>
-                      {selectedRun.next_wake_at ? <dl className="mt-[1.8vh] space-y-[1.1vh] text-[1.9vh] leading-relaxed">
-                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">计划时间</dt><dd>{formatDateTime(selectedRun.next_wake_at)}</dd></div>
-                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">间隔估计</dt><dd>{formatMinutes(selectedRun.next_wake_after_minutes)}</dd></div>
-                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">原因说明</dt><dd>{trimText(selectedRun.next_wake_reason, "没有记录原因。")}</dd></div>
-                        <div className="grid grid-cols-[6.4vw_minmax(0,1fr)] gap-[0.6vw]"><dt className="text-text-muted">任务状态</dt><dd>{({ queued: "已保存", running: "执行中", dispatched: "已提交执行", completed: "已处理", cancelled: "已取消或替换", failed: "失败", unknown: "待确认" } as Record<string, string>)[selectedRun.next_wake_job_state ?? ""] ?? "未记录"}</dd></div>
-                      </dl> : <p className="mt-[1.8vh] text-text-muted">本轮没有保存定时任务。</p>}
-                      <p className="mt-[1vh] text-sm text-text-muted">此处为本轮安排记录，当前生效的时间以顶部自动调度为准。</p>
-                    </section>
+
 
                     {selectedRun.error || selectedAction?.error ? (
                       <div className="mt-[1.8vh] rounded-[0.6vh] border border-danger/30 bg-danger-dim p-[0.85vh] text-[1.4vh] text-danger">{selectedRun.error || selectedAction?.error}</div>
@@ -769,7 +768,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
               <input
                 value={diarySearch}
                 onChange={(event) => setDiarySearch(event.target.value)}
-                placeholder="搜索标题、正文或日期"
+                placeholder="搜索标题或正文"
                 className="min-w-0 flex-1 bg-transparent text-[1.55vh] text-text outline-none placeholder:text-text-muted/75"
               />
               {diarySearch ? (
@@ -795,7 +794,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                 <div className="flex h-full flex-col items-center justify-center px-[3vw] text-center text-text-muted">
                   <NotebookText className="mb-[1.2vh] h-[4vh] w-[4vh] text-accent/70" />
                   <div className="font-serif text-[2.3vh] text-text">还没有日记</div>
-                  <div className="mt-[0.8vh] text-[1.6vh] leading-relaxed">自醒完成并写入工作日记后，会出现在这里。</div>
+                  <div className="mt-[0.8vh] text-[1.6vh] leading-relaxed">新写下的日记会出现在这里。历史自醒可在“执行记录”中查看。</div>
                 </div>
               ) : null}
               {!loading && !error && allDiaryEntries.length > 0 && diaryEntries.length === 0 ? (
@@ -948,9 +947,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                   className="min-h-0 overflow-y-auto border-b border-dashed border-border px-[1.85vw] py-[3.2vh]"
                   style={{ scrollbarGutter: "stable" }}
                 >
-                  <p className="whitespace-pre-wrap font-serif text-[clamp(14px,0.88vw,16px)] leading-[2] tracking-[0.015em] text-text">
-                    {trimText(selectedDiary.content, "没有写入日记。")}
-                  </p>
+                  <DiaryContent className="font-serif text-[clamp(14px,0.88vw,16px)] leading-[2] tracking-[0.015em]" content={trimText(selectedDiary.content, "没有写入日记。")} />
                 </div>
 
                 <footer className="flex flex-wrap items-center gap-[1.45vw] pt-[2.8vh] text-[1.52vh]">
@@ -971,7 +968,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
             ) : (
               <div className="flex h-full flex-col items-center justify-center text-center text-text-muted">
                 <NotebookText className="mb-[1.2vh] h-[4.6vh] w-[4.6vh] text-accent/70" />
-                <div className="font-serif text-[2.6vh] text-text">{loading ? "正在读取日记" : error ? "日记读取失败" : "选择一篇日记"}</div>
+                <div className="font-serif text-[2.6vh] text-text">{loading ? "正在读取日记" : error ? "日记读取失败" : allDiaryEntries.length ? "选择一篇日记" : "等待下一篇日记"}</div>
                 <div className="mt-[0.7vh] text-[1.75vh]">{error ? "请点击顶部刷新重试。" : "自醒写下的内容会在这里展开。"}</div>
               </div>
             )}

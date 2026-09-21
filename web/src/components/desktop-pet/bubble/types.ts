@@ -23,6 +23,6 @@ export interface DesktopPetChatBubbleProps {
   onSend: (content: string, attachments: PromptAttachment[]) => Promise<void>
   onAbort: () => Promise<void>
   onPermissionReply: (requestID: string, reply: "once" | "always" | "reject") => Promise<void>
-  onQuestionReply: (requestID: string, answers: string[][]) => Promise<void>
+  onQuestionReply: (requestID: string, answers: string[][], supplementary?: string[]) => Promise<void>
   onQuestionReject: (requestID: string) => Promise<void>
 }

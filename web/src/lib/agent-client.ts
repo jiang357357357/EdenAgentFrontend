@@ -270,6 +270,7 @@ export type ApiSelfAwakeRun = {
   event_occurred_at?: string | null
   status: string
   started_at?: string
+  diary_cleared?: boolean
   finished_at?: string | null
   context_payload?: Record<string, unknown> | null
   decision_payload?: Record<string, unknown> | null
@@ -1462,8 +1463,8 @@ export async function listQuestionsRaw() {
   }))
 }
 
-export async function replyQuestion(requestID: string, answers: string[][]) {
-  await rpcRequest("question.resolve", { requestId: requestID, answers })
+export async function replyQuestion(requestID: string, answers: string[][], supplementary?: string[]) {
+  await rpcRequest("question.resolve", { requestId: requestID, answers, supplementary })
 }
 
 export async function listScreenCaptureRequests() {
@@ -1689,18 +1690,29 @@ export function getSelfAwakeExecution(runId: string) {
   return rpcRequest("self_awake.execution", { runId })
 }
 
+export function clearSelfAwakeHistory() {
+  return rpcRequest("self_awake.history.clear", { confirmClear: true })
+}
+
+export function clearSelfAwakeDiaries() {
+  return rpcRequest("self_awake.diaries.clear", { confirmClear: true })
+}
+
 export async function listSelfAwakeRunsPage({
   page = 1,
   pageSize = 20,
   q,
+  diariesOnly = false,
 }: {
   page?: number
   pageSize?: number
   q?: string
+  diariesOnly?: boolean
 } = {}) {
   const result = await rpcRequest("self_awake.list", {
     page,
     pageSize,
+    diariesOnly,
     ...(q?.trim() ? { query: q.trim() } : {}),
   })
   return {
@@ -1772,6 +1784,7 @@ function mapSelfAwakeRunForView(run: SelfAwakeRunInfo): ApiSelfAwakeRun {
     event_occurred_at: optionalText(environment.utc_time) ?? optionalText(author.capturedAt) ?? null,
     status: run.status,
     started_at: epochIso(run.startedAt),
+    diary_cleared: run.diaryCleared ?? false,
     finished_at: completedAt ?? null,
     context_payload: request,
     decision_payload: run.decision ? decision : null,
