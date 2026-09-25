@@ -501,6 +501,7 @@ export function ChatInput({
           )}
         </AnimatePresence>
         <ChatInputMenus
+          sessionId={sessionId}
           hideComposerFooter={hideComposerFooter}
           modelConfig={modelConfig}
           modelError={modelError}

@@ -13,6 +13,7 @@ export const permissionOptions: Array<{ mode: PermissionMode; label: string; des
 ]
 
 interface ChatInputMenusProps {
+  sessionId?: string
   hideComposerFooter: boolean
   modelConfig: RuntimeModelConfig | null
   modelError: string | null
@@ -28,6 +29,7 @@ interface ChatInputMenusProps {
 }
 
 export function ChatInputMenus({
+  sessionId,
   hideComposerFooter,
   modelConfig,
   modelError,
@@ -78,7 +80,7 @@ export function ChatInputMenus({
               </button>
             )
           })}
-          <CommandExecutionSettings />
+          <CommandExecutionSettings sessionId={sessionId} />
         </div>
       )}
 

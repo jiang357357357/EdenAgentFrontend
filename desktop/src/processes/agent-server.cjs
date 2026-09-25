@@ -130,6 +130,8 @@ function createAgentServerManager({ app, agentRoot, processObject = process, fil
       EDEN_AGENT_RUNTIME_ORIGIN: realm,
       EDEN_AGENT_CAPABILITY_TOKEN: capabilityToken(realm),
       EDEN_AGENT_DATA_ROOT: dataRoot,
+      EDEN_AGENT_TERMINAL_SETTINGS_PATH: effectivePathApi.resolve(agentRoot,
+        processObject.env.EDEN_AGENT_TERMINAL_SETTINGS_PATH?.trim() || effectivePathApi.join(app.getPath('userData'), 'terminal-settings.json')),
     }
     // A development desktop may use Electron's executable as its Node runtime.
     if (!app.isPackaged && !processObject.env.EDEN_AGENT_NODE_PATH) environment.ELECTRON_RUN_AS_NODE = "1"
