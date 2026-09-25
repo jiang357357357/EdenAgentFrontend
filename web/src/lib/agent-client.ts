@@ -64,6 +64,8 @@ export type SessionParticipant = {
 export type ApiSession = {
   id: string
   title: string
+  purpose?: "user_chat" | "self_awake" | "subagent"
+  sourceChannel?: "app" | "qq" | "internal"
   runtimeOrigin?: "mon" | "local"
   runtimeStatus?: import("../types").SessionStatus
   contextTokens?: number
@@ -1109,10 +1111,17 @@ export function mapMessage(input: ApiMessage): MessageData {
   }
 }
 
+function isAppChatSession(session: import("@eden/api").SessionSummary): boolean {
+  const environment = session.environment
+  const legacyBackground = environment && typeof environment === "object" && !Array.isArray(environment)
+    && (environment.sessionPurpose === "self_awake" || environment.sessionPurpose === "subagent")
+  return session.purpose === "user_chat" && session.sourceChannel === "app" && !legacyBackground
+}
+
 export async function isBackgroundSession(sessionId: string): Promise<boolean> {
   try {
-    await rpcRequest("session.read", { sessionId })
-    return false
+    const session = await rpcRequest("session.read", { sessionId })
+    return !isAppChatSession(session)
   } catch (error) {
     if (error instanceof Error && error.message.includes("background_session:")) return true
     // Missing rows and transient connection errors must not erase cached chats.
@@ -1121,7 +1130,8 @@ export async function isBackgroundSession(sessionId: string): Promise<boolean> {
 }
 
 export async function listSessionsRaw() {
-  return (await rpcRequest("session.list", { limit: 50, includeClosed: false })).map(apiSession)
+  const sessions = await rpcRequest("session.list", { limit: 50, includeClosed: false })
+  return sessions.filter(isAppChatSession).map(apiSession)
 }
 
 export async function listSessions() {
@@ -1267,7 +1277,9 @@ export function projectMessageEvents(events: RpcSessionEvent[]): ApiMessage[] {
 
     const message = apiMessage(event)
     if (message) {
-      items.push(message)
+      const existing = items.findIndex(item => item.info.id === message.info.id)
+      if (existing >= 0) items[existing] = message
+      else items.push(message)
       latestByTurn.set(turnKey, message)
       for (const part of message.parts) {
         if (isApiToolPart(part)) toolOwners.set(`${turnKey}:${part.id}`, message)
@@ -1398,8 +1410,8 @@ export async function followUpTurn(sessionID: string, content: string) {
 }
 
 export async function abortSession(sessionID: string) {
-  await rpcRequest("turn.cancel", { sessionId: sessionID })
-  return { aborted: true, sessionID }
+  const result = await rpcRequest("turn.cancel", { sessionId: sessionID })
+  return { aborted: result.cancellationRequested, sessionID }
 }
 
 export async function interruptSubagent(sessionID: string, target: string) {
@@ -1903,8 +1915,9 @@ export function createSessionEventProjector() {
     const key = `${event.sessionId}:${event.turnId ?? "none"}`
     const role = sessionEventMessageRole(event)
     if (event.eventType === "agent.message_start" && role !== "toolResult" && !activeMessages.has(key)) {
-      activeMessages.set(key, event.id)
-      if (role === "assistant") lastAssistantMessages.set(key, event.id)
+      const messageID = sessionEventMessageID(event)
+      activeMessages.set(key, messageID)
+      if (role === "assistant") lastAssistantMessages.set(key, messageID)
     }
     if (event.eventType === "agent.retry_scheduled" && event.payload && typeof event.payload === "object" && !Array.isArray(event.payload) && event.payload.operation === "model") {
       const failedMessageID = lastAssistantMessages.get(key)

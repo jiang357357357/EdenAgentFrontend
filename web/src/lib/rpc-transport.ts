@@ -446,8 +446,10 @@ export function apiSession(session: import("@eden/api").SessionSummary): ApiSess
   return {
     id: session.id,
     title: session.title,
+    purpose: session.purpose,
+    sourceChannel: session.sourceChannel,
     runtimeOrigin: session.runtimeOrigin,
-    runtimeStatus: "idle",
+    runtimeStatus: session.executionStatus,
     time: { created: Number(session.createdAt), updated: Number(session.updatedAt) },
     participants,
     participantAssistantIDs: participants.map((participant) => participant.assistantID),

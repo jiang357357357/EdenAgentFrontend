@@ -337,7 +337,7 @@ export function getErrorMessage(error: unknown, fallback = "请求失败") {
 
 export function isAuthExpiredError(error: unknown) {
   const message = getErrorMessage(error, "")
-  return /authentication_expired|core_authentication_expired|not_authenticated|token无效|登录已失效/i.test(message)
+  return /authentication_expired|core_authentication_expired|not_authenticated|TOKEN_EXPIRED|token无效|token已过期|登录已失效/i.test(message)
 }
 
 function isDesktopRuntime() {
@@ -443,12 +443,12 @@ export function saveAuth(payload: { token: string; user: AuthUser; expiresAt?: s
   const previousToken = getStoredToken()
   window.localStorage.setItem(TOKEN_KEY, payload.token)
   window.localStorage.setItem(USER_KEY, JSON.stringify(payload.user))
-  if (previousToken !== payload.token) window.dispatchEvent(new Event('edenagent:account-changed'))
   if (payload.expiresAt) {
     window.localStorage.setItem(EXPIRES_KEY, payload.expiresAt)
   } else {
     window.localStorage.removeItem(EXPIRES_KEY)
   }
+  if (previousToken !== payload.token) window.dispatchEvent(new Event('edenagent:account-changed'))
 }
 
 export async function loginWithCore(username: string, password: string) {
@@ -511,11 +511,13 @@ export async function verifyTokenWithCore(token: string) {
     }
     const profile = await fetchUserProfile(token).catch(() => null)
     const user = mergeUserProfile(response.user, profile)
-    saveAuth({
-      token,
-      user,
-      expiresAt: response.token_info?.expires_at,
-    })
+    if (getStoredToken() === token) {
+      saveAuth({
+        token,
+        user,
+        expiresAt: response.token_info?.expires_at,
+      })
+    }
     return { ...response, user }
   }
 
@@ -525,11 +527,13 @@ export async function verifyTokenWithCore(token: string) {
   }
   const profile = await fetchUserProfile(token).catch(() => null)
   const user = mergeUserProfile(response.user, profile)
-  saveAuth({
-    token,
-    user,
-    expiresAt: response.token_info?.expires_at,
-  })
+  if (getStoredToken() === token) {
+    saveAuth({
+      token,
+      user,
+      expiresAt: response.token_info?.expires_at,
+    })
+  }
   return { ...response, user }
 }
 

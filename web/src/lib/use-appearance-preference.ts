@@ -17,11 +17,12 @@ export const defaultAppearance: AppearancePreference = { baseTheme: "night", bac
 export function useAppearancePreference(origin: Origin | null, active: boolean, accountIdentity?: string | number) {
   const [value, setValue] = useState(defaultAppearance)
   const [ready, setReady] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string>()
   const owner = useRef<PreferenceScope | null>(null)
 
   useEffect(() => {
-    setValue(defaultAppearance); setReady(false); setError(undefined)
+    setValue(defaultAppearance); setReady(false); setSaving(false); setError(undefined)
     if (!origin || !active) return
     const scope: PreferenceScope = {
       origin, revision: getRuntimeOriginRevision(), live: true, sequence: 0, pending: Promise.resolve(),
@@ -49,18 +50,24 @@ export function useAppearancePreference(origin: Origin | null, active: boolean, 
   const change = (next: AppearancePreference) => {
     const scope = owner.current
     if (!scope?.live) return
-    setValue(next); setError(undefined)
+    setValue(next); setSaving(true); setError(undefined)
     const sequence = ++scope.sequence
     scope.pending = scope.pending.then(async () => {
       if (!scope.live || sequence !== scope.sequence) return
       try {
         const result = await rpcRequestForOrigin(scope.origin, "ui.appearance.update", next, scope.revision)
-        if (scope.live && sequence === scope.sequence) setValue({ ...defaultAppearance, ...result })
+        if (scope.live && sequence === scope.sequence) {
+          setValue({ ...defaultAppearance, ...result })
+          setSaving(false)
+        }
       } catch (reason) {
-        if (scope.live && sequence === scope.sequence) setError(`保存外观设置失败：${String(reason)}`)
+        if (scope.live && sequence === scope.sequence) {
+          setSaving(false)
+          setError(`保存外观设置失败：${String(reason)}`)
+        }
       }
     })
   }
 
-  return { value, ready, error, change }
+  return { value, ready, saving, error, change }
 }

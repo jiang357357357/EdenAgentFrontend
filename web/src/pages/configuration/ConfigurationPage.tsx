@@ -67,6 +67,7 @@ interface ConfigurationPageProps {
   onOpenParticipants: () => void
   onOpenDutyAssistant: () => void
   onOpenSelfAwake: () => void
+  onOpenAllSessions: () => void
   onOpenMemo: () => void
   onOpenSkills: () => void
   onOpenConnectors: () => void
@@ -237,6 +238,7 @@ export function ConfigurationPage({
   onOpenParticipants,
   onOpenDutyAssistant,
   onOpenSelfAwake,
+  onOpenAllSessions,
   onOpenMemo,
   onOpenSkills,
   onOpenConnectors,
@@ -767,6 +769,7 @@ export function ConfigurationPage({
         onOpenParticipants={onOpenParticipants}
         onOpenDutyAssistant={onOpenDutyAssistant}
         onOpenSelfAwake={onOpenSelfAwake}
+        onOpenAllSessions={onOpenAllSessions}
         onOpenMemo={onOpenMemo}
         onOpenSkills={onOpenSkills}
         onOpenConnectors={onOpenConnectors}

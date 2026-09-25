@@ -7,7 +7,7 @@
   "main": "desktop/src/main.cjs",
   "packageManager": "npm@10.9.7",
   "scripts": {
-    "dev": "node ../Script/Project/dev.mjs",
+    "dev": "node ../Script/Project/dev_desktop.mjs",
     "test:dev-smoke": "node Script/Project/dev.mjs --smoke-web",
     "test:process-runner": "node --test tests/process-runner.test.mjs",
     "dev:web": "npm --prefix web run dev",

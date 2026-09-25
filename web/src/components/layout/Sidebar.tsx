@@ -8,6 +8,7 @@ import {
   File,
   FolderOpen,
   FileText,
+  List,
   MessageSquare,
   Plus,
   Pencil,
@@ -36,6 +37,7 @@ interface SidebarProps {
   onOpenParticipants: () => void
   onOpenDutyAssistant: () => void
   onOpenSelfAwake: () => void
+  onOpenAllSessions: () => void
   onOpenMemo: () => void
   onOpenSkills: () => void
   onOpenConnectors: () => void
@@ -131,9 +133,10 @@ interface ActivityButtonProps {
 }
 
 export interface ActivityRailProps {
-  active?: "files" | "sessions" | "configuration"
+  active?: "files" | "sessions" | "allSessions" | "configuration"
   onOpenFiles: () => void
   onOpenSessions: () => void
+  onOpenAllSessions: () => void
   onOpenParticipants: () => void
   onOpenDutyAssistant: () => void
   onOpenSelfAwake: () => void
@@ -170,6 +173,7 @@ export function ActivityRail({
   active,
   onOpenFiles,
   onOpenSessions,
+  onOpenAllSessions,
   onOpenParticipants,
   onOpenDutyAssistant,
   onOpenSelfAwake,
@@ -186,6 +190,7 @@ export function ActivityRail({
       <div className="min-h-0 flex-1 overflow-y-auto pb-[0.6vh]">
         <ActivityButton label="文件" icon={FolderOpen} active={active === "files"} onClick={onOpenFiles} />
         <ActivityButton label="会话" icon={MessageSquare} active={active === "sessions"} onClick={onOpenSessions} />
+        <ActivityButton label="所有会话" icon={List} active={active === "allSessions"} onClick={onOpenAllSessions} />
         <ActivityButton label="参与者" icon={UsersRound} onClick={onOpenParticipants} />
         <ActivityButton label="值日生" icon={UserRoundCheck} onClick={onOpenDutyAssistant} />
         <ActivityButton label="自醒" icon={Sparkles} onClick={onOpenSelfAwake} />
@@ -247,6 +252,7 @@ export function Sidebar({
   onOpenParticipants,
   onOpenDutyAssistant,
   onOpenSelfAwake,
+  onOpenAllSessions,
   onOpenMemo,
   onOpenSkills,
   onOpenConnectors,
@@ -396,6 +402,7 @@ export function Sidebar({
           active={activity}
           onOpenFiles={() => setActivity("files")}
           onOpenSessions={() => setActivity("sessions")}
+          onOpenAllSessions={onOpenAllSessions}
           onOpenParticipants={onOpenParticipants}
           onOpenDutyAssistant={onOpenDutyAssistant}
           onOpenSelfAwake={onOpenSelfAwake}
@@ -485,12 +492,12 @@ export function Sidebar({
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation()
-                          if (!window.confirm(`永久删除会话“${session.title}”？删除后无法恢复。`)) return
+                          if (!window.confirm(`移除会话“${session.title}”？会立即从列表隐藏；若任务仍在运行，将同时请求停止。`)) return
                           void onDelete(session.id)
                         }}
                         className="absolute right-[0.35vw] top-1/2 flex h-[4.2vh] w-[4.2vh] -translate-y-1/2 items-center justify-center rounded-[0.6vh] text-text-muted opacity-0 transition hover:bg-danger/10 hover:text-danger focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
-                        aria-label={`永久删除会话：${session.title}`}
-                        title="永久删除会话"
+                        aria-label={`强制移除会话：${session.title}`}
+                        title="强制移除会话"
                       >
                         <Trash2 className="h-[2vh] w-[2vh]" />
                       </button>

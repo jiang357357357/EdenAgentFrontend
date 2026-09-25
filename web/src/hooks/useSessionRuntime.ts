@@ -1,3 +1,4 @@
+import { filterChatEvents } from '../lib/chat-event-filter';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
   abortSession as abortSessionRaw,
@@ -78,6 +79,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const eventErrorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const sendingSessionIdsRef = useRef(new Set<string>());
   const hydratingSessionIdsRef = useRef(new Set<string>());
+  const deletedSessionIdsRef = useRef(new Set<string>());
   const onEventRef = useRef(options.onEvent);
   const defaultParticipantID = options.defaultParticipantID;
 
@@ -115,7 +117,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
   const refreshSessions = useCallback(async () => {
     if (!isRuntimeReady()) return [];
-    const sessions = await listSessionsRaw();
+    const sessions = (await listSessionsRaw()).filter((session) => !deletedSessionIdsRef.current.has(session.id));
     const visible = new Set(sessions.map((session) => session.id));
     const hidden = await Promise.all(cachedSessionIdsRef.current.filter((id) => !visible.has(id))
       .map(async (id) => await isBackgroundSession(id) ? id : undefined));
@@ -124,13 +126,15 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       dispatch(removeSession(id));
       if (activeSessionIdRef.current === id) activeSessionIdRef.current = undefined;
     }
-    dispatch(hydrateSessionList(sessions));
-    return sessions;
+    const remaining = sessions.filter((session) => !deletedSessionIdsRef.current.has(session.id));
+    dispatch(hydrateSessionList(remaining));
+    return remaining;
   }, [isRuntimeReady]);
 
   const refreshSessionMessages = useCallback(async (sessionID?: string) => {
     if (!sessionID || !isRuntimeReady()) return;
     const page = await listMessagesRaw(sessionID);
+    if (deletedSessionIdsRef.current.has(sessionID)) return;
     dispatch(hydrateSessionMessages(sessionID, page));
   }, [isRuntimeReady]);
 
@@ -162,11 +166,11 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       listScreenCaptureRequests(),
       listCameraCaptureRequests(),
     ]);
-    dispatch(hydratePendingPermissions(permissions));
-    dispatch(hydratePendingQuestions(questions));
+    dispatch(hydratePendingPermissions(permissions.filter((item) => !deletedSessionIdsRef.current.has(item.sessionID))));
+    dispatch(hydratePendingQuestions(questions.filter((item) => !deletedSessionIdsRef.current.has(item.sessionID))));
     setPermissionModeState(permissionModeResponse.mode);
-    for (const request of screenCaptureRequests) void handleScreenCaptureRequest(request);
-    for (const request of cameraCaptureRequests) void handleCameraCaptureRequest(request);
+    for (const request of screenCaptureRequests) if (!deletedSessionIdsRef.current.has(request.sessionID)) void handleScreenCaptureRequest(request);
+    for (const request of cameraCaptureRequests) if (!deletedSessionIdsRef.current.has(request.sessionID)) void handleCameraCaptureRequest(request);
   }, [isRuntimeReady]);
 
   useEffect(() => {
@@ -215,10 +219,10 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     async function hydrate() {
       try {
         const page = await listMessagesRaw(sessionID);
-        if (cancelled) return;
+        if (cancelled || deletedSessionIdsRef.current.has(sessionID)) return;
         dispatch(hydrateSessionMessages(sessionID, page));
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled || deletedSessionIdsRef.current.has(sessionID)) return;
         dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
       } finally {
         hydratingSessionIdsRef.current.delete(sessionID);
@@ -278,7 +282,11 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
           dispatch(setConnectionError(error));
         }, 2000);
       },
-      onEvent: (event) => {
+      onEvent: filterChatEvents(isBackgroundSession, (event) => {
+        if (disposed) return;
+        const eventSessionID = (event.properties as { sessionID?: string }).sessionID;
+        if (event.type === 'session.deleted' && eventSessionID) deletedSessionIdsRef.current.add(eventSessionID);
+        else if (eventSessionID && deletedSessionIdsRef.current.has(eventSessionID)) return;
         onEventRef.current?.(event);
         if (event.type === 'screen_capture.requested') {
           const request = event.properties as Partial<PendingScreenCapture> | undefined;
@@ -299,7 +307,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
           }
         }
         dispatch(applyRuntimeEvent(event));
-      },
+      }),
     })
       .then((dispose) => {
         if (disposed) {
@@ -355,12 +363,14 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         dispatch(optimisticMessage);
         try {
           const accepted = await sendPromptAsync(session.id, content, attachments);
-          dispatch(acceptLocalUserMessage(session.id, optimisticMessage.messageID, accepted.turnId));
+          if (!deletedSessionIdsRef.current.has(session.id)) dispatch(acceptLocalUserMessage(session.id, optimisticMessage.messageID, accepted.turnId));
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           sendingSessionIdsRef.current.delete(session.id);
-          dispatch(failLocalUserMessage(session.id, optimisticMessage.messageID, message));
-          dispatch(setConnectionError(message));
+          if (!deletedSessionIdsRef.current.has(session.id)) {
+            dispatch(failLocalUserMessage(session.id, optimisticMessage.messageID, message));
+            dispatch(setConnectionError(message));
+          }
           throw error;
         }
         return;
@@ -377,9 +387,9 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         dispatch(optimisticMessage);
         try {
           const accepted = await followUpTurn(sessionID, content);
-          dispatch(acceptLocalUserMessage(sessionID, optimisticMessage.messageID, accepted.turnId ?? undefined));
+          if (!deletedSessionIdsRef.current.has(sessionID)) dispatch(acceptLocalUserMessage(sessionID, optimisticMessage.messageID, accepted.turnId ?? undefined));
         } catch (error) {
-          dispatch(failLocalUserMessage(
+          if (!deletedSessionIdsRef.current.has(sessionID)) dispatch(failLocalUserMessage(
             sessionID,
             optimisticMessage.messageID,
             error instanceof Error ? error.message : String(error),
@@ -395,12 +405,14 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       dispatch(optimisticMessage);
       try {
         const accepted = await sendPromptAsync(sessionID, content, attachments);
-        dispatch(acceptLocalUserMessage(sessionID, optimisticMessage.messageID, accepted.turnId));
+        if (!deletedSessionIdsRef.current.has(sessionID)) dispatch(acceptLocalUserMessage(sessionID, optimisticMessage.messageID, accepted.turnId));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         sendingSessionIdsRef.current.delete(sessionID);
-        dispatch(failLocalUserMessage(sessionID, optimisticMessage.messageID, message));
-        dispatch(setConnectionError(message));
+        if (!deletedSessionIdsRef.current.has(sessionID)) {
+          dispatch(failLocalUserMessage(sessionID, optimisticMessage.messageID, message));
+          dispatch(setConnectionError(message));
+        }
         throw error;
       }
     },
@@ -426,8 +438,10 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       await compactSessionRaw(sessionID, instructions);
     } catch (error) {
       sendingSessionIdsRef.current.delete(sessionID);
-      dispatch(setSessionStatus(sessionID, 'idle'));
-      dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
+      if (!deletedSessionIdsRef.current.has(sessionID)) {
+        dispatch(setSessionStatus(sessionID, 'idle'));
+        dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
+      }
       throw error;
     }
   }, [isRuntimeReady]);
@@ -446,9 +460,11 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     try {
       const result = await abortSessionRaw(sessionID);
       if (!result.aborted) {
-        dispatch(setSessionStatus(sessionID, 'idle'));
+        if (!deletedSessionIdsRef.current.has(sessionID)) dispatch(setSessionStatus(sessionID, 'idle'));
         sendingSessionIdsRef.current.delete(sessionID);
       }
+      try { await refreshSessions(); }
+      catch { /* The event stream can still reconcile the stop result. */ }
       return result;
     } catch (error) {
       try {
@@ -484,17 +500,15 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
   const deleteSession = useCallback(async (sessionID: string) => {
     if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
-    if (sendingSessionIdsRef.current.has(sessionID)) {
-      throw new Error('智能体正在处理当前任务，请先停止任务再删除会话。');
-    }
     await deleteSessionRaw(sessionID);
+    deletedSessionIdsRef.current.add(sessionID);
     setModelErrors((current) => {
       if (!current[sessionID]) return current;
       const next = { ...current };
       delete next[sessionID];
       return next;
     });
-    const nextSessionID = state.sessionOrder.find((id) => id !== sessionID);
+    const nextSessionID = state.sessionOrder.find((id) => id !== sessionID && !deletedSessionIdsRef.current.has(id));
     sendingSessionIdsRef.current.delete(sessionID);
     hydratingSessionIdsRef.current.delete(sessionID);
     if (activeSessionIdRef.current === sessionID) {

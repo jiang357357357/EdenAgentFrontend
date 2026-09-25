@@ -69,7 +69,7 @@ export function TextSegment({
   return (
     <div
       className={cn(
-        "chat-body-font relative text-[1.82vh] leading-[1.58]",
+        "chat-body-font relative text-[max(16px,2.1vh)] leading-[1.65]",
         isUser
           ? "rounded-[2vh] rounded-tr-[0.45vh] border border-border bg-card px-[2.05vh] py-[1.35vh] font-sans text-text"
           : "w-full max-w-none bg-transparent px-[2.05vh] py-[0.35vh] text-text prose",

@@ -142,6 +142,7 @@ let petCharacterViewport = { mode: "window", x: 0, y: 0, width: 1, height: 1 }
 let desktopEnvironmentBroadcastTimer = null
 let authSession = null
 let authVerification = null
+let authSessionRevision = 0
 const AUTH_VERIFICATION_TTL_MS = 30_000
 const pointerObserverExecutablePath =
   process.env.EDEN_AGENT_POINTER_OBSERVER?.trim() ||
@@ -258,6 +259,7 @@ function broadcastAuthState(state) {
 }
 
 function setAuthSession(token, response) {
+  authSessionRevision += 1
   authSession = token && response?.valid !== false ? { token, response, verifiedAt: Date.now() } : null
   broadcastAuthState(authSession
     ? { type: "authenticated", token: authSession.token, response: authSession.response }
@@ -326,15 +328,19 @@ function authHeader(token) {
 async function verifyCoreTokenOnce(token, clientId) {
   const normalizedToken = String(token || "").trim()
   if (!normalizedToken) return { valid: false }
-  if (authSession?.token === normalizedToken && Date.now() - authSession.verifiedAt < AUTH_VERIFICATION_TTL_MS) {
+  const cachedExpiry = Date.parse(authSession?.response?.token_info?.expires_at ?? "")
+  if (authSession?.token === normalizedToken && Date.now() - authSession.verifiedAt < AUTH_VERIFICATION_TTL_MS
+      && (!Number.isFinite(cachedExpiry) || cachedExpiry > Date.now())) {
     return authSession.response
   }
   if (authVerification?.token === normalizedToken) return authVerification.promise
 
+  const revision = authSessionRevision
   const promise = coreRequest("/api/users/verify-token/", {
     method: "GET",
     headers: authHeader(normalizedToken),
   }).then((response) => {
+    if (authSessionRevision !== revision) return response
     if (response?.valid) {
       setAuthSession(normalizedToken, response)
       startActivityPresence(normalizedToken, clientId)
@@ -343,7 +349,7 @@ async function verifyCoreTokenOnce(token, clientId) {
     }
     return response
   }).catch((error) => {
-    if (error?.status === 401 || error?.status === 403) setAuthSession(null, null)
+    if (authSessionRevision === revision && (error?.status === 401 || error?.status === 403)) setAuthSession(null, null)
     throw error
   }).finally(() => {
     if (authVerification?.promise === promise) authVerification = null

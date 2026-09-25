@@ -242,7 +242,7 @@
 .interface-dark .text-\[2\.8vh\] { font-size: calc(2.8vh + var(--interface-component-font-delta)); }
 
 .interface-dark .chat-body-font {
-  font-size: calc(1.82vh + var(--interface-chat-font-delta));
+  font-size: calc(max(16px, 2.1vh) + var(--interface-chat-font-delta, 0px));
 }
 
 .interface-dark .chat-thinking-font {

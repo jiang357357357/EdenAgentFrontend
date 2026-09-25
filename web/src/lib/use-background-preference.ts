@@ -4,6 +4,7 @@ import { getRuntimeOriginRevision } from "./runtime-origin"
 import { ObjectUrlScope } from "./object-url-scope"
 
 type Origin = "mon" | "local"
+type PreferenceScope = { origin: Origin; revision: number; live: boolean; sequence: number; pending: Promise<void> }
 export interface BackgroundPreference {
   opacity: number
   blur: number
@@ -17,20 +18,24 @@ export function useBackgroundPreference(origin: Origin | null, active: boolean, 
   const [ready, setReady] = useState(false)
   const [imageUrl, setImageUrl] = useState<string>()
   const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string>()
   const latestValue = useRef<BackgroundPreference>(initial)
-  const owner = useRef<{ origin: Origin; revision: number; live: boolean; timer?: number } | null>(null)
+  const owner = useRef<PreferenceScope | null>(null)
 
   useEffect(() => {
     setReady(false)
     latestValue.current = initial
     setValue(initial)
     setError(undefined)
+    setSaving(false)
     if (!origin || !active) return
-    const scope: { origin: Origin; revision: number; live: boolean; timer?: number } = {
+    const scope: PreferenceScope = {
       origin,
       revision: getRuntimeOriginRevision(),
       live: true,
+      sequence: 0,
+      pending: Promise.resolve(),
     }
     owner.current = scope
     void rpcRequestForOrigin(origin, "ui.background.get", {}, scope.revision)
@@ -46,7 +51,6 @@ export function useBackgroundPreference(origin: Origin | null, active: boolean, 
       })
     return () => {
       scope.live = false
-      if (scope.timer !== undefined) window.clearTimeout(scope.timer)
     }
   }, [origin, active, accountIdentity])
 
@@ -74,19 +78,24 @@ export function useBackgroundPreference(origin: Origin | null, active: boolean, 
     latestValue.current = next
     setValue(next)
     setError(undefined)
-    if (scope.timer !== undefined) window.clearTimeout(scope.timer)
-    scope.timer = window.setTimeout(() => {
-      void rpcRequestForOrigin(scope.origin, "ui.background.update", next, scope.revision)
-        .then((result) => {
-          if (scope.live) {
-            latestValue.current = result
-            setValue(result)
-          }
-        })
-        .catch((reason) => {
-          if (scope.live) setError(`保存背景设置失败：${String(reason)}`)
-        })
-    }, 180)
+    setSaving(true)
+    const sequence = ++scope.sequence
+    scope.pending = scope.pending.then(async () => {
+      if (!scope.live || sequence !== scope.sequence) return
+      try {
+        const result = await rpcRequestForOrigin(scope.origin, "ui.background.update", next, scope.revision)
+        if (scope.live && sequence === scope.sequence) {
+          latestValue.current = result
+          setValue(result)
+          setSaving(false)
+        }
+      } catch (reason) {
+        if (scope.live && sequence === scope.sequence) {
+          setSaving(false)
+          setError(`保存背景设置失败：${String(reason)}`)
+        }
+      }
+    })
   }
 
   const selectImage = async (file: File) => {
@@ -114,5 +123,5 @@ export function useBackgroundPreference(origin: Origin | null, active: boolean, 
     }
   }
 
-  return { value, imageUrl, ready, uploading, error, change, selectImage }
+  return { value, imageUrl, ready, uploading, saving, error, change, selectImage }
 }

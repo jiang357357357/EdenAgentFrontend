@@ -1,3 +1,4 @@
+import { ReplyLengthControls } from "../../components/chat/ReplyLengthControls"
 import { pageEnterMotion } from "../../lib/page-motion"
 import { RuntimeDiagnostics } from "../../components/chat/RuntimeDiagnostics"
 import { BackgroundControls } from "../../components/chat/BackgroundControls"
@@ -73,10 +74,13 @@ interface ChatPageProps {
   backgroundImageUrl?: string
   backgroundReady: boolean
   backgroundUploading: boolean
+  backgroundSaving: boolean
+  appearanceSettingError?: string
   onBackgroundChange: (value: BackgroundPreference) => void
   onBackgroundImageSelect: (file: File) => Promise<void>
   appearancePreference: AppearancePreference
   appearanceReady: boolean
+  appearanceSaving: boolean
   onAppearanceChange: (value: AppearancePreference) => void
   onLoadOlderMessages: () => Promise<void>
   onSelectSession: (id: string) => void
@@ -99,6 +103,7 @@ interface ChatPageProps {
   onOpenSessionAssistantSwitcher: () => void
   onOpenSettings: () => void
   onOpenSelfAwake: () => void
+  onOpenAllSessions: () => void
   onOpenMemo: () => void
   onOpenSkills: () => void
   onOpenConnectors: () => void
@@ -126,10 +131,13 @@ export function ChatPage({
   backgroundImageUrl,
   backgroundReady,
   backgroundUploading,
+  backgroundSaving,
+  appearanceSettingError,
   onBackgroundChange,
   onBackgroundImageSelect,
   appearancePreference,
   appearanceReady,
+  appearanceSaving,
   onAppearanceChange,
   onLoadOlderMessages,
   onSelectSession,
@@ -152,6 +160,7 @@ export function ChatPage({
   onOpenSessionAssistantSwitcher,
   onOpenSettings,
   onOpenSelfAwake,
+  onOpenAllSessions,
   onOpenMemo,
   onOpenSkills,
   onOpenConnectors,
@@ -484,6 +493,7 @@ export function ChatPage({
         onOpenParticipants={onOpenAssistantSwitcher}
         onOpenDutyAssistant={onOpenDutyAssistantSwitcher}
         onOpenSelfAwake={onOpenSelfAwake}
+        onOpenAllSessions={onOpenAllSessions}
         onOpenMemo={onOpenMemo}
         onOpenSkills={onOpenSkills}
         onOpenConnectors={onOpenConnectors}
@@ -607,10 +617,15 @@ export function ChatPage({
                   activeSessionId={activeSessionId}
                 />
               )}
+              <ReplyLengthControls characters={activeSession?.participants?.length
+                ? activeSession.participants.filter(item => item.characterID != null).map(item => ({ id: String(item.characterID), name: item.characterName || item.assistantName || "角色" }))
+                : assistant?.character?.id != null ? [{ id: String(assistant.character.id), name: assistantName }] : []} />
               <BackgroundControls
                 value={backgroundPreference}
                 ready={backgroundReady}
                 uploading={backgroundUploading}
+                saving={backgroundSaving || appearanceSaving}
+                settingError={appearanceSettingError}
                 appearance={appearancePreference}
                 appearanceReady={appearanceReady}
                 onChange={onBackgroundChange}

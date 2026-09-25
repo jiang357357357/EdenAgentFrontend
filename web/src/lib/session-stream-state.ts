@@ -4,6 +4,7 @@ export function reconcileRuntimeSessionStatus(
   current: SessionStatus,
   hydrated?: SessionStatus,
 ): SessionStatus {
+  if (current === "stopping" && hydrated === "busy") return "stopping"
   return hydrated ?? current
 }
 

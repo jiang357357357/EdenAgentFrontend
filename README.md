@@ -60,13 +60,15 @@ npm run dev
 
 | 命令 | 用途 |
 | --- | --- |
-| `npm run dev` | 启动 Web 与 Electron 开发环境 |
+| `npm run dev` | 启动 Web 与 Electron 开发环境；沿用已运行的 Mon 后端，桌面壳管理本地运行时 |
 | `npm run dev:web` | 只启动 Vite 客户端 |
 | `npm run dev:shell` | 只启动 Electron 壳 |
 | `npm run build` | 类型检查并构建 Web 客户端 |
 | `npm run typecheck` | 执行 TypeScript 检查 |
 | `npm --prefix web test` | 执行 Web 测试 |
 | `npm --prefix desktop test` | 执行桌面端测试 |
+
+连接独立部署的 Mon 后端时，Linux 开发入口会读取当前监听服务的数据目录定位能力令牌；若无法读取或使用其他系统，请设置 `EDEN_AGENT_MON_TOKEN_FILE` 为该服务的 `capability.token` 路径。
 
 ## 资源边界
 

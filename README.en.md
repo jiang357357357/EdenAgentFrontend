@@ -60,13 +60,15 @@ npm run dev
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Start the Web and Electron development environment |
+| `npm run dev` | Start Web and Electron; use the running Mon server and let Electron manage the local runtime |
 | `npm run dev:web` | Start only the Vite client |
 | `npm run dev:shell` | Start only the Electron shell |
 | `npm run build` | Type-check and build the Web client |
 | `npm run typecheck` | Run TypeScript checks |
 | `npm --prefix web test` | Run Web tests |
 | `npm --prefix desktop test` | Run desktop tests |
+
+On Linux, the development launcher finds the capability token in the running Mon server's data directory. On other systems, or if process details are unavailable, set `EDEN_AGENT_MON_TOKEN_FILE` to that server's `capability.token` path.
 
 ## Asset boundary
 

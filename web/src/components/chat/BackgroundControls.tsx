@@ -8,6 +8,8 @@ interface BackgroundControlsProps {
   value: BackgroundPreference
   ready: boolean
   uploading: boolean
+  saving: boolean
+  settingError?: string
   appearance: AppearancePreference
   appearanceReady: boolean
   onChange: (value: BackgroundPreference) => void
@@ -15,7 +17,7 @@ interface BackgroundControlsProps {
   onSelectImage: (file: File) => Promise<void>
 }
 
-export function BackgroundControls({ value, ready, uploading, appearance, appearanceReady, onChange, onAppearanceChange, onSelectImage }: BackgroundControlsProps) {
+export function BackgroundControls({ value, ready, uploading, saving, settingError, appearance, appearanceReady, onChange, onAppearanceChange, onSelectImage }: BackgroundControlsProps) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -49,6 +51,7 @@ export function BackgroundControls({ value, ready, uploading, appearance, appear
         <div className="appearance-controls absolute right-0 top-[calc(100%+0.5rem)] z-50 max-h-[80dvh] w-72 overflow-y-auto rounded-xl border border-border bg-card/95 p-4 text-text shadow-xl backdrop-blur-xl">
           <div className="mb-4 flex items-center justify-between">
             <span className="text-sm font-medium">界面外观</span>
+            <span role="status" title={settingError} className={cn("ml-auto mr-2 text-xs", settingError ? "text-danger" : "text-text-muted")}>{settingError ? "设置失败" : saving ? "正在保存…" : "自动保存"}</span>
             <button
               type="button"
               onClick={() => setOpen(false)}

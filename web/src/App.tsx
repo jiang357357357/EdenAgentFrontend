@@ -9,6 +9,7 @@ import { QuestionDecisionOverlay } from "./components/requests"
 import { setDesktopQuestionWindowVisible } from "./lib/desktop-window"
 import { PetSurfaceErrorBoundary } from "./components/desktop-pet"
 import { ChatPage } from "./pages/chat"
+import { AllSessionsPage } from "./pages/all-sessions"
 import { CharacterPage } from "./pages/character"
 import { AssistantSwitcherPage } from "./pages/assistant-switcher"
 import { LoginPage } from "./pages/login"
@@ -74,6 +75,7 @@ const screenTransition = {
 
 type AppPage =
   | "chat"
+  | "allSessions"
   | "selfAwake"
   | "memo"
   | "skills"
@@ -92,6 +94,7 @@ function initialPageFromLocation(): AppPage {
   const page = new URLSearchParams(window.location.search).get("page")
   if (
     page === "settings" ||
+    page === "allSessions" ||
     page === "skills" ||
     page === "plugins" ||
     page === "connectors" ||
@@ -203,6 +206,7 @@ export default function App() {
     imageUrl: backgroundImageUrl,
     ready: backgroundReady,
     uploading: backgroundUploading,
+    saving: backgroundSaving,
     error: backgroundError,
     change: setBackgroundPreference,
     selectImage: selectBackgroundImage,
@@ -210,6 +214,7 @@ export default function App() {
   const {
     value: appearancePreference,
     ready: appearanceReady,
+    saving: appearanceSaving,
     error: appearanceError,
     change: setAppearancePreference,
   } = useAppearancePreference(runtimeOrigin, runtimeReady, currentUser?.id)
@@ -300,7 +305,7 @@ export default function App() {
   const reportAuthError = (stage: string, error: unknown, fallback: string) => {
     const message = getErrorMessage(error, fallback)
     console.error(`[Auth] ${stage} failed`, error)
-    return message
+    return isAuthExpiredError(error) ? "登录已失效，请重新登录。" : message
   }
 
   function resetRuntimeState() {
@@ -365,17 +370,13 @@ export default function App() {
       return false
     }
 
-    if (isStoredTokenExpired(0)) {
-      returnToLogin("登录已失效，请重新登录。")
-      return false
-    }
-
     if (authProbeInFlightRef.current) return true
     authProbeInFlightRef.current = true
     try {
       await verifyTokenWithCore(token)
-      return true
+      return getStoredToken() === token
     } catch (error) {
+      if (getStoredToken() !== token) return true
       if (isAuthExpiredError(error)) {
         returnToLogin("登录已失效，请重新登录。")
         return false
@@ -522,6 +523,7 @@ export default function App() {
           console.log("[bootstrapAuth] verifying token...")
           const response = await verifyTokenWithCore(token)
           if (cancelled) return
+          if (getStoredToken() !== token) return
           console.log("[bootstrapAuth] token valid, user:", response.user.username)
           setCurrentUser(response.user)
           setAuthError(undefined)
@@ -530,6 +532,12 @@ export default function App() {
         } catch (error) {
           console.log("[bootstrapAuth] token invalid:", error)
           if (cancelled) return
+          if (getStoredToken() !== token) return
+          if (!isAuthExpiredError(error)) {
+            setAuthError(reportAuthError("verify-token", error, "暂时无法验证登录状态，请稍后重试。"))
+            setAuthStatus("unauthenticated")
+            return
+          }
           clearAuth({ preserveRuntimeOrigin: true })
           setCurrentUser(null)
           if (cancelled) return
@@ -737,13 +745,8 @@ export default function App() {
   useEffect(() => {
     if (runtimeOrigin !== "mon" || authStatus !== "authenticated") return
 
-    if (isStoredTokenExpired(0)) {
-      returnToLogin("登录已失效，请重新登录。")
-      return
-    }
-
     const expiresAt = getStoredTokenExpiresAt()
-    const delay = expiresAt ? Math.max(0, Math.min(expiresAt - Date.now() + 250, 2_147_483_647)) : 60_000
+    const delay = expiresAt ? Math.max(250, Math.min(expiresAt - Date.now() + 250, 2_147_483_647)) : 60_000
 
     const timeout = window.setTimeout(() => {
       void verifyAuthStillValid("token-expiry")
@@ -1093,6 +1096,23 @@ export default function App() {
               onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
             />
           </PetSurfaceErrorBoundary>
+        ) : activePage === "allSessions" ? (
+          <AllSessionsPage
+            key={runtimeOrigin}
+            origin={runtimeOrigin ?? "mon"}
+            onBack={() => setActivePage("chat")}
+            navigation={{
+              onOpenParticipants: () => { setAssistantSwitcherMode("participants"); setActivePage("assistant-switcher") },
+              onOpenDutyAssistant: () => { setAssistantSwitcherMode("default"); setActivePage("assistant-switcher") },
+              onOpenSelfAwake: () => setActivePage("selfAwake"),
+              onOpenMemo: () => setActivePage("memo"),
+              onOpenSkills: () => setActivePage("skills"),
+              onOpenConnectors: () => setActivePage("connectors"),
+              onOpenConfiguration: handleOpenConfiguration,
+              onOpenSettings: () => setActivePage("settings"),
+              onLogout: handleLogout,
+            }}
+          />
         ) : activePage === "selfAwake" ? (
           <SelfAwakePage
             key={runtimeOrigin}
@@ -1122,6 +1142,7 @@ export default function App() {
               setActivePage("assistant-switcher")
             }}
             onOpenSelfAwake={() => setActivePage("selfAwake")}
+            onOpenAllSessions={() => setActivePage("allSessions")}
             onOpenMemo={() => setActivePage("memo")}
             onOpenSkills={() => setActivePage("skills")}
             onOpenConnectors={() => setActivePage("connectors")}
@@ -1183,10 +1204,13 @@ export default function App() {
             backgroundImageUrl={backgroundImageUrl}
             backgroundReady={backgroundReady}
             backgroundUploading={backgroundUploading}
+            backgroundSaving={backgroundSaving}
+            appearanceSettingError={appearanceError || backgroundError}
             onBackgroundChange={setBackgroundPreference}
             onBackgroundImageSelect={selectBackgroundImage}
             appearancePreference={appearancePreference}
             appearanceReady={appearanceReady}
+            appearanceSaving={appearanceSaving}
             onAppearanceChange={setAppearancePreference}
             onLoadOlderMessages={handleLoadOlderMessages}
             onSelectSession={selectRuntimeSession}
@@ -1222,6 +1246,7 @@ export default function App() {
             onOpenSelfAwake={() => {
               setActivePage("selfAwake")
             }}
+            onOpenAllSessions={() => setActivePage("allSessions")}
             onOpenMemo={() => {
               setActivePage("memo")
             }}
