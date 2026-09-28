@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto'
 const frontend = fileURLToPath(new URL('../../', import.meta.url)), root = path.dirname(path.resolve(frontend))
 const platform = process.argv[2] ?? process.platform, arch = process.argv[3] ?? process.arch
 if (process.argv.length > 4 || !['linux', 'win32', 'darwin'].includes(platform) || !['x64', 'arm64'].includes(arch)) throw new Error('Usage: node Script/Project/package_desktop.mjs <linux|win32|darwin> <x64|arm64>')
+const electronZipDir = process.env.EDEN_ELECTRON_ZIP_DIR
 const runtime = path.join(root, 'dist', `runtime-${platform}-${arch}`)
 const manifest = JSON.parse(await readFile(path.join(runtime, 'runtime-manifest.json'), 'utf8'))
 if (manifest.platform !== platform || manifest.arch !== arch || manifest.node !== '22.23.1') throw new Error('Prepare a matching TS runtime distribution first')
@@ -40,6 +41,7 @@ try {
   }
   const outputs = await packager({ dir: app, name: 'eden-agent', platform, arch, out: output,
     overwrite: false, electronVersion: '42.4.0', asar: false, prune: false,
+    ...(electronZipDir ? { electronZipDir } : {}),
     ...(platform === 'darwin' ? {} : { icon: path.join(frontend, 'desktop/assets', platform === 'win32' ? 'icon.ico' : 'icon.png') }),
     extraResource: resources,
   })

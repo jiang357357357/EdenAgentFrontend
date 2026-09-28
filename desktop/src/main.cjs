@@ -41,6 +41,7 @@ const { createProcessLifecycle } = require("./processes/process-lifecycle.cjs")
 const { createAgentServerManager } = require("./processes/agent-server.cjs")
 const { createDesktopQuitFlagController } = require("./processes/desktop-quit-flag.cjs")
 const { registerFileProtocol } = require("./protocols/register-file-protocol.cjs")
+const { desktopFileUrl, resolveBundledWebAssetPath } = require("./protocols/file-protocol.cjs")
 const { registerAppProtocol } = require("./protocols/app-protocol.cjs")
 const { createWebAppLoader } = require("./windows/web-app-loader.cjs")
 const { createTrayController } = require("./windows/tray-controller.cjs")
@@ -98,6 +99,12 @@ const localRuntimeService = createLocalRuntimeService({
   serverHealthUrl: `http://127.0.0.1:${process.env.EDEN_AGENT_LOCAL_PORT || "40093"}/healthz`,
 })
 ipcMain.handle("eden-agent:capability", (_event, origin) => rustServer.capability(origin))
+ipcMain.on("eden-agent:convert-file-src", (event, filePath) => {
+  event.returnValue = desktopFileUrl(resolveBundledWebAssetPath(filePath, {
+    preloadDirectory: __dirname,
+    isPackaged: app.isPackaged,
+  }))
+})
 quitFlagController.clearStaleFlagForLaunch()
 const petSettingsPath = resolveMonConfigPath("desktop", "PET_SETTINGS", ".artifacts/desktop-pet-settings.json")
 const performanceLogPath = path.join(agentRoot, ".artifacts", "frontend-performance.jsonl")
@@ -699,7 +706,7 @@ function createWindow() {
       preload,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       webSecurity: false,
     },
   })
@@ -749,7 +756,7 @@ function createQuestionWindow() {
       preload,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       webSecurity: false,
     },
   })
@@ -828,7 +835,7 @@ async function createPetWindow() {
       preload,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       webSecurity: false,
     },
   })
@@ -917,7 +924,7 @@ function createPetBubblePanelWindow() {
       preload,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       webSecurity: false,
     },
   })
@@ -995,7 +1002,7 @@ function createPetBubbleIconWindow() {
       preload,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       webSecurity: false,
     },
   })
@@ -1066,7 +1073,7 @@ async function createSettingsWindow() {
       preload,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       webSecurity: false,
     },
   })

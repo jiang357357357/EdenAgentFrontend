@@ -1,11 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron")
-const { desktopFileUrl, resolveBundledWebAssetPath } = require("./protocols/file-protocol.cjs")
 
 function convertFileSrc(filePath) {
-  return desktopFileUrl(resolveBundledWebAssetPath(filePath, {
-    preloadDirectory: __dirname,
-    isPackaged: !process.defaultApp,
-  }))
+  return ipcRenderer.sendSync("eden-agent:convert-file-src", filePath)
 }
 
 contextBridge.exposeInMainWorld("edenAgentDesktop", {
