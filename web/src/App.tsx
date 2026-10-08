@@ -21,6 +21,8 @@ import { SkillPage } from "./pages/skills"
 import { ConnectorPage } from "./pages/connectors"
 import { PluginPage } from "./pages/plugins"
 import { ConfigurationPage } from "./pages/configuration"
+import { SharedWorkspacePage } from "./pages/shared-workspace/SharedWorkspacePage"
+import type { SharedWorkspaceScope } from "./components/shared-workspace/use-shared-workspace"
 import { useSessionRuntime } from "./hooks/useSessionRuntime"
 import {
   clearAuth,
@@ -78,6 +80,7 @@ type AppPage =
   | "allSessions"
   | "selfAwake"
   | "memo"
+  | "shared-workspace"
   | "skills"
   | "plugins"
   | "connectors"
@@ -184,6 +187,9 @@ export default function App() {
   const isAuxiliaryWindow = isSettingsWindow || isQuestionWindow || isPetWindow
   const runtimeReady = authStatus === "authenticated" && (isAuxiliaryWindow || runtimeOrigin !== null)
   const [activePage, setActivePage] = useState<AppPage>(() => initialPageFromLocation())
+  const [sharedWorkspaceScope, setSharedWorkspaceScope] = useState<SharedWorkspaceScope | null>(null)
+  const [sharedWorkspaceRevision, setSharedWorkspaceRevision] = useState(0)
+  const [sidebarActivity, setSidebarActivity] = useState<"sessions" | "files">("sessions")
   const [assistantSwitcherMode, setAssistantSwitcherMode] = useState<"default" | "session" | "participants">(
     initialPage === "settings" ? "default" : "participants",
   )
@@ -268,6 +274,9 @@ export default function App() {
     abortSession: abortRuntimeSession,
     compactSession: compactRuntimeSession,
     connectionError,
+    connectionFeedback,
+    dismissConnectionFeedback,
+    retryConnectionSync,
     runtimeError,
     createSession: createRuntimeSession,
     deleteSession: deleteRuntimeSession,
@@ -1123,8 +1132,14 @@ export default function App() {
           />
         ) : activePage === "memo" ? (
           <MemoPage onBack={() => setActivePage("chat")} />
+        ) : activePage === "shared-workspace" && sharedWorkspaceScope ? (
+          <SharedWorkspacePage key={`${runtimeOrigin}:${sharedWorkspaceScope.sessionId}`}
+            scope={sharedWorkspaceScope} scopeVersion={sharedWorkspaceRevision} onBack={() => setActivePage("chat")} onDirectoryChanged={scope => {
+              setSharedWorkspaceScope(scope)
+              setSharedWorkspaceRevision(value => value + 1)
+            }} />
         ) : activePage === "skills" ? (
-          <SkillPage onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
+          <SkillPage sessionId={activeSessionId || undefined} onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
         ) : activePage === "plugins" ? (
           <PluginPage key={runtimeOrigin} onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
         ) : activePage === "connectors" ? (
@@ -1192,7 +1207,9 @@ export default function App() {
             assistantError={currentAssistantError}
             activeCharacterAction={activeCharacterAction}
             isThinking={isThinking}
-            connectionError={connectionError}
+            connectionFeedback={connectionFeedback}
+            onDismissConnectionFeedback={dismissConnectionFeedback}
+            onRetryConnectionSync={retryConnectionSync}
             runtimeError={[runtimeError, autoScrollError, backgroundError, appearanceError].filter(Boolean).join("；") || undefined}
             activePendingPermissions={activePendingPermissions}
             messagesScrollRef={messagesScrollRef}
@@ -1257,6 +1274,13 @@ export default function App() {
               setActivePage("connectors")
             }}
             onOpenConfiguration={handleOpenConfiguration}
+            sidebarActivity={sidebarActivity}
+            onSidebarActivityChange={setSidebarActivity}
+            onOpenSharedWorkspace={scope => {
+              setSharedWorkspaceScope(scope)
+              setSidebarActivity("files")
+              setActivePage("shared-workspace")
+            }}
           />
         )}
       </motion.div>

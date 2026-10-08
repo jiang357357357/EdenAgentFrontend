@@ -46,6 +46,10 @@ export class ModelMenuController {
 
   async select(option: RuntimeModelOption, target?: ModelSelectionTarget): Promise<boolean> {
     if (!this.active || this.writing) return false
+    if (this.state.config?.readOnly) {
+      this.update({ error: '会话运行或配置更新中，请结束后再切换模型。' })
+      return false
+    }
     if (option.selected) return true
     const revision = ++this.revision
     this.writing = true

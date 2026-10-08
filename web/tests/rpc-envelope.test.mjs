@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
 import { createServer } from 'vite'
 
-const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
+const vite = await createServer({ optimizeDeps: { noDiscovery: true, include: [] }, server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom' })
 const { EdenAgentRpcClient } = await vite.ssrLoadModule('/src/lib/rpc-client.ts')
 const original = globalThis.WebSocket
 let reply = { result: { pong: true }, error: null }
@@ -30,6 +30,11 @@ test('browser RPC accepts legacy null placeholders but rejects contradictory res
     assert.equal(await client.request('ping', {}), null)
     reply = { result: null, error: { code: -32602, message: 'invalid parameters' } }
     await assert.rejects(client.request('ping', {}), /invalid parameters/)
+    reply = { result: null, error: { code: -32000, message: 'Core temporarily rejected synthesis',
+      data: { kind: 'speech_synthesis', status: 429, outcome: 'failed', retryable: true } } }
+    await assert.rejects(client.request('ping', {}), error => {
+      assert.equal(error.name, 'AgentRpcError'); assert.equal(error.data.status, 429); assert.equal(error.data.retryable, true); return true
+    })
     reply = { result: { pong: true }, error: { code: -32603, message: 'contradictory' } }
     await assert.rejects(client.request('ping', {}), /Invalid RPC response/)
     reply = { error: null }

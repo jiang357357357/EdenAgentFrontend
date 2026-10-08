@@ -9,8 +9,8 @@ function readableBytes(value: number) {
   return `${(value / 1024 / 1024).toFixed(1)} MB`
 }
 
-export function SkillInstallDialog({ onClose, onInstalled }: { onClose(): void; onInstalled(): Promise<void> }) {
-  const { inspectSkill, installSkill } = useSkillClient()
+export function SkillInstallDialog({ onClose, onInstalled, sessionId }: { onClose(): void; onInstalled(): Promise<void>; sessionId?: string }) {
+  const { inspectSkill, installSkill } = useSkillClient(sessionId)
   const [busyID, setBusyID] = useState('')
   const [error, setError] = useState('')
   const [sourceType, setSourceType] = useState<'local' | 'git'>('local')
@@ -46,7 +46,7 @@ export function SkillInstallDialog({ onClose, onInstalled }: { onClose(): void; 
     setBusyID("install")
     setError("")
     try {
-      await installSkill(preview.previewID)
+      await installSkill(preview.previewID, preview.scope)
       setPreview(null)
       onClose()
       setSourceUri("")
@@ -152,7 +152,7 @@ export function SkillInstallDialog({ onClose, onInstalled }: { onClose(): void; 
                 className="rounded-xl border border-border bg-card px-3 py-2.5 text-sm outline-none focus:border-warning/30"
               >
                 <option value="user">当前用户</option>
-                <option value="project">当前项目</option>
+                <option value="project" disabled={!sessionId}>当前会话项目</option>
               </select>
             </div>
             {preview && (

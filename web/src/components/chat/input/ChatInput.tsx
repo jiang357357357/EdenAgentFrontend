@@ -128,7 +128,7 @@ export function ChatInput({
     selectPermissionMode,
     toggleModelMenu,
     togglePermissionMenu,
-  } = useChatSettingsMenus({ hideComposerFooter, onPermissionModeChange, permissionMode, sessionId })
+  } = useChatSettingsMenus({ hideComposerFooter, isRunning: Boolean(disabled), onPermissionModeChange, permissionMode, sessionId })
   const dragTimerRef = useRef<number | undefined>(undefined)
   const previousSegmentCountRef = useRef(0)
   const {

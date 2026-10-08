@@ -14,7 +14,7 @@ function decodeFile(path: string, content: string): FilePreview {
   return { path, bytes, text }
 }
 
-export function SkillFiles({ skill, files }: { skill: InstalledSkill; files: string[] }) {
+export function SkillFiles({ skill, files, sessionId }: { skill: InstalledSkill; files: string[]; sessionId?: string }) {
   const request = useScopedRpc()
   const [selected, setSelected] = useState('')
   const [preview, setPreview] = useState<FilePreview | null>(null)
@@ -25,7 +25,7 @@ export function SkillFiles({ skill, files }: { skill: InstalledSkill; files: str
     setPreview(null); setError(''); setLoading(false)
     if (!selected || !files.includes(selected)) return () => { active = false }
     setLoading(true)
-    void request('skill.file', { name: skill.id, path: selected, expectedContentHash: skill.contentHash, expectedWorkspaceRoot: skill.workspaceRoot })
+    void request('skill.file', { ...(sessionId ? { sessionId } : {}), name: skill.id, path: selected, expectedContentHash: skill.contentHash, expectedWorkspaceRoot: skill.workspaceRoot })
       .then(result => {
         if (!active) return
         if (result.name !== skill.id || result.path !== selected || result.contentHash !== skill.contentHash) throw new Error('技能文件版本已变化，请刷新详情')
@@ -34,7 +34,7 @@ export function SkillFiles({ skill, files }: { skill: InstalledSkill; files: str
       .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : String(reason)) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [selected, files, skill.id, skill.contentHash, skill.workspaceRoot, request])
+  }, [selected, files, skill.id, skill.contentHash, skill.workspaceRoot, request, sessionId])
   function download() {
     if (!preview) return
     const url = URL.createObjectURL(new Blob([new Uint8Array(preview.bytes)], { type: 'application/octet-stream' }))

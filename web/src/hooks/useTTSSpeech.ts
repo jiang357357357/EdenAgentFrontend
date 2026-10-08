@@ -14,6 +14,8 @@ import {
 } from "../lib/desktop-window"
 import { listMessageSpeechSegments, synthesizeSpeechSegment } from "../lib/agent-client"
 import { SpeechOutputGate } from "../lib/speech-output-gate"
+import { SpeechRetryBudget, speechFailureRetryable } from "../lib/speech-retry-budget"
+import { obsoleteSpeechMessages } from "../lib/speech-group-lifecycle"
 import {
   isSpeechTaskCancelled,
   SpeechPlaybackQueue,
@@ -167,6 +169,7 @@ export function useTTSSpeech({
   const manualSpeechRef = useRef<{ messageId: string; segmentId: string } | null>(null)
   const cancelledMessagesRef = useRef(new Set<string>())
   const synthesisSchedulerRef = useRef(new SpeechSynthesisScheduler())
+  const synthesisBudgetRef = useRef(new SpeechRetryBudget())
   const playbackQueueRef = useRef(new SpeechPlaybackQueue((error, taskId) => {
     console.warn(`[Chat][TTS] 播放任务 ${taskId} 失败`, error)
   }))
@@ -643,8 +646,10 @@ export function useTTSSpeech({
           return null
         }
         let lastError: unknown
+        const budgetMessage = `${sessionId}:${messageId}`, budgetChunk = JSON.stringify([configId, mode, text])
         for (const delayMs of [0, 150, 400, 900]) {
           await waitForSpeechRetry(delayMs, signal)
+          if (intent === 'auto') synthesisBudgetRef.current.check(budgetMessage, budgetChunk)
           try {
             throwIfSpeechTaskCancelled(signal)
             const result = await synthesizeSpeechSegment({
@@ -656,6 +661,7 @@ export function useTTSSpeech({
               text,
               configId,
               mode,
+              intent,
             }, signal)
             throwIfSpeechTaskCancelled(signal)
             diagnose("synthesis-completed", {
@@ -670,6 +676,8 @@ export function useTTSSpeech({
           } catch (error) {
             if (signal.aborted || isSpeechTaskCancelled(error)) throw error
             lastError = error
+            if (intent === 'auto') synthesisBudgetRef.current.failed(budgetMessage, budgetChunk, error)
+            if (!speechFailureRetryable(error)) throw error
           }
         }
         throw lastError instanceof Error ? lastError : new Error(`语音句子 ${chunkIndex + 1} 合成失败`)
@@ -775,6 +783,7 @@ export function useTTSSpeech({
       const chunks = speechChunksForTTS(rawText, mode)
       if (!sessionId || !chunks.length || typeof segment?.configId !== "number" || mode === "none") return
       stop(false)
+      synthesisBudgetRef.current.reset(`${sessionId}:${messageId}`)
       // Replace any automatic work for this message before starting a manual replay.
       cancelledMessagesRef.current.add(messageId)
       const messageGeneration = invalidateMessageSpeech(messageId, "manual-replay")
@@ -991,8 +1000,11 @@ export function useTTSSpeech({
   }, [isThinking, mode, restoreSignature, sessionId])
 
   useEffect(() => {
+    if (mode === "none") stop(true, true, "tts-disabled")
+  }, [mode])
+
+  useEffect(() => {
     if (mode === "none") {
-      stop(true, true, "tts-disabled")
       runActiveRef.current = isThinking
       outputGateRef.current?.reset(isThinking)
       return
@@ -1021,6 +1033,9 @@ export function useTTSSpeech({
       outputGateRef.current?.begin()
     }
     if (isThinking || runWasActive) {
+      for (const messageId of obsoleteSpeechMessages(streamStatesRef.current.values(), activeSegments)) {
+        invalidateMessageSpeech(messageId, 'stream-epoch-replaced')
+      }
       const messageGroupIndexes = new Map<string, number>()
       for (const segment of activeSegments) {
         if (cancelledMessagesRef.current.has(segment.messageId)) continue
@@ -1127,6 +1142,12 @@ export function useTTSSpeech({
     if (!isThinking && runWasActive) {
       runActiveRef.current = false
       runBaselineMessageIdsRef.current.clear()
+      // Every ended stream must release its reservation, including segments removed from the final view.
+      for (const state of streamStatesRef.current.values()) {
+        state.complete = true
+        playbackQueueRef.current.sealGroup(state.streamKey)
+        updateStreamingClip(state)
+      }
       const finalQueue = playbackQueueRef.current.whenIdle()
       const finalGeneration = generationRef.current
       outputGateRef.current?.holdUntil(finalQueue)

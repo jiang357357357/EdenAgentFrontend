@@ -17,6 +17,8 @@ const manifest = JSON.parse(await readFile(path.join(runtime, 'runtime-manifest.
 if (manifest.platform !== platform || manifest.arch !== arch || manifest.node !== '22.23.1') throw new Error('Prepare a matching TS runtime distribution first')
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 if (digest(await readFile(path.join(runtime, 'server/main.mjs'))) !== manifest.entrySha256) throw new Error('Server artifact differs from its manifest')
+if (manifest.runtimeProcess !== 'server/runtime-process.mjs' || digest(await readFile(path.join(runtime, manifest.runtimeProcess))) !== manifest.runtimeProcessSha256)
+  throw new Error('Isolated runtime process is missing or differs from its manifest')
 await stat(path.join(frontend, 'web/dist/index.html'))
 const output = path.join(frontend, 'dist/app'), target = path.join(output, `eden-agent-${platform}-${arch}`)
 if (existsSync(target)) throw new Error(`Refusing to overwrite a desktop artifact: ${target}`)
@@ -45,6 +47,6 @@ try {
     ...(platform === 'darwin' ? {} : { icon: path.join(frontend, 'desktop/assets', platform === 'win32' ? 'icon.ico' : 'icon.png') }),
     extraResource: resources,
   })
-  for (const directory of outputs) await writeDesktopManifest(directory, { platform, arch, version: source.version, electron: '42.4.0', node: manifest.node, runtimeEntrySha256: manifest.entrySha256 })
+  for (const directory of outputs) await writeDesktopManifest(directory, { platform, arch, version: source.version, electron: '42.4.0', node: manifest.node, runtimeEntrySha256: manifest.entrySha256, runtimeProcessSha256: manifest.runtimeProcessSha256 })
   process.stdout.write(JSON.stringify({ outputs, runtime, platform, arch }, null, 2) + '\n')
 } finally { await rm(temporary, { recursive: true, force: true }) }

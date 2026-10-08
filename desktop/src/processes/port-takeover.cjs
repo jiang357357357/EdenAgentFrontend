@@ -137,4 +137,11 @@ function takeOverTcpPort(port, label = "service", { log = console.log } = {}) {
   throw new Error(`${label} port ${port} is still occupied after takeover`)
 }
 
-module.exports = { listenerPids, takeOverTcpPort }
+function assertTcpPortAvailable(port, label = 'service') {
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new TypeError(`Invalid TCP port: ${port}`)
+  const owners = listenerPids(port)
+  if (owners.length) throw new Error(`${label} 端口 ${port} 已被占用（PID ${owners.join(', ')}）；源码服务优先，便携版不会结束现有进程。请使用对应客户端或先停止现有服务。`)
+  return []
+}
+
+module.exports = { listenerPids, takeOverTcpPort, assertTcpPortAvailable }

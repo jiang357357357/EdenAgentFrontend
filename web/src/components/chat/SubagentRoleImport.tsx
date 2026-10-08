@@ -5,7 +5,7 @@ import { useScopedRpc } from '../../lib/use-scoped-rpc'
 
 interface Candidate { entry: RoleImportEntry | null; label: string; issue: string }
 interface Plan { previewId: string; expiresAt: number; items: { name: string; scope: 'user' | 'project'; workspaceRoot: string; replaces: boolean; definition: RoleImportEntry['definition'] }[] }
-export function SubagentRoleImport({ onSaved }: { onSaved: () => Promise<void> }) {
+export function SubagentRoleImport({ onSaved, sessionId }: { onSaved: () => Promise<void>; sessionId: string }) {
   const rpcRequest = useScopedRpc()
   const [rows, setRows] = useState<Candidate[]>([]), [selected, setSelected] = useState<number[]>([]), [plan, setPlan] = useState<Plan | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [confirmed, setConfirmed] = useState(false)
@@ -27,14 +27,14 @@ export function SubagentRoleImport({ onSaved }: { onSaved: () => Promise<void> }
     setBusy(true); setError(''); setPlan(null); setConfirmed(false)
     try {
       const entries = selected.map(index => rows[index]!.entry!).filter(Boolean)
-      setPlan(await rpcRequest('agent.roles.import.preview', { entries }))
+      setPlan(await rpcRequest('agent.roles.import.preview', { sessionId, entries }))
     } catch (reason) { setError(String(reason)) } finally { setBusy(false) }
   }
   async function apply() {
     if (!plan) return
     setBusy(true); setError('')
     try {
-      await rpcRequest('agent.roles.import.apply', { previewId: plan.previewId, confirmDefinitions: true })
+      await rpcRequest('agent.roles.import.apply', { sessionId, previewId: plan.previewId, confirmDefinitions: true })
       setPlan(null); setSelected([]); setConfirmed(false); await onSaved()
     } catch (reason) { setError(String(reason)) } finally { setBusy(false) }
   }

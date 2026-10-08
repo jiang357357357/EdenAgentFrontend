@@ -59,7 +59,14 @@ function MonSyncSessionPanel({ sessionId }: { sessionId: string }) {
           {status.legacy.nextCursor !== null && <button type="button" onClick={() => { setLegacyBefore(status.legacy.nextCursor!); setStatus(null) }}>更早历史记录</button>}
         </div>}
         {status.contacts.map(item => <p key={item.requestId}>{item.channel === 'qq' ? 'QQ 通知' : '邮件通知'} · {item.state === 'accepted' ? '渠道已接受' : labels[item.state] ?? item.state}{item.error ? ` · ${item.error}` : ''}</p>)}
-        {status.progress.filter(item => item.error).map((item, index) => <p key={index}>同步暂未确认，已失败 {item.attempts} 次；下次重试：{new Date(item.retryAt).toLocaleTimeString()}。</p>)}
+        {status.progress.filter(item => item.error).map((item, index) => <div key={index}>
+          <p>{item.retryAt < 0 ? '自动同步已暂停' : '同步尚未完成'} · 已尝试 {item.attempts} 次 · {item.error}</p>
+          {item.retryAt > 0 && <p>下次重试：{new Date(item.retryAt).toLocaleTimeString()}</p>}
+          {item.retryAt < 0 && <button type="button" onClick={async () => {
+            try { await rpcRequestForOrigin('mon', 'mon.sync.resume', { sessionId, confirm: true }); setRevision(value => value + 1) }
+            catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+          }}>已处理原因，恢复同步</button>}
+        </div>)}
         <p>“已确认”表示该项 Core 投递已返回成功，不代表整个会话已经同步完毕。</p>
         <ul>{status.items.map(item => <li key={item.id} className="border-t py-2">
           {item.kind} · {labels[item.state] ?? item.state} · {new Date(item.updatedAt).toLocaleString()}

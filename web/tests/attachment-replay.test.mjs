@@ -4,7 +4,7 @@ import { createServer } from 'vite'
 import { ObjectUrlScope } from '../src/lib/object-url-scope.ts'
 import { blobReference, parseBlobReference } from '../src/lib/blob-reference.ts'
 
-const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
+const vite = await createServer({ optimizeDeps: { noDiscovery: true, include: [] }, server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom' })
 const transport = await vite.ssrLoadModule('/src/lib/rpc-transport.ts')
 const client = await vite.ssrLoadModule('/src/lib/agent-client.ts')
 const originalWindow = globalThis.window
@@ -62,19 +62,23 @@ test('blob display fetches with authorization, rejects cross-world cached URLs a
 test('a world switch during credential lookup prevents the blob request', async () => {
   origin = 'mon'
   const scope = new ObjectUrlScope()
+  const originalCapability = window.edenAgentDesktop.getAgentCapability
   let complete
   window.edenAgentDesktop.getAgentCapability = () => new Promise(resolve => { complete = resolve })
   let calls = 0
   globalThis.fetch = async () => { calls++; throw new Error('Must not fetch') }
-  const pending = transport.resolveRuntimeBlobUrl(id, 'mon', scope)
-  await Promise.resolve()
-  origin = 'local'
-  complete({ token: 'old-world-token' })
-  await assert.rejects(pending, /World changed/)
-  assert.equal(calls, 0)
-  scope.dispose()
-  window.edenAgentDesktop.getAgentCapability = async () => ({ token: 'w'.repeat(43) })
-  globalThis.fetch = originalFetch
+  try {
+    const pending = transport.resolveRuntimeBlobUrl(id, 'mon', scope)
+    await Promise.resolve()
+    origin = 'local'
+    complete({ token: 'old-world-token' })
+    await assert.rejects(pending, { message: 'Account or world changed while loading attachment' })
+    assert.equal(calls, 0)
+  } finally {
+    scope.dispose()
+    window.edenAgentDesktop.getAgentCapability = originalCapability
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('attachment uploads preserve order while limiting concurrent requests to four', async () => {

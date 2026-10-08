@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { MemoNotification } from '@eden/api'
 import { listMemoNotifications, acknowledgeMemoNotification } from '../../lib/memo-notifications'
 import { getStoredRuntimeOrigin } from '../../lib/runtime-origin'
+import { NoticeCard, noticeActionClass } from '../feedback'
 
 export function MemoNotificationsPanel() {
   const [open, setOpen] = useState(false)
@@ -46,14 +47,15 @@ export function MemoNotificationsPanel() {
       到期提醒{unread ? ` (${unread})` : ''}
     </button>
     {open && <section aria-label="到期提醒" className="absolute right-0 top-12 z-50 max-h-[60vh] w-80 overflow-y-auto rounded-xl border border-border bg-bg p-4 text-sm text-text shadow-xl">
-      <div className="mb-3 flex justify-between"><strong>提醒收件箱</strong><button type="button" onClick={() => setOpen(false)}>关闭</button></div>
-      {error && <p role="alert" className="mb-2 text-danger">{error}</p>}
+      <div className="mb-3 flex items-center justify-between"><strong>提醒收件箱</strong><button type="button" onClick={() => setOpen(false)} className={noticeActionClass}>关闭</button></div>
+      {error && <NoticeCard tone="error" title="到期提醒暂不可用" description={error} className="mb-3" />}
       {!items.length && !error && <p className="text-text-muted">暂无到期提醒</p>}
-      {items.map(item => <article key={item.id} className="mb-3 border-b border-border pb-3">
-        <p className="font-medium">{item.memo.title}</p><p className="whitespace-pre-wrap break-words">{item.memo.content}</p>
-        <p className="mt-1 text-xs text-text-muted">{new Date(item.createdAt).toLocaleString()}</p>
-        {item.readAt === null ? <button type="button" disabled={pending !== null} onClick={() => void acknowledge(item.id)} className="mt-2 rounded border border-border px-2 py-1">知道了</button> : <span className="text-xs text-text-muted">已读</span>}
-      </article>)}
+      {items.map(item => <NoticeCard key={item.id} tone={item.readAt === null ? 'info' : 'neutral'}
+        role="group" title={item.memo.title} description={item.memo.content} className="mb-3"
+        busy={pending === item.id} badge={item.readAt === null ? '未读' : '已读'}
+        actions={item.readAt === null ? <button type="button" disabled={pending !== null} onClick={() => void acknowledge(item.id)} className={noticeActionClass}>知道了</button> : undefined}>
+        <time className="text-xs text-text-muted" dateTime={new Date(item.createdAt).toISOString()}>{new Date(item.createdAt).toLocaleString()}</time>
+      </NoticeCard>)}
     </section>}
   </div>
 }

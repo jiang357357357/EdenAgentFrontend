@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { HelpCircle, Send, X } from 'lucide-react';
 import type { PendingQuestion } from '../../types';
 import { cn } from '../../lib/utils';
+import { NoticeCard, noticeActionClass, noticeSurface } from '../feedback';
 
 interface QuestionRequestCardProps {
   request: PendingQuestion;
@@ -80,27 +81,20 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
   return (
     <div
       className={cn(
-        'rounded-2xl border px-4 py-4',
-        tone === 'overlay'
-          ? 'border-info/30 bg-overlay/78 text-text shadow-none backdrop-blur-md'
-          : 'border-info/20 bg-card shadow-sm',
+        noticeSurface({ tone: 'info', variant: tone }),
+        'p-4',
       )}
     >
       <div className="flex items-start gap-3">
         <div
-          className={cn(
-            'mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border',
-            tone === 'overlay'
-              ? 'border-info/30 bg-info/10 text-info'
-              : 'border-info/25 bg-info/10 text-info',
-          )}
+          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-info/10 text-info"
         >
-          <HelpCircle className="h-4 w-4" />
+          <HelpCircle className="h-4 w-4" aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={cn('text-[10px] uppercase tracking-[0.15em]', tone === 'overlay' ? 'text-info/80' : 'text-info')}>问题确认</span>
-            {request.tool && <span className={cn('text-xs', tone === 'overlay' ? 'text-text-muted' : 'text-text-muted')}>工具调用: {request.tool.callID}</span>}
+            <span className="text-[10px] uppercase tracking-[0.15em] text-info">问题确认</span>
+            {request.tool && <span className="text-xs text-text-muted">工具调用: {request.tool.callID}</span>}
           </div>
 
           <div className="mt-3 space-y-4">
@@ -171,38 +165,34 @@ export function QuestionRequestCard({ request, onReply, onReject, tone = 'defaul
           </div>
 
           {error && (
-            <div className="mt-3 rounded-xl border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger">
-              {error}
-            </div>
+            <NoticeCard tone="error" title="问题答复失败" description={error} variant={tone} className="mt-3" />
           )}
 
           <div className="mt-4 flex flex-wrap gap-2">
             <button
+              type="button"
               onClick={() => void handleReply()}
               disabled={!canSubmit || submitting !== null}
+              aria-busy={submitting === 'reply'}
               className={cn(
-                'inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs transition-colors',
-                tone === 'overlay'
-                  ? 'border-info/30 bg-info/10 text-info hover:border-info/30'
-                  : 'border-accent/25 bg-accent/10 text-accent hover:border-accent/40',
-                'disabled:cursor-not-allowed disabled:opacity-50',
+                noticeActionClass,
+                'border-accent bg-accent text-on-accent hover:border-accent-hover hover:bg-accent-hover',
               )}
             >
-              <Send className="h-3.5 w-3.5" />
+              <Send className="h-3.5 w-3.5" aria-hidden="true" />
               提交回答
             </button>
             <button
+              type="button"
               onClick={() => void handleReject()}
               disabled={submitting !== null}
+              aria-busy={submitting === 'reject'}
               className={cn(
-                'inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs transition-colors',
-                tone === 'overlay'
-                  ? 'border-highlight/10 bg-highlight/5 text-text hover:border-danger/30 hover:text-danger'
-                  : 'border-border bg-bg text-text-muted hover:border-danger/30 hover:text-danger',
-                'disabled:cursor-wait disabled:opacity-60',
+                noticeActionClass,
+                'hover:border-danger/30 hover:text-danger',
               )}
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
               暂不处理
             </button>
           </div>

@@ -23,6 +23,8 @@
   --color-surface-disabled: #303033;
   --color-text-disabled: #8b8b94;
   --color-input: #202022;
+  --color-library-bg: color-mix(in srgb, var(--color-bg) 96%, var(--color-accent) 4%);
+  --color-library-card: color-mix(in srgb, var(--color-card) 94%, var(--color-accent) 6%);
   --color-overlay: #1c1c20;
   --color-scrim: #000000;
   --color-highlight: #ffffff;

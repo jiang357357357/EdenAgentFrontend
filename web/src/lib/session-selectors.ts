@@ -29,6 +29,7 @@ import { isAssistantMessageStreaming, isRuntimeSessionRunning, runtimePartState 
 import { formatLocalTime } from "./time"
 import { presentRuntimeError } from "./runtime-error"
 import { stripAssistantSpeakerPrefix } from "./assistant-message-text"
+import { replyDurations } from "./turn-timing"
 
 function isRuntimeTextPart(part: RuntimePart): part is RuntimeTextPart {
   return part.type === "text" && "text" in part && typeof part.text === "string"
@@ -432,7 +433,9 @@ function directorRunFromMessages(session: RuntimeSession): CompanionDirectorRun 
 
 function mapSession(session: RuntimeSession): Session {
   const sessionIsRunning = isRuntimeSessionRunning(session.status)
-  const messages = visibleMessages(session).map((message) => mapMessage(message, sessionIsRunning))
+  const visible = visibleMessages(session)
+  const durations = replyDurations(visible, session.turnTimings)
+  const messages = visible.map((message) => ({ ...mapMessage(message, sessionIsRunning), replyDurationMs: durations.get(message.id) }))
   const inferredDirectorRun = directorRunFromMessages(session)
   const directorRuns = session.directorRuns?.length
     ? session.directorRuns

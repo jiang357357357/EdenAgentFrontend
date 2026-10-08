@@ -17,6 +17,7 @@ import {
   listScreenCaptureRequests,
   listMessagesRaw,
   listSessionsRaw,
+  readSessionRaw,
   isBackgroundSession,
   rejectQuestion,
   renameSession as renameSessionRaw,
@@ -53,6 +54,13 @@ import { selectActiveSession, selectPendingPermissions, selectPendingQuestions, 
 import type { PermissionMode, PromptAttachment } from '../types';
 import { handleScreenCaptureRequest } from '../lib/screen-capture';
 import { handleCameraCaptureRequest } from '../lib/camera-capture';
+import { ConnectionFeedback, initialConnectionFeedback } from '../lib/connection-feedback';
+import { getRuntimeOriginRevision, getStoredRuntimeOrigin } from '../lib/runtime-origin';
+import { useSessionConnectionFeedback } from './useSessionConnectionFeedback';
+import { forgetSessionChannel } from '../lib/rpc-transport';
+
+type RefreshGuard = () => boolean;
+const authenticationError = /authentication_expired|not_authenticated|core_authentication_expired|Mon authentication rejected/i;
 
 interface UseSessionRuntimeOptions {
   onEvent?: (event: ApiEvent) => void;
@@ -72,18 +80,42 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const [permissionMode, setPermissionModeState] = useState<PermissionMode>('restricted');
   const [draftParticipantIDs, setDraftParticipantIDs] = useState<Array<number | string>>([]);
   const [modelErrors, setModelErrors] = useState<Record<string, string>>({});
+  const [connectionFeedback, setConnectionFeedback] = useState(initialConnectionFeedback);
+  const feedbackRevisionRef = useRef(initialConnectionFeedback.revision);
+  const connectionFeedbackController = useMemo(() => new ConnectionFeedback((next) => {
+    feedbackRevisionRef.current = next.revision;
+    setConnectionFeedback(next);
+  }), []);
   const activeSessionIdRef = useRef<string | undefined>(state.activeSessionId);
   const cachedSessionIdsRef = useRef<string[]>([]);
   cachedSessionIdsRef.current = Object.keys(state.sessions);
-  const hasOpenedStreamRef = useRef(false);
   const eventErrorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const sendingSessionIdsRef = useRef(new Set<string>());
-  const hydratingSessionIdsRef = useRef(new Set<string>());
+  const preparingSessionIdsRef = useRef(new Map<string, object>());
+  const hydratingSessionIdsRef = useRef(new Map<string, object>());
   const deletedSessionIdsRef = useRef(new Set<string>());
   const onEventRef = useRef(options.onEvent);
   const defaultParticipantID = options.defaultParticipantID;
 
-  const isRuntimeReady = useCallback(() => enabled, [enabled]);
+  const scopeRef = useRef({ enabled, epoch: 0, originRevision: getRuntimeOriginRevision() });
+  const mountedRef = useRef(true);
+  const originRevision = getRuntimeOriginRevision();
+  if (scopeRef.current.enabled !== enabled || scopeRef.current.originRevision !== originRevision) {
+    scopeRef.current = { enabled, epoch: scopeRef.current.epoch + 1, originRevision };
+  }
+  const scopeEpoch = scopeRef.current.epoch;
+  const isRuntimeReady = useCallback(() => mountedRef.current && scopeRef.current.enabled
+    && scopeRef.current.originRevision === getRuntimeOriginRevision(), [enabled, scopeEpoch]);
+  const captureRefreshGuard = useCallback((revision = feedbackRevisionRef.current): RefreshGuard => {
+    const { epoch, originRevision: origin } = scopeRef.current;
+    return () => mountedRef.current && scopeRef.current.enabled && scopeRef.current.epoch === epoch
+      && getRuntimeOriginRevision() === origin && connectionFeedbackController.isCurrent(revision);
+  }, [connectionFeedbackController]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; scopeRef.current.epoch += 1; };
+  }, []);
 
   useEffect(() => {
     activeSessionIdRef.current = state.activeSessionId;
@@ -109,18 +141,20 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   }, [state.sessions]);
 
   useEffect(() => {
+    connectionFeedbackController.reset(enabled);
     if (enabled) return;
-    hasOpenedStreamRef.current = false;
     setModelErrors({});
     dispatch(resetRuntime());
-  }, [enabled]);
+  }, [enabled, scopeEpoch, connectionFeedbackController]);
 
-  const refreshSessions = useCallback(async () => {
-    if (!isRuntimeReady()) return [];
+  const refreshSessions = useCallback(async (current: RefreshGuard = captureRefreshGuard()) => {
+    if (!current()) return [];
     const sessions = (await listSessionsRaw()).filter((session) => !deletedSessionIdsRef.current.has(session.id));
+    if (!current()) return [];
     const visible = new Set(sessions.map((session) => session.id));
     const hidden = await Promise.all(cachedSessionIdsRef.current.filter((id) => !visible.has(id))
       .map(async (id) => await isBackgroundSession(id) ? id : undefined));
+    if (!current()) return [];
     for (const id of hidden) {
       if (!id) continue;
       dispatch(removeSession(id));
@@ -129,18 +163,29 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     const remaining = sessions.filter((session) => !deletedSessionIdsRef.current.has(session.id));
     dispatch(hydrateSessionList(remaining));
     return remaining;
-  }, [isRuntimeReady]);
+  }, [captureRefreshGuard]);
 
-  const refreshSessionMessages = useCallback(async (sessionID?: string) => {
-    if (!sessionID || !isRuntimeReady()) return;
+  const refreshSessionMessages = useCallback(async (sessionID?: string, current: RefreshGuard = captureRefreshGuard()) => {
+    if (!sessionID || !current()) return;
     const page = await listMessagesRaw(sessionID);
-    if (deletedSessionIdsRef.current.has(sessionID)) return;
+    if (!current() || deletedSessionIdsRef.current.has(sessionID)) return;
     dispatch(hydrateSessionMessages(sessionID, page));
-  }, [isRuntimeReady]);
+  }, [captureRefreshGuard]);
 
-  const refreshSessionModel = useCallback(async (sessionID: string) => {
+  const channels = useSessionConnectionFeedback(enabled, scopeEpoch, state.activeSessionId, async (sessionID, live) => {
+    const epoch = scopeRef.current.epoch;
+    const current = () => live() && isRuntimeReady() && scopeRef.current.epoch === epoch && !deletedSessionIdsRef.current.has(sessionID);
+    const [session, page] = await Promise.all([readSessionRaw(sessionID), listMessagesRaw(sessionID)]);
+    if (!current() || await isBackgroundSession(sessionID) || !current()) return;
+    dispatch(hydrateSessionList([session]));
+    dispatch(hydrateSessionMessages(sessionID, page));
+  });
+
+  const refreshSessionModel = useCallback(async (sessionID: string, current: RefreshGuard = captureRefreshGuard(), propagateAuthentication = false) => {
+    if (!current()) return;
     try {
       await refreshModelWhenIdle(sessionID);
+      if (!current() || deletedSessionIdsRef.current.has(sessionID)) return;
       setModelErrors((current) => {
         if (!current[sessionID]) return current;
         const next = { ...current };
@@ -148,17 +193,19 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         return next;
       });
     } catch (error) {
+      if (!current() || deletedSessionIdsRef.current.has(sessionID)) return;
       const message = error instanceof Error ? error.message : String(error);
-      if (/authentication_expired|not_authenticated|core_authentication_expired|Mon authentication rejected/i.test(message)) {
+      if (authenticationError.test(message)) {
         dispatch(setConnectionError(message));
+        if (propagateAuthentication) throw error;
         return;
       }
       setModelErrors((current) => current[sessionID] === message ? current : { ...current, [sessionID]: message });
     }
-  }, []);
+  }, [captureRefreshGuard]);
 
-  const refreshBlockers = useCallback(async () => {
-    if (!isRuntimeReady()) return;
+  const refreshBlockers = useCallback(async (current: RefreshGuard = captureRefreshGuard()) => {
+    if (!current()) return;
     const [permissions, questions, permissionModeResponse, screenCaptureRequests, cameraCaptureRequests] = await Promise.all([
       listPermissionsRaw(),
       listQuestionsRaw(),
@@ -166,28 +213,31 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       listScreenCaptureRequests(),
       listCameraCaptureRequests(),
     ]);
+    if (!current()) return;
     dispatch(hydratePendingPermissions(permissions.filter((item) => !deletedSessionIdsRef.current.has(item.sessionID))));
     dispatch(hydratePendingQuestions(questions.filter((item) => !deletedSessionIdsRef.current.has(item.sessionID))));
     setPermissionModeState(permissionModeResponse.mode);
     for (const request of screenCaptureRequests) if (!deletedSessionIdsRef.current.has(request.sessionID)) void handleScreenCaptureRequest(request);
     for (const request of cameraCaptureRequests) if (!deletedSessionIdsRef.current.has(request.sessionID)) void handleCameraCaptureRequest(request);
-  }, [isRuntimeReady]);
+  }, [captureRefreshGuard]);
 
   useEffect(() => {
     if (!isRuntimeReady()) return;
     let cancelled = false;
+    const inScope = captureRefreshGuard();
+    const current = () => !cancelled && inScope();
 
     async function load() {
       try {
-        const sessions = await refreshSessions();
-        if (cancelled) return;
+        const sessions = await refreshSessions(current);
+        if (!current()) return;
         const firstSessionID = activeSessionIdRef.current ?? sessions[0]?.id;
         if (firstSessionID) {
-          await refreshSessionMessages(firstSessionID);
+          await refreshSessionMessages(firstSessionID, current);
         }
-        await refreshBlockers();
+        await refreshBlockers(current);
       } catch (error) {
-        if (cancelled) return;
+        if (!current()) return;
         dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
       }
     }
@@ -196,7 +246,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     return () => {
       cancelled = true;
     };
-  }, [isRuntimeReady, refreshBlockers, refreshSessionMessages, refreshSessions]);
+  }, [captureRefreshGuard, isRuntimeReady, refreshBlockers, refreshSessionMessages, refreshSessions]);
 
   useEffect(() => {
     if (!isRuntimeReady() || !state.activeSessionId) return;
@@ -214,78 +264,104 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     if (activeSessionHydrated || hydratingSessionIdsRef.current.has(sessionID)) return;
 
     let cancelled = false;
-    hydratingSessionIdsRef.current.add(sessionID);
+    const inScope = captureRefreshGuard();
+    const current = () => !cancelled && inScope();
+    const operation = {};
+    hydratingSessionIdsRef.current.set(sessionID, operation);
 
     async function hydrate() {
       try {
         const page = await listMessagesRaw(sessionID);
-        if (cancelled || deletedSessionIdsRef.current.has(sessionID)) return;
+        if (!current() || deletedSessionIdsRef.current.has(sessionID)) return;
         dispatch(hydrateSessionMessages(sessionID, page));
       } catch (error) {
-        if (cancelled || deletedSessionIdsRef.current.has(sessionID)) return;
+        if (!current() || deletedSessionIdsRef.current.has(sessionID)) return;
         dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
       } finally {
-        hydratingSessionIdsRef.current.delete(sessionID);
+        if (hydratingSessionIdsRef.current.get(sessionID) === operation) hydratingSessionIdsRef.current.delete(sessionID);
       }
     }
 
     void hydrate();
     return () => {
       cancelled = true;
+      if (hydratingSessionIdsRef.current.get(sessionID) === operation) hydratingSessionIdsRef.current.delete(sessionID);
     };
-  }, [activeSessionHydrated, isRuntimeReady, state.activeSessionId]);
+  }, [activeSessionHydrated, captureRefreshGuard, isRuntimeReady, state.activeSessionId]);
+
+  const synchronizeConnection = useCallback(async (revision: number, initialConnection = false) => {
+    const current = captureRefreshGuard(revision);
+    if (!current()) return;
+    try {
+      const [sessions] = await Promise.all([refreshSessions(current), refreshBlockers(current)]);
+      while (current()) {
+        const selectedSessionID = activeSessionIdRef.current;
+        const sessionID = selectedSessionID ?? sessions[0]?.id;
+        if (sessionID) {
+          await refreshSessionModel(sessionID, current, true);
+          if (!current()) return;
+          await refreshSessionMessages(sessionID, current);
+          if (!current()) return;
+        }
+        // A selection made during either request needs its own snapshot.
+        if (activeSessionIdRef.current !== selectedSessionID && activeSessionIdRef.current !== sessionID) continue;
+        connectionFeedbackController.synchronized(revision);
+        return;
+      }
+    } catch (error) {
+      if (!current()) return;
+      const reason = error instanceof Error ? error.message : String(error);
+      connectionFeedbackController.synchronized(revision, reason);
+      if (initialConnection || authenticationError.test(reason)) dispatch(setConnectionError(reason));
+    }
+  }, [captureRefreshGuard, connectionFeedbackController, refreshBlockers, refreshSessionMessages, refreshSessionModel, refreshSessions]);
+
+  const retryConnectionSync = useCallback(() => {
+    if (!isRuntimeReady()) return;
+    dispatch(setConnectionError(undefined));
+    void synchronizeConnection(connectionFeedbackController.synchronizing());
+  }, [connectionFeedbackController, isRuntimeReady, synchronizeConnection]);
+  const dismissConnectionFeedback = useCallback(() => connectionFeedbackController.dismiss(), [connectionFeedbackController]);
 
   useEffect(() => {
     if (!isRuntimeReady()) return;
     let disposed = false;
     let cleanup: (() => void) | undefined;
+    const epoch = scopeRef.current.epoch;
+    const currentScope = () => !disposed && isRuntimeReady() && scopeRef.current.epoch === epoch;
 
     void subscribeEvents({
       onOpen: () => {
+        if (!currentScope()) return;
         if (eventErrorTimerRef.current) {
           clearTimeout(eventErrorTimerRef.current);
           eventErrorTimerRef.current = undefined;
         }
         dispatch(setConnectionState('connected'));
         dispatch(setConnectionError(undefined));
-        const sessionID = activeSessionIdRef.current;
-        const reconcile = async () => {
-          if (!isRuntimeReady()) return;
-          try {
-            await Promise.all([refreshSessions(), refreshBlockers()]);
-            if (sessionID) {
-              await refreshSessionModel(sessionID);
-              await refreshSessionMessages(sessionID);
-            }
-          } catch (error) {
-            dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
-          }
-        };
-
-        if (!hasOpenedStreamRef.current) {
-          hasOpenedStreamRef.current = true;
-          return;
-        }
-
+        const opened = connectionFeedbackController.opened();
         // The active session is refreshed now; other cached sessions must load
         // a fresh snapshot when selected after missed stream notifications.
-        dispatch(invalidateInactiveSessions());
-        void reconcile();
+        if (opened.recovering) dispatch(invalidateInactiveSessions());
+        void synchronizeConnection(opened.revision, !opened.recovering);
       },
       onError: (error) => {
+        if (!currentScope()) return;
+        connectionFeedbackController.disconnected(error);
         dispatch(setConnectionState('disconnected'));
         if (eventErrorTimerRef.current) {
           clearTimeout(eventErrorTimerRef.current);
         }
         eventErrorTimerRef.current = setTimeout(() => {
           eventErrorTimerRef.current = undefined;
+          if (!currentScope()) return;
           dispatch(setConnectionError(error));
         }, 2000);
       },
       onEvent: filterChatEvents(isBackgroundSession, (event) => {
-        if (disposed) return;
+        if (!currentScope()) return;
         const eventSessionID = (event.properties as { sessionID?: string }).sessionID;
-        if (event.type === 'session.deleted' && eventSessionID) deletedSessionIdsRef.current.add(eventSessionID);
+        if (event.type === 'session.deleted' && eventSessionID) { deletedSessionIdsRef.current.add(eventSessionID); forgetSessionChannel(eventSessionID); }
         else if (eventSessionID && deletedSessionIdsRef.current.has(eventSessionID)) return;
         onEventRef.current?.(event);
         if (event.type === 'screen_capture.requested') {
@@ -310,14 +386,17 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       }),
     })
       .then((dispose) => {
-        if (disposed) {
+        if (!currentScope()) {
           dispose();
           return;
         }
         cleanup = dispose;
       })
       .catch((error) => {
-        dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
+        if (!currentScope()) return;
+        const reason = error instanceof Error ? error.message : String(error);
+        connectionFeedbackController.disconnected(reason);
+        dispatch(setConnectionError(reason));
       });
 
     return () => {
@@ -328,7 +407,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       }
       cleanup?.();
     };
-  }, [isRuntimeReady, refreshBlockers, refreshSessionMessages, refreshSessionModel, refreshSessions]);
+  }, [connectionFeedbackController, isRuntimeReady, synchronizeConnection]);
 
   const createSession = useCallback(async () => {
     if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
@@ -344,6 +423,28 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       : [defaultParticipantID]);
     dispatch(setActiveSession(sessionID));
   }, [defaultParticipantID]);
+
+  const prepareSessionForSend = useCallback(async (sessionID: string) => {
+    if ((getStoredRuntimeOrigin() ?? 'mon') !== 'mon') return;
+    const { epoch, originRevision } = scopeRef.current;
+    const current = () => isRuntimeReady() && scopeRef.current.epoch === epoch && getRuntimeOriginRevision() === originRevision;
+    const participantIDs = draftParticipantIDs.length ? [...draftParticipantIDs]
+      : defaultParticipantID === undefined || defaultParticipantID === null ? [] : [defaultParticipantID];
+    try {
+      const session = await readSessionRaw(sessionID);
+      if (!current()) throw new Error('账号或世界已切换，请重新发送');
+      if (session.participants?.length) return;
+      if (!participantIDs.length) throw new Error('请先为此会话选择助手，再发送消息。');
+      // This existing API persists participants and resolves their model before returning.
+      const prepared = await updateSessionParticipantsRaw(sessionID, participantIDs);
+      if (!current()) throw new Error('账号或世界已切换，请核对原会话，勿自动重试');
+      dispatch(hydrateSessionList([prepared]));
+      setModelErrors(values => { const next = { ...values }; delete next[sessionID]; return next; });
+    } catch (error) {
+      if (current()) setModelErrors(values => ({ ...values, [sessionID]: error instanceof Error ? error.message : String(error) }));
+      throw error;
+    }
+  }, [defaultParticipantID, draftParticipantIDs, isRuntimeReady]);
 
   const sendMessage = useCallback(
     async (content: string, attachments: PromptAttachment[]) => {
@@ -400,6 +501,18 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         return;
       }
 
+      if (preparingSessionIdsRef.current.has(sessionID)) throw new Error('此会话正在准备助手和模型，请稍后再发送。');
+      const preparation = {};
+      const { epoch, originRevision } = scopeRef.current;
+      preparingSessionIdsRef.current.set(sessionID, preparation);
+      try {
+        await prepareSessionForSend(sessionID);
+        if (!isRuntimeReady() || scopeRef.current.epoch !== epoch || getRuntimeOriginRevision() !== originRevision) {
+          throw new Error('账号或世界已切换，请重新发送');
+        }
+      } finally {
+        if (preparingSessionIdsRef.current.get(sessionID) === preparation) preparingSessionIdsRef.current.delete(sessionID);
+      }
       sendingSessionIdsRef.current.add(sessionID);
       const optimisticMessage = pushLocalUserMessage(sessionID, content, attachments);
       dispatch(optimisticMessage);
@@ -416,7 +529,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         throw error;
       }
     },
-    [draftParticipantIDs, isRuntimeReady],
+    [draftParticipantIDs, isRuntimeReady, prepareSessionForSend],
   );
 
   const compactSession = useCallback(async (instructions?: string) => {
@@ -594,9 +707,13 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     activeSessionError,
     abortSession,
     answerQuestion,
-    connectionState: state.connectionState,
-    connectionError: state.connectionState !== 'connected' ? state.connectionError : undefined,
-    runtimeError: state.connectionState === 'connected' ? activeModelError ?? state.connectionError : undefined,
+    connectionState: channels.feedback ? (channels.feedback.phase === 'reconnecting' ? 'disconnected' : 'connected') : state.connectionState,
+    connectionFeedback: channels.feedback ?? connectionFeedback,
+    sessionConnectionStates: channels.states,
+    dismissConnectionFeedback: channels.feedback ? channels.dismiss : dismissConnectionFeedback,
+    retryConnectionSync: channels.feedback ? channels.retry : retryConnectionSync,
+    connectionError: channels.feedback ? channels.feedback.reason : state.connectionState !== 'connected' ? state.connectionError : undefined,
+    runtimeError: channels.feedback ? activeModelError : state.connectionState === 'connected' ? activeModelError ?? state.connectionError : undefined,
     compactSession,
     createSession,
     deleteSession,
@@ -613,7 +730,14 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     permissionMode,
     respondPermission,
     reset: () => {
+      scopeRef.current.epoch += 1;
+      connectionFeedbackController.reset(scopeRef.current.enabled);
       activeSessionIdRef.current = undefined;
+      cachedSessionIdsRef.current = [];
+      sendingSessionIdsRef.current.clear();
+      preparingSessionIdsRef.current.clear();
+      hydratingSessionIdsRef.current.clear();
+      deletedSessionIdsRef.current.clear();
       setDraftParticipantIDs(defaultParticipantID === undefined || defaultParticipantID === null ? [] : [defaultParticipantID]);
       setModelErrors({});
       dispatch(resetRuntime());

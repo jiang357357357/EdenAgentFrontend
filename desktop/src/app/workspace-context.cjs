@@ -45,6 +45,12 @@ function createWorkspaceContext({
   const frontendRoot = resolveFrontendRoot()
 
   function resolveAgentRoot() {
+    // A portable executable belongs to its installation, regardless of the caller's cwd/env.
+    if (app.isPackaged) {
+      const ownRoot = findMonWorkspaceRoot(pathApi.dirname(processObject.execPath), { fileSystem, pathApi })
+      const ownAgent = ownRoot && pathApi.join(ownRoot, 'runtime', 'agent')
+      if (ownAgent && isAgentRoot(ownAgent)) return ownAgent
+    }
     const explicit = processObject.env.EDEN_AGENT_ROOT?.trim()
     if (explicit) return explicit
     for (const start of [processObject.cwd(), pathApi.dirname(processObject.execPath), frontendRoot]) {

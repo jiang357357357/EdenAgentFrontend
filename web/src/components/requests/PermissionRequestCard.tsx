@@ -2,6 +2,7 @@ import { useId, useMemo, useState } from 'react';
 import { Check, ShieldAlert, ShieldCheck, X } from 'lucide-react';
 import type { PendingPermission } from '../../types';
 import { cn } from '../../lib/utils';
+import { NoticeCard, noticeActionClass, noticeSurface } from '../feedback';
 
 interface PermissionRequestCardProps {
   request: PendingPermission;
@@ -59,29 +60,22 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
       aria-labelledby={titleId}
       title={requestSummary}
       className={cn(
-        'w-full max-w-full min-w-0 overflow-hidden rounded-2xl border px-4 py-4',
-        tone === 'overlay'
-          ? 'border-warning/30 bg-overlay/78 text-text shadow-none backdrop-blur-md'
-          : 'border-warning/20 bg-card shadow-sm',
+        noticeSurface({ tone: 'warning', variant: tone }),
+        'max-w-full overflow-hidden p-4',
       )}
     >
       <div className="flex min-w-0 items-start gap-3">
         <div
-          className={cn(
-            'mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border',
-            tone === 'overlay'
-              ? 'border-accent/30 bg-accent/10 text-accent'
-              : 'border-warning/25 bg-warning/10 text-warning',
-          )}
+          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warning/10 text-warning"
         >
-          <ShieldAlert className="h-4 w-4" />
+          <ShieldAlert className="h-4 w-4" aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={cn('text-[10px] uppercase tracking-[0.15em]', tone === 'overlay' ? 'text-accent/80' : 'text-warning')}>权限请求</span>
-            {request.tool?.callID && <span className={cn('text-xs', tone === 'overlay' ? 'text-text-muted' : 'text-text-muted')}>工具调用：{request.tool.callID}</span>}
+            <span className="text-[10px] uppercase tracking-[0.15em] text-warning">权限请求</span>
+            {request.tool?.callID && <span className="text-xs text-text-muted">工具调用：{request.tool.callID}</span>}
           </div>
-          <div id={titleId} className={cn('mt-1 text-base font-medium', tone === 'overlay' ? 'text-text' : 'text-text')}>{request.permission}</div>
+          <div id={titleId} className="mt-1 text-base font-medium text-text">{request.permission}</div>
 
           <div className={cn('mt-3 rounded-xl border px-3 py-3 text-xs', tone === 'overlay' ? 'border-highlight/10 bg-highlight/5 text-text' : 'border-border bg-bg text-text-muted')}>
             <div className="grid gap-2 sm:grid-cols-[5rem_minmax(0,1fr)]">
@@ -93,7 +87,7 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
           </div>
 
           {error && (
-            <div role="alert" className="mt-3 rounded-xl border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger">{error}</div>
+            <NoticeCard tone="error" title="权限答复失败" description={error} variant={tone} className="mt-3" />
           )}
 
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
@@ -102,7 +96,7 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
             onClick={() => void handleReply('reject')}
             disabled={submitting !== null}
             aria-busy={submitting === 'reject'}
-            className={cn('mr-auto inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-xs transition-colors', tone === 'overlay' ? 'border-highlight/10 bg-highlight/5 text-text hover:border-danger/30 hover:text-danger' : 'border-border bg-bg text-text-muted hover:border-danger/30 hover:text-danger', 'disabled:cursor-wait disabled:opacity-60')}
+            className={cn(noticeActionClass, 'mr-auto hover:border-danger/30 hover:text-danger')}
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
             {submitting === 'reject' ? '处理中' : '拒绝'}
@@ -113,11 +107,8 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
             disabled={submitting !== null}
             aria-busy={submitting === 'once'}
             className={cn(
-              'inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-xs font-medium transition-colors',
-              tone === 'overlay'
-                ? 'border-accent/30 bg-accent/15 text-accent hover:border-accent/40 hover:bg-accent/20'
-                : 'border-accent bg-accent text-on-accent hover:border-accent/40 hover:bg-accent-hover',
-              'disabled:cursor-wait disabled:opacity-60',
+              noticeActionClass,
+              'border-accent bg-accent text-on-accent hover:border-accent-hover hover:bg-accent-hover',
             )}
           >
             <Check className="h-3.5 w-3.5" aria-hidden="true" />
@@ -130,11 +121,8 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
               disabled={submitting !== null}
               aria-busy={submitting === 'always'}
               className={cn(
-                'inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-xs transition-colors',
-                tone === 'overlay'
-                  ? 'border-highlight/10 bg-highlight/5 text-text hover:border-accent/40 hover:bg-accent/10'
-                  : 'border-border bg-bg text-text hover:border-accent/40 hover:text-accent',
-                'disabled:cursor-wait disabled:opacity-60',
+                noticeActionClass,
+                'hover:border-accent/40 hover:text-accent',
               )}
             >
               <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
 import { createServer } from 'vite'
-const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
+const vite = await createServer({ optimizeDeps: { noDiscovery: true, include: [] }, server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom' })
 const { filterChatEvents } = await vite.ssrLoadModule('/src/lib/chat-event-filter.ts')
 const { runtimeReducer, initialRuntimeState, applyRuntimeEvent } = await vite.ssrLoadModule('/src/lib/session-reducer.ts')
 const { projectSessionEvent } = await vite.ssrLoadModule('/src/lib/rpc-transport.ts')

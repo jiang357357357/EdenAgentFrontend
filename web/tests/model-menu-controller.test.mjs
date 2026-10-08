@@ -65,3 +65,19 @@ test('reactivation waits for an existing mutation and then refreshes confirmed r
   assert.equal(reads, 1)
   assert.equal(controller.snapshot().config.label, 'confirmed')
 })
+
+test('a busy read-only model snapshot cannot submit a selection and idle refresh restores the full catalogue', async () => {
+  let busy = true, writes = 0
+  const controller = new ModelMenuController({ load: async () => ({ ...config(busy ? 'bound' : 'catalogue'), readOnly: busy }),
+    save: async () => { writes++; return config('saved') } }, 'session')
+  await controller.refresh()
+  assert.equal(await controller.select(option), false)
+  assert.equal(writes, 0)
+  assert.match(controller.snapshot().error, /结束后再切换/)
+  busy = false
+  await controller.refresh()
+  assert.equal(controller.snapshot().error, null)
+  assert.equal(controller.snapshot().config.label, 'catalogue')
+  assert.equal(await controller.select(option), true)
+  assert.equal(writes, 1)
+})

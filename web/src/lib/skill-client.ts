@@ -57,9 +57,10 @@ export type SkillPreview = {
   replaceInstallationID?: string | null
 }
 
-export function createSkillClient(rpcRequest: typeof defaultRequest = defaultRequest) {
+export function createSkillClient(rpcRequest: typeof defaultRequest = defaultRequest, sessionId?: string) {
+const session = sessionId ? { sessionId } : {}
 async function listSkills() {
-  return (await rpcRequest("skill.list", {})).map(mapSkillInfo)
+  return (await rpcRequest("skill.list", session)).map(mapSkillInfo)
 }
 
 function mapSkillInfo(skill: SkillInfo): InstalledSkill {
@@ -101,7 +102,7 @@ function mapSkillInfo(skill: SkillInfo): InstalledSkill {
 }
 
 async function getSkillDetails(id: string, expected?: InstalledSkill) {
-  const skill = await rpcRequest("skill.read", { name: id, ...(expected ? { expectedContentHash: expected.contentHash, expectedWorkspaceRoot: expected.workspaceRoot } : {}) })
+  const skill = await rpcRequest("skill.read", { ...session, name: id, ...(expected ? { expectedContentHash: expected.contentHash, expectedWorkspaceRoot: expected.workspaceRoot } : {}) })
   return { ...mapSkillInfo(skill), content: skill.content ?? "", files: skill.files,
     manifest: skill.manifest && typeof skill.manifest === "object" && !Array.isArray(skill.manifest)
       ? skill.manifest as Record<string, unknown> : {} } satisfies SkillDetails
@@ -114,7 +115,7 @@ function inspectSkill(input: {
   sourceSubpath?: string
   scope: "user" | "project"
 }) {
-  return rpcRequest("skill.inspect", input).then((preview): SkillPreview => ({
+  return rpcRequest("skill.inspect", { ...input, ...(input.scope === 'project' ? session : {}) }).then((preview): SkillPreview => ({
     previewID: preview.previewID,
     skillName: preview.skillName,
     displayName: preview.displayName,
@@ -137,29 +138,29 @@ function inspectSkill(input: {
   }))
 }
 
-async function installSkill(previewID: string) {
-  const skill = await rpcRequest("skill.install_preview", { previewId: previewID })
+async function installSkill(previewID: string, scope: 'user' | 'project' = 'user') {
+  const skill = await rpcRequest("skill.install_preview", { previewId: previewID, ...(scope === 'project' ? session : {}) })
   return mapSkillInfo(skill)
 }
 
 function setSkillEnabled(id: string, enabled: boolean, expected?: InstalledSkill) {
-  const params = { name: id, enabled, ...(expected ? { expectedContentHash: expected.contentHash, expectedWorkspaceRoot: expected.workspaceRoot } : {}) }
+  const params = { ...(expected?.scope === 'project' ? session : {}), name: id, enabled, ...(expected ? { expectedContentHash: expected.contentHash, expectedWorkspaceRoot: expected.workspaceRoot } : {}) }
   return rpcRequest("skill.enable", params).then(mapSkillInfo)
 }
 
 function uninstallSkill(id: string, expected?: InstalledSkill) {
-  const params = { name: id, ...(expected ? { expectedContentHash: expected.contentHash, expectedWorkspaceRoot: expected.workspaceRoot } : {}) }
+  const params = { ...(expected?.scope === 'project' ? session : {}), name: id, ...(expected ? { expectedContentHash: expected.contentHash, expectedWorkspaceRoot: expected.workspaceRoot } : {}) }
   return rpcRequest("skill.uninstall", params)
 }
 
-  const refreshCatalog = () => rpcRequest('skill.refresh', {})
-  const catalogStatus = () => rpcRequest('skill.catalog_status', {})
+  const refreshCatalog = () => rpcRequest('skill.refresh', session)
+  const catalogStatus = () => rpcRequest('skill.catalog_status', session)
   return { listSkills, getSkillDetails, inspectSkill, installSkill, setSkillEnabled, uninstallSkill, refreshCatalog, catalogStatus }
 }
 
 export const { listSkills, getSkillDetails, inspectSkill, installSkill, setSkillEnabled, uninstallSkill } = createSkillClient()
 
-export function useSkillClient() {
+export function useSkillClient(sessionId?: string) {
   const request = useScopedRpc()
-  return useMemo(() => createSkillClient(request), [request])
+  return useMemo(() => createSkillClient(request, sessionId), [request, sessionId])
 }

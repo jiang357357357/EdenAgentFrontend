@@ -119,6 +119,14 @@ export function BackgroundControls({ value, ready, uploading, saving, settingErr
             onChange={(componentFontScale) => onAppearanceChange({ ...appearance, componentFontScale })}
           />
           <div className="mb-3 mt-1 border-t border-border pt-3 text-xs font-medium text-text-muted">背景</div>
+          <Range
+            label="面板不透明度"
+            value={appearance.panelOpacity}
+            max={100}
+            unit="%"
+            onChange={(panelOpacity) => onAppearanceChange({ ...appearance, panelOpacity })}
+          />
+          <p className="mb-4 text-xs leading-relaxed text-text-muted">聊天区与右侧角色区同步调整。0% 完全透明，100% 完全不透明。</p>
           <div className="mb-3 flex gap-2" role="group" aria-label="背景样式">
             {([["theme", "主题渐变"], ["wallpaper", "背景图片"]] as const).map(([mode, label]) => (
               <button key={mode} type="button" aria-pressed={appearance.backgroundMode === mode}

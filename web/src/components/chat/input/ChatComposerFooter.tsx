@@ -4,6 +4,7 @@ import type { RealtimeSTTStatus } from "../../../lib/realtime-stt"
 import type { TokenBreakdown } from "../../../types"
 import { cn } from "../../../lib/utils"
 import { SendButton, StopButton, TokenMeter } from "./ChatInputControls"
+import { ReplyTimer } from "./ReplyTimer"
 
 interface ChatComposerFooterProps {
   sessionId?: string
@@ -141,7 +142,8 @@ export function ChatComposerFooter({
             {disabled && onAbort ? <><SendButton canSend={canSend} disabled={!allowFollowUp} dialogMode={isDialogMode} overlay={false} onSend={onSend} /><StopButton overlay={false} onStop={() => void onAbort()} /></> : <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay={false} onSend={onSend} />}
           </div>
         </div>
-          <div className="absolute bottom-[1.75vh] right-[-7.5vh] z-30">
+          <div className="absolute bottom-[1.75vh] right-[-7.5vh] z-30 flex flex-col items-center gap-[0.9vh]">
+            <ReplyTimer sessionId={sessionId} />
             <TokenMeter sessionId={sessionId} draft={draft} inputTokens={inputTokens} contextTokens={contextTokens} contextWindow={contextWindow} breakdown={tokenBreakdown} />
           </div>
         </>

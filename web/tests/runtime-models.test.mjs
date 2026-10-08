@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { hasConfiguredRuntimeModel, mapRuntimeModelCatalog, modelSelection } from '../src/lib/runtime-models.ts'
+import { hasConfiguredRuntimeModel, mapBoundRuntimeModels, mapRuntimeModelCatalog, modelSelection } from '../src/lib/runtime-models.ts'
 
 const option = id => ({ id: String(id), aiEntityId: id, label: `Model ${id}`, name: `Model ${id}`, provider: 'test', modelID: `model-${id}`, status: 'active', selected: false })
 const catalogue = { source: 'core', serviceType: 'ai', vendors: {}, assistant: null, character: null,
@@ -38,4 +38,19 @@ test('a multi-role session requires the director and every actor model', () => {
   assert.equal(hasConfiguredRuntimeModel(complete), true)
   assert.equal(hasConfiguredRuntimeModel({ ...complete, director: null }), false)
   assert.equal(hasConfiguredRuntimeModel({ ...complete, actors: complete.actors.map((actor, index) => index === 0 ? { ...actor, current: null } : actor) }), false)
+})
+
+test('busy multi-actor model status keeps the bound director and every actor without inventing models', () => {
+  const status = id => ({ id: `model-${id}`, aiEntityId: id, provider: 'test', label: `Model ${id}`, source: 'core', available: true })
+  const config = mapBoundRuntimeModels({ ...status(0), mode: 'multi_actor', director: status(1),
+    actors: [{ ...status(2), assistantID: 10 }, { ...status(1), assistantID: 20 }] })
+  assert.equal(config.current, null)
+  assert.equal(config.director.modelID, 'model-1')
+  assert.deepEqual(config.actors.map(actor => actor.current.label), ['Model 2', 'Model 1'])
+  assert.equal(config.options.length, 2)
+  assert.equal(config.readOnly, true)
+  assert.equal(hasConfiguredRuntimeModel(config), true)
+  const missing = mapBoundRuntimeModels({ ...status(0), available: false })
+  assert.equal(missing.current, null)
+  assert.equal(hasConfiguredRuntimeModel(missing), false)
 })

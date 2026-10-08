@@ -26,6 +26,7 @@ function createDesktopRuntimeEnvironment({
   const effectivePathApi = pathApi ?? (process.platform === "win32" ? path.win32 : path)
   const result = {
     ...environment,
+    ...(workspaceRoot ? { MON_WORKSPACE_ROOT: workspaceRoot } : {}),
     EDEN_AGENT_DEV_PARENT_PID: String(parentPid || environment.EDEN_AGENT_DEV_PARENT_PID || process.pid),
     EDEN_AGENT_EXTERNAL_ORIGINS: normalizeExternalOrigins(
       externalOrigins ?? environment.EDEN_AGENT_EXTERNAL_ORIGINS ?? "mon",

@@ -5,7 +5,6 @@ import { resolveCoreAssetUrl, type ActiveCharacterAction, type CoreAssistant } f
 import { CharacterPerformanceStage } from './CharacterPerformanceStage';
 import { resolveAssistantAppearance } from './assistant-appearance';
 import { CharacterVisualRenderer } from './renderer/CharacterVisualRenderer';
-import { isMemoryLobbySpineAsset } from './renderer/spine/spine-layout';
 
 interface CharacterPanelProps {
   assistant?: CoreAssistant | null;
@@ -27,16 +26,15 @@ export function CharacterPanel({ assistant, assistantError, activeAction, editin
   const spineAsset = character?.visual_preference === 'spine' ? appearance.asset : undefined;
   const hasSpine = Boolean(spineAsset);
   const hasVisual = Boolean(character && (hasSpine || image));
-  const memoryLobby = hasSpine && isMemoryLobbySpineAsset(spineAsset);
 
   return (
-    <aside className="flex h-[100vh] w-[34vw] flex-none items-end justify-center overflow-hidden border-l border-border bg-transparent">
+    <aside className="flex h-[100vh] w-[34vw] flex-none items-end justify-center overflow-hidden border-l border-border bg-transparent" style={{ backgroundColor: 'var(--interface-panel-background)' }}>
       <div className="relative h-full w-full overflow-hidden">
         {hasVisual && character ? (
           <AdjustableCharacterView key={`${getStoredRuntimeOrigin()}:${character.id}`} storageKey={`eden-character-placement:${getStoredRuntimeOrigin()}:${character.id}`} editing={editing} nativeTransform={hasSpine}>
           <CharacterPerformanceStage
             activeAction={activeAction}
-            className={memoryLobby ? "absolute inset-0 flex justify-center" : "absolute inset-x-0 bottom-0 flex h-[96vh] justify-center"}
+            className="absolute inset-0 flex justify-center"
             contentClassName={hasSpine ? "w-full" : undefined}
           >
             <CharacterVisualRenderer

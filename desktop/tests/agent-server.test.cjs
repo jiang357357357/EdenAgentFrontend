@@ -21,7 +21,7 @@ function packagedManager(overrides = {}) {
     app: { isPackaged: true, getPath: () => "C:\\UserData" },
     agentRoot: "C:\\Agent",
     processObject: { platform: "win32", resourcesPath: "C:\\Resources", env: {}, stdout: {}, stderr: {} },
-    fileSystem: { existsSync: () => true, mkdirSync: () => {} },
+    fileSystem: { existsSync: filename => !filename.endsWith('.monworkspace'), mkdirSync: () => {} },
     spawnProcess: (executable, args, options) => {
       const child = childProcess()
       calls.push({ executable, args, options, child })
@@ -34,7 +34,7 @@ function packagedManager(overrides = {}) {
   return { manager, calls, takeovers }
 }
 
-test("packaged desktop takes over realm ports before starting isolated Mon and local Node servers", () => {
+test("packaged desktop checks realm ports before starting isolated Mon and local Node servers", () => {
   const { manager, calls, takeovers } = packagedManager()
   manager.start()
   manager.start()
@@ -83,6 +83,49 @@ test("changing the local model restarts only the local realm", async () => {
   assert.equal(calls[2].options.env.EDEN_AGENT_RUNTIME_ORIGIN, "local")
   assert.equal(calls[2].options.env.EDEN_AGENT_MODEL, "ollama/qwen3")
   assert.equal(monChild.listenerCount("exit") > 0, true)
+})
+
+test("desktop forwards shared logging settings to both realm processes without leaking local model credentials", () => {
+  const logging = {
+    EDEN_AGENT_LOG_FORMAT: "json",
+    EDEN_AGENT_LOG_DIR: "C:\\Agent Logs",
+    MON_LOG_START_DIR: "C:\\Workspace\\Mon",
+    NO_COLOR: "",
+    FORCE_COLOR: "0",
+  }
+  const credentials = {
+    EDEN_AGENT_MODEL: "openai/local-model",
+    OPENAI_API_KEY: "local-model-secret",
+    OPENAI_BASE_URL: "https://local-model.invalid/v1",
+    OLLAMA_API_KEY: "local-ollama-secret",
+  }
+  const { manager, calls } = packagedManager({
+    processObject: {
+      platform: "win32", resourcesPath: "C:\\Resources",
+      env: { ...logging, ...credentials, UNRELATED_SECRET: "must-not-be-forwarded" }, stdout: {}, stderr: {},
+    },
+    getRuntimeEnvironment: () => credentials,
+  })
+  manager.start()
+  assert.equal(calls.length, 2)
+  for (const call of calls) {
+    const environment = call.options.env
+    for (const [key, value] of Object.entries(logging)) assert.equal(environment[key], value, `${environment.EDEN_AGENT_RUNTIME_ORIGIN}: ${key}`)
+    assert.equal(environment.UNRELATED_SECRET, undefined)
+    for (const [key, value] of Object.entries(credentials)) {
+      assert.equal(environment[key], environment.EDEN_AGENT_RUNTIME_ORIGIN === "local" ? value : undefined, key)
+    }
+  }
+})
+
+test("desktop leaves unspecified logging settings absent so the server can apply its own defaults", () => {
+  const { manager, calls } = packagedManager()
+  manager.start()
+  for (const { options } of calls) {
+    for (const key of ["EDEN_AGENT_LOG_FORMAT", "EDEN_AGENT_LOG_DIR", "MON_LOG_START_DIR", "NO_COLOR", "FORCE_COLOR"]) {
+      assert.equal(Object.hasOwn(options.env, key), false, `${options.env.EDEN_AGENT_RUNTIME_ORIGIN}: ${key}`)
+    }
+  }
 })
 
 test("external desktop reads a different server-owned token for each realm", () => {

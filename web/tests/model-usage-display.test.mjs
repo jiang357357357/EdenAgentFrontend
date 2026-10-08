@@ -3,7 +3,7 @@ import { after, test } from 'node:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer } from 'vite'
-const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom'})
+const vite=await createServer({ optimizeDeps: { noDiscovery: true, include: [] },server:{middlewareMode:true,hmr:false,ws:false},appType:'custom'})
 const {projectSessionEvent,apiSession}=await vite.ssrLoadModule('/src/lib/rpc-transport.ts')
 const {runtimeReducer,initialRuntimeState}=await vite.ssrLoadModule('/src/lib/session-reducer.ts')
 const {TokenMeter}=await vite.ssrLoadModule('/src/components/chat/input/ChatInputControls.tsx')

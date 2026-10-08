@@ -27,6 +27,7 @@ import type {
   PromptAttachment,
   Session,
   ToolCall,
+  TurnTiming,
 } from "../types"
 import { getStoredUser, resolveCoreAssetUrl } from "./auth"
 import type { CoreCharacterVisualAction, CoreCharacterVisualActionGroup } from "./auth"
@@ -34,7 +35,7 @@ import { formatLocalTime } from "./time"
 import type {
   JsonValue,
 } from "../generated/eden-agent-rpc"
-import { getStoredRuntimeOrigin, LOCAL_ASSISTANT_ID } from "./runtime-origin"
+import { getStoredRuntimeOrigin, getRuntimeOriginRevision, LOCAL_ASSISTANT_ID } from "./runtime-origin"
 import { captureParticipantIdentity, resolveParticipants } from "./session-participants"
 import {
   type LocalGsvConfig,
@@ -354,6 +355,7 @@ export type ApiMessageInfo =
       id: string
       role: "assistant"
       turnID?: string
+      turnTiming?: TurnTiming
       kind?: string
       time: {
         created: number
@@ -1567,8 +1569,8 @@ export async function getToolStatus() {
     toolDetails: Object.fromEntries(definitions.map((tool) => [tool.name, tool])) } satisfies ToolStatus
 }
 
-export async function listWorkspaceDirectory(path = "") {
-  const directory = await rpcRequestWithTimeout("workspace.list", { path }, 8_000)
+export async function listWorkspaceDirectory(sessionId: string, path = "") {
+  const directory = await rpcRequestWithTimeout("workspace.list", { sessionId, path }, 8_000)
   return {
     root: directory.root,
     path: directory.path,
@@ -1581,27 +1583,51 @@ export async function listWorkspaceDirectory(path = "") {
   } satisfies WorkspaceDirectory
 }
 
-export async function readWorkspaceFile(path: string): Promise<WorkspaceFileContent> {
-  const file = await rpcRequest("workspace.read", { path })
+export async function readWorkspaceFile(sessionId: string, path: string): Promise<WorkspaceFileContent> {
+  const file = await rpcRequest("workspace.read", { sessionId, path })
   return { ...file, size: Number(file.size) }
 }
 
-export async function getWorkspace() {
-  return { ...await rpcRequestWithTimeout("workspace.info", {}, 8_000), pendingPath: null }
+export async function getWorkspace(sessionId: string) {
+  return { ...await rpcRequestWithTimeout("workspace.info", { sessionId }, 8_000), pendingPath: null }
 }
 
 export async function switchWorkspace(sessionId: string | undefined, path: string) {
-  // Workspace changes are durable audited events and therefore need a session
-  // in the server protocol. A pristine chat page has no session until its first
-  // message, so materialize that draft here instead of disabling the workspace
-  // picker and forcing the user to send a message first.
-  const createdAuditSession = !sessionId
-  const auditSessionId = sessionId || (await createSessionRaw()).id
-  const result = await rpcRequest("workspace.switch", { sessionId: auditSessionId, path })
+  return changeWorkspace(sessionId, path)
+}
+
+/** Explicit explorer action: persist an empty conversation without resolving or running a model. */
+export async function createWorkspaceSession() {
+  const identity = captureParticipantIdentity()
+  const session = await rpcRequestForOrigin(identity.origin, "session.create", { title: "新会话", participants: [] })
+  identity.assertCurrent()
+  return session
+}
+
+export async function readSessionRaw(sessionId: string) {
+  return apiSession(await rpcRequest("session.read", { sessionId }))
+}
+
+export async function useDefaultWorkspace(sessionId: string | undefined) {
+  return changeWorkspace(sessionId)
+}
+
+async function changeWorkspace(sessionId: string | undefined, path?: string) {
+  const identity = captureParticipantIdentity()
+  const revision = getRuntimeOriginRevision()
+  if (!sessionId) throw new Error("请先创建或选择一个会话，再为它选择文件夹")
+  const createdAuditSession = false
+  const auditSessionId = sessionId
+  identity.assertCurrent()
+  const result = path === undefined
+    ? await rpcRequestForOrigin(identity.origin, "workspace.useDefault", { sessionId: auditSessionId }, revision)
+    : await rpcRequestForOrigin(identity.origin, "workspace.switch", { sessionId: auditSessionId, path }, revision)
+  identity.assertCurrent()
   return { ...result, auditSessionId, createdAuditSession }
 }
 
 export async function synthesizeSpeechSegment(input: {
+  intent?: 'auto' | 'manual'
   sessionId: string
   messageId: string
   segmentGroupId: string
@@ -1612,6 +1638,7 @@ export async function synthesizeSpeechSegment(input: {
   mode: "text_only" | "all"
 }, signal?: AbortSignal) {
   const result = await requestSpeechSynthesis({
+    ...(input.intent ? { intent: input.intent } : {}),
     sessionId: input.sessionId,
     messageId: input.messageId,
     segmentGroupId: input.segmentGroupId,
@@ -1891,14 +1918,17 @@ export async function snoozeMemo(id: number, input: { until?: string | null; min
 
 export async function subscribeEvents(handlers: SubscribeHandlers | ((event: ApiEvent) => void)) {
   const normalizedRpc: SubscribeHandlers = typeof handlers === "function" ? { onEvent: handlers } : handlers
-  let projectEvent = createSessionEventProjector()
+  const projectors = new Map<string, ReturnType<typeof createSessionEventProjector>>()
+  let projectorRevision = getRuntimeOriginRevision()
   return subscribeRpcEvents(
     (event) => {
+      if (projectorRevision !== getRuntimeOriginRevision()) { projectors.clear(); projectorRevision = getRuntimeOriginRevision() }
+      let projectEvent = projectors.get(event.sessionId)
+      if (!projectEvent) { projectEvent = createSessionEventProjector(); projectors.set(event.sessionId, projectEvent) }
       for (const projected of projectEvent(event)) normalizedRpc.onEvent(projected)
     },
     (connected, error) => {
       if (connected) {
-        projectEvent = createSessionEventProjector()
         normalizedRpc.onOpen?.()
       }
       else normalizedRpc.onError?.(error ?? "Eden Agent RPC disconnected")

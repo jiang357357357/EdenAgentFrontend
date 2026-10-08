@@ -6,6 +6,7 @@ import { createServer } from "vite"
 const originalWindow = globalThis.window
 const originalWebSocket = globalThis.WebSocket
 let origin = "mon"
+let initializationClose
 const sockets = []
 
 class FakeWebSocket extends EventTarget {
@@ -23,6 +24,10 @@ class FakeWebSocket extends EventTarget {
   send(raw) {
     const request = JSON.parse(raw)
     this.requests.push(request)
+    if (request.method === "initialize" && initializationClose) {
+      queueMicrotask(() => this.close(initializationClose.code, initializationClose.reason))
+      return
+    }
     const result = request.method === "initialize"
       ? { protocolVersion: 2, serverName: 'fixture', serverVersion: '2', agentCoreVersion: 'pi-test', capabilities: [], runtimeOrigin: request.params.runtimeOrigin }
       : []
@@ -33,10 +38,10 @@ class FakeWebSocket extends EventTarget {
     this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ jsonrpc: "2.0", ...message }) }))
   }
 
-  close() {
+  close(code = 1000, reason = '') {
     if (this.readyState === 3) return
     this.readyState = 3
-    this.dispatchEvent(new Event("close"))
+    this.dispatchEvent(Object.assign(new Event("close"), { code, reason, wasClean: code !== 1006 }))
   }
 }
 
@@ -46,7 +51,7 @@ globalThis.window = { addEventListener: windowEvents.addEventListener.bind(windo
   localStorage: { getItem: () => origin },
   edenAgentDesktop: { getAgentCapability: async () => ({ token: "test-capability" }) },
 }
-const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" })
+const vite = await createServer({ optimizeDeps: { noDiscovery: true, include: [] }, configFile: false, server: { middlewareMode: true, hmr: false, ws: false }, appType: "custom" })
 const transport = await vite.ssrLoadModule("/src/lib/rpc-transport.ts")
 const reducer = await vite.ssrLoadModule("/src/lib/session-reducer.ts")
 let unsubscribe
@@ -67,7 +72,7 @@ function event(socket, sessionId, seq) {
   })
 }
 
-beforeEach(() => { origin = "mon"; sockets.length = 0 })
+beforeEach(() => { origin = "mon"; sockets.length = 0; initializationClose = undefined })
 afterEach(() => {
   unsubscribe?.()
   unsubscribe = undefined
@@ -104,9 +109,11 @@ test("lag warning reconnects and invokes snapshot reconciliation without replayi
 
 test("sequence gaps trigger recovery while duplicates and independent sessions do not", async () => {
   const received = []
+  const diagnostics = []
   let opens = 0
-  unsubscribe = await transport.subscribeRpcEvents((value) => received.push(value), (connected) => {
+  unsubscribe = await transport.subscribeRpcEvents((value) => received.push(value), (connected, error) => {
     if (connected) opens += 1
+    else diagnostics.push(error)
   })
   await until(() => opens === 1)
   const first = sockets[0]
@@ -117,8 +124,10 @@ test("sequence gaps trigger recovery while duplicates and independent sessions d
   event(first, "a", 41)
   assert.equal(first.readyState, FakeWebSocket.OPEN)
   event(first, "a", 43)
+  assert.deepEqual(diagnostics, ["会话状态需要重新同步"])
   await until(() => opens === 2)
   assert.deepEqual(received.map((value) => value.id), [eventId("a", 40), eventId("b", 90), eventId("a", 41)])
+  assert.deepEqual(sockets.flatMap(socket => socket.requests.map(request => request.method)), ["initialize", "initialize"])
 })
 
 test("unrelated warnings leave the connection open", async () => {
@@ -129,6 +138,32 @@ test("unrelated warnings leave the connection open", async () => {
   assert.equal(sockets[0].readyState, FakeWebSocket.OPEN)
   assert.equal(connected, true)
 })
+
+test("authentication close during initialization retains its cause before the connection opens", async () => {
+  initializationClose = { code: 1008, reason: "Core account authentication failed" }
+  const statuses = []
+  unsubscribe = await transport.subscribeRpcEvents(() => {}, (connected, error) => statuses.push({ connected, error }))
+  await until(() => statuses.length > 0)
+  assert.deepEqual(statuses, [{ connected: false, error: "Core 账号验证失败，连接已中断" }])
+  assert.deepEqual(sockets[0].requests.map(request => request.method), ["initialize"])
+})
+
+for (const [code, reason, message] of [
+  [1008, 'Core account authentication failed', 'Core 账号验证失败，连接已中断'],
+  [1008, 'Request queue limit exceeded', '连接请求过于频繁，服务已关闭连接'],
+  [1013, 'Event consumer did not drain the connection', '客户端接收速度过慢，连接已中断'],
+  [1006, '', '与服务的网络连接意外中断'],
+  [1011, 'Durable event delivery failed', '服务处理异常，连接已中断'],
+]) {
+  test(`transport reports the original remote close category for ${code}: ${reason}`, async () => {
+    const statuses = []
+    unsubscribe = await transport.subscribeRpcEvents(() => {}, (connected, error) => statuses.push({ connected, error }))
+    await until(() => statuses[0]?.connected)
+    sockets[0].close(code, reason)
+    assert.deepEqual(statuses, [{ connected: true, error: undefined }, { connected: false, error: message }])
+    assert.deepEqual(sockets[0].requests.map(request => request.method), ['initialize'])
+  })
+}
 
 test("switching realms discards notifications from the old connection", async () => {
   const received = []

@@ -3,9 +3,6 @@ import {
   Brain,
   LogOut,
   Cable,
-  ChevronDown,
-  ChevronRight,
-  File,
   FolderOpen,
   FileText,
   List,
@@ -20,10 +17,11 @@ import {
   UserRoundCheck,
   UsersRound,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { resolveCoreAssetUrl } from "../../lib/auth"
-import { getWorkspace, listWorkspaceDirectory, switchWorkspace, type WorkspaceEntry } from "../../lib/agent-client"
-import { openDesktopWorkspaceDirectory, selectDesktopWorkspaceDirectory } from "../../lib/desktop-window"
+import type { WorkspaceEntry } from "../../lib/agent-client"
+import { WorkspaceExplorer } from "./WorkspaceExplorer"
+import type { SharedWorkspaceScope } from "../shared-workspace/use-shared-workspace"
 import { cn } from "../../lib/utils"
 import type { Session } from "../../types"
 
@@ -47,21 +45,15 @@ interface SidebarProps {
   onOpenSettings: () => void
   onOpenFile: (entry: WorkspaceEntry) => void
   onWorkspaceChanged: () => void
+  onOpenSharedWorkspace: (scope: SharedWorkspaceScope) => void
+  activity: "sessions" | "files"
+  onActivityChange: (activity: "sessions" | "files") => void
 }
 
 type SessionGroup = { label: string; sessions: Session[] }
 
 function startOfDay(value: Date) {
   return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime()
-}
-
-function normalizedWorkspacePath(value: string) {
-  const normalized = value.trim().replace(/^\\\\\?\\/, "").replaceAll("\\", "/").replace(/\/+$/, "")
-  return /^[A-Za-z]:\//.test(normalized) ? normalized.toLocaleLowerCase() : normalized
-}
-
-function sameWorkspacePath(left: string, right: string) {
-  return normalizedWorkspacePath(left) === normalizedWorkspacePath(right)
 }
 
 function groupSessions(sessions: Session[]): SessionGroup[] {
@@ -205,43 +197,6 @@ export function ActivityRail({
   )
 }
 
-function FileTreeNode({ entry, depth = 0, onOpenFile }: { entry: WorkspaceEntry; depth?: number; onOpenFile: (entry: WorkspaceEntry) => void }) {
-  const [open, setOpen] = useState(false)
-  const [children, setChildren] = useState<WorkspaceEntry[] | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  const toggle = async () => {
-    if (entry.type !== "directory") {
-      onOpenFile(entry)
-      return
-    }
-    const nextOpen = !open
-    setOpen(nextOpen)
-    if (!nextOpen || children) return
-    setLoading(true)
-    try {
-      setChildren((await listWorkspaceDirectory(entry.path)).entries)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div>
-      <button type="button" onClick={() => void toggle()} className="flex h-8 w-full items-center gap-1.5 truncate pr-2 text-left text-[clamp(14px,1.65vh,17px)] text-text-muted hover:bg-card hover:text-text" style={{ paddingLeft: `${0.55 + depth * 0.85}rem` }} title={entry.path}>
-        {entry.type === "directory" ? (open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />) : <span className="w-4 shrink-0" />}
-        {entry.type === "directory" ? <FolderOpen className="h-4 w-4 shrink-0 text-accent/80" /> : <File className="h-4 w-4 shrink-0" />}
-        <span className="truncate">{entry.name}</span>
-      </button>
-      {open ? <div>
-        {loading ? <div className="py-1 text-xs text-text-muted" style={{ paddingLeft: `${2.4 + depth * 0.85}rem` }}>读取中…</div> : null}
-        {children?.map((child) => <FileTreeNode key={child.path} entry={child} depth={depth + 1} onOpenFile={onOpenFile} />)}
-        {children?.length === 0 ? <div className="py-1 text-xs text-text-muted" style={{ paddingLeft: `${2.4 + depth * 0.85}rem` }}>空目录</div> : null}
-      </div> : null}
-    </div>
-  )
-}
-
 export function Sidebar({
   sessions,
   activeId,
@@ -262,19 +217,12 @@ export function Sidebar({
   onOpenSettings,
   onOpenFile,
   onWorkspaceChanged,
+  onOpenSharedWorkspace,
+  activity,
+  onActivityChange,
 }: SidebarProps) {
   const [query, setQuery] = useState("")
   const [renamingSession, setRenamingSession] = useState<{ id: string; title: string } | null>(null)
-  const [activity, setActivity] = useState<"sessions" | "files">("sessions")
-  const [workspaceName, setWorkspaceName] = useState("工作区")
-  const [workspacePath, setWorkspacePath] = useState("")
-  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false)
-  const [workspaceEntries, setWorkspaceEntries] = useState<WorkspaceEntry[]>([])
-  const [workspaceError, setWorkspaceError] = useState("")
-  const [workspaceLoading, setWorkspaceLoading] = useState(false)
-  const [workspaceLoaded, setWorkspaceLoaded] = useState(false)
-  const [workspacePending, setWorkspacePending] = useState("")
-  const [workspaceSwitching, setWorkspaceSwitching] = useState(false)
   const filteredSessions = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase()
     if (!normalized) return sessions
@@ -282,126 +230,12 @@ export function Sidebar({
   }, [query, sessions])
   const sessionGroups = useMemo(() => groupSessions(filteredSessions), [filteredSessions])
 
-  useEffect(() => {
-    if (activity !== "files" || workspaceLoaded) return
-    let disposed = false
-    setWorkspaceLoading(true)
-    setWorkspaceError("")
-    void (async () => {
-      try {
-        const workspace = await getWorkspace()
-        if (disposed) return
-        setWorkspaceName(workspace.path ? workspace.name : "未选择文件夹")
-        setWorkspacePath(workspace.path)
-        setWorkspacePending(workspace.pendingPath ?? "")
-        // An unconfigured workspace is an empty state, not a directory-read failure.
-        if (!workspace.path) { setWorkspaceEntries([]); return }
-        const directory = await listWorkspaceDirectory()
-        if (!disposed) setWorkspaceEntries(directory.entries)
-      } catch (reason) {
-        if (!disposed) setWorkspaceError(reason instanceof Error ? reason.message : "读取工作区失败")
-      } finally {
-        if (!disposed) { setWorkspaceLoading(false); setWorkspaceLoaded(true) }
-      }
-    })()
-    return () => { disposed = true }
-  }, [activity, workspaceLoaded])
-
-  useEffect(() => {
-    const refreshWorkspace = () => {
-      setWorkspaceEntries([])
-      setWorkspaceError("")
-      setWorkspacePending("")
-      setWorkspaceLoaded(false)
-      onWorkspaceChanged()
-    }
-    const failWorkspaceSwitch = (event: Event) => {
-      const detail = (event as CustomEvent<{ error?: string }>).detail
-      setWorkspacePending("")
-      setWorkspaceError(detail?.error || "工作区切换失败")
-      setWorkspaceLoaded(false)
-    }
-    window.addEventListener("edenagent:workspace-changed", refreshWorkspace)
-    window.addEventListener("edenagent:workspace-switch-failed", failWorkspaceSwitch)
-    return () => {
-      window.removeEventListener("edenagent:workspace-changed", refreshWorkspace)
-      window.removeEventListener("edenagent:workspace-switch-failed", failWorkspaceSwitch)
-    }
-  }, [onWorkspaceChanged])
-
-  useEffect(() => {
-    if (!workspacePending) return
-    const requestedPath = workspacePending
-    let disposed = false
-    let timer: number | undefined
-
-    const reconcileWorkspace = async () => {
-      try {
-        const workspace = await getWorkspace()
-        if (disposed) return
-        if (workspace.pendingPath) {
-          timer = window.setTimeout(() => void reconcileWorkspace(), 750)
-          return
-        }
-
-        const directory = await listWorkspaceDirectory()
-        if (disposed) return
-        setWorkspaceName(workspace.name)
-        setWorkspacePath(workspace.path)
-        setWorkspaceEntries(directory.entries)
-        setWorkspacePending("")
-        setWorkspaceLoaded(true)
-        if (!sameWorkspacePath(workspace.path, requestedPath)) {
-          setWorkspaceError(`工作区切换未生效，当前仍为 ${workspace.path}`)
-        } else {
-          setWorkspaceError("")
-        }
-        onWorkspaceChanged()
-      } catch {
-        if (!disposed) timer = window.setTimeout(() => void reconcileWorkspace(), 1_000)
-      }
-    }
-
-    timer = window.setTimeout(() => void reconcileWorkspace(), 750)
-    return () => {
-      disposed = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
-  }, [onWorkspaceChanged, workspacePending])
-
-  const chooseWorkspace = async () => {
-    if (workspaceSwitching || workspacePending) return
-    setWorkspaceSwitching(true)
-    setWorkspaceError("")
-    try {
-      const selected = window.edenAgentDesktop
-        ? await selectDesktopWorkspaceDirectory(workspacePath)
-        : window.prompt("输入服务端上的文件夹绝对路径", workspacePath)?.trim()
-      if (!selected) return
-      setWorkspaceMenuOpen(false)
-      const result = await switchWorkspace(activeId || sessions[0]?.id, selected)
-      if (result.createdAuditSession) onSelect(result.auditSessionId)
-      setWorkspacePending(result.pendingPath ?? selected)
-      setWorkspaceError("")
-    } catch (error) {
-      setWorkspaceError(error instanceof Error ? error.message : "工作区切换失败")
-    } finally {
-      setWorkspaceSwitching(false)
-    }
-  }
-
-  const retryWorkspace = () => {
-    setWorkspaceEntries([])
-    setWorkspaceError("")
-    setWorkspaceLoaded(false)
-  }
-
   return (
     <aside className="relative z-20 flex h-full w-[20vw] min-w-[280px] max-w-[360px] shrink-0 border-r border-border bg-bg/72 backdrop-blur-xl">
         <ActivityRail
           active={activity}
-          onOpenFiles={() => setActivity("files")}
-          onOpenSessions={() => setActivity("sessions")}
+          onOpenFiles={() => onActivityChange("files")}
+          onOpenSessions={() => onActivityChange("sessions")}
           onOpenAllSessions={onOpenAllSessions}
           onOpenParticipants={onOpenParticipants}
           onOpenDutyAssistant={onOpenDutyAssistant}
@@ -416,22 +250,6 @@ export function Sidebar({
         />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          {activity === "files" ? (
-            <div className="relative flex h-[8.4vh] min-h-16 items-center justify-between border-b border-border px-4">
-              <div className="flex min-w-0 items-baseline gap-2">
-                <div className="shrink-0 text-[clamp(17px,2vh,21px)] font-semibold text-text">资源管理器</div>
-                <button type="button" onClick={() => setWorkspaceMenuOpen((open) => !open)} className="truncate rounded px-1 py-0.5 text-[clamp(14px,1.5vh,16px)] text-text-muted hover:bg-card hover:text-text" title={workspacePath || workspaceName}>{workspaceName}</button>
-              </div>
-            {workspaceMenuOpen ? (
-              <div className="absolute left-4 top-[calc(100%-0.4rem)] z-40 w-52 rounded-xl border border-border bg-card p-1.5 text-sm shadow-xl">
-                <button type="button" onClick={() => { setWorkspaceMenuOpen(false); void openDesktopWorkspaceDirectory(workspacePath) }} disabled={!window.edenAgentDesktop || !workspacePath} className="flex w-full rounded-lg px-3 py-2 text-left text-text hover:bg-bg disabled:opacity-40">在系统文件管理器中打开</button>
-                <button type="button" onClick={() => void chooseWorkspace()} disabled={workspaceSwitching || Boolean(workspacePending)} className="flex w-full rounded-lg px-3 py-2 text-left text-text hover:bg-bg disabled:opacity-40">{workspaceSwitching ? "正在选择…" : workspacePending ? "等待切换…" : "切换工作区…"}</button>
-                <div className="px-3 py-2 text-xs text-text-muted">{workspacePending ? `等待当前任务结束后切换到 ${workspacePending}` : "选择项目文件夹；没有会话时会自动保存当前空白会话"}</div>
-              </div>
-            ) : null}
-            </div>
-          ) : null}
-
           {activity === "sessions" ? <><div className="flex items-center gap-2 border-b border-border p-3">
             <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-card px-3 text-text-muted focus-within:border-accent/50 focus-within:text-text">
               <Search className="h-4 w-4 shrink-0" />
@@ -509,28 +327,8 @@ export function Sidebar({
               <div className="px-4 py-10 text-center text-sm text-text-muted">没有匹配的会话</div>
             )}
           </div></> : (
-            <div className="min-h-0 flex-1 overflow-y-auto py-2">
-              {workspaceLoading ? <div className="px-4 py-6 text-sm text-text-muted">正在读取工作区…</div> : null}
-              {workspaceError ? (
-                <div className="mx-3 my-3 rounded-lg border border-danger/30 bg-danger-dim px-3 py-3 text-sm text-danger">
-                  <div className="break-words">{workspaceError}</div>
-                  {!workspacePath && <button type="button" onClick={() => void chooseWorkspace()} disabled={workspaceSwitching || Boolean(workspacePending)} className="mr-2 mt-2 rounded-md border border-danger/30 bg-card px-3 py-1.5 text-xs font-medium hover:bg-danger-dim disabled:opacity-50">重新选择文件夹</button>}
-                  <button type="button" onClick={retryWorkspace} className="mt-2 rounded-md border border-danger/30 bg-card px-3 py-1.5 text-xs font-medium hover:bg-danger-dim">重新读取</button>
-                </div>
-              ) : null}
-              {!workspaceLoading && workspaceLoaded && !workspacePath && !workspaceError ? (
-                <div className="px-4 py-8 text-center">
-                  <FolderOpen className="mx-auto mb-3 h-8 w-8 text-text-muted" />
-                  <p className="text-sm text-text-muted">尚未打开文件夹</p>
-                  <p className="mt-2 text-xs leading-relaxed text-text-muted">选择项目文件夹后，即可浏览文件。</p>
-                  <button type="button" onClick={() => void chooseWorkspace()} disabled={workspaceSwitching || Boolean(workspacePending)}
-                    className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm text-on-accent disabled:opacity-50">
-                    {workspaceSwitching ? "正在选择…" : workspacePending ? "等待切换…" : "打开文件夹"}
-                  </button>
-                </div>
-              ) : null}
-              {!workspaceLoading ? workspaceEntries.map((entry) => <FileTreeNode key={entry.path} entry={entry} onOpenFile={onOpenFile} />) : null}
-            </div>
+            <WorkspaceExplorer sessionId={activeId || undefined} onSelect={onSelect}
+              onOpenFile={onOpenFile} onWorkspaceChanged={onWorkspaceChanged} onOpenSharedWorkspace={onOpenSharedWorkspace} />
           )}
 
         </div>

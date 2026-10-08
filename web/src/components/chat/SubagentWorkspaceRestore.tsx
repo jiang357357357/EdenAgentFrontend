@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useScopedRpc } from '../../lib/use-scoped-rpc'
-export function SubagentWorkspaceRestore({ agentId, onSaved }: { agentId: string; onSaved: () => Promise<void> }) {
+export function SubagentWorkspaceRestore({ agentId, sessionId, onSaved }: { agentId: string; sessionId: string; onSaved: () => Promise<void> }) {
   const rpcRequest = useScopedRpc()
   const [root, setRoot] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(''), [confirmed, setConfirmed] = useState(false)
   async function load() {
     setBusy(true); setError(''); setConfirmed(false); setRoot('')
-    try { setRoot((await rpcRequest('workspace.info', {})).path) } catch (reason) { setError(String(reason)) } finally { setBusy(false) }
+    try { setRoot((await rpcRequest('workspace.info', { sessionId })).path) } catch (reason) { setError(String(reason)) } finally { setBusy(false) }
   }
   async function save() {
     setBusy(true); setError('')

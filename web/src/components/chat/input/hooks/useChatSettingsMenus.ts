@@ -12,6 +12,7 @@ import { permissionOptions } from "../ChatInputMenus"
 
 interface ChatSettingsMenusOptions {
   hideComposerFooter: boolean
+  isRunning?: boolean
   onPermissionModeChange?: (mode: PermissionMode) => Promise<void>
   permissionMode: PermissionMode
   sessionId?: string
@@ -19,6 +20,7 @@ interface ChatSettingsMenusOptions {
 
 export function useChatSettingsMenus({
   hideComposerFooter,
+  isRunning = false,
   onPermissionModeChange,
   permissionMode,
   sessionId,
@@ -43,7 +45,7 @@ export function useChatSettingsMenus({
     setModelMenuOpen(false)
     if (!hideComposerFooter) void modelController.refresh()
     return () => modelController.deactivate()
-  }, [hideComposerFooter, modelController])
+  }, [hideComposerFooter, isRunning, modelController])
 
   const openPermissionMenu = () => {
     setPermissionMenuOpen(true)
@@ -91,7 +93,7 @@ export function useChatSettingsMenus({
 
   const activePermission = permissionOptions.find((option) => option.mode === permissionMode) ?? permissionOptions[0]
   const currentModel = modelConfig?.current ?? modelConfig?.options.find((option) => option.selected) ?? null
-  const currentModelLabel = (modelConfig?.actors?.length ?? 0) > 1 ? "角色模型" : currentModel?.label || (modelLoading ? "..." : "模型")
+  const currentModelLabel = (modelConfig?.actors?.length ?? 0) > 1 ? "角色模型" : currentModel?.label || (modelLoading ? "..." : modelConfig ? "未配置模型" : "模型")
   const modelButtonTitle = modelError
     ? `模型配置读取失败: ${modelError}`
     : currentModel

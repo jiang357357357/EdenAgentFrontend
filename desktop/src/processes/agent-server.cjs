@@ -4,7 +4,8 @@ const path = require("node:path")
 const { spawn } = require("node:child_process")
 const { stopServerChild } = require("./stop-server-child.cjs")
 const { realmCommandEnvironment } = require('./realm-command-environment.cjs')
-const { takeOverTcpPort } = require('./port-takeover.cjs')
+const { assertTcpPortAvailable, takeOverTcpPort } = require('./port-takeover.cjs')
+const { workspaceIdentity } = require('./workspace-identity.cjs')
 
 const RUNTIME_ORIGINS = ["mon", "local"]
 
@@ -13,9 +14,11 @@ function normalizeOrigin(origin) {
   throw new TypeError(`Unsupported Eden Agent runtime origin: ${String(origin)}`)
 }
 
-function createAgentServerManager({ app, agentRoot, processObject = process, fileSystem = fs, pathApi, spawnProcess = spawn, takeOverPort = takeOverTcpPort, getRuntimeEnvironment = () => ({}), stopTimeoutMs = 12000 } = {}) {
+function createAgentServerManager({ app, agentRoot, processObject = process, fileSystem = fs, pathApi, spawnProcess = spawn, takeOverPort, getRuntimeEnvironment = () => ({}), stopTimeoutMs = 12000 } = {}) {
   if (!app?.getPath) throw new TypeError("app.getPath is required")
   const effectivePathApi = pathApi ?? (processObject.platform === "win32" ? path.win32 : path)
+  const identity = workspaceIdentity(agentRoot, { fileSystem, pathApi: effectivePathApi, platform: processObject.platform })
+  const ensurePort = takeOverPort ?? (app.isPackaged ? assertTcpPortAvailable : takeOverTcpPort)
   const children = { mon: null, local: null }
   const stopping = new Map()
   const restarting = new Map()
@@ -90,6 +93,7 @@ function createAgentServerManager({ app, agentRoot, processObject = process, fil
       token: capabilityToken(realm),
       origin: realm,
       baseUrl: `http://127.0.0.1:${ports[realm]}`,
+      ...(identity.workspaceId ? { workspaceId: identity.workspaceId } : {}),
     }
   }
 
@@ -118,7 +122,9 @@ function createAgentServerManager({ app, agentRoot, processObject = process, fil
     const realm = normalizeOrigin(origin)
     const dataRoot = realmDataRoot(realm)
     const localRuntimeEnvironment = getRuntimeEnvironment(processObject.env)
-    const allowed = ["PATH", "SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "TZ", "EDEN_AGENT_ALLOWED_ORIGINS", "EDEN_AGENT_MAX_BLOB_BYTES"]
+    const allowed = ["PATH", "SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "TZ",
+      "EDEN_AGENT_ALLOWED_ORIGINS", "EDEN_AGENT_MAX_BLOB_BYTES", "EDEN_AGENT_LOG_FORMAT", "EDEN_AGENT_LOG_DIR",
+      "MON_LOG_START_DIR", "NO_COLOR", "FORCE_COLOR"]
     const base = Object.fromEntries(allowed.filter(key => processObject.env[key] !== undefined).map(key => [key, processObject.env[key]]))
     const skillRootsKey = `EDEN_AGENT_${realm.toUpperCase()}_SYSTEM_SKILL_ROOTS`
     if (processObject.env[skillRootsKey] !== undefined) base[skillRootsKey] = processObject.env[skillRootsKey]
@@ -130,6 +136,7 @@ function createAgentServerManager({ app, agentRoot, processObject = process, fil
       EDEN_AGENT_RUNTIME_ORIGIN: realm,
       EDEN_AGENT_CAPABILITY_TOKEN: capabilityToken(realm),
       EDEN_AGENT_DATA_ROOT: dataRoot,
+      ...(identity.monWorkspaceRoot ? { MON_WORKSPACE_ROOT: identity.monWorkspaceRoot } : {}),
       EDEN_AGENT_TERMINAL_SETTINGS_PATH: effectivePathApi.resolve(agentRoot,
         processObject.env.EDEN_AGENT_TERMINAL_SETTINGS_PATH?.trim() || effectivePathApi.join(app.getPath('userData'), 'terminal-settings.json')),
     }
@@ -158,7 +165,7 @@ function createAgentServerManager({ app, agentRoot, processObject = process, fil
     const entry = entryPath()
     if (!executable || !fileSystem.existsSync(executable)) throw new Error(`Node runtime not found: ${executable}`)
     if (!fileSystem.existsSync(entry)) throw new Error(`TS server entry not found: ${entry}; run npm run build:server`)
-    takeOverPort(ports[realm], `${realm} Agent Server`)
+    ensurePort(ports[realm], `${realm} Agent Server`)
     fileSystem.mkdirSync(realmDataRoot(realm), { recursive: true })
     const child = spawnProcess(executable, [entry], {
       cwd: agentRoot,

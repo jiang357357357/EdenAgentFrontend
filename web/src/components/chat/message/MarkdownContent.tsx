@@ -1,6 +1,7 @@
 import { memo } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import remarkCjkFriendly from "remark-cjk-friendly/parseOnly"
 import { resolveEdenAgentUrl } from "../../../lib/agent-client"
 import { splitActionLines } from "../../../lib/message-actions"
 import { cn } from "../../../lib/utils"
@@ -23,7 +24,7 @@ function MarkdownContentView({
   const renderMarkdown = (value: string, key?: string) => (
     <ReactMarkdown
       key={key}
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkCjkFriendly]}
       components={{
         img: ({ src = "", alt = "" }) => (
           <img src={resolveEdenAgentUrl(src)} alt={alt} className={imageClassName} draggable={false} />

@@ -59,6 +59,7 @@ import type {
 } from "../types"
 import { removeSessionState } from "./session-delete-state"
 import { reconcileRuntimeSessionStatus } from "./session-stream-state"
+import { applyTurnTiming, isTurnTimingEvent } from "./turn-timing"
 
 interface LocalUserMessageAction {
   type: "localUserMessage"
@@ -482,6 +483,7 @@ function applyMessageInfo(message: RuntimeMessage, info: ApiMessageInfo) {
   message.createdAt = info.time.created
   if (info.role === "assistant") {
     message.completedAt = info.time.completed
+    message.turnTiming = info.turnTiming ?? message.turnTiming
     message.runID = info.runID
     message.modelID = info.modelID
     message.providerID = info.providerID
@@ -1371,6 +1373,10 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
         }
         return next
       }
+      if (isTurnTimingEvent(event)) {
+        applyTurnTiming(ensureSession(next, event.properties.sessionID), event)
+        return next
+      }
       if (isSessionErrorEvent(event)) {
         const session = ensureSession(next, event.properties.sessionID)
         session.error =
@@ -1402,6 +1408,7 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
 }
 
 function isRuntimeStateEvent(event: ApiEvent): boolean {
+  if (isTurnTimingEvent(event)) return true
   if (event.type === "session.deleted" && typeof event.properties?.sessionID === "string") return true
   if (coordinationBatchFromEvent(event)) return true
   if (subagentFromEvent(event)) return true

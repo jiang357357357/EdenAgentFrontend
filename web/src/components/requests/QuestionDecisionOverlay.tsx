@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "motion/react"
+import { HelpCircle } from "lucide-react"
 import type { PendingQuestion } from "../../types"
 import { cn } from "../../lib/utils"
+import { NoticeCard, noticeActionClass, noticeSurface } from "../feedback"
 
 interface QuestionDecisionOverlayProps {
   request: PendingQuestion
@@ -134,7 +136,8 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
         tabIndex={-1}
         onKeyDown={handleKeyDown}
         className={cn(
-          "flex flex-col overflow-hidden rounded-[1.8vh] border border-border/90 bg-card text-text shadow-[0_2.4vh_7vh_color-mix(in_srgb,var(--color-scrim)_16%,transparent),0_0.35vh_1.3vh_color-mix(in_srgb,var(--color-scrim)_8%,transparent)] outline-none",
+          noticeSurface({ tone: "info" }),
+          "flex flex-col overflow-hidden bg-card shadow-xl outline-none",
           fillWindow
             ? "h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)]"
             : "h-[74.5vh] max-h-[74.5vh] w-[32vw] min-w-[min(300px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)]",
@@ -153,7 +156,10 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
               request.questions.length === 1 && "question-decision-body-single",
             )}
           >
-            <p className="text-[1.55vh] font-medium tracking-[0.02em] text-accent">{eyebrow}</p>
+            <p className="flex items-center gap-2 text-[1.55vh] font-medium tracking-[0.02em] text-info">
+              <HelpCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {eyebrow}
+            </p>
 
             <div className="mt-[1.5vh] space-y-[3vh]">
               {request.questions.map((item, questionIndex) => {
@@ -239,9 +245,7 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
             </div>
 
             {error && (
-              <div role="alert" className="mt-[1.5vh] rounded-[1vh] border border-danger/30 bg-danger-dim px-[0.8vw] py-[1vh] text-[1.4vh] text-danger">
-                {error}
-              </div>
+              <NoticeCard tone="error" title="问题答复失败" description={error} className="mt-[1.5vh]" />
             )}
           </div>
 
@@ -249,7 +253,9 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
             <button
               type="submit"
               disabled={submitting !== null}
-              className="flex h-[5.4vh] w-full items-center justify-center rounded-[1vh] bg-accent px-[1vw] text-[1.8vh] font-semibold text-on-accent shadow-[0_0.55vh_1.5vh_color-mix(in_srgb,var(--color-accent)_20%,transparent)] transition-[background-color,box-shadow,transform,opacity] hover:bg-accent-hover hover:shadow-[0_0.8vh_1.9vh_color-mix(in_srgb,var(--color-accent)_25%,transparent)] active:translate-y-px disabled:cursor-not-allowed disabled:bg-accent disabled:opacity-50 disabled:shadow-none"
+              aria-busy={submitting === "reply"}
+              className={cn(noticeActionClass,
+                "h-[5.4vh] w-full border-accent bg-accent px-[1vw] text-[1.8vh] font-semibold text-on-accent hover:border-accent-hover hover:bg-accent-hover")}
             >
               {submitting === "reply" ? "正在提交…" : "确认选择"}
             </button>
@@ -257,7 +263,8 @@ export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow
               type="button"
               disabled={submitting !== null}
               onClick={() => void handleReject()}
-              className="mt-[1.8vh] flex h-[4.5vh] w-full items-center justify-center rounded-[0.8vh] text-[1.65vh] text-text-lighter outline-none transition-colors hover:bg-border hover:text-text-muted focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-wait disabled:opacity-60"
+              aria-busy={submitting === "reject"}
+              className={cn(noticeActionClass, "mt-2 h-[4.5vh] w-full text-[1.65vh] text-text-muted")}
             >
               {submitting === "reject" ? "正在处理…" : "暂不处理"}
             </button>

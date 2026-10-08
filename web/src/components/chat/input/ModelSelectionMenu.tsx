@@ -14,6 +14,7 @@ export function ModelSelectionMenu({ config, submitting, overlay, onSelect }: Pr
   const [targetKey, setTargetKey] = useState('director')
   const selection = modelSelection(config, targetKey)
   return <>
+    {config.readOnly && <p role="status" className="px-3 py-2 text-sm opacity-75">会话运行或配置更新中，显示当前使用的模型；结束后可切换。</p>}
     {selection.target && <label className="block border-b border-current/10 px-3 py-2 text-sm">
       切换对象
       <select aria-label="模型切换对象" className="mt-1 w-full rounded border border-current/20 bg-inherit p-2"
@@ -23,7 +24,7 @@ export function ModelSelectionMenu({ config, submitting, overlay, onSelect }: Pr
       </select>
     </label>}
     {selection.options.map(option => <button key={option.id} type="button" role="menuitemradio" aria-checked={option.selected}
-      disabled={submitting !== null || option.status === 'inactive'} onClick={() => onSelect(option, selection.target)}
+      disabled={Boolean(config.readOnly) || submitting !== null || option.status === 'inactive'} onClick={() => onSelect(option, selection.target)}
       className={cn('flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left disabled:opacity-70',
         option.selected ? overlay ? 'bg-highlight/10 text-text' : 'bg-bg text-text' :
           overlay ? 'text-text hover:bg-highlight/8' : 'text-text-muted hover:bg-bg')}>

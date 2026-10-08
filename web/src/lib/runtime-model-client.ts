@@ -1,7 +1,7 @@
 import { getStoredToken, resolveCoreBaseUrl } from './auth'
 import { getStoredRuntimeOrigin, type RuntimeOrigin } from './runtime-origin'
 import { rpcRequestForOrigin } from './rpc-transport'
-import { mapLocalRuntimeModel, mapRuntimeModelCatalog, type ModelSelectionTarget, type RuntimeModelConfig } from './runtime-models'
+import { mapBoundRuntimeModels, mapLocalRuntimeModel, mapRuntimeModelCatalog, type ModelSelectionTarget, type RuntimeModelConfig } from './runtime-models'
 
 function assertOrigin(origin: RuntimeOrigin) {
   if ((getStoredRuntimeOrigin() ?? 'mon') !== origin) throw new Error('World changed while loading model configuration')
@@ -21,7 +21,18 @@ export async function getRuntimeModelConfig(sessionId?: string, origin: RuntimeO
   assertOrigin(origin)
   if (origin === 'local') return mapLocalRuntimeModel(await rpcRequestForOrigin(origin, 'model.read', sessionId ? { sessionId } : {}))
   const connection = await coreConnection(origin)
-  const result = await rpcRequestForOrigin(origin, 'model.catalog', { ...connection, ...(sessionId ? { sessionId } : {}) })
+  let result
+  try {
+    result = await rpcRequestForOrigin(origin, 'model.catalog', { ...connection, ...(sessionId ? { sessionId } : {}) })
+  } catch (error) {
+    if (!sessionId || !(error instanceof Error) || !error.message.includes('Wait for the session to become idle before configuration')) throw error
+    assertOrigin(origin)
+    if (getStoredToken() !== connection.coreToken) throw new Error('Core account changed while loading model configuration')
+    const bound = await rpcRequestForOrigin(origin, 'model.read', { sessionId })
+    assertOrigin(origin)
+    if (getStoredToken() !== connection.coreToken) throw new Error('Core account changed while loading model configuration')
+    return mapBoundRuntimeModels(bound)
+  }
   if (getStoredToken() !== connection.coreToken) throw new Error('Core account changed while loading model configuration')
   return mapRuntimeModelCatalog(result)
 }

@@ -4,6 +4,7 @@ import { AlertCircle, ChevronRight, Wrench } from "lucide-react"
 import type { CoordinationBatch, SubagentThread, SubagentThreadDetails, ToolCall } from "../../../types"
 import { cn } from "../../../lib/utils"
 import { SubagentActivityCard } from "./SubagentActivityCard"
+import { NoticeCard, noticeSurface } from "../../feedback"
 
 interface ToolCardProps {
   tool: ToolCall
@@ -101,34 +102,41 @@ export function ToolCard({
       .filter((value): value is string => typeof value === "string"),
   )
   const linkedBatches = coordinationBatches.filter((batch) => linkedBatchIDs.has(batch.batchID))
+  const tone = tool.status === "error" ? "error" : tool.status === "aborted" ? "warning"
+    : tool.status === "running" ? "info" : "success"
+  const statusColor = tool.status === "error" ? "text-danger" : tool.status === "aborted" ? "text-warning"
+    : tool.status === "running" ? "text-info" : "text-success"
+  const ToolIcon = tool.status === "error" || tool.status === "aborted" ? AlertCircle : Wrench
 
   return (
-    <div className="chat-trace my-[0.65vh] w-full min-w-0 overflow-hidden rounded-[1.1vh] border border-border bg-card shadow-sm">
+    <div className={cn(noticeSurface({ tone }), "chat-trace my-[0.65vh] overflow-hidden")}>
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className="chat-trace-heading flex w-full min-w-0 items-center gap-[0.55em] px-[0.8em] py-[0.65em] text-left font-sans text-[1.65vh] transition-colors hover:bg-accent/10"
+        className="chat-trace-heading flex w-full min-w-0 items-center gap-[0.55em] px-[0.8em] py-[0.65em] text-left font-sans text-[1.65vh] transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
         aria-expanded={expanded}
       >
-        <Wrench className={cn("h-[1.1em] w-[1.1em] shrink-0 text-accent", tool.status === "running" && "animate-pulse")} />
-        <span className="shrink-0 text-accent">工具:</span>
-        <span className="shrink-0 font-medium text-accent">{tool.name}</span>
+        <ToolIcon aria-hidden="true" className={cn("h-[1.1em] w-[1.1em] shrink-0", statusColor, tool.status === "running" && "animate-pulse motion-reduce:animate-none")} />
+        <span className="shrink-0 text-text-muted">工具:</span>
+        <span className="shrink-0 font-medium text-text">{tool.name}</span>
         {preview ? <span className="min-w-0 flex-1 truncate text-text-muted">{preview}</span> : <span className="flex-1" />}
         <span
           className={cn(
             "shrink-0 rounded-full border px-[0.6em] py-[0.1em] text-[0.8em]",
-            tool.status === "error" || tool.status === "aborted"
+            tool.status === "error"
               ? "border-danger/30 text-danger"
-              : tool.status === "running"
-                ? "border-accent/40 text-accent"
-                : "border-border text-text-muted",
+              : tool.status === "aborted"
+                ? "border-warning/30 text-warning"
+                : tool.status === "running"
+                  ? "border-info/30 text-info"
+                  : "border-success/30 text-success",
           )}
         >
           {statusLabel(tool.status)}
         </span>
         {tool.duration ? <span className="shrink-0 text-[0.8em] text-text-muted">{tool.duration}ms</span> : null}
-        {tool.status === "error" || tool.status === "aborted" ? <AlertCircle className="h-[1em] w-[1em] shrink-0 text-danger" /> : null}
         <ChevronRight
+          aria-hidden="true"
           className={cn("h-[1em] w-[1em] shrink-0 text-text-muted/60 transition-transform", expanded && "rotate-90")}
         />
       </button>
@@ -162,9 +170,7 @@ export function ToolCard({
                 </pre>
               ) : null}
               {tool.status === "running" && !tool.output && !tool.error ? (
-                <div className="rounded-[0.9vh] border border-accent/30 bg-accent-dim px-[1vh] py-[0.75vh] text-[1.28vh] text-accent">
-                  正在执行中…
-                </div>
+                <NoticeCard tone="info" title="正在执行中…" busy />
               ) : null}
               {command?.stdout ? (
                 <div className="grid gap-[0.4vh]">
@@ -179,9 +185,7 @@ export function ToolCard({
                 </div>
               ) : null}
               {command?.truncated ? (
-                <div className="rounded-[0.8vh] border border-warning/30 bg-warning-dim px-[0.9vh] py-[0.65vh] text-[1.22vh] text-warning">
-                  输出超过捕获上限，当前显示 {command.captured_chars ?? 0} 个字符。
-                </div>
+                <NoticeCard tone="warning" title="输出已截断" description={`输出超过捕获上限，当前显示 ${command.captured_chars ?? 0} 个字符。`} />
               ) : null}
               {workspaceDiff ? (
                 <div className="grid gap-[0.75vh]">
@@ -220,9 +224,9 @@ export function ToolCard({
                 </pre>
               ) : null}
               {tool.error ? (
-                <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[0.9vh] border border-danger/30 bg-danger-dim p-[0.9vh] font-mono text-[1.28vh] leading-[1.5] text-danger">
-                  {tool.error}
-                </pre>
+                <NoticeCard tone={tool.status === "aborted" ? "warning" : "error"} title={tool.status === "aborted" ? "工具已中止" : "工具执行失败"}>
+                  <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words font-mono text-[1.28vh] leading-[1.5] text-text-muted">{tool.error}</pre>
+                </NoticeCard>
               ) : null}
             </div>
           </motion.div>

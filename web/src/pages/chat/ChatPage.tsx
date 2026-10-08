@@ -1,6 +1,8 @@
 import { ReplyLengthControls } from "../../components/chat/ReplyLengthControls"
 import { pageEnterMotion } from "../../lib/page-motion"
 import { RuntimeDiagnostics } from "../../components/chat/RuntimeDiagnostics"
+import { RuntimeNotices } from "../../components/chat/RuntimeNotices"
+import type { ConnectionFeedbackState } from "../../lib/connection-feedback"
 import { BackgroundControls } from "../../components/chat/BackgroundControls"
 import { SubagentPanel } from "../../components/chat/SubagentPanel"
 import { Move, File, Lock, LockOpen, MessageSquare, X } from "lucide-react"
@@ -12,6 +14,7 @@ import { ChatInput } from "../../components/chat/input"
 import { DirectorPlanCard, MessageBubble, RunReviewCard } from "../../components/chat/message"
 import { PermissionRequestCard } from "../../components/requests"
 import { Sidebar } from "../../components/layout"
+import type { SharedWorkspaceScope } from "../../components/shared-workspace/use-shared-workspace"
 import { MemoryCandidatesPanel } from "../../components/memories/MemoryCandidatesPanel"
 import { resolveCoreAssetUrl, type ActiveCharacterAction, type AuthUser, type CoreAssistant } from "../../lib/auth"
 import {
@@ -29,7 +32,7 @@ import { messageGroupPosition, messageRenderKey } from "../../lib/message-groupi
 import { buildRunReviewIndex } from "../../lib/run-review"
 import { getStoredRuntimeOrigin } from "../../lib/runtime-origin"
 import type { BackgroundPreference } from "../../lib/use-background-preference"
-import type { AppearancePreference } from "../../lib/use-appearance-preference"
+import { defaultAppearance, type AppearancePreference } from "../../lib/use-appearance-preference"
 import { cn } from "../../lib/utils"
 import type {
   PendingPermission,
@@ -62,7 +65,9 @@ interface ChatPageProps {
   assistantError?: string
   activeCharacterAction?: ActiveCharacterAction
   isThinking: boolean
-  connectionError?: string
+  connectionFeedback: ConnectionFeedbackState
+  onDismissConnectionFeedback: () => void
+  onRetryConnectionSync: () => void
   runtimeError?: string
   activePendingPermissions: PendingPermission[]
   messagesScrollRef: React.RefObject<HTMLDivElement | null>
@@ -108,6 +113,9 @@ interface ChatPageProps {
   onOpenSkills: () => void
   onOpenConnectors: () => void
   onOpenConfiguration: () => void
+  onOpenSharedWorkspace: (scope: SharedWorkspaceScope) => void
+  sidebarActivity: "sessions" | "files"
+  onSidebarActivityChange: (activity: "sessions" | "files") => void
 }
 
 export function ChatPage({
@@ -119,7 +127,9 @@ export function ChatPage({
   assistantError,
   activeCharacterAction,
   isThinking,
-  connectionError,
+  connectionFeedback,
+  onDismissConnectionFeedback,
+  onRetryConnectionSync,
   runtimeError,
   activePendingPermissions,
   messagesScrollRef,
@@ -165,6 +175,9 @@ export function ChatPage({
   onOpenSkills,
   onOpenConnectors,
   onOpenConfiguration,
+  onOpenSharedWorkspace,
+  sidebarActivity,
+  onSidebarActivityChange,
 }: ChatPageProps) {
   const [slashCommandNotices, setSlashCommandNotices] = useState<
     Array<{ id: number; sessionID?: string; command: string; afterMessageID?: string }>
@@ -265,9 +278,16 @@ export function ChatPage({
     setActiveTab(activeSessionId ? `session:${activeSessionId}` : "")
   }, [activeSessionId])
 
+  const [fileSessionId, setFileSessionId] = useState(activeSessionId)
+  useEffect(() => { resetWorkspaceFiles(); setFileSessionId(activeSessionId) }, [activeSessionId, resetWorkspaceFiles])
+
   useEffect(() => {
-    window.addEventListener("edenagent:workspace-changed", resetWorkspaceFiles)
-    return () => window.removeEventListener("edenagent:workspace-changed", resetWorkspaceFiles)
+    const changed = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string; sessionID?: string }>).detail
+      if (detail?.sessionId === activeSessionId || detail?.sessionID === activeSessionId) resetWorkspaceFiles()
+    }
+    window.addEventListener("edenagent:workspace-changed", changed)
+    return () => window.removeEventListener("edenagent:workspace-changed", changed)
   }, [resetWorkspaceFiles])
 
   usePerformanceDiagnostics({
@@ -314,11 +334,11 @@ export function ChatPage({
   const activeFileContent = activeFilePath ? fileContents[activeFilePath] : undefined
 
   useEffect(() => {
-    if (!activeFilePath || activeFileContent) return
+    if (!activeSessionId || fileSessionId !== activeSessionId || !activeFilePath || activeFileContent) return
     let cancelled = false
     setFileLoadingPath(activeFilePath)
     setFileError("")
-    void readWorkspaceFile(activeFilePath)
+    void readWorkspaceFile(activeSessionId, activeFilePath)
       .then((content) => {
         if (!cancelled) setFileContents((current) => ({ ...current, [activeFilePath]: content }))
       })
@@ -331,7 +351,7 @@ export function ChatPage({
     return () => {
       cancelled = true
     }
-  }, [activeFileContent, activeFilePath])
+  }, [activeFileContent, activeFilePath, activeSessionId, fileSessionId])
 
   const activeSlashCommandNotices = slashCommandNotices.filter((item) => item.sessionID === activeSessionId)
   const participantCount = activeSession?.participants?.length ?? 0
@@ -475,6 +495,7 @@ export function ChatPage({
       style={
         {
           "--interface-background-opacity": backgroundPreference.opacity / 100,
+          "--interface-panel-background": `color-mix(in oklab, var(--color-bg) ${appearancePreference.panelOpacity ?? defaultAppearance.panelOpacity}%, transparent)`,
           "--interface-background-blur": `${backgroundPreference.blur}px`,
           "--interface-component-font-scale": appearancePreference.componentFontScale / 100,
           "--interface-component-font-delta": `${(appearancePreference.componentFontScale - 100) / 10}px`,
@@ -503,6 +524,9 @@ export function ChatPage({
         onOpenSettings={onOpenSettings}
         onOpenFile={openWorkspaceFile}
         onWorkspaceChanged={resetWorkspaceFiles}
+        onOpenSharedWorkspace={onOpenSharedWorkspace}
+        activity={sidebarActivity}
+        onActivityChange={onSidebarActivityChange}
       />
 
       <main
@@ -510,154 +534,157 @@ export function ChatPage({
           "relative grid h-[100vh] min-h-0 min-w-0 flex-1 overflow-hidden",
           activeFile
             ? "grid-rows-[auto_minmax(0,1fr)]"
-            : openSessionIds.length || openFiles.length
-              ? "grid-rows-[auto_minmax(0,1fr)_auto]"
-              : "grid-rows-[minmax(0,1fr)_auto]",
+            : "grid-rows-[auto_auto_minmax(0,1fr)_auto]",
         )}
+        style={{ backgroundColor: "var(--interface-panel-background)" }}
       >
-        {openSessionIds.length || openFiles.length ? (
-          <div className="flex h-10 min-w-0 border-b border-border bg-bg/80">
-            <div className="flex min-w-0 flex-1 overflow-x-auto overflow-y-hidden" role="tablist" aria-label="工作标签">
-              {openSessionIds.map((sessionId) => {
-                const session = sessions.find((item) => item.id === sessionId)
-                if (!session) return null
-                const tabKey = `session:${sessionId}`
-                const active = activeTab === tabKey
-                return (
-                  <div
-                    key={tabKey}
-                    className={cn(
-                      "group flex h-10 min-w-[9rem] max-w-[15rem] shrink-0 items-center border-r border-border",
-                      active && "border-t-2 border-t-accent bg-card",
-                    )}
-                  >
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      onClick={() => {
-                        setActiveTab(tabKey)
-                        onSelectSession(sessionId)
-                      }}
-                      className="flex min-w-0 flex-1 items-center gap-2 px-3 text-sm text-text-muted hover:text-text"
-                      title={session.title}
-                    >
-                      <MessageSquare className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{session.title}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => closeWorkspaceSession(sessionId)}
-                      className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted opacity-60 hover:bg-bg hover:text-text group-hover:opacity-100"
-                      aria-label={`关闭会话标签 ${session.title}`}
-                      title="关闭标签"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                )
-              })}
-              {openFiles.map((file) => {
-                const tabKey = `file:${file.path}`
-                const active = activeTab === tabKey
-                return (
-                  <div
-                    key={tabKey}
-                    className={cn(
-                      "group flex h-10 min-w-[9rem] max-w-[15rem] shrink-0 items-center border-r border-border",
-                      active && "border-t-2 border-t-accent bg-card",
-                    )}
-                  >
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      onClick={() => setActiveTab(tabKey)}
-                      className="flex min-w-0 flex-1 items-center gap-2 px-3 text-sm text-text-muted hover:text-text"
-                      title={file.path}
-                    >
-                      <File className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{file.name}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => closeWorkspaceFile(file.path)}
-                      className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted opacity-60 hover:bg-bg hover:text-text group-hover:opacity-100"
-                      aria-label={`关闭 ${file.name}`}
-                      title="关闭"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                )
-              })}
+        <header aria-label="会话工具栏" className="flex h-10 min-w-0 border-b border-border bg-bg/80">
+          {!openSessionIds.length && !openFiles.length ? (
+            <div className="flex h-10 shrink-0 items-center gap-2 border-r border-t-2 border-border border-t-accent bg-card px-3 text-sm text-text">
+              <MessageSquare className="h-4 w-4 shrink-0" />
+              <span>新会话</span>
             </div>
-            <div className="ml-auto flex h-10 shrink-0 items-center bg-bg/80 px-1.5">
-              {activeSessionId && !activeFile && (
-                <MemoryCandidatesPanel key={`memory-${activeSessionId}`} sessionId={activeSessionId} />
-              )}
-              {activeSessionId && !activeFile && (
-                <SubagentPanel key={`subagents-${activeSessionId}`} sessionId={activeSessionId} />
-              )}
-              <button
-                type="button"
-                onClick={() => setCharacterEditing((value) => !value)}
-                aria-pressed={characterEditing}
-                aria-label="调整角色位置"
-                title={characterEditing ? "结束调整角色位置（Esc）" : "调整角色位置和大小"}
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${characterEditing ? "bg-accent/10 text-accent" : "text-text-muted hover:bg-bg hover:text-text"}`}
-              >
-                <Move className="h-4 w-4" />
-              </button>
-              {activeSessionId && !activeFile && (
-                <RuntimeDiagnostics
-                  key={`diagnostics-${activeSessionId}`}
-                  iconOnly
-                  sessions={sessions}
-                  activeSessionId={activeSessionId}
-                />
-              )}
-              <ReplyLengthControls characters={activeSession?.participants?.length
-                ? activeSession.participants.filter(item => item.characterID != null).map(item => ({ id: String(item.characterID), name: item.characterName || item.assistantName || "角色" }))
-                : assistant?.character?.id != null ? [{ id: String(assistant.character.id), name: assistantName }] : []} />
-              <BackgroundControls
-                value={backgroundPreference}
-                ready={backgroundReady}
-                uploading={backgroundUploading}
-                saving={backgroundSaving || appearanceSaving}
-                settingError={appearanceSettingError}
-                appearance={appearancePreference}
-                appearanceReady={appearanceReady}
-                onChange={onBackgroundChange}
-                onAppearanceChange={onAppearanceChange}
-                onSelectImage={onBackgroundImageSelect}
-              />
-              <button
-                type="button"
-                onClick={() => onAutoScrollChange(!autoScrollEnabled)}
-                disabled={Boolean(activeFile) || !autoScrollReady}
-                aria-pressed={autoScrollEnabled}
-                aria-label={autoScrollEnabled ? "关闭新消息自动滚动" : "开启新消息自动滚动"}
-                title={
-                  activeFile
-                    ? "文件标签不使用自动滚动"
-                    : autoScrollEnabled
-                      ? "新消息自动滚动：开启"
-                      : "新消息自动滚动：关闭"
-                }
-                className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
-                  autoScrollEnabled && !activeFile
-                    ? "bg-card text-text shadow-sm"
-                    : "text-text-muted hover:bg-bg hover:text-text",
-                  activeFile && "cursor-not-allowed opacity-35 hover:bg-transparent hover:text-text-muted",
-                )}
-              >
-                {autoScrollEnabled ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
-              </button>
-            </div>
+          ) : null}
+          <div className="flex min-w-0 flex-1 overflow-x-auto overflow-y-hidden" role="tablist" aria-label="工作标签">
+            {openSessionIds.map((sessionId) => {
+              const session = sessions.find((item) => item.id === sessionId)
+              if (!session) return null
+              const tabKey = `session:${sessionId}`
+              const active = activeTab === tabKey
+              return (
+                <div
+                  key={tabKey}
+                  className={cn(
+                    "group flex h-10 min-w-[9rem] max-w-[15rem] shrink-0 items-center border-r border-border",
+                    active && "border-t-2 border-t-accent bg-card",
+                  )}
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => {
+                      setActiveTab(tabKey)
+                      onSelectSession(sessionId)
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-2 px-3 text-sm text-text-muted hover:text-text"
+                    title={session.title}
+                  >
+                    <MessageSquare className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{session.title}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => closeWorkspaceSession(sessionId)}
+                    className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted opacity-60 hover:bg-bg hover:text-text group-hover:opacity-100"
+                    aria-label={`关闭会话标签 ${session.title}`}
+                    title="关闭标签"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )
+            })}
+            {openFiles.map((file) => {
+              const tabKey = `file:${file.path}`
+              const active = activeTab === tabKey
+              return (
+                <div
+                  key={tabKey}
+                  className={cn(
+                    "group flex h-10 min-w-[9rem] max-w-[15rem] shrink-0 items-center border-r border-border",
+                    active && "border-t-2 border-t-accent bg-card",
+                  )}
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setActiveTab(tabKey)}
+                    className="flex min-w-0 flex-1 items-center gap-2 px-3 text-sm text-text-muted hover:text-text"
+                    title={file.path}
+                  >
+                    <File className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{file.name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => closeWorkspaceFile(file.path)}
+                    className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted opacity-60 hover:bg-bg hover:text-text group-hover:opacity-100"
+                    aria-label={`关闭 ${file.name}`}
+                    title="关闭"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )
+            })}
           </div>
-        ) : null}
+          <div className="ml-auto flex h-10 shrink-0 items-center bg-bg/80 px-1.5">
+            {activeSessionId && !activeFile && (
+              <MemoryCandidatesPanel key={`memory-${activeSessionId}`} sessionId={activeSessionId} />
+            )}
+            {activeSessionId && !activeFile && (
+              <SubagentPanel key={`subagents-${activeSessionId}`} sessionId={activeSessionId} />
+            )}
+            <button
+              type="button"
+              onClick={() => setCharacterEditing((value) => !value)}
+              aria-pressed={characterEditing}
+              aria-label="调整角色位置"
+              title={characterEditing ? "结束调整角色位置（Esc）" : "调整角色位置和大小"}
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${characterEditing ? "bg-accent/10 text-accent" : "text-text-muted hover:bg-bg hover:text-text"}`}
+            >
+              <Move className="h-4 w-4" />
+            </button>
+            {activeSessionId && !activeFile && (
+              <RuntimeDiagnostics
+                key={`diagnostics-${activeSessionId}`}
+                iconOnly
+                sessions={sessions}
+                activeSessionId={activeSessionId}
+              />
+            )}
+            <ReplyLengthControls characters={activeSession?.participants?.length
+              ? activeSession.participants.filter(item => item.characterID != null).map(item => ({ id: String(item.characterID), name: item.characterName || item.assistantName || "角色" }))
+              : assistant?.character?.id != null ? [{ id: String(assistant.character.id), name: assistantName }] : []} />
+            <BackgroundControls
+              value={backgroundPreference}
+              ready={backgroundReady}
+              uploading={backgroundUploading}
+              saving={backgroundSaving || appearanceSaving}
+              settingError={appearanceSettingError}
+              appearance={appearancePreference}
+              appearanceReady={appearanceReady}
+              onChange={onBackgroundChange}
+              onAppearanceChange={onAppearanceChange}
+              onSelectImage={onBackgroundImageSelect}
+            />
+            <button
+              type="button"
+              onClick={() => onAutoScrollChange(!autoScrollEnabled)}
+              disabled={Boolean(activeFile) || !autoScrollReady}
+              aria-pressed={autoScrollEnabled}
+              aria-label={autoScrollEnabled ? "关闭新消息自动滚动" : "开启新消息自动滚动"}
+              title={
+                activeFile
+                  ? "文件标签不使用自动滚动"
+                  : autoScrollEnabled
+                    ? "新消息自动滚动：开启"
+                    : "新消息自动滚动：关闭"
+              }
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
+                autoScrollEnabled && !activeFile
+                  ? "bg-card text-text shadow-sm"
+                  : "text-text-muted hover:bg-bg hover:text-text",
+                activeFile && "cursor-not-allowed opacity-35 hover:bg-transparent hover:text-text-muted",
+              )}
+            >
+              {autoScrollEnabled ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
+            </button>
+          </div>
+        </header>
         {activeFile ? (
           <section className="min-h-0 overflow-auto bg-card" aria-label={`文件 ${activeFile.name}`}>
             <div className="sticky top-0 z-10 flex h-9 items-center border-b border-border bg-card/95 px-4 font-mono text-xs text-text-muted backdrop-blur">
@@ -679,6 +706,11 @@ export function ChatPage({
           </section>
         ) : (
           <>
+            <div className="mx-auto max-h-[35vh] w-[95%] shrink-0 overflow-y-auto px-[1vw]">
+              <RuntimeNotices connection={connectionFeedback} runtimeError={runtimeError}
+                modelRetry={activeSession?.modelRetry} onDismissConnection={onDismissConnectionFeedback}
+                onRetrySync={onRetryConnectionSync} onSelectAssistant={activeSessionId ? onOpenSessionAssistantSwitcher : undefined} />
+            </div>
             <div
               key={activeSessionId || "no-session"}
               ref={messagesScrollRef}
@@ -705,41 +737,7 @@ export function ChatPage({
               className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
             >
               <div className="mx-auto w-[95%] px-[1vw]">
-                {runtimeError ? (
-                  <div
-                    role="alert"
-                    className="my-3 flex items-center justify-between gap-4 rounded-lg border border-warning/30 bg-warning-dim p-3 text-sm text-warning"
-                  >
-                    <span>操作未完成：{runtimeError}</span>
-                    {activeSessionId && /会话助手（ID：.+）已不在 Mon Core 中/.test(runtimeError) ? (
-                      <button
-                        type="button"
-                        onClick={onOpenSessionAssistantSwitcher}
-                        className="shrink-0 rounded-md border border-warning/30 bg-card px-3 py-1.5 font-medium text-warning hover:bg-warning-dim"
-                      >
-                        重新选择助手
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-                {activeSession?.modelRetry ? (
-                  <div
-                    role="status"
-                    className="my-3 rounded-lg border border-accent/30 bg-accent-dim p-3 text-sm text-accent"
-                  >
-                    模型连接中断，正在重试（{activeSession.modelRetry.attempt}/{activeSession.modelRetry.maxAttempts}）
-                  </div>
-                ) : null}
-                {connectionError ? (
-                  <div className="flex h-[61vh] flex-col items-center justify-center text-center">
-                    <div className="mb-[2vh] rounded-full border border-border bg-card px-[2vw] py-[1.2vh] text-[1.8vh] uppercase tracking-[0.15em] text-accent shadow-sm">
-                      后端离线
-                    </div>
-                    <p className="max-w-[46vw] text-[2.2vh] leading-relaxed text-text-muted">
-                      无法连接 Eden Agent 服务：{connectionError}
-                    </p>
-                  </div>
-                ) : messages.length === 0 ? (
+                {messages.length === 0 ? (
                   <div className="flex h-[61vh] flex-col items-center justify-center text-center text-text-muted">
                     <div className="mb-[4vh] flex h-[13vh] w-[13vh] items-center justify-center overflow-hidden rounded-[2.6vh] border border-border bg-card text-accent shadow-sm">
                       {assistantAvatarUrl ? (

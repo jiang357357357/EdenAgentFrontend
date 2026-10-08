@@ -1,8 +1,11 @@
 import { getStoredToken } from "./auth"
+import { readTurnTiming } from "./turn-timing"
 import { cancellableSpeechRequest } from "./cancellable-speech-request"
 import { compactionMessage, compactionCommandMessage } from "./compaction-message"
 import { modelContextUsage } from "./model-context-usage"
-import { EdenAgentRpcClient } from "./rpc-client"
+import { EdenAgentRpcClient, type RpcCloseInfo } from "./rpc-client"
+import { SessionRpcChannels, type SessionChannelStatus } from "./session-rpc-channels"
+import { connectionCloseMessage } from "./connection-diagnostics"
 import { uploadAttachmentBatch } from "./attachment-upload"
 import { uploadBlob } from "./blob-upload"
 import { initializeResultSchema, rpcNotifications } from "@eden/api"
@@ -44,12 +47,14 @@ const env = (
       VITE_EDEN_AGENT_LOCAL_BASE_URL?: string
       VITE_EDEN_AGENT_MON_CAPABILITY_TOKEN?: string
       VITE_EDEN_AGENT_LOCAL_CAPABILITY_TOKEN?: string
+      VITE_EDEN_AGENT_WORKSPACE_ID?: string
     }
   }
 ).env
 
 type RuntimeOrigin = "mon" | "local"
 const desktopBaseUrls: Partial<Record<RuntimeOrigin, string>> = {}
+const workspaceIds: Partial<Record<RuntimeOrigin, string>> = {}
 
 function currentRuntimeOrigin(): RuntimeOrigin {
   return getStoredRuntimeOrigin() ?? "mon"
@@ -72,9 +77,49 @@ let connectionGeneration = 0
 let connectedRevision = -1
 let connectingRevision = -1
 const eventListeners = new Set<(event: SessionEvent) => void>()
+/** Observe the existing channels without opening another connection or retry loop. */
+export function observeSessionEvents(listener: (event: SessionEvent) => void): () => void {
+  eventListeners.add(listener)
+  return () => { eventListeners.delete(listener) }
+}
 const statusListeners = new Set<(connected: boolean, error?: string) => void>()
+const sessionStatusListeners = new Set<(status: SessionChannelStatus) => void>()
+let sessionPool: SessionRpcChannels | undefined
+let sessionPoolRevision = -1
+let sessionPoolOrigin: RuntimeOrigin | undefined
+function sessionChannels(): SessionRpcChannels {
+  const revision = getRuntimeOriginRevision()
+  if (sessionPool && (sessionPoolRevision !== revision || sessionPoolOrigin !== currentRuntimeOrigin())) { sessionPool.dispose(); sessionPool = undefined }
+  if (sessionPool) return sessionPool
+  sessionPoolRevision = revision
+  const origin = currentRuntimeOrigin()
+  sessionPoolOrigin = origin
+  sessionPool = new SessionRpcChannels({
+    connect: async (next, sessionId, afterSeq) => {
+      const token = await capabilityToken(origin)
+      if (revision !== getRuntimeOriginRevision()) throw new Error("World changed while resolving connection capability")
+      const result = await next.connect(`${agentHttpBaseUrl(origin).replace(/^http/, "ws")}/rpc`, token,
+        "dev", origin, origin === "mon" ? getStoredToken() ?? undefined : undefined,
+        { sessionId, workspaceId: workspaceIds[origin], ...(afterSeq === undefined ? {} : { afterSeq }) })
+      if (revision !== getRuntimeOriginRevision() || result.runtimeOrigin !== origin)
+        throw new Error("Session runtime changed during initialization")
+    },
+    event: event => { if (revision === getRuntimeOriginRevision() && origin === currentRuntimeOrigin()) for (const listener of eventListeners) listener(event) },
+    status: status => { if (revision === getRuntimeOriginRevision() && origin === currentRuntimeOrigin()) for (const listener of sessionStatusListeners) listener(status) },
+  })
+  return sessionPool
+}
+export function retainSessionChannels(activeSessionId?: string): void { sessionPool?.retain(activeSessionId) }
+export function forgetSessionChannel(sessionId: string): void { sessionPool?.forget(sessionId) }
+export function subscribeSessionChannelStatus(listener: (status: SessionChannelStatus) => void): () => void {
+  sessionStatusListeners.add(listener)
+  for (const status of sessionPool?.snapshot() ?? []) listener(status)
+  return () => { sessionStatusListeners.delete(listener) }
+}
 function closeAccountConnection() {
   connectionGeneration++
+  sessionPool?.dispose()
+  sessionPool = undefined
   client?.close()
   client = undefined
   connection = undefined
@@ -83,6 +128,7 @@ function closeAccountConnection() {
 }
 if (typeof window !== "undefined") {
   window.addEventListener("edenagent:account-changed", closeAccountConnection)
+  window.addEventListener("edenagent:runtime-origin-changed", closeAccountConnection)
   window.addEventListener("storage", (event) => {
     if (event.key === null || event.key === "agent.auth_token") closeAccountConnection()
   })
@@ -96,9 +142,13 @@ async function capabilityToken(origin: RuntimeOrigin = currentRuntimeOrigin()): 
       ? env?.VITE_EDEN_AGENT_LOCAL_CAPABILITY_TOKEN
       : (env?.VITE_EDEN_AGENT_MON_CAPABILITY_TOKEN ?? env?.VITE_EDEN_AGENT_CAPABILITY_TOKEN)
   )?.trim()
-  if (configured) return configured
+  if (configured) {
+    workspaceIds[origin] = env?.VITE_EDEN_AGENT_WORKSPACE_ID
+    return configured
+  }
   const desktop = await window.edenAgentDesktop?.getAgentCapability?.(origin)
   if (desktop?.token) {
+    workspaceIds[origin] = desktop.workspaceId
     if (desktop.baseUrl) desktopBaseUrls[origin] = desktop.baseUrl
     return desktop.token
   }
@@ -126,6 +176,16 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
   connectingRevision = revision
   const pending = (async () => {
     const next = new EdenAgentRpcClient()
+    let closeInfo: RpcCloseInfo | undefined
+    next.onClose((info) => {
+      closeInfo = info
+      if (client !== next) return
+      client = undefined
+      connection = undefined
+      connectedOrigin = undefined
+      connectingOrigin = undefined
+      for (const listener of statusListeners) listener(false, connectionCloseMessage(info))
+    })
     try {
       const token = await capabilityToken(requestedOrigin)
       if (revision !== getRuntimeOriginRevision())
@@ -138,6 +198,7 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
           "dev",
           requestedOrigin,
           requestedOrigin === "mon" ? (getStoredToken() ?? undefined) : undefined,
+          { eventMode: "discovery", workspaceId: workspaceIds[requestedOrigin] },
         ),
       )
       if (initialized.runtimeOrigin !== requestedOrigin) {
@@ -153,16 +214,25 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
         throw new Error("Eden Agent runtime changed while the connection was initializing")
       }
     } catch (error) {
+      // Keep a server close during initialize; local cleanup must not replace its cause.
+      const connectionError = closeInfo && closeInfo.reason !== "RPC connection initialization failed"
+        ? new Error(connectionCloseMessage(closeInfo)) : error
       next.close()
-      throw error
+      throw connectionError
     }
     const lastSequences = new Map<string, bigint>()
+    next.on("session.discovered", raw => {
+      if (client !== next || revision !== getRuntimeOriginRevision()) return
+      const parsed = rpcNotifications["session.discovered"].safeParse(raw)
+      if (!parsed.success) { next.close({ code: 1000, reason: "invalid session discovery" }); return }
+      void sessionChannels().ensure(parsed.data.sessionId, parsed.data.afterSeq).catch(() => {})
+    })
     next.on("session.event", (raw) => {
       if (client !== next || revision !== getRuntimeOriginRevision() || currentRuntimeOrigin() !== requestedOrigin)
         return
       const parsed = rpcNotifications["session.event"].safeParse(raw)
       if (!parsed.success) {
-        next.close()
+        next.close({ code: 1000, reason: "invalid session event" })
         return
       }
       const event = parsed.data
@@ -173,7 +243,7 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
         if (sequence !== previous + 1n) {
           // Reconnect to refresh durable snapshots, including pending interactions.
           // Replaying historical notifications could repeat media side effects.
-          next.close()
+          next.close({ code: 1000, reason: "event sequence gap" })
           return
         }
       }
@@ -184,15 +254,8 @@ async function connectedClient(): Promise<EdenAgentRpcClient> {
       if (client !== next || revision !== getRuntimeOriginRevision() || currentRuntimeOrigin() !== requestedOrigin)
         return
       const parsed = rpcNotifications["server.warning"].safeParse(raw)
-      if (!parsed.success || parsed.data.code === "event_stream_lagged") next.close()
-    })
-    next.onClose(() => {
-      if (client !== next) return
-      client = undefined
-      connection = undefined
-      connectedOrigin = undefined
-      connectingOrigin = undefined
-      for (const listener of statusListeners) listener(false, "Eden Agent RPC connection closed")
+      if (!parsed.success) next.close({ code: 1000, reason: "invalid server warning" })
+      else if (parsed.data.code === "event_stream_lagged") next.close({ code: 1000, reason: "event stream lagged" })
     })
     client = next
     connectedOrigin = requestedOrigin
@@ -229,17 +292,24 @@ export async function rpcRequestForOrigin<K extends keyof RpcMethodMap>(
 ): Promise<RpcMethodMap[K]["result"]> {
   if (currentRuntimeOrigin() !== origin || getRuntimeOriginRevision() !== revision)
     throw new Error("当前世界已切换，请重新打开")
-  const current = await connectedClient()
+  const sessionId = !method.startsWith("agent.roles.import.") && params && typeof params === "object" && "sessionId" in params && typeof params.sessionId === "string"
+    ? params.sessionId : undefined
+  const pool = sessionId ? sessionChannels() : undefined
+  const current = sessionId ? await pool!.ensure(sessionId) : await connectedClient()
+  const ownsConnection = () => sessionId ? pool === sessionPool && pool!.owns(sessionId, current) : current === client && connectedOrigin === origin
   if (
     currentRuntimeOrigin() !== origin ||
     getRuntimeOriginRevision() !== revision ||
-    connectedOrigin !== origin ||
-    current !== client
+    !ownsConnection()
   )
     throw new Error("当前世界已切换，请重新打开")
   const result = await requestWithContract(current, method, params)
-  if (currentRuntimeOrigin() !== origin || getRuntimeOriginRevision() !== revision || current !== client)
+  if (currentRuntimeOrigin() !== origin || getRuntimeOriginRevision() !== revision || !ownsConnection())
     throw new Error("世界切换前的请求结果未确认，请刷新后核对，勿自动重试")
+  if (method === "session.create" && result && typeof result === "object" && "id" in result && typeof result.id === "string")
+    void sessionChannels().ensure(result.id, "0").catch(() => {}) // Creation succeeded; channel feedback owns reconnect, never retry creation implicitly.
+  if (method === "session.read" && sessionId && result && typeof result === "object" && "executionStatus" in result)
+    pool!.activity(sessionId, result.executionStatus !== "idle")
   return result
 }
 
@@ -858,6 +928,7 @@ export function apiMessage(event: SessionEvent, messageID = sessionEventMessageI
           id: messageID,
           role,
           ...(turnID ? { turnID } : {}),
+          turnTiming: readTurnTiming(payload.turnTiming),
           modelID: optionalString(message.model) ?? "",
           providerID: optionalString(message.provider) ?? "",
           ...(speaker ? { speaker } : {}),
@@ -915,7 +986,7 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
     event.eventType === "workspace.switch_failed" ||
     event.eventType === "tools.changed"
   ) {
-    return [{ type: event.eventType, properties: event.payload as JsonObject }]
+    return [{ type: event.eventType, properties: { ...(event.payload as JsonObject), sessionID } }]
   }
   if (event.eventType === "character.action.changed") {
     const value = event.payload as JsonObject
@@ -1063,10 +1134,20 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
     ]
   }
   if (event.eventType === "turn.started") {
-    return [{ type: "session.status", properties: { sessionID, status: { type: "busy" } } }]
+    return [
+      ...(event.turnId ? [{ type: "session.turn_timing", properties: { sessionID, turnID: String(event.turnId),
+        timing: { startedAt: Number(event.createdAt) } } }] : []),
+      { type: "session.status", properties: { sessionID, status: { type: "busy" } } },
+    ]
   }
   if (event.eventType === "turn.completed" || event.eventType === "input.completed") {
-    return [{ type: "session.status", properties: { sessionID, status: { type: "idle" } } }]
+    return [
+      ...(event.eventType === "turn.completed" && event.turnId ? [{ type: "session.turn_timing",
+        properties: { sessionID, turnID: String(event.turnId), timing: {
+          ...readTurnTiming((event.payload as JsonObject).turnTiming), completedAt: Number(event.createdAt),
+        } } }] : []),
+      { type: "session.status", properties: { sessionID, status: { type: "idle" } } },
+    ]
   }
   if (
     event.eventType === "companion.director.started" ||
@@ -1220,7 +1301,7 @@ export async function requestSpeechSynthesis(
   const origin = currentRuntimeOrigin(),
     revision = getRuntimeOriginRevision()
   signal?.throwIfAborted()
-  const connection = await connectedClient()
+  const connection = await sessionChannels().ensure(params.sessionId)
   signal?.throwIfAborted()
   if (origin !== currentRuntimeOrigin() || revision !== getRuntimeOriginRevision()) throw new Error("当前世界已切换")
   return cancellableSpeechRequest(

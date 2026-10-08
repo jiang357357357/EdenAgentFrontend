@@ -13,6 +13,7 @@ import { MessageErrorCard, RawOutput } from "./MessageDetails"
 import { TextSegment } from "./TextSegment"
 import { AttachmentImage } from "./AttachmentImage"
 import { AttachmentFiles } from "./AttachmentFiles"
+import { ReplyDuration } from "./ReplyDuration"
 
 interface MessageBubbleProps {
   message: MessageData
@@ -334,6 +335,8 @@ export function MessageBubble({
         {allowOrganizingReply && shouldShowOrganizingReply(message) && (
           <div className="px-[0.45vh] text-[1.65vh] text-text-muted">正在组织回复...</div>
         )}
+
+        {!isUser && !message.isStreaming && <ReplyDuration durationMs={message.replyDurationMs} />}
       </div>
     </div>
   )

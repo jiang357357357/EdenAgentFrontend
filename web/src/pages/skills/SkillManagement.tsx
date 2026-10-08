@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useSkillClient, type InstalledSkill } from '../../lib/skill-client'
 import { SkillFiles } from './SkillFiles'
 
-export function SkillManagement({ skill, onChanged }: { skill: InstalledSkill; onChanged: () => Promise<void> }) {
-  const { getSkillDetails, setSkillEnabled, uninstallSkill } = useSkillClient()
+export function SkillManagement({ skill, onChanged, sessionId }: { skill: InstalledSkill; onChanged: () => Promise<void>; sessionId?: string }) {
+  const { getSkillDetails, setSkillEnabled, uninstallSkill } = useSkillClient(sessionId)
   const [content, setContent] = useState('')
   const [files, setFiles] = useState<string[]>([])
   const [error, setError] = useState('')
@@ -44,6 +44,6 @@ export function SkillManagement({ skill, onChanged }: { skill: InstalledSkill; o
       <summary className="cursor-pointer text-text-muted">查看技能说明</summary>
       <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words text-text-muted">{content || '暂无正文'}</pre>
     </details>
-    <SkillFiles key={`${skill.id}:${skill.contentHash}:${skill.workspaceRoot}`} skill={skill} files={files} />
+    <SkillFiles key={`${skill.id}:${skill.contentHash}:${skill.workspaceRoot}`} skill={skill} files={files} sessionId={sessionId} />
   </div>
 }

@@ -9,6 +9,7 @@ const { createDesktopEnvironmentService } = require("./app/desktop-environment.c
 const { createLocalRuntimeConfigStore } = require("./app/local-runtime-config.cjs")
 const { createLocalRuntimeService } = require("./app/local-runtime-service.cjs")
 const { createWorkspaceContext } = require("./app/workspace-context.cjs")
+const { configurePortableDesktopData } = require("./app/portable-data.cjs")
 const { createActivityPresenceService } = require("./activity/activity-presence.cjs")
 const { registerDesktopIpc } = require("./ipc/command-router.cjs")
 const { createCoreCommandHandlers } = require("./ipc/core-command-handlers.cjs")
@@ -45,10 +46,10 @@ const { desktopFileUrl, resolveBundledWebAssetPath } = require("./protocols/file
 const { registerAppProtocol } = require("./protocols/app-protocol.cjs")
 const { createWebAppLoader } = require("./windows/web-app-loader.cjs")
 const { createTrayController } = require("./windows/tray-controller.cjs")
+const { attachWindowRepaint } = require("./windows/window-repaint.cjs")
 const { rendererConsoleError } = require("./windows/renderer-console-message.cjs")
 
 const execFileAsync = promisify(execFile)
-const { captureDesktopScreen } = createDesktopCapture({ app, desktopCapturer, screen })
 
 const APP_WINDOW_TITLE = "Eden Agent — AI 个人助手"
 const DEFAULT_CORE_HOST = "127.0.0.1"
@@ -77,6 +78,9 @@ const {
   resolveMonConfigPath,
   resolveWindowIcon,
 } = workspaceContext
+configurePortableDesktopData({ app, workspaceRoot })
+if (workspaceRoot) process.env.MON_WORKSPACE_ROOT = workspaceRoot
+const { captureDesktopScreen } = createDesktopCapture({ app, desktopCapturer, screen })
 const quitFlagPath =
   process.env.EDEN_AGENT_DESKTOP_QUIT_FLAG?.trim() ||
   resolveMonConfigPath("desktop", "QUIT_FLAG", ".artifacts/desktop-quit.flag")
@@ -92,13 +96,15 @@ const rustServer = createAgentServerManager({
   agentRoot,
   getRuntimeEnvironment: () => localRuntimeConfig.environment(),
 })
-const desktopReminders = createDesktopReminderService({ BrowserWindow, screen, ipcMain, capability: origin => rustServer.capability(origin) })
+const desktopReminders = createDesktopReminderService({ BrowserWindow, screen, ipcMain,
+  capability: origin => rustServer.capability(origin), coreToken: () => authSession?.token ?? null })
 const localRuntimeService = createLocalRuntimeService({
   configStore: localRuntimeConfig,
   rustServer,
   serverHealthUrl: `http://127.0.0.1:${process.env.EDEN_AGENT_LOCAL_PORT || "40093"}/healthz`,
 })
-ipcMain.handle("eden-agent:capability", (_event, origin) => rustServer.capability(origin))
+ipcMain.handle("eden-agent:capability", (_event, origin) =>
+  require('./processes/verify-workspace-endpoint.cjs').verifyWorkspaceEndpoint(rustServer.capability(origin)))
 ipcMain.on("eden-agent:convert-file-src", (event, filePath) => {
   event.returnValue = desktopFileUrl(resolveBundledWebAssetPath(filePath, {
     preloadDirectory: __dirname,
@@ -266,8 +272,10 @@ function broadcastAuthState(state) {
 }
 
 function setAuthSession(token, response) {
+  const previousToken = authSession?.token
   authSessionRevision += 1
   authSession = token && response?.valid !== false ? { token, response, verifiedAt: Date.now() } : null
+  if (previousToken !== authSession?.token) desktopReminders.authenticationChanged()
   broadcastAuthState(authSession
     ? { type: "authenticated", token: authSession.token, response: authSession.response }
     : { type: "unauthenticated" })
@@ -721,6 +729,7 @@ function createWindow() {
     }
   })
   attachRendererDiagnostics(mainWindow, "main")
+  attachWindowRepaint(mainWindow)
   attachWindowActivityEvents(mainWindow, "main")
   if (!app.isPackaged && process.env.EDEN_AGENT_OPEN_DEVTOOLS === "1") {
     mainWindow.webContents.once("did-finish-load", () => {

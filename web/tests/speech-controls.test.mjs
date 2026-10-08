@@ -3,7 +3,7 @@ import { after, test } from 'node:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer } from 'vite'
-const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
+const vite = await createServer({ optimizeDeps: { noDiscovery: true, include: [] }, server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom' })
 const { TextSegment } = await vite.ssrLoadModule('/src/components/chat/message/TextSegment.tsx')
 after(() => vite.close())
 const props = { segment: { type: 'text', id: 's', content: '这是测试语音', state: 'completed' }, isUser: false,

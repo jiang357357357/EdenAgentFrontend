@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { after, test } from "node:test"
 import { createServer } from "vite"
 
-const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" })
+const vite = await createServer({ optimizeDeps: { noDiscovery: true, include: [] }, server: { middlewareMode: true, hmr: false, ws: false }, appType: "custom" })
 const transport = await vite.ssrLoadModule("/src/lib/rpc-transport.ts")
 
 after(async () => {
@@ -24,17 +24,25 @@ function event(eventType, payload) {
 test("workspace lifecycle events survive the runtime event projection", () => {
   assert.deepEqual(
     transport.projectSessionEvent(event("workspace.changed", { path: "D:\\EDEN", name: "EDEN" })),
-    [{ type: "workspace.changed", properties: { path: "D:\\EDEN", name: "EDEN" } }],
+    [{ type: "workspace.changed", properties: { path: "D:\\EDEN", name: "EDEN", sessionID: "session-1" } }],
   )
   assert.deepEqual(
     transport.projectSessionEvent(event("workspace.switch_failed", { path: "D:\\missing", error: "not found" })),
-    [{ type: "workspace.switch_failed", properties: { path: "D:\\missing", error: "not found" } }],
+    [{ type: "workspace.switch_failed", properties: { path: "D:\\missing", error: "not found", sessionID: "session-1" } }],
   )
 })
 
 test("tool catalog change events also reach their existing application handler", () => {
   assert.deepEqual(
     transport.projectSessionEvent(event("tools.changed", { source: "workspace" })),
-    [{ type: "tools.changed", properties: { source: "workspace" } }],
+    [{ type: "tools.changed", properties: { source: "workspace", sessionID: "session-1" } }],
   )
+})
+
+test("workspace notifications retain the canonical directory and use the event's session identity", () => {
+  assert.deepEqual(transport.projectSessionEvent(event("workspace.changed", {
+    previousPath: "E:/old", currentPath: "E:/canonical", path: "E:/canonical", sessionID: "another-session",
+  })), [{ type: "workspace.changed", properties: {
+    previousPath: "E:/old", currentPath: "E:/canonical", path: "E:/canonical", sessionID: "session-1",
+  } }])
 })

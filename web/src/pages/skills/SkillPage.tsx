@@ -2,7 +2,7 @@ import { pageEnterMotion } from "../../lib/page-motion"
 import { SkillInstallDialog } from './SkillInstallDialog'
 import { SkillManagement } from "./SkillManagement"
 import { useSkillClient } from '../../lib/skill-client'
-import { useRuntimeOrigin } from '../../lib/use-runtime-origin'
+import { useWorkspaceScopeKey } from '../../lib/use-workspace-scope-key'
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ArrowLeft,
@@ -75,13 +75,13 @@ function SkillRow({
   )
 }
 
-export function SkillPage({ onBack }: { onBack: () => void }) {
-  const origin = useRuntimeOrigin()
-  return <ScopedSkillPage key={origin} onBack={onBack} />
+export function SkillPage({ onBack, sessionId }: { onBack: () => void; sessionId?: string }) {
+  const scopeKey = useWorkspaceScopeKey(sessionId)
+  return <ScopedSkillPage key={scopeKey} onBack={onBack} sessionId={sessionId} />
 }
 
-function ScopedSkillPage({ onBack }: { onBack: () => void }) {
-  const { listSkills, refreshCatalog, catalogStatus } = useSkillClient()
+function ScopedSkillPage({ onBack, sessionId }: { onBack: () => void; sessionId?: string }) {
+  const { listSkills, refreshCatalog, catalogStatus } = useSkillClient(sessionId)
   const [skills, setSkills] = useState<InstalledSkill[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -127,12 +127,10 @@ function ScopedSkillPage({ onBack }: { onBack: () => void }) {
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refresh() }, 10000)
     const handleChanged = () => void refresh()
     window.addEventListener("edenagent:skills-changed", handleChanged)
-    window.addEventListener("edenagent:workspace-changed", handleChanged)
     return () => {
       refreshGeneration.current++
       window.clearInterval(timer)
       window.removeEventListener("edenagent:skills-changed", handleChanged)
-      window.removeEventListener("edenagent:workspace-changed", handleChanged)
     }
   }, [refresh])
 
@@ -250,7 +248,7 @@ function ScopedSkillPage({ onBack }: { onBack: () => void }) {
                   <p className="text-xs text-text-muted">{selectedToolNames.length} 个工具</p>
                 </div>
               </div>
-              <SkillManagement key={selectedSkill.id} skill={selectedSkill} onChanged={refresh} />
+              <SkillManagement key={selectedSkill.id} skill={selectedSkill} onChanged={refresh} sessionId={sessionId} />
               <label className="mt-4 flex items-center gap-2 rounded-xl border border-border bg-card px-3">
                 <Search className="h-4 w-4 text-text-muted" />
                 <input
@@ -435,7 +433,7 @@ function ScopedSkillPage({ onBack }: { onBack: () => void }) {
         </section>
       </div>
 
-      {installOpen && <SkillInstallDialog onClose={() => setInstallOpen(false)} onInstalled={refresh} />}
+      {installOpen && <SkillInstallDialog onClose={() => setInstallOpen(false)} onInstalled={refresh} sessionId={sessionId} />}
     </motion.main>
   )
 }

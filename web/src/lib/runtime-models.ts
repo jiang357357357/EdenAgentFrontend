@@ -22,6 +22,7 @@ export type RuntimeModelOption = {
 
 export type RuntimeModelConfig = {
   source: "core" | "env" | string
+  readOnly?: boolean
   serviceType?: "ai" | string
   vendors?: Record<string, unknown>
   assistant?: {
@@ -123,6 +124,19 @@ export function mapLocalRuntimeModel(info: RuntimeModelInfo): RuntimeModelConfig
     vision: null,
     options: [option],
   }
+}
+
+/** The server's current binding is readable while catalog refresh would reconfigure a busy session. */
+export function mapBoundRuntimeModels(info: RuntimeModelInfo): RuntimeModelConfig {
+  const option = (status: RuntimeModelInfo) => status.available ? mapLocalRuntimeModel(status).current ?? null : null
+  const actors = (info.actors ?? []).flatMap(actor => actor.assistantID == null ? [] : [{
+    assistantId: actor.assistantID, name: `角色 ${actor.assistantID}`, current: option(actor),
+  }])
+  const current = info.mode === 'multi_actor' ? null : option(info)
+  const director = info.director ? option(info.director) : null
+  const options = [current, director, ...actors.map(actor => actor.current)].filter((value): value is RuntimeModelOption => value !== null)
+  return { source: info.source, serviceType: 'ai', readOnly: true, current, director, actors,
+    options: options.filter((value, index) => options.findIndex(other => String(other.aiEntityId) === String(value.aiEntityId) && other.provider === value.provider) === index) }
 }
 
 

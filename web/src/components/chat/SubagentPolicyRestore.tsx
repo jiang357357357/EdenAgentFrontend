@@ -3,7 +3,7 @@ import { subagentPolicyRecoverySchema } from '@eden/api'
 import { rpcRequestForOrigin } from '../../lib/rpc-transport'
 import { getStoredRuntimeOrigin } from '../../lib/runtime-origin'
 
-export function SubagentPolicyRestore({ agentId, onSaved }: { agentId: string; onSaved: () => Promise<void> }) {
+export function SubagentPolicyRestore({ agentId, onSaved, sessionId }: { agentId: string; onSaved: () => Promise<void>; sessionId: string }) {
   const [origin] = useState(() => getStoredRuntimeOrigin() ?? 'mon')
   const [role, setRole] = useState(''), [text, setText] = useState(''), [note, setNote] = useState('')
   const [confirmed, setConfirmed] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('')
@@ -12,7 +12,7 @@ export function SubagentPolicyRestore({ agentId, onSaved }: { agentId: string; o
     setBusy(true); setError(''); setBasis(null); setConfirmed(false)
     try {
       const report = await rpcRequestForOrigin(origin, 'agent.recovery.read', { agentId })
-      const roles = await rpcRequestForOrigin(origin, 'agent.roles', {})
+      const roles = await rpcRequestForOrigin(origin, 'agent.roles', { sessionId })
       const selected = roles.find(value => value.name === role)
       if (!selected) throw new Error('请先输入已有角色名称；需要自定义时先在角色编辑器保存。')
       if (!report.workspaceRoot || !report.historicalConfigurationHash) throw new Error('须先恢复工作区并确认历史配置来源。')

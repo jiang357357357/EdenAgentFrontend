@@ -25,7 +25,7 @@ class Socket extends EventTarget {
  close(){this.readyState=3;this.dispatchEvent(new Event('close'))}
 }
 globalThis.WebSocket=Socket
-const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom'})
+const vite=await createServer({ optimizeDeps: { noDiscovery: true, include: [] },server:{middlewareMode:true,hmr:false,ws:false},appType:'custom'})
 const transport=await vite.ssrLoadModule('/src/lib/rpc-transport.ts')
 const auth=await vite.ssrLoadModule('/src/lib/auth.ts')
 after(async()=>{for(const socket of sockets)socket.close();await vite.close();Object.assign(globalThis,previous)})

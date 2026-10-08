@@ -1,3 +1,8 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'"><title>角色提醒</title><link rel="stylesheet" href="reminder.css"></head>
-<body><main><small id="world"></small><h1 id="title">角色提醒</h1><p id="message"></p><p id="error" role="alert"></p><button id="close" type="button">知道了</button></main><script src="reminder-renderer.js"></script></body></html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'"><title>Eden · 角色提醒</title><link rel="stylesheet" href="reminder.css"></head>
+<body><main class="reminder-card" aria-labelledby="title">
+  <header class="heading"><div class="eyebrow"><span id="world" class="world-badge"></span><span class="category">角色提醒</span></div><h1 id="title">角色提醒</h1></header>
+  <div id="message" class="message" tabindex="0" aria-label="提醒内容"></div>
+  <p id="error" class="error" role="alert" hidden></p>
+  <footer class="actions"><button id="close" type="button">知道了</button></footer>
+</main><script src="reminder-renderer.js"></script></body></html>

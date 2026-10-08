@@ -28,7 +28,7 @@ class FakeWebSocket extends EventTarget {
 globalThis.WebSocket = FakeWebSocket
 const windowEvents = new EventTarget()
 globalThis.window = { addEventListener: windowEvents.addEventListener.bind(windowEvents), removeEventListener: windowEvents.removeEventListener.bind(windowEvents), dispatchEvent: windowEvents.dispatchEvent.bind(windowEvents), localStorage: { getItem: () => origin }, edenAgentDesktop: { getAgentCapability: async () => ({ token: 'test-token' }) } }
-const vite = await createServer({ server: { middlewareMode: true, hmr: false }, appType: 'custom' })
+const vite = await createServer({ optimizeDeps: { noDiscovery: true, include: [] }, server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom' })
 const api = await vite.ssrLoadModule('/src/lib/memory-candidates.ts')
 afterEach(() => { sockets.splice(0).forEach(socket => socket.close()); origin = 'mon'; beforeReply = () => {} })
 after(async () => { await vite.close(); globalThis.window = originalWindow; globalThis.WebSocket = originalWebSocket })

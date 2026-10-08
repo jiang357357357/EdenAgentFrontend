@@ -1,4 +1,4 @@
-import type { AccentTheme, BaseTheme } from "@eden/api"
+import { DEFAULT_PANEL_OPACITY, type AccentTheme, type BaseTheme } from "@eden/api"
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { rpcRequestForOrigin } from "./rpc-transport"
 import { getRuntimeOriginRevision } from "./runtime-origin"
@@ -11,8 +11,9 @@ export interface AppearancePreference {
   accentTheme: AccentTheme
   chatFontScale: number
   componentFontScale: number
+  panelOpacity: number
 }
-export const defaultAppearance: AppearancePreference = { baseTheme: "night", backgroundMode: "wallpaper", accentTheme: "mist", chatFontScale: 100, componentFontScale: 100 }
+export const defaultAppearance: AppearancePreference = { baseTheme: "night", backgroundMode: "wallpaper", accentTheme: "mist", chatFontScale: 100, componentFontScale: 100, panelOpacity: DEFAULT_PANEL_OPACITY }
 
 export function useAppearancePreference(origin: Origin | null, active: boolean, accountIdentity?: string | number) {
   const [value, setValue] = useState(defaultAppearance)

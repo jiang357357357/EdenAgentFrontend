@@ -1,7 +1,7 @@
 import { Network } from 'lucide-react'
 import { SessionPanelDialog } from './SessionPanelDialog'
 import { useEffect, useState } from 'react'
-import { useRuntimeOrigin } from '../../lib/use-runtime-origin'
+import { useWorkspaceScopeKey } from '../../lib/use-workspace-scope-key'
 import { useScopedRpc } from '../../lib/use-scoped-rpc'
 import type { AgentThreadInfo } from '@eden/api'
 import { SubagentRequestReview } from './SubagentRequestReview'
@@ -21,8 +21,8 @@ import { LocalModelProfiles } from './LocalModelProfiles'
 import { SubagentParentActor } from './SubagentParentActor'
 import { SubagentJobResubmit } from './SubagentJobResubmit'
 export function SubagentPanel({ sessionId }: { sessionId: string }) {
-  const origin = useRuntimeOrigin()
-  return <ScopedSubagentPanel key={`${origin}:${sessionId}`} sessionId={sessionId} />
+  const scopeKey = useWorkspaceScopeKey(sessionId)
+  return <ScopedSubagentPanel key={scopeKey} sessionId={sessionId} />
 }
 function ScopedSubagentPanel({ sessionId }: { sessionId: string }) {
   const rpcRequest = useScopedRpc()
@@ -45,7 +45,7 @@ function ScopedSubagentPanel({ sessionId }: { sessionId: string }) {
       catch (reason) { if (active) setError(String(reason)) }
     }
     void refresh()
-    void rpcRequest('agent.roles', {}).then(result => { if (active) setRoles(result) }).catch(reason => { if (active) setError(String(reason)) })
+    void rpcRequest('agent.roles', { sessionId }).then(result => { if (active) setRoles(result) }).catch(reason => { if (active) setError(String(reason)) })
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refresh() }, 3000)
     return () => { active = false; window.clearInterval(timer) }
   }, [sessionId, rpcRequest])
@@ -65,7 +65,7 @@ function ScopedSubagentPanel({ sessionId }: { sessionId: string }) {
     {open && <SessionPanelDialog title="子任务" onClose={() => setOpen(false)}>
       <LocalModelProfiles key={sessionId} />
       <MonChildModels key={sessionId} sessionId={sessionId} />
-      <SubagentRoleEditor key={sessionId} role={role} onSaved={async () => { setRoles(await rpcRequest('agent.roles', {})); setSpawnKey(crypto.randomUUID()) }} />
+      <SubagentRoleEditor key={sessionId} sessionId={sessionId} role={role} onSaved={async () => { setRoles(await rpcRequest('agent.roles', { sessionId })); setSpawnKey(crypto.randomUUID()) }} />
       <SubagentParentActor key={sessionId} sessionId={sessionId} value={actorId} disabled={busy} onChange={value => { setActorId(value); setSpawnKey(crypto.randomUUID()) }} />
       <div className="mt-3 flex gap-2"><input aria-label="子任务名称" disabled={busy} value={name} onChange={event => { setName(event.target.value); setSpawnKey(crypto.randomUUID()) }} placeholder="task_name" className="min-w-0 flex-1 rounded border p-2" /></div>
       <textarea aria-label="子任务内容" disabled={busy} value={task} onChange={event => { setTask(event.target.value); setSpawnKey(crypto.randomUUID()) }} placeholder="明确目标、范围和完成标准" className="mt-2 w-full rounded border p-2" />
@@ -85,7 +85,7 @@ function ScopedSubagentPanel({ sessionId }: { sessionId: string }) {
       {agent && <div className="mt-3 border-t pt-3">
         {agent.parentActorId && <p>父会话模型来源角色：{agent.parentActorId}</p>}
         <p className="break-all">任务工作区：{agent.workspaceRoot === null ? '尚待核对' : agent.workspaceRoot || '创建时未选择工作区'}</p>
-        {!agent.workspaceRoot && !['queued', 'running'].includes(agent.status) && <SubagentWorkspaceRestore key={agent.id} agentId={agent.id} onSaved={async () => setAgents(await rpcRequest('agent.list', { sessionId }))} />}
+        {!agent.workspaceRoot && !['queued', 'running'].includes(agent.status) && <SubagentWorkspaceRestore key={agent.id} agentId={agent.id} sessionId={sessionId} onSaved={async () => setAgents(await rpcRequest('agent.list', { sessionId }))} />}
         <SubagentRequestReview key={agent.id} agentId={agent.id} />
         {agent.recoveryState && <SubagentRecoveryPanel key={agent.id} agentId={agent.id} />}
         {agent.recoveryState && <InputOutcomeReview key={agent.childSessionId} sessionId={agent.childSessionId} />}
@@ -93,7 +93,7 @@ function ScopedSubagentPanel({ sessionId }: { sessionId: string }) {
         <SubagentJobResubmit key={agent.id} agentId={agent.id} sessionId={agent.childSessionId} onSaved={async () => setAgents(await rpcRequest('agent.list', { sessionId }))} />
         {agent.recoveryState && <SubagentMailboxRestore key={agent.sessionId} sessionId={agent.sessionId} />}
         {agent.recoveryState && (agent.usage.tokensUnknown || agent.usage.costUnknown) && <SubagentBaselineRestore key={agent.id} agentId={agent.id} onSaved={async () => setAgents(await rpcRequest('agent.list', { sessionId }))} />}
-        {agent.recoveryState === 'context_prepared_policy_required' && <SubagentPolicyRestore key={agent.id} agentId={agent.id} onSaved={async () => setAgents(await rpcRequest('agent.list', { sessionId }))} />}
+        {agent.recoveryState === 'context_prepared_policy_required' && <SubagentPolicyRestore key={agent.id} agentId={agent.id} sessionId={agent.childSessionId} onSaved={async () => setAgents(await rpcRequest('agent.list', { sessionId }))} />}
         {['policy_prepared_model_required', 'model_prepared_reopen_required'].includes(agent.recoveryState ?? '') && <SubagentModelRestore key={agent.id} agentId={agent.id} onSaved={async () => setAgents(await rpcRequest('agent.list', { sessionId }))} />}
         {agent.recoveryState === 'model_prepared_reopen_required' && <SubagentReopenRestore key={agent.id} agentId={agent.id} onSaved={async () => setAgents(await rpcRequest('agent.list', { sessionId }))} />}
         {agent.recoveryState && agent.recoveryState !== 'ready' && <SubagentDeadlineRestore key={`${agent.id}:${agent.deadlineAt}`} agentId={agent.id} deadline={agent.deadlineAt} onSaved={async () => setAgents(await rpcRequest('agent.list', { sessionId }))} />}

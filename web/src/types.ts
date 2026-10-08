@@ -84,6 +84,7 @@ export interface MessageData {
   images?: string[]
   files?: { url: string; mime: string; filename?: string }[]
   isStreaming?: boolean
+  replyDurationMs?: number
   deliveryState?: "sending" | "queued" | "failed"
   error?: MessageError
   completionState?: "provisional" | "final"
@@ -506,6 +507,7 @@ export type RuntimePart =
 export interface RuntimeMessage {
   id: string
   turnID?: string
+  turnTiming?: TurnTiming
   kind?: string
   renderKey?: string
   speechEpoch?: number
@@ -557,6 +559,7 @@ export interface RuntimeSession {
   status: SessionStatus
   messageOrder: string[]
   messages: Record<string, RuntimeMessage>
+  turnTimings?: Record<string, TurnTiming>
   createdAt?: number
   updatedAt?: number
   hydrated: boolean
@@ -578,6 +581,11 @@ export interface RuntimeSession {
   directorRuns?: CompanionDirectorRun[]
   agentThreads?: SubagentThread[]
   coordinationBatches?: CoordinationBatch[]
+}
+
+export interface TurnTiming {
+  startedAt?: number
+  completedAt?: number
 }
 
 export interface AssistantHandoffState {
