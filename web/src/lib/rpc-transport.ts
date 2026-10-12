@@ -1048,6 +1048,10 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
   if (event.eventType === "session.deleted") {
     return [{ type: "session.deleted", properties: { sessionID } }]
   }
+  if (event.eventType === "message.deleted") {
+    const id = optionalString(jsonObject(event.payload)?.messageId)
+    return id ? [{ type: "message.removed", properties: { sessionID, messageID: id, deleted: true } }] : []
+  }
   if (event.eventType === "session.title_updated") {
     const value = event.payload as JsonObject
     return [

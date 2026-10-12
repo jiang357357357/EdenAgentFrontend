@@ -60,6 +60,7 @@ import type {
 import { removeSessionState } from "./session-delete-state"
 import { reconcileRuntimeSessionStatus } from "./session-stream-state"
 import { applyTurnTiming, isTurnTimingEvent } from "./turn-timing"
+import { pruneSessionHistories } from "./session-history-cache"
 
 interface LocalUserMessageAction {
   type: "localUserMessage"
@@ -71,8 +72,10 @@ interface LocalUserMessageAction {
   followUp: boolean
 }
 
-type RuntimeAction =
+export type RuntimeAction =
   | { type: "reset" }
+  | { type: "pruneHistories" }
+  | { type: "historyBrowsing"; sessionID: string; browsing: boolean }
   | { type: "invalidateInactiveSessions" }
   | { type: "hydrateSessions"; sessions: ApiSession[] }
   | { type: "hydrateMessages"; sessionID: string; messages: ApiMessage[]; hasMore: boolean; nextCursor?: string | null; directorRuns?: CompanionDirectorRun[] }
@@ -500,6 +503,7 @@ function applyMessageInfo(message: RuntimeMessage, info: ApiMessageInfo) {
 }
 
 function replaceSessionMessages(session: RuntimeSession, messages: ApiMessage[]) {
+  messages = messages.filter(item => !session.deletedMessageIds?.includes(item.info.id))
   const localMessages = session.messageOrder
     .map((messageID) => session.messages[messageID])
     .filter((message): message is RuntimeMessage => Boolean(message?.localOnly && message.role === "user"))
@@ -512,6 +516,7 @@ function replaceSessionMessages(session: RuntimeSession, messages: ApiMessage[])
       sessionID: session.id,
     })
     applyMessageInfo(message, item.info)
+    if (message.role === "assistant" && message.speaker?.avatarUrl) session.sidebarAvatarUrl = message.speaker.avatarUrl
     for (const part of item.parts) {
       upsertPart(message, mapPart(part))
     }
@@ -525,6 +530,7 @@ function replaceSessionMessages(session: RuntimeSession, messages: ApiMessage[])
 }
 
 function prependMessagesToSession(session: RuntimeSession, messages: ApiMessage[]) {
+  messages = messages.filter(item => !session.deletedMessageIds?.includes(item.info.id))
   const previousOrder = [...session.messageOrder]
   for (const item of messages) {
     const message = ensureMessage(session, {
@@ -638,6 +644,7 @@ function removeOptimisticMatch(session: RuntimeSession, serverMessageID: string,
 
 function applyPartUpdate(state: RuntimeState, part: ApiPart) {
   const session = ensureSession(state, part.sessionID)
+  if (session.deletedMessageIds?.includes(part.messageID)) return
   const message = ensureMessage(session, {
     id: part.messageID,
     role: session.messages[part.messageID]?.role ?? "assistant",
@@ -658,6 +665,7 @@ function applyPartUpdate(state: RuntimeState, part: ApiPart) {
 
 function applyPartDelta(state: RuntimeState, event: Extract<ApiEvent, { type: "message.part.delta" }>) {
   const session = ensureSession(state, event.properties.sessionID)
+  if (session.deletedMessageIds?.includes(event.properties.messageID)) return
   const message = ensureMessage(session, {
     id: event.properties.messageID,
     role: session.messages[event.properties.messageID]?.role ?? "assistant",
@@ -924,6 +932,7 @@ function isQuestionResolvedEvent(
 
 function applyMessageUpdate(state: RuntimeState, sessionID: string, info: ApiMessageInfo) {
   const session = ensureSession(state, sessionID)
+  if (session.deletedMessageIds?.includes(info.id)) return
   const optimisticUser = info.role === "user"
     ? findOptimisticUserHandoff(session.messageOrder, session.messages, info.time.created, info.turnID)
     : undefined
@@ -940,6 +949,7 @@ function applyMessageUpdate(state: RuntimeState, sessionID: string, info: ApiMes
     removeMessage(session, optimisticUser.id)
   }
   applyMessageInfo(message, info)
+  if (message.role === "assistant" && message.speaker?.avatarUrl) session.sidebarAvatarUrl = message.speaker.avatarUrl
   const completedAt = "completed" in info.time ? info.time.completed : undefined
   session.updatedAt = Math.max(session.updatedAt ?? 0, completedAt ?? info.time.created)
   sortSessionsByActivity(state)
@@ -983,6 +993,21 @@ function createOptimisticUserMessage(action: LocalUserMessageAction): RuntimeMes
 }
 
 export function runtimeReducer(state: RuntimeState, action: RuntimeAction): RuntimeState {
+  if (action.type === "pruneHistories") return pruneSessionHistories(state)
+  const next = reduceRuntimeState(state, action)
+  if (next === state) return state
+  if (action.type !== "event") {
+    const departed = state.activeSessionId !== next.activeSessionId ? state.activeSessionId : undefined
+    return pruneSessionHistories(next, Date.now(), departed)
+  }
+  const event = action.event
+  const settled = isSessionStatusEvent(event) && event.properties.status.type === "idle"
+    || isMessageUpdatedEvent(event) && "completed" in event.properties.info.time && Boolean(event.properties.info.time.completed)
+  return settled ? pruneSessionHistories(next) : next
+}
+
+function reduceRuntimeState(state: RuntimeState, action: RuntimeAction): RuntimeState {
+  if (action.type === "historyBrowsing" && state.sessions[action.sessionID]?.historyBrowsing === action.browsing) return state
   if (action.type === "reset") {
     return {
       sessions: {},
@@ -1049,6 +1074,8 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       }
       session.hasMoreMessages = action.hasMore
       session.messageCursor = action.nextCursor ?? undefined
+      session.historyLastUsed = Date.now()
+      session.historyBrowsing = false
       session.updatedAt = Math.max(
         session.updatedAt ?? 0,
         ...action.messages.map((message) => message.info.time.created),
@@ -1063,6 +1090,8 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       session.hasMoreMessages = action.hasMore
       session.messageCursor = action.nextCursor ?? undefined
       session.loadingOlderMessages = false
+      session.historyBrowsing = true
+      session.historyLastUsed = Date.now()
       return next
     }
 
@@ -1080,8 +1109,17 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       replaceQuestions(next, action.questions)
       return next
 
+    case "historyBrowsing": {
+      const session = ensureSession(next, action.sessionID)
+      session.historyBrowsing = action.browsing
+      return next
+    }
+
     case "setActiveSession":
       next.activeSessionId = action.sessionID
+      if (action.sessionID && next.sessions[action.sessionID]) {
+        next.sessions[action.sessionID] = { ...next.sessions[action.sessionID], historyLastUsed: Date.now() }
+      }
       return next
 
     case "setSessionStatus": {
@@ -1245,6 +1283,7 @@ export function runtimeReducer(state: RuntimeState, action: RuntimeAction): Runt
       }
       if (isMessageRemovedEvent(event)) {
         const session = ensureSession(next, event.properties.sessionID)
+        if (event.properties.deleted) session.deletedMessageIds = [...new Set([...(session.deletedMessageIds ?? []), event.properties.messageID])]
         removeMessage(session, event.properties.messageID)
         return next
       }

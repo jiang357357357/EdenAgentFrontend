@@ -5,6 +5,7 @@ import {
   compactSession as compactSessionRaw,
   createSessionRaw,
   deleteSession as deleteSessionRaw,
+  deleteMessage as deleteMessageRaw,
     getPermissionMode,
     getRuntimeModelConfig,
   followUpTurn,
@@ -50,7 +51,9 @@ import {
   setConnectionError,
   setLoadingOlderMessages,
 } from '../lib/session-reducer';
-import { selectActiveSession, selectPendingPermissions, selectPendingQuestions, selectSessions, selectSessionStatus } from '../lib/session-selectors';
+import { selectActiveSession, selectPendingPermissions, selectPendingQuestions, selectSessionStatus } from '../lib/session-selectors';
+import { createSessionSummarySelector } from '../lib/session-summary-selector';
+import { useSessionHistoryMaintenance } from './useSessionHistoryMaintenance';
 import type { PermissionMode, PromptAttachment } from '../types';
 import { handleScreenCaptureRequest } from '../lib/screen-capture';
 import { handleCameraCaptureRequest } from '../lib/camera-capture';
@@ -93,6 +96,8 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const sendingSessionIdsRef = useRef(new Set<string>());
   const preparingSessionIdsRef = useRef(new Map<string, object>());
   const hydratingSessionIdsRef = useRef(new Map<string, object>());
+  const olderPageRequestsRef = useRef(new Map<string, object>());
+  const historySelectionRevisionRef = useRef(0);
   const deletedSessionIdsRef = useRef(new Set<string>());
   const onEventRef = useRef(options.onEvent);
   const defaultParticipantID = options.defaultParticipantID;
@@ -111,6 +116,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     return () => mountedRef.current && scopeRef.current.enabled && scopeRef.current.epoch === epoch
       && getRuntimeOriginRevision() === origin && connectionFeedbackController.isCurrent(revision);
   }, [connectionFeedbackController]);
+  useSessionHistoryMaintenance(state, enabled, scopeEpoch, dispatch, captureRefreshGuard);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -412,11 +418,13 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const createSession = useCallback(async () => {
     if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
     activeSessionIdRef.current = undefined;
+    historySelectionRevisionRef.current++;
     setDraftParticipantIDs(defaultParticipantID === undefined || defaultParticipantID === null ? [] : [defaultParticipantID]);
     dispatch(setActiveSession(undefined));
   }, [defaultParticipantID, isRuntimeReady]);
 
   const chooseSession = useCallback((sessionID?: string) => {
+    historySelectionRevisionRef.current++;
     activeSessionIdRef.current = sessionID;
     setDraftParticipantIDs(sessionID || defaultParticipantID === undefined || defaultParticipantID === null
       ? []
@@ -633,6 +641,16 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     dispatch(removeSession(sessionID));
   }, [defaultParticipantID, isRuntimeReady, state.sessionOrder]);
 
+  const deleteMessage = useCallback(async (sessionID: string, messageID: string) => {
+    if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
+    const { epoch, originRevision } = scopeRef.current;
+    await deleteMessageRaw(sessionID, messageID);
+    if (!isRuntimeReady() || scopeRef.current.epoch !== epoch || getRuntimeOriginRevision() !== originRevision) {
+      throw new Error('账号或执行环境已切换。');
+    }
+    dispatch(applyRuntimeEvent({ type: 'message.removed', properties: { sessionID, messageID, deleted: true } }));
+  }, [isRuntimeReady]);
+
   const renameSession = useCallback(async (sessionID: string, title: string) => {
     if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
     const normalized = title.trim();
@@ -673,16 +691,25 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     const sessionID = activeSessionIdRef.current;
     if (!sessionID || !isRuntimeReady()) return;
     const session = state.sessions[sessionID];
-    if (!session?.hasMoreMessages || !session.messageCursor || session.loadingOlderMessages) return;
+    if (!session?.hasMoreMessages || !session.messageCursor || session.loadingOlderMessages || olderPageRequestsRef.current.has(sessionID)) return;
+    const current = captureRefreshGuard();
+    const operation = {};
+    const selectionRevision = historySelectionRevisionRef.current;
+    olderPageRequestsRef.current.set(sessionID, operation);
     dispatch(setLoadingOlderMessages(sessionID, true));
     try {
       const page = await listMessagesRaw(sessionID, session.messageCursor);
+      if (!current() || historySelectionRevisionRef.current !== selectionRevision
+        || activeSessionIdRef.current !== sessionID || deletedSessionIdsRef.current.has(sessionID)) return;
       dispatch(prependSessionMessages(sessionID, page));
     } catch (error) {
-      dispatch(setLoadingOlderMessages(sessionID, false));
+      if (current() && !deletedSessionIdsRef.current.has(sessionID)) dispatch(setLoadingOlderMessages(sessionID, false));
       throw error;
+    } finally {
+      if (olderPageRequestsRef.current.get(sessionID) === operation) olderPageRequestsRef.current.delete(sessionID);
+      if (current() && !deletedSessionIdsRef.current.has(sessionID)) dispatch(setLoadingOlderMessages(sessionID, false));
     }
-  }, [isRuntimeReady, state.sessions]);
+  }, [captureRefreshGuard, isRuntimeReady, state.sessions]);
 
   const answerQuestion = useCallback(async (requestID: string, answers: string[][], supplementary?: string[]) => {
     await replyQuestion(requestID, answers, supplementary);
@@ -692,7 +719,8 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     await rejectQuestion(requestID);
   }, []);
 
-  const sessions = useMemo(() => selectSessions(state), [state]);
+  const summarizeSessions = useMemo(() => createSessionSummarySelector(), [scopeEpoch]);
+  const sessions = useMemo(() => summarizeSessions(state), [state, summarizeSessions]);
   const activeSession = useMemo(() => selectActiveSession(state), [state]);
   const pendingPermissions = useMemo(() => selectPendingPermissions(state, state.activeSessionId), [state]);
   const pendingQuestions = useMemo(() => selectPendingQuestions(state, state.activeSessionId), [state]);
@@ -700,6 +728,10 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const isThinking = selectSessionStatus(state, state.activeSessionId) !== 'idle';
   const activeSessionError = state.activeSessionId ? state.sessions[state.activeSessionId]?.error : undefined;
   const activeModelError = state.activeSessionId ? modelErrors[state.activeSessionId] : undefined;
+  const setHistoryBrowsing = useCallback((browsing: boolean) => {
+    const sessionID = activeSessionIdRef.current;
+    if (sessionID) dispatch({ type: 'historyBrowsing', sessionID, browsing });
+  }, []);
 
   return {
     activeSession,
@@ -717,6 +749,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     compactSession,
     createSession,
     deleteSession,
+    deleteMessage,
     renameSession,
     draftParticipantIDs,
     dismissQuestion,
@@ -747,6 +780,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     sessions,
     updatePermissionMode,
     loadOlderMessages,
+    setHistoryBrowsing,
     updateSessionParticipants,
   };
 }

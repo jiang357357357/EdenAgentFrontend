@@ -254,6 +254,23 @@
   --interface-component-font-delta: var(--interface-chat-font-delta, 0px);
 }
 
+.chat-tool-text {
+  font-size: clamp(13px, 1.4vh, 16px);
+  line-height: 1.65;
+}
+
+.interface-dark .chat-tool-text {
+  font-size: max(13px, calc(clamp(13px, 1.4vh, 16px) + var(--interface-chat-font-delta, 0px)));
+}
+
+.chat-tool-label {
+  font-size: clamp(12px, 1.3vh, 15px);
+}
+
+.interface-dark .chat-tool-label {
+  font-size: max(12px, calc(clamp(12px, 1.3vh, 15px) + var(--interface-chat-font-delta, 0px)));
+}
+
 .chat-trace-heading {
   font-size: max(14px, 1.65vh);
   line-height: 1.5;

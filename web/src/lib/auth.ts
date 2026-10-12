@@ -20,9 +20,9 @@ export interface UserEnvironmentLocation {
   district?: string
   latitude?: number
   longitude?: number
-  accuracy?: number
-  source?: string
-  updated_at?: string
+  accuracy?: number | null
+  source?: string | null
+  updated_at?: string | null
 }
 
 export interface UserEnvironment {

@@ -1,6 +1,6 @@
 require('./app/installed-launch.cjs').assertInstalledLaunch()
 const { createDesktopReminderService } = require("./reminders/reminder-service.cjs")
-const { app, BrowserWindow, Menu, Tray, desktopCapturer, dialog, ipcMain, nativeImage, powerMonitor, protocol, screen, net, session, shell } = require("electron")
+const { app, BrowserWindow, Menu, Tray, clipboard, desktopCapturer, dialog, ipcMain, nativeImage, powerMonitor, protocol, screen, net, session, shell } = require("electron")
 const { execFile, spawn } = require("node:child_process")
 const fs = require("node:fs")
 const path = require("node:path")
@@ -15,6 +15,7 @@ const { registerDesktopIpc } = require("./ipc/command-router.cjs")
 const { createCoreCommandHandlers } = require("./ipc/core-command-handlers.cjs")
 const { parseCoreError } = require("./ipc/core-response-error.cjs")
 const { createWindowCommandHandlers } = require("./ipc/window-command-handlers.cjs")
+const { createClipboardCommandHandlers } = require("./ipc/clipboard-command-handlers.cjs")
 const { createPetGroupDrag, petGroupPositionAtPointer } = require("./pet/pet-group-drag.cjs")
 const { createGlobalPointerObserver } = require("./pet/global-pointer-observer.cjs")
 const { calculatePetWindowBounds, calculatePetWindowLayout, petCoordinate } = require("./pet/pet-layout.cjs")
@@ -121,7 +122,7 @@ const petSettingsStore = createPetSettingsStore({
   defaults: DEFAULT_PET_SETTINGS,
   normalize: normalizePetSettings,
 })
-const { loadWebApp } = createWebAppLoader({
+const { loadWebApp, navigationPolicyOptions } = createWebAppLoader({
   app,
   shell,
   getWebPort: () => getAgentConfig("server", "WEB_PORT", String(DEFAULT_WEB_PORT)),
@@ -1119,6 +1120,11 @@ registerDesktopIpc({
       stopActivityPresence,
     }),
     ...createWindowCommandHandlers({ BrowserWindow, dialog, shell, getMainWindow: () => mainWindow }),
+    ...createClipboardCommandHandlers({
+      clipboard,
+      getWindows: () => [mainWindow, petBubbleWindow],
+      isInternalUrl: url => isInternalAppUrl(url, navigationPolicyOptions()),
+    }),
     get_local_runtime_config: () => localRuntimeService.read(),
     test_local_runtime_config: ({ args }) => localRuntimeService.testConnection(args.config ?? {}),
     save_local_runtime_config: ({ args }) => localRuntimeService.saveAndRestart(args.config ?? {}),

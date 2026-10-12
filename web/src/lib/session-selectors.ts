@@ -30,6 +30,7 @@ import { formatLocalTime } from "./time"
 import { presentRuntimeError } from "./runtime-error"
 import { stripAssistantSpeakerPrefix } from "./assistant-message-text"
 import { replyDurations } from "./turn-timing"
+import { cachedMessageView, cachedSessionView } from "./session-view-cache"
 
 function isRuntimeTextPart(part: RuntimePart): part is RuntimeTextPart {
   return part.type === "text" && "text" in part && typeof part.text === "string"
@@ -431,11 +432,11 @@ function directorRunFromMessages(session: RuntimeSession): CompanionDirectorRun 
   }
 }
 
-function mapSession(session: RuntimeSession): Session {
+function buildSessionView(session: RuntimeSession): Session {
   const sessionIsRunning = isRuntimeSessionRunning(session.status)
   const visible = visibleMessages(session)
   const durations = replyDurations(visible, session.turnTimings)
-  const messages = visible.map((message) => ({ ...mapMessage(message, sessionIsRunning), replyDurationMs: durations.get(message.id) }))
+  const messages = visible.map((message) => cachedMessageView(message, sessionIsRunning, durations.get(message.id), mapMessage))
   const inferredDirectorRun = directorRunFromMessages(session)
   const directorRuns = session.directorRuns?.length
     ? session.directorRuns
@@ -450,6 +451,7 @@ function mapSession(session: RuntimeSession): Session {
     tokenBreakdown: session.tokenBreakdown,
     date: timeLabel(session.updatedAt),
     messages,
+    historyReady: session.hydrated,
     hasMoreMessages: session.hasMoreMessages,
     loadingOlderMessages: session.loadingOlderMessages,
     mode: session.mode,
@@ -467,13 +469,13 @@ export function selectSessions(state: RuntimeState): Session[] {
   return state.sessionOrder
     .map((sessionID) => state.sessions[sessionID])
     .filter(Boolean)
-    .map(mapSession)
+    .map((session) => cachedSessionView(session, buildSessionView))
 }
 
 export function selectActiveSession(state: RuntimeState): Session | undefined {
   if (!state.activeSessionId) return undefined
   const session = state.sessions[state.activeSessionId]
-  return session ? mapSession(session) : undefined
+  return session ? cachedSessionView(session, buildSessionView) : undefined
 }
 
 export function selectSessionStatus(state: RuntimeState, sessionID?: string) {

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { memo, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { Activity, AlertTriangle, ChevronRight, Sparkles } from "lucide-react"
 import { MarkdownContent } from "./MarkdownContent"
@@ -15,7 +15,7 @@ interface ThinkingBlockProps {
   error?: string
 }
 
-export function ThinkingBlock({
+function ThinkingBlockView({
   content,
   state = "done",
   title = "思考",
@@ -29,12 +29,12 @@ export function ThinkingBlock({
   const isRuntime = title === "运行过程"
   const isError = Boolean(error)
   const visibleContent = useTypewriterText({
-    active: isStreaming,
+    active: isStreaming && expanded,
     cacheKey: cacheKey ?? `${title}:${content.slice(0, 48)}`,
     target: content,
     onFrame: onTextReveal,
   })
-  const preview = error || visibleContent.replace(/\s+/g, " ").trim()
+  const preview = error || (expanded ? visibleContent : content).slice(0, 240).replace(/\s+/g, " ").trim()
   const displayTitle = isError ? "运行失败" : isStreaming ? (activeTitle ?? title) : title
   const TraceIcon = isError ? AlertTriangle : isRuntime ? Activity : Sparkles
 
@@ -91,3 +91,5 @@ export function ThinkingBlock({
     </div>
   )
 }
+
+export const ThinkingBlock = memo(ThinkingBlockView)

@@ -280,6 +280,7 @@ export default function App() {
     runtimeError,
     createSession: createRuntimeSession,
     deleteSession: deleteRuntimeSession,
+    deleteMessage: deleteRuntimeMessage,
     renameSession: renameRuntimeSession,
     draftParticipantIDs,
     dismissQuestion,
@@ -288,6 +289,7 @@ export default function App() {
     isThinking,
     interruptSubagent,
     loadOlderMessages,
+    setHistoryBrowsing,
     pendingPermissions,
     pendingQuestions,
     allPendingQuestions,
@@ -409,7 +411,7 @@ export default function App() {
     .slice(Math.max(lastUserMessageIndex + 1, 0))
     .reverse()
     .find((message) => message.role === "assistant")
-  const dialogSegments = activeMessages.flatMap((message) => {
+  const dialogSegments = useMemo(() => (activePage === "pet" || isPetWindow) ? activeMessages.flatMap((message) => {
     const speaker =
       message.role === "user"
         ? "你"
@@ -487,7 +489,7 @@ export default function App() {
     }
 
     return segments
-  })
+  }) : [], [activePage, isPetWindow, activeMessages, assistantDisplayName])
   const activePendingPermissions = pendingPermissions.filter(
     (request) => !activeSessionId || request.sessionID === activeSessionId,
   )
@@ -1230,8 +1232,10 @@ export default function App() {
             appearanceSaving={appearanceSaving}
             onAppearanceChange={setAppearancePreference}
             onLoadOlderMessages={handleLoadOlderMessages}
+            onHistoryBrowsingChange={setHistoryBrowsing}
             onSelectSession={selectRuntimeSession}
             onDeleteSession={handleDeleteSession}
+            onDeleteMessage={deleteRuntimeMessage}
             onRenameSession={handleRenameSession}
             onNewSession={handleNewSession}
             onSendMessage={handleSendMessage}

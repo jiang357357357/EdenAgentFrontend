@@ -179,6 +179,8 @@ export interface Session {
   tokenBreakdown?: TokenBreakdown
   date: string
   messages: MessageData[]
+  avatarUrl?: string
+  historyReady?: boolean
   hasMoreMessages?: boolean
   loadingOlderMessages?: boolean
   mode?: "companion" | "solo"
@@ -559,6 +561,7 @@ export interface RuntimeSession {
   status: SessionStatus
   messageOrder: string[]
   messages: Record<string, RuntimeMessage>
+  deletedMessageIds?: string[]
   turnTimings?: Record<string, TurnTiming>
   createdAt?: number
   updatedAt?: number
@@ -566,6 +569,9 @@ export interface RuntimeSession {
   hasMoreMessages: boolean
   messageCursor?: string
   loadingOlderMessages: boolean
+  historyLastUsed?: number
+  historyBrowsing?: boolean
+  sidebarAvatarUrl?: string
   error?: string
   modelRetry?: {
     attempt: number

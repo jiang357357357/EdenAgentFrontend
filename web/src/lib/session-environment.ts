@@ -10,6 +10,9 @@ export function buildSessionEnvironment(environment: UserEnvironment | null | un
       city: location?.city ?? '', district: location?.district ?? '',
       ...(location?.latitude == null ? {} : { latitude: location.latitude }),
       ...(location?.longitude == null ? {} : { longitude: location.longitude }),
+      ...(location?.source == null ? {} : { source: location.source }),
+      ...(location?.updated_at == null ? {} : { updated_at: location.updated_at }),
+      ...(location?.accuracy == null ? {} : { accuracy: location.accuracy }),
     },
   }
 }

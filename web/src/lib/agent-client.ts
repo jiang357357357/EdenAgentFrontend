@@ -805,6 +805,7 @@ export type MessageRemovedEvent = {
   properties: {
     sessionID: string
     messageID: string
+    deleted?: boolean
   }
 }
 
@@ -1201,6 +1202,10 @@ function currentSessionEnvironment() {
 export async function deleteSession(sessionID: string) {
   const result = await rpcRequest("session.delete", { sessionId: sessionID })
   return { deleted: result.deleted, sessionID: result.sessionId }
+}
+
+export async function deleteMessage(sessionID: string, messageID: string) {
+  return rpcRequest("message.delete", { sessionId: sessionID, messageId: messageID })
 }
 
 export async function createSession() {

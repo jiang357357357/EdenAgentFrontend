@@ -57,7 +57,7 @@ export function estimateTextTokens(value: string): number {
   let latinLikeCharacters = 0
   let otherCharacters = 0
 
-  for (const character of Array.from(text)) {
+  for (const character of text) {
     if (CJK_CHARACTER.test(character) || EMOJI_CHARACTER.test(character)) {
       directTokens += 1
     } else if (/\s/u.test(character) || (character.codePointAt(0) ?? 128) <= 127) {
@@ -75,33 +75,58 @@ function estimateToolTokens(tool: TokenToolCall | undefined) {
   return estimateTextTokens([tool.input, tool.output, tool.error].filter(Boolean).join("\n"))
 }
 
-export function estimateConversationTokens(messages: TokenMessage[]): number {
-  return messages.reduce((total, message) => {
-    let messageTokens = 0
+function messageTokenEstimate(message: TokenMessage): { tokens: number; reset?: number } {
+  let messageTokens = 0
+  let reset: number | undefined
 
-    if (message.segments?.length) {
-      for (const segment of message.segments) {
-        if (
-          segment.type === "meta" &&
-          segment.part?.type === "compaction" &&
-          typeof segment.part.contextTokensAfter === "number"
-        ) {
-          total = Math.max(0, segment.part.contextTokensAfter)
-          continue
-        }
-        messageTokens += estimateTextTokens(segment.content ?? "")
-        messageTokens += estimateToolTokens(segment.tool)
+  if (message.segments?.length) {
+    for (const segment of message.segments) {
+      if (
+        segment.type === "meta" &&
+        segment.part?.type === "compaction" &&
+        typeof segment.part.contextTokensAfter === "number"
+      ) {
+        reset = Math.max(0, segment.part.contextTokensAfter)
+        continue
       }
-    } else {
-      messageTokens += estimateTextTokens(message.content ?? "")
-      messageTokens += estimateTextTokens(message.thinking ?? "")
-      messageTokens += estimateTextTokens(message.runtimeTrace ?? "")
-      for (const tool of message.toolCalls ?? []) messageTokens += estimateToolTokens(tool)
+      messageTokens += estimateTextTokens(segment.content ?? "")
+      messageTokens += estimateToolTokens(segment.tool)
     }
+  } else {
+    messageTokens += estimateTextTokens(message.content ?? "")
+    messageTokens += estimateTextTokens(message.thinking ?? "")
+    messageTokens += estimateTextTokens(message.runtimeTrace ?? "")
+    for (const tool of message.toolCalls ?? []) messageTokens += estimateToolTokens(tool)
+  }
 
-    messageTokens += (message.images?.length ?? 0) * 1_200
-    return total + messageTokens
+  messageTokens += (message.images?.length ?? 0) * 1_200
+  return { tokens: messageTokens, reset }
+}
+
+function conversationTokenEstimate(messages: TokenMessage[], estimate: typeof messageTokenEstimate): number {
+  return messages.reduce((total, message) => {
+    const { tokens, reset } = estimate(message)
+    return (reset ?? total) + tokens
   }, 0)
+}
+
+export function estimateConversationTokens(messages: TokenMessage[]): number {
+  return conversationTokenEstimate(messages, messageTokenEstimate)
+}
+
+/** For immutable chat views: only changed messages need another character scan. */
+export function createContextTokenEstimator() {
+  const estimates = new WeakMap<TokenMessage, ReturnType<typeof messageTokenEstimate>>()
+  return (messages: TokenMessage[], serverTokens?: number): number => {
+    if (serverTokens !== undefined) return serverTokens
+    return conversationTokenEstimate(messages, (message) => {
+      const cached = estimates.get(message)
+      if (cached) return cached
+      const estimate = messageTokenEstimate(message)
+      estimates.set(message, estimate)
+      return estimate
+    })
+  }
 }
 
 export function formatTokenCount(value: number): string {

@@ -1,10 +1,15 @@
-import { memo } from "react"
-import ReactMarkdown from "react-markdown"
+import { memo, useMemo } from "react"
+import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkCjkFriendly from "remark-cjk-friendly/parseOnly"
 import { resolveEdenAgentUrl } from "../../../lib/agent-client"
 import { splitActionLines } from "../../../lib/message-actions"
 import { cn } from "../../../lib/utils"
+
+const remarkPlugins = [remarkGfm, remarkCjkFriendly]
+const MarkdownChunk = memo(function MarkdownChunk({ content, components }: { content: string; components: Components }) {
+  return <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>{content}</ReactMarkdown>
+})
 
 interface MarkdownContentProps {
   content: string
@@ -21,11 +26,9 @@ function MarkdownContentView({
   separateActionLines = false,
   actionParagraphClassName = "my-[1.2vh] italic text-text/60",
 }: MarkdownContentProps) {
-  const renderMarkdown = (value: string, key?: string) => (
-    <ReactMarkdown
-      key={key}
-      remarkPlugins={[remarkGfm, remarkCjkFriendly]}
-      components={{
+  // Component functions are element types. Recreating them on each delta
+  // remounts every paragraph/image even when the chunk key stays unchanged.
+  const components = useMemo<Components>(() => ({
         img: ({ src = "", alt = "" }) => (
           <img src={resolveEdenAgentUrl(src)} alt={alt} className={imageClassName} draggable={false} />
         ),
@@ -69,11 +72,8 @@ function MarkdownContentView({
             <code className={className}>{children}</code>
           )
         },
-      }}
-    >
-      {value}
-    </ReactMarkdown>
-  )
+  }), [imageClassName, paragraphClassName])
+  const renderMarkdown = (value: string, key?: string) => <MarkdownChunk key={key} content={value} components={components} />
 
   if (!separateActionLines) return renderMarkdown(content)
 
@@ -81,11 +81,11 @@ function MarkdownContentView({
     <>
       {splitActionLines(content).map((chunk, index) =>
         chunk.action ? (
-          <p key={`${index}-${chunk.content}`} className={actionParagraphClassName}>
+          <p key={`${index}-action`} className={actionParagraphClassName}>
             {chunk.content}
           </p>
         ) : (
-          renderMarkdown(chunk.content, `${index}-${chunk.content}`)
+          renderMarkdown(chunk.content, `${index}-markdown`)
         ),
       )}
     </>

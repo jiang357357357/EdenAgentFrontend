@@ -1,9 +1,11 @@
-import { useState } from "react"
+import { memo, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import { AlertCircle, ChevronRight, Wrench } from "lucide-react"
 import type { CoordinationBatch, SubagentThread, SubagentThreadDetails, ToolCall } from "../../../types"
 import { cn } from "../../../lib/utils"
+import { toolInputPreview } from "../../../lib/tool-input-display"
 import { SubagentActivityCard } from "./SubagentActivityCard"
+import { ToolParameters, toolTextClass } from "./ToolParameters"
 import { NoticeCard, noticeSurface } from "../../feedback"
 
 interface ToolCardProps {
@@ -83,7 +85,7 @@ function workspaceDiffDetails(tool: ToolCall): WorkspaceDiffDetails | undefined 
   return details.kind === "workspace_diff" && Array.isArray(details.files) ? details as WorkspaceDiffDetails : undefined
 }
 
-export function ToolCard({
+function ToolCardView({
   tool,
   subagentThreads = [],
   coordinationBatches = [],
@@ -94,7 +96,7 @@ export function ToolCard({
   const [expanded, setExpanded] = useState(false)
   const command = commandDetails(tool)
   const workspaceDiff = workspaceDiffDetails(tool)
-  const preview = tool.input.replace(/\s+/g, " ").trim()
+  const preview = toolInputPreview(tool.input)
   const linkedSubagents = subagentsForTool(tool, subagentThreads)
   const linkedBatchIDs = new Set(
     linkedSubagents
@@ -150,7 +152,7 @@ export function ToolCard({
             className="overflow-hidden"
           >
             <div className="grid min-w-0 gap-[1vh] border-t border-border bg-accent-dim px-[1.2vh] py-[1.1vh]">
-              <div className="flex flex-wrap gap-x-[1.2vh] text-[1.25vh] text-text-muted">
+              <div className="chat-tool-label flex flex-wrap gap-x-[1.2vh] text-text-muted">
                 <span>状态：{statusLabel(tool.status)}</span>
                 {command?.exit_code !== undefined && command.exit_code !== null ? <span>退出码：{command.exit_code}</span> : null}
                 {command?.duration_ms !== undefined ? <span>耗时：{command.duration_ms}ms</span> : null}
@@ -158,30 +160,26 @@ export function ToolCard({
                 {typeof tool.retryable === "boolean" ? <span>{tool.retryable ? "可以重试" : "不建议原样重试"}</span> : null}
               </div>
               {command?.command ? (
-                <div className="grid gap-[0.35vh] rounded-[0.9vh] border border-border/70 bg-bg/75 px-[1vh] py-[0.8vh] font-mono text-[1.24vh]">
-                  <div className="break-all text-text"><span className="select-none text-text-muted">$ </span>{command.command}</div>
+                <div className="chat-tool-text grid min-w-0 gap-[0.35vh] rounded-[0.9vh] border border-border/70 bg-bg/75 px-[1vh] py-[0.8vh] font-mono">
+                  <pre className="max-h-[48vh] overflow-auto whitespace-pre-wrap [overflow-wrap:anywhere] text-text"><span className="select-none text-text-muted">$ </span>{command.command}</pre>
                   {command.cwd ? <div className="break-all text-text-muted">cwd: {command.cwd}</div> : null}
                   {command.session_id && command.status === "running" ? <div className="break-all text-accent">session: {command.session_id}</div> : null}
                 </div>
               ) : null}
-              {tool.input ? (
-                <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[0.9vh] bg-bg/80 p-[0.9vh] font-mono text-[1.28vh] leading-[1.5] text-text">
-                  {tool.input}
-                </pre>
-              ) : null}
+              {tool.input ? <ToolParameters input={tool.input} /> : null}
               {tool.status === "running" && !tool.output && !tool.error ? (
                 <NoticeCard tone="info" title="正在执行中…" busy />
               ) : null}
               {command?.stdout ? (
                 <div className="grid gap-[0.4vh]">
-                  <span className="text-[1.18vh] font-medium uppercase tracking-wide text-text-muted">stdout</span>
-                  <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[0.9vh] bg-bg/80 p-[0.9vh] font-mono text-[1.28vh] leading-[1.5] text-text-muted">{command.stdout}</pre>
+                  <span className="chat-tool-label font-medium uppercase tracking-wide text-text-muted">stdout</span>
+                  <pre className={`${toolTextClass} text-text-muted`}>{command.stdout}</pre>
                 </div>
               ) : null}
               {command?.stderr ? (
                 <div className="grid gap-[0.4vh]">
-                  <span className="text-[1.18vh] font-medium uppercase tracking-wide text-danger">stderr</span>
-                  <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[0.9vh] border border-danger/30 bg-danger-dim p-[0.9vh] font-mono text-[1.28vh] leading-[1.5] text-danger">{command.stderr}</pre>
+                  <span className="chat-tool-label font-medium uppercase tracking-wide text-danger">stderr</span>
+                  <pre className={cn(toolTextClass, "border border-danger/30 bg-danger-dim text-danger")}>{command.stderr}</pre>
                 </div>
               ) : null}
               {command?.truncated ? (
@@ -219,13 +217,13 @@ export function ToolCard({
                 </div>
               ) : null}
               {tool.output && !command && !workspaceDiff ? (
-                <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-[0.9vh] bg-bg/80 p-[0.9vh] font-mono text-[1.28vh] leading-[1.5] text-text-muted">
+                <pre className={`${toolTextClass} text-text-muted`}>
                   {tool.output}
                 </pre>
               ) : null}
               {tool.error ? (
                 <NoticeCard tone={tool.status === "aborted" ? "warning" : "error"} title={tool.status === "aborted" ? "工具已中止" : "工具执行失败"}>
-                  <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words font-mono text-[1.28vh] leading-[1.5] text-text-muted">{tool.error}</pre>
+                  <pre className={`${toolTextClass} text-text-muted`}>{tool.error}</pre>
                 </NoticeCard>
               ) : null}
             </div>
@@ -245,3 +243,5 @@ export function ToolCard({
     </div>
   )
 }
+
+export const ToolCard = memo(ToolCardView)

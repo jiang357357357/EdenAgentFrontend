@@ -26,7 +26,7 @@ import {
 import { useTTSSpeech, type SpeechSegment } from "../../hooks/useTTSSpeech"
 import { usePerformanceDiagnostics } from "../../hooks/usePerformanceDiagnostics"
 import { startCompanionDirectorRun } from "../../lib/companion-director-state"
-import { estimateConversationTokens } from "../../lib/token-usage"
+import { createContextTokenEstimator } from "../../lib/token-usage"
 import { readWorkspaceFile, type WorkspaceEntry, type WorkspaceFileContent } from "../../lib/agent-client"
 import { messageGroupPosition, messageRenderKey } from "../../lib/message-grouping"
 import { buildRunReviewIndex } from "../../lib/run-review"
@@ -45,6 +45,9 @@ import type {
 
 const VISIBLE_CONVERSATION_TURNS = 10
 const CONVERSATION_TURN_STEP = 5
+const EMPTY_THREADS: NonNullable<Session["agentThreads"]> = []
+const EMPTY_BATCHES: NonNullable<Session["coordinationBatches"]> = []
+const IGNORE_HISTORY_BROWSING = () => {}
 
 function conversationTurnStarts(messages: MessageData[]): number[] {
   if (messages.length === 0) return []
@@ -88,8 +91,10 @@ interface ChatPageProps {
   appearanceSaving: boolean
   onAppearanceChange: (value: AppearancePreference) => void
   onLoadOlderMessages: () => Promise<void>
+  onHistoryBrowsingChange?: (browsing: boolean) => void
   onSelectSession: (id: string) => void
   onDeleteSession: (id: string) => Promise<void>
+  onDeleteMessage: (sessionId: string, messageId: string) => Promise<void>
   onRenameSession: (id: string, title: string) => Promise<void>
   onNewSession: () => void
   onSendMessage: (content: string, attachments: PromptAttachment[]) => Promise<void>
@@ -150,8 +155,10 @@ export function ChatPage({
   appearanceSaving,
   onAppearanceChange,
   onLoadOlderMessages,
+  onHistoryBrowsingChange = IGNORE_HISTORY_BROWSING,
   onSelectSession,
   onDeleteSession,
+  onDeleteMessage,
   onRenameSession,
   onNewSession,
   onSendMessage,
@@ -228,6 +235,9 @@ export function ChatPage({
   const visibleTurnEnd = Math.min(turnStarts.length, visibleTurnStart + VISIBLE_CONVERSATION_TURNS)
   const visibleMessageStart = turnStarts[visibleTurnStart] ?? 0
   const visibleMessageEnd = turnStarts[visibleTurnEnd] ?? messages.length
+  useEffect(() => {
+    onHistoryBrowsingChange(Boolean(visibleWindowStartID || pendingOlderWindowRef.current))
+  }, [visibleWindowStartID, activeSessionId, messages.length, onHistoryBrowsingChange])
 
   useEffect(() => {
     setVisibleWindowStartID(undefined)
@@ -368,8 +378,11 @@ export function ChatPage({
     }
     return isThinking ? startCompanionDirectorRun(participantCount, lastUserMessageID) : undefined
   }, [activeSession?.directorRun, isThinking, lastUserMessageID, participantCount])
-  const visibleTokenEstimate = useMemo(() => estimateConversationTokens(messages), [messages])
-  const contextTokenEstimate = activeSession?.contextTokens ?? visibleTokenEstimate
+  const estimateContextTokens = useMemo(() => createContextTokenEstimator(), [])
+  const contextTokenEstimate = useMemo(
+    () => estimateContextTokens(messages, activeSession?.contextTokens),
+    [messages, activeSession?.contextTokens, estimateContextTokens],
+  )
   const localTTSConfigId = getStoredRuntimeOrigin() === "local" ? 0 : undefined
   const localSTTConfigId = getStoredRuntimeOrigin() === "local" ? 0 : undefined
   const soloTTSConfigId =
@@ -467,7 +480,10 @@ export function ChatPage({
     (latestIndex, message, index) => (message.role === "assistant" && message.isStreaming ? index : latestIndex),
     -1,
   )
-  const renderedMessages = messages.slice(visibleMessageStart, visibleMessageEnd)
+  const renderedMessages = useMemo(
+    () => messages.slice(visibleMessageStart, visibleMessageEnd),
+    [messages, visibleMessageStart, visibleMessageEnd],
+  )
   const runReviewsByMessageIndex = useMemo(() => buildRunReviewIndex(renderedMessages), [renderedMessages])
   useEffect(() => {
     let disposed = false
@@ -737,7 +753,11 @@ export function ChatPage({
               className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
             >
               <div className="mx-auto w-[95%] px-[1vw]">
-                {messages.length === 0 ? (
+                {messages.length === 0 && activeSession?.historyReady === false ? (
+                  <div role="status" className="flex h-[61vh] items-center justify-center text-sm text-text-muted">
+                    {runtimeError ? "会话历史暂未加载，请重试连接。" : "正在读取会话历史…"}
+                  </div>
+                ) : messages.length === 0 ? (
                   <div className="flex h-[61vh] flex-col items-center justify-center text-center text-text-muted">
                     <div className="mb-[4vh] flex h-[13vh] w-[13vh] items-center justify-center overflow-hidden rounded-[2.6vh] border border-border bg-card text-accent shadow-sm">
                       {assistantAvatarUrl ? (
@@ -801,6 +821,8 @@ export function ChatPage({
                           ) : (
                             <MessageBubble
                               message={msg}
+                              onDeleteMessage={() => onDeleteMessage(activeSessionId, msg.id)}
+                              deleteDisabled={isThinking}
                               groupPosition={messageGroupPosition(renderedMessages, messageIndex)}
                               allowOrganizingReply={absoluteMessageIndex === latestStreamingAssistantIndex}
                               userAvatarUrl={userAvatarUrl}
@@ -817,8 +839,8 @@ export function ChatPage({
                               onBeginSeekSpeech={speech.beginSeek}
                               onEndSeekSpeech={speech.endSeek}
                               onPreviewImage={(src, alt) => onPreviewImage(src, alt ?? "图片预览")}
-                              subagentThreads={activeSession?.agentThreads ?? []}
-                              coordinationBatches={activeSession?.coordinationBatches ?? []}
+                              subagentThreads={activeSession?.agentThreads ?? EMPTY_THREADS}
+                              coordinationBatches={activeSession?.coordinationBatches ?? EMPTY_BATCHES}
                               onFollowupSubagent={onFollowupSubagent}
                               onInspectSubagent={onGetSubagentDetails}
                               onInterruptSubagent={onInterruptSubagent}

@@ -13,7 +13,8 @@ import { MessageErrorCard, RawOutput } from "./MessageDetails"
 import { TextSegment } from "./TextSegment"
 import { AttachmentImage } from "./AttachmentImage"
 import { AttachmentFiles } from "./AttachmentFiles"
-import { ReplyDuration } from "./ReplyDuration"
+import { MessageFooter } from "./MessageFooter"
+import { replyCopyText } from "../../../lib/reply-copy"
 
 interface MessageBubbleProps {
   message: MessageData
@@ -39,6 +40,8 @@ interface MessageBubbleProps {
   onFollowupSubagent?: (target: string, message: string) => Promise<unknown>
   onInspectSubagent?: (target: string) => Promise<SubagentThreadDetails>
   onInterruptSubagent?: (target: string) => Promise<unknown>
+  onDeleteMessage?: () => Promise<void>
+  deleteDisabled?: boolean
 }
 
 export function MessageBubble({
@@ -65,6 +68,8 @@ export function MessageBubble({
   onFollowupSubagent,
   onInspectSubagent,
   onInterruptSubagent,
+  onDeleteMessage,
+  deleteDisabled,
 }: MessageBubbleProps) {
   const isUser = message.role === "user"
   const messageAssistantName = message.speaker?.assistantName || message.speaker?.characterName || assistantName
@@ -336,7 +341,9 @@ export function MessageBubble({
           <div className="px-[0.45vh] text-[1.65vh] text-text-muted">正在组织回复...</div>
         )}
 
-        {!isUser && !message.isStreaming && <ReplyDuration durationMs={message.replyDurationMs} />}
+        {!isUser && !message.isStreaming && <MessageFooter key={message.id} durationMs={message.replyDurationMs}
+          text={replyCopyText(message)} onDelete={message.id.startsWith("compaction:") ? undefined : onDeleteMessage}
+          deleteDisabled={deleteDisabled} />}
       </div>
     </div>
   )

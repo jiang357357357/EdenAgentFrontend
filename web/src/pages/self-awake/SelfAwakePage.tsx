@@ -36,6 +36,7 @@ import type { RpcMethodMap } from "../../lib/rpc-contracts"
 type SelfAwakeScheduleInfo = RpcMethodMap["self_awake.list"]["result"]["schedule"]
 import { selfAwakeObservations, selfAwakeToolExecutions, type SelfAwakeToolExecution } from "../../lib/self-awake-context"
 import { formatLocalMonthDayTime, formatLocalWeekday } from "../../lib/time"
+import { selfAwakeScheduleLabel } from "../../lib/self-awake-schedule"
 
 interface SelfAwakePageProps {
   currentUser?: AuthUser | null
@@ -342,13 +343,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
   }, [])
 
   const wakeTime = wakeSchedule?.nextWakeAt
-  const wakeLabel = scheduleError ? "时间读取失败"
-    : wakeSchedule?.status === "disabled" ? "自醒已暂停"
-    : wakeSchedule?.status === "unscheduled" ? "尚未安排"
-    : wakeSchedule?.status === "retrying"
-      ? `上次失败 · ${wakeTime ? `${formatDateTime(wakeTime)}${Date.parse(wakeTime) <= clockNow ? " 已到重试时间" : " 重试"}` : "等待重试计划"}`
-    : wakeTime ? (Date.parse(wakeTime) <= clockNow ? "已到时间，等待唤醒" : formatDateTime(wakeTime))
-    : loading ? "正在读取" : "尚未安排"
+  const wakeLabel = selfAwakeScheduleLabel(wakeSchedule, loading, scheduleError, clockNow)
 
   const selectedRun = useMemo(() => runs.find((run) => run.id === selectedRunId) ?? runs[0], [runs, selectedRunId])
   const hasMoreRuns = currentPage < totalPages
@@ -551,6 +546,9 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
             <div className="min-w-0">
               <div className="text-[1.25vh] text-text-muted">自动调度</div>
               <div className="truncate text-[1.65vh] tabular-nums">{wakeLabel}</div>
+              {wakeSchedule?.status === "unavailable" && (
+                <div role="alert" className="max-w-[28vw] text-[1.3vh] text-danger">{wakeSchedule.reason}</div>
+              )}
             </div>
           </div>
           <div className="flex overflow-hidden rounded-[0.75vh] border border-border bg-card shadow-sm">

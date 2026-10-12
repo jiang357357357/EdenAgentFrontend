@@ -21,3 +21,22 @@ test('missing user settings fall back to the browser without undefined coordinat
   assert.equal(Object.hasOwn(snapshot.location, 'latitude'), false)
   assert.equal(buildSessionEnvironment({ timezone: ' ' }, '', '').locale, 'zh-CN')
 })
+
+test('saved location provenance is forwarded without inventing a new observation time', () => {
+  const stored = { location: { country: '中国', region: '海南省', city: '儋州市', source: 'manual_map',
+    updated_at: '2026-09-20T08:15:00+08:00', accuracy: 0 } }
+  const before = JSON.stringify(stored)
+  const snapshot = buildSessionEnvironment(stored, 'Asia/Shanghai', 'zh-CN')
+  assert.equal(snapshot.location.source, 'manual_map')
+  assert.equal(snapshot.location.updated_at, '2026-09-20T08:15:00+08:00')
+  assert.equal(snapshot.location.accuracy, 0)
+  assert.equal(JSON.stringify(stored), before)
+})
+
+test('legacy or null location metadata stays unknown rather than becoming live browser location', () => {
+  for (const location of [{ city: '儋州市' }, { city: '儋州市', source: null, updated_at: null, accuracy: null }]) {
+    const snapshot = buildSessionEnvironment({ location }, 'Asia/Shanghai', 'zh-CN')
+    assert.equal(snapshot.location.city, '儋州市')
+    for (const field of ['source', 'updated_at', 'accuracy']) assert.equal(Object.hasOwn(snapshot.location, field), false)
+  }
+})
