@@ -1,3 +1,5 @@
+import { toolDataDisplay, toolFieldLabel } from "./tool-data-display"
+
 export interface ToolInputField {
   name: string
   label: string
@@ -8,37 +10,21 @@ export type ToolInputDisplay =
   | { kind: "fields"; fields: ToolInputField[] }
   | { kind: "text"; text: string }
 
-const fieldLabels = new Map([
-  ["command", "命令"],
-  ["cwd", "工作目录"],
-  ["workdir", "工作目录"],
-  ["path", "路径"],
-  ["content", "内容"],
-  ["query", "查询"],
-  ["queries", "查询列表"],
-])
-
 function valueText(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value, null, 2)
 }
 
 export function toolInputDisplay(input: string): ToolInputDisplay {
-  try {
-    // Decode JSON once; replacing escaped newlines directly would corrupt paths and scripts.
-    const parsed: unknown = JSON.parse(input)
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const fields = Object.entries(parsed).map(([name, value]) => ({
-        name,
-        label: fieldLabels.get(name) ?? name,
-        text: valueText(value),
-      }))
-      if (fields.length) return { kind: "fields", fields }
-    }
-    return { kind: "text", text: valueText(parsed) }
-  } catch {
-    // Streaming or non-JSON input remains visible verbatim until it is complete.
-    return { kind: "text", text: input }
+  const display = toolDataDisplay(input)
+  if (display.parsed === false) return { kind: "text", text: display.text }
+  const parsed = display.value
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const fields = Object.entries(parsed).map(([name, value]) => ({
+      name, label: toolFieldLabel(name), text: valueText(value),
+    }))
+    if (fields.length) return { kind: "fields", fields }
   }
+  return { kind: "text", text: valueText(parsed) }
 }
 
 function compactPreview(text: string): string {

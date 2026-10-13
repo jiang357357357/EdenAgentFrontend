@@ -1,5 +1,7 @@
 import type { SelfAwakeToolExecution } from '../../lib/self-awake-context'
 import { selfAwakeToolSummary } from '../../lib/self-awake-tool-summary'
+import { ToolParameters } from '../../components/chat/message/ToolParameters'
+import { ToolOutput } from '../../components/chat/message/ToolOutput'
 
 export function SelfAwakeToolCard({ execution }: { execution: SelfAwakeToolExecution }) {
   const { title, summary, decodedResult } = selfAwakeToolSummary(execution)
@@ -16,10 +18,10 @@ export function SelfAwakeToolCard({ execution }: { execution: SelfAwakeToolExecu
       <summary className="cursor-pointer">查看参数与结果</summary>
       <p className="mt-2 break-all">工具：{execution.name}</p>
       <p className="mt-2">调用参数</p>
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify(execution.args ?? null, null, 2)}</pre>
+      <ToolParameters input={JSON.stringify(execution.args ?? null)} variant="dialog" />
       <p className="mt-2">返回内容</p>
-      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all">{typeof decodedResult === 'string' ? decodedResult : JSON.stringify(decodedResult ?? null, null, 2)}</pre>
-      <details className="mt-2"><summary className="cursor-pointer">原始结果</summary>
+      <ToolOutput output={JSON.stringify(decodedResult ?? null)} variant="dialog" />
+      <details className="mt-2"><summary className="cursor-pointer">原始回执</summary>
         <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify(execution.rawResult ?? null, null, 2)}</pre>
       </details>
     </details>

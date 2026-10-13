@@ -7,6 +7,8 @@ import {
 import { normalizePetDialogSegments } from "../../../lib/pet-dialog-segments"
 import { cn } from "../../../lib/utils"
 import { useRealtimeVoiceInput } from "../../chat/input/hooks/useRealtimeVoiceInput"
+import { ToolParameters } from "../../chat/message/ToolParameters"
+import { ToolOutput } from "../../chat/message/ToolOutput"
 import { DesktopPetMarkdown, segmentText, toolStatus } from "./PetDialogContent"
 import { usePetSpeechPlayback } from "./hooks/usePetSpeechPlayback"
 import type { DesktopPetChatBubbleProps } from "./types"
@@ -247,19 +249,13 @@ export function DesktopPetChatBubble({
                         <div className="mt-[2cqh] grid gap-[2cqh] rounded-[3cqh] border border-highlight/8 bg-scrim/20 px-[4cqh] py-[3cqh] text-text">
                           <div>状态：{toolStatus(segment.tool.status)}</div>
                           {segment.tool.input ? (
-                            <pre className="min-w-0 max-w-full whitespace-pre-wrap rounded-[2cqh] bg-scrim/20 p-[2.5cqh] [overflow-wrap:anywhere]">
-                              {segment.tool.input}
-                            </pre>
+                            <ToolParameters input={segment.tool.input} variant="pet" />
                           ) : null}
                           {segment.tool.output ? (
-                            <pre className="min-w-0 max-w-full whitespace-pre-wrap rounded-[2cqh] bg-scrim/20 p-[2.5cqh] [overflow-wrap:anywhere]">
-                              {segment.tool.output}
-                            </pre>
+                            <ToolOutput output={segment.tool.output} variant="pet" />
                           ) : null}
                           {segment.tool.error ? (
-                            <pre className="min-w-0 max-w-full whitespace-pre-wrap rounded-[2cqh] bg-danger/30 p-[2.5cqh] text-danger [overflow-wrap:anywhere]">
-                              {segment.tool.error}
-                            </pre>
+                            <div className="rounded-[2cqh] bg-danger/30 p-[2.5cqh] text-danger"><ToolOutput output={segment.tool.error} variant="pet" /></div>
                           ) : null}
                         </div>
                       ) : null}

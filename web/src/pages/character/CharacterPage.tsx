@@ -5,6 +5,8 @@ import { AnimatePresence, motion } from "motion/react"
 import { ChatInput } from "../../components/chat/input"
 import { AttachmentImage } from "../../components/chat/message/AttachmentImage"
 import { AttachmentFiles } from "../../components/chat/message/AttachmentFiles"
+import { ToolParameters } from "../../components/chat/message/ToolParameters"
+import { ToolOutput } from "../../components/chat/message/ToolOutput"
 import { DesktopPetChatBubble, DesktopPetStage } from "../../components/desktop-pet"
 import { PermissionRequestCard, QuestionRequestCard } from "../../components/requests"
 import type { ActiveCharacterAction, CoreAssistant } from "../../lib/auth"
@@ -426,18 +428,14 @@ export function CharacterPage({
                                     <div className="mb-1 text-[10px] uppercase tracking-[0.12em] text-text-muted">
                                       输入
                                     </div>
-                                    <pre className="whitespace-pre-wrap rounded-lg border border-highlight/10 bg-scrim/20 p-2 text-xs text-text [overflow-wrap:anywhere]">
-                                      {tool.input}
-                                    </pre>
+                                    <ToolParameters input={tool.input} variant="dialog" />
                                   </div>
                                   {tool.output && (
                                     <div>
                                       <div className="mb-1 text-[10px] uppercase tracking-[0.12em] text-text-muted">
                                         输出
                                       </div>
-                                      <pre className="whitespace-pre-wrap rounded-lg border border-highlight/10 bg-scrim/20 p-2 text-xs text-text [overflow-wrap:anywhere]">
-                                        {tool.output}
-                                      </pre>
+                                      <ToolOutput output={tool.output} variant="dialog" />
                                     </div>
                                   )}
                                   {tool.error && (
@@ -445,9 +443,9 @@ export function CharacterPage({
                                       <div className="mb-1 text-[10px] uppercase tracking-[0.12em] text-danger/80">
                                         错误
                                       </div>
-                                      <pre className="whitespace-pre-wrap rounded-lg border border-danger/20 bg-danger/30 p-2 text-xs text-danger [overflow-wrap:anywhere]">
-                                        {tool.error}
-                                      </pre>
+                                      <div className="rounded-lg border border-danger/20 bg-danger/30 p-2 text-danger">
+                                        <ToolOutput output={tool.error} variant="dialog" />
+                                      </div>
                                     </div>
                                   )}
                                 </div>

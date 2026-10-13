@@ -4,8 +4,11 @@ import { AlertCircle, ChevronRight, Wrench } from "lucide-react"
 import type { CoordinationBatch, SubagentThread, SubagentThreadDetails, ToolCall } from "../../../types"
 import { cn } from "../../../lib/utils"
 import { toolInputPreview } from "../../../lib/tool-input-display"
+import { toolCommandDisplay } from "../../../lib/tool-command-display"
 import { SubagentActivityCard } from "./SubagentActivityCard"
 import { ToolParameters, toolTextClass } from "./ToolParameters"
+import { ToolCommandOutput } from "./ToolCommandOutput"
+import { ToolOutput } from "./ToolOutput"
 import { NoticeCard, noticeSurface } from "../../feedback"
 
 interface ToolCardProps {
@@ -48,19 +51,6 @@ function statusLabel(status: ToolCall["status"]) {
   return "完成"
 }
 
-type CommandDetails = {
-  command?: string
-  cwd?: string
-  session_id?: string
-  status?: string
-  exit_code?: number | null
-  stdout?: string
-  stderr?: string
-  duration_ms?: number
-  truncated?: boolean
-  captured_chars?: number
-}
-
 type WorkspaceDiffDetails = {
   kind: "workspace_diff"
   files: Array<{
@@ -71,12 +61,6 @@ type WorkspaceDiffDetails = {
     deletions?: number
     patch?: string
   }>
-}
-
-function commandDetails(tool: ToolCall): CommandDetails | undefined {
-  if (tool.name !== "bash" && tool.name !== "powershell" && tool.name !== "write_stdin") return undefined
-  if (!tool.details || typeof tool.details !== "object" || Array.isArray(tool.details)) return undefined
-  return tool.details as CommandDetails
 }
 
 function workspaceDiffDetails(tool: ToolCall): WorkspaceDiffDetails | undefined {
@@ -94,7 +78,7 @@ function ToolCardView({
   onInterruptSubagent,
 }: ToolCardProps) {
   const [expanded, setExpanded] = useState(false)
-  const command = commandDetails(tool)
+  const command = toolCommandDisplay(tool)
   const workspaceDiff = workspaceDiffDetails(tool)
   const preview = toolInputPreview(tool.input)
   const linkedSubagents = subagentsForTool(tool, subagentThreads)
@@ -170,21 +154,7 @@ function ToolCardView({
               {tool.status === "running" && !tool.output && !tool.error ? (
                 <NoticeCard tone="info" title="正在执行中…" busy />
               ) : null}
-              {command?.stdout ? (
-                <div className="grid gap-[0.4vh]">
-                  <span className="chat-tool-label font-medium uppercase tracking-wide text-text-muted">stdout</span>
-                  <pre className={`${toolTextClass} text-text-muted`}>{command.stdout}</pre>
-                </div>
-              ) : null}
-              {command?.stderr ? (
-                <div className="grid gap-[0.4vh]">
-                  <span className="chat-tool-label font-medium uppercase tracking-wide text-danger">stderr</span>
-                  <pre className={cn(toolTextClass, "border border-danger/30 bg-danger-dim text-danger")}>{command.stderr}</pre>
-                </div>
-              ) : null}
-              {command?.truncated ? (
-                <NoticeCard tone="warning" title="输出已截断" description={`输出超过捕获上限，当前显示 ${command.captured_chars ?? 0} 个字符。`} />
-              ) : null}
+              {command ? <ToolCommandOutput command={command} /> : null}
               {workspaceDiff ? (
                 <div className="grid gap-[0.75vh]">
                   {workspaceDiff.files.map((file, index) => (
@@ -217,13 +187,11 @@ function ToolCardView({
                 </div>
               ) : null}
               {tool.output && !command && !workspaceDiff ? (
-                <pre className={`${toolTextClass} text-text-muted`}>
-                  {tool.output}
-                </pre>
+                <ToolOutput output={tool.output} />
               ) : null}
               {tool.error ? (
                 <NoticeCard tone={tool.status === "aborted" ? "warning" : "error"} title={tool.status === "aborted" ? "工具已中止" : "工具执行失败"}>
-                  <pre className={`${toolTextClass} text-text-muted`}>{tool.error}</pre>
+                  <ToolOutput output={tool.error} />
                 </NoticeCard>
               ) : null}
             </div>

@@ -60,7 +60,9 @@ function ScopedCommandExecutionSettings({ origin, sessionId }: { origin: 'mon' |
       <p className="mb-2 font-medium">终端环境</p>
       {loading && <p role="status">正在读取终端…</p>}
       {error && <p role="alert" className="mb-2 text-danger">{error}</p>}
+      {info?.wslDetectionError && <p role="alert" className="mb-2 text-danger">{info.wslDetectionError}</p>}
       {!loading && !info && <button type="button" className="underline" onClick={() => setReload(value => value + 1)}>重新读取</button>}
+      {!loading && info?.wslDetectionError && <button type="button" className="mb-2 underline" onClick={() => setReload(value => value + 1)}>重新检测 WSL</button>}
       {info && <div className="space-y-2">
         <label className="block">
           <span className="mb-1 block opacity-80">这台设备默认</span>
@@ -80,8 +82,8 @@ function ScopedCommandExecutionSettings({ origin, sessionId }: { origin: 'mon' |
         </label>}
         <p role="status" className="opacity-80">当前命令：{targetLabel(info.effective, info.platform)}</p>
         {!info.hostAvailable && info.effective.kind === 'host' && <p className="text-danger">本机终端当前不可用。</p>}
-        {info.platform === 'win32' && info.wslDistributions.length === 0 && <p className="opacity-70">未检测到已安装的 WSL 发行版。</p>}
-        {missingTargets.length > 0 && <p className="text-danger">已选发行版当前不可用，请重新选择。</p>}
+        {info.platform === 'win32' && !info.wslDetectionError && info.wslDistributions.length === 0 && <p className="opacity-70">未检测到已安装的 WSL 发行版。</p>}
+        {!info.wslDetectionError && missingTargets.length > 0 && <p className="text-danger">已选发行版当前不可用，请重新选择。</p>}
         <p className="opacity-70">WSL 使用当前 Windows 账户可启动的发行版及其默认 Linux 用户；这里不启用沙箱。</p>
       </div>}
     </section>

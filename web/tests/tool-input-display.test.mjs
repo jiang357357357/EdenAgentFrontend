@@ -3,14 +3,14 @@ import { after, test } from 'node:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer } from 'vite'
-import { toolInputDisplay, toolInputPreview } from '../src/lib/tool-input-display.ts'
 
 const vite = await createServer({ optimizeDeps: { noDiscovery: true, include: [] }, configFile: false,
   server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom' })
 after(() => vite.close())
-const [{ ToolParameters }, { ToolCard }] = await Promise.all([
+const [{ ToolParameters }, { ToolCard }, { toolInputDisplay, toolInputPreview }] = await Promise.all([
   vite.ssrLoadModule('/src/components/chat/message/ToolParameters.tsx'),
   vite.ssrLoadModule('/src/components/chat/message/ToolCard.tsx'),
+  vite.ssrLoadModule('/src/lib/tool-input-display.ts'),
 ])
 const render = (component, props) => renderToStaticMarkup(createElement(component, props))
 const decode = text => text.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<')
@@ -50,7 +50,9 @@ test('false, zero, null, nested objects and unknown field names remain available
     assert.equal(field.text, typeof args[field.name] === 'string' ? args[field.name] : JSON.stringify(args[field.name], null, 2))
     assert.equal(typeof field.label, 'string')
   }
-  assert.deepEqual(preTexts(render(ToolParameters, { input })), [...display.fields.map(field => field.text), input])
+  assert.deepEqual(preTexts(render(ToolParameters, { input })), [
+    '0', 'false', 'null', '', '中文', 'test', 'inspect', '2', 'business field', 'plain value', input,
+  ])
 })
 
 test('incomplete, invalid or plain input is rendered verbatim without guessing escaped newlines', () => {
@@ -65,7 +67,8 @@ test('non-object JSON inputs preserve their values and empty argument objects re
     const input = JSON.stringify(value)
     const expected = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
     assert.deepEqual(toolInputDisplay(input), { kind: 'text', text: expected })
-    assert.deepEqual(preTexts(render(ToolParameters, { input })), [expected])
+    const displayed = Array.isArray(value) && value.length ? value : [expected]
+    assert.deepEqual(preTexts(render(ToolParameters, { input })), [...displayed, input])
   }
 })
 

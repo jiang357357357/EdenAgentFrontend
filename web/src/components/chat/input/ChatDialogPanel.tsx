@@ -1,6 +1,8 @@
 import { AttachmentImage } from "../message/AttachmentImage"
 import { cn } from "../../../lib/utils"
 import { MarkdownContent } from "../message/MarkdownContent"
+import { ToolParameters } from "../message/ToolParameters"
+import { ToolOutput } from "../message/ToolOutput"
 import type { DialogSegment } from "./types"
 
 interface ChatDialogPanelProps {
@@ -48,12 +50,12 @@ export function ChatDialogPanel({
               <summary className="cursor-pointer select-none text-[0.8em] tracking-[0.14em] text-success/85">工具: {currentOutput.tool.name}</summary>
               <div className="mt-2 grid gap-2 text-[0.88em] text-text">
                 <div>状态: {currentOutput.tool.status}{currentOutput.tool.duration ? ` · ${currentOutput.tool.duration}ms` : ""}</div>
-                <pre className="whitespace-pre-wrap rounded-lg border border-highlight/10 bg-scrim/20 p-2 [overflow-wrap:anywhere]">{currentOutput.tool.input}</pre>
+                <ToolParameters input={currentOutput.tool.input} variant="dialog" />
                 {currentOutput.tool.output && (
-                  <pre className="whitespace-pre-wrap rounded-lg border border-highlight/10 bg-scrim/20 p-2 [overflow-wrap:anywhere]">{currentOutput.tool.output}</pre>
+                  <ToolOutput output={currentOutput.tool.output} variant="dialog" />
                 )}
                 {currentOutput.tool.error && (
-                  <pre className="whitespace-pre-wrap rounded-lg border border-danger/20 bg-danger/30 p-2 text-danger [overflow-wrap:anywhere]">{currentOutput.tool.error}</pre>
+                  <div className="rounded-lg border border-danger/20 bg-danger/30 p-2 text-danger"><ToolOutput output={currentOutput.tool.error} variant="dialog" /></div>
                 )}
               </div>
             </details>
