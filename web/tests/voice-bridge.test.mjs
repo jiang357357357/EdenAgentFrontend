@@ -9,11 +9,12 @@ const chatSource = await readFile(new URL("../src/pages/chat/ChatPage.tsx", impo
 const speechSource = await readFile(new URL("../src/hooks/useTTSSpeech.ts", import.meta.url), "utf8")
 const petSpeechSource = await readFile(new URL("../src/components/desktop-pet/bubble/hooks/usePetSpeechPlayback.ts", import.meta.url), "utf8")
 
-test("voice calls stay behind the Rust Agent Server boundary", () => {
+test("voice calls stay behind the Agent Server transport boundary", () => {
   assert.doesNotMatch(clientSource, /\/api\/tts/)
   assert.doesNotMatch(realtimeSource, /\/ws\/stt\/realtime/)
   assert.doesNotMatch(realtimeSource, /getStoredToken|resolveCoreBaseUrl/)
-  assert.match(clientSource, /voice\.tts\.synthesize/)
+  assert.match(clientSource, /requestSpeechSynthesis\(\{/)
+  assert.match(transportSource, /voice\.tts\.synthesize/)
   assert.match(clientSource, /voice\.tts\.list_segments/)
   assert.match(transportSource, /\/voice\/stt\/realtime/)
   assert.match(transportSource, /EDEN_AGENT_TOKEN_PROTOCOL_PREFIX/)

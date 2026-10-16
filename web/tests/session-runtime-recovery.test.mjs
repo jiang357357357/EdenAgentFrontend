@@ -20,11 +20,14 @@ const vite = await createServer({ configFile: false, optimizeDeps: { noDiscovery
     },
     resolveId(source, importer) {
       if (!/\/hooks\/useSession(?:Runtime|ConnectionFeedback)\.ts$/.test(importer?.replaceAll('\\', '/') ?? '')) return
+      // History maintenance is covered by its own renderer acceptance; this fixture controls recovery only.
+      if (source === './useSessionHistoryMaintenance') return '\0recovery:history'
       const names = { 'virtual:recovery-hooks': 'hooks', '../lib/agent-client': 'rpc', '../lib/runtime-origin': 'origin',
         '../lib/rpc-transport': 'transport', '../lib/screen-capture': 'screen', '../lib/camera-capture': 'camera' }
       if (names[source]) return `\0recovery:${names[source]}`
     },
     load(id) {
+      if (id === '\0recovery:history') return 'export const useSessionHistoryMaintenance=()=>{};'
       const call = (name, group) => `export const ${name}=(...args)=>globalThis.${key}.${group}.${name}(...args);`
       if (id === '\0recovery:hooks') return hooks.map(name => call(name, 'host')).join('\n')
       if (id === '\0recovery:transport') return `export const subscribeSessionChannelStatus=fn=>{globalThis.${key}.channelListeners.push(fn);return ()=>{} }; export const retainSessionChannels=()=>{}; export const forgetSessionChannel=()=>{};`
@@ -176,7 +179,11 @@ test('new recovery revisions ignore stale failures and selection changes wait fo
     assert.equal(host.value.connectionFeedback.phase, 'restored')
     assert.equal(host.value.activeSessionId, 'B')
     assert.ok(JSON.stringify(host.value.activeSession).includes('NEW_B'))
-    assert.ok(JSON.stringify(host.value.sessions).includes('NEW_A'))
+    assert.deepEqual(host.value.sessions.find(item => item.id === 'A').messages, [])
+    const fetchedA = calls.filter(id => id === 'A').length
+    host.value.selectSession('A'); await host.settle()
+    assert.ok(JSON.stringify(host.value.activeSession).includes('NEW_A'))
+    assert.equal(calls.filter(id => id === 'A').length, fetchedA)
   } finally { host.dispose() }
 })
 
@@ -209,7 +216,7 @@ test('a background channel recovery cannot replace another tab feedback or messa
     assert.notEqual(host.value.connectionFeedback.phase, 'restoring')
     recovered.resolve(page('A', 'A_RECOVERED')); await host.settle()
     assert.equal(host.value.activeSessionId, 'B')
-    assert.ok(JSON.stringify(host.value.sessions).includes('A_RECOVERED'))
+    assert.deepEqual(host.value.sessions.find(item => item.id === 'A').messages, [])
     host.value.selectSession('A'); await host.settle()
     assert.equal(host.value.connectionFeedback.phase, 'restored')
     assert.ok(JSON.stringify(host.value.activeSession).includes('A_RECOVERED'))

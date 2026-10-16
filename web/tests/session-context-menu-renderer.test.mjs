@@ -24,10 +24,10 @@ test('isolated Electron verifies session context menu, archive failure/recovery,
           if (args.importer.endsWith('AllSessionsPage.tsx')) return { path: join(webRoot, 'tests/fixtures/session-context-menu-host.ts') }
         })
       } }], logOverride: { 'import-is-undefined': 'silent' } })
-    const built = await readFile(join(evidence, 'web-build/index.html'), 'utf8')
+    const built = await readFile(join(webRoot, 'dist/index.html'), 'utf8')
     const css = /href="(?:\.?\/)?(assets\/[^"<>]+\.css)"/.exec(built)?.[1]
     assert.ok(css, 'run the isolated frontend build first')
-    await writeFile(join(scratch, 'index.html'), `<!doctype html><html><meta charset="utf-8"><link rel="stylesheet" href="${pathToFileURL(join(evidence, 'web-build', css)).href}"><body class="bg-bg text-text"><script src="renderer.js"></script></body></html>`)
+    await writeFile(join(scratch, 'index.html'), `<!doctype html><html><meta charset="utf-8"><link rel="stylesheet" href="${pathToFileURL(join(webRoot, 'dist', css)).href}"><body class="bg-bg text-text"><script src="renderer.js"></script></body></html>`)
     await mkdir(evidence, { recursive: true })
     await writeFile(join(scratch, 'main.cjs'), `
 const { app, BrowserWindow } = require('electron');
