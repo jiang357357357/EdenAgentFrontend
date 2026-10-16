@@ -1,13 +1,14 @@
 const path = require('node:path')
 const { reminderLayout } = require('./reminder-layout.cjs')
 
-function createReminderWindow({ BrowserWindow, screen, ipcMain, origin, reminder, acknowledge, displayed, onClosed }) {
+function createReminderWindow({ BrowserWindow, screen, ipcMain, origin, reminder, acknowledge, displayed, onClosed, logger = console }) {
   const display = screen.getDisplayNearestPoint?.(screen.getCursorScreenPoint()) ?? screen.getPrimaryDisplay()
   const initial = reminderLayout(display.workArea, origin)
   const window = new BrowserWindow({ width: initial.width, height: initial.minHeight, useContentSize: true,
     show: false, alwaysOnTop: true, skipTaskbar: false, resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
     backgroundColor: '#faf9f6', title: 'Eden · 角色提醒',
-    webPreferences: { preload: path.join(__dirname, 'reminder-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: { preload: path.join(__dirname, 'reminder-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true,
+      partition: `eden-agent-reminders-${origin}` },
   })
   const outer = window.getBounds(), inner = window.getContentBounds()
   const layout = reminderLayout(display.workArea, origin, { width: outer.width - inner.width, height: outer.height - inner.height })
@@ -29,6 +30,10 @@ function createReminderWindow({ BrowserWindow, screen, ipcMain, origin, reminder
   ipcMain.on('eden-reminder:resize', resize)
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', event => event.preventDefault())
+  window.webContents.once('render-process-gone', (_event, details) => {
+    logger.warn(`[Eden Agent][Reminder] renderer stopped: ${details.reason} (${details.exitCode})`)
+    if (!window.isDestroyed()) window.destroy()
+  })
   window.webContents.once('did-finish-load', () => window.webContents.send('eden-reminder:content', {
     title: reminder.title, message: reminder.message, world: origin === 'mon' ? '伊甸园' : '尘世', maxHeight: layout.maxHeight,
   }))

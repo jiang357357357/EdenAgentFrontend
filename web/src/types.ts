@@ -174,6 +174,7 @@ export interface PromptAttachment {
 export interface Session {
   id: string
   title: string
+  archived?: boolean
   updatedAt?: number
   contextTokens?: number
   tokenBreakdown?: TokenBreakdown
@@ -556,6 +557,8 @@ export interface RuntimeMessage {
 export interface RuntimeSession {
   id: string
   title: string
+  archived?: boolean
+  archiveUpdatedAt?: number
   contextTokens?: number
   tokenBreakdown?: TokenBreakdown
   status: SessionStatus

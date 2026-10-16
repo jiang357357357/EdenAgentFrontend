@@ -48,6 +48,7 @@ const { registerAppProtocol } = require("./protocols/app-protocol.cjs")
 const { createWebAppLoader } = require("./windows/web-app-loader.cjs")
 const { createTrayController } = require("./windows/tray-controller.cjs")
 const { attachWindowRepaint } = require("./windows/window-repaint.cjs")
+const { attachPrimaryRendererStartup } = require("./windows/primary-renderer-startup.cjs")
 const { rendererConsoleError } = require("./windows/renderer-console-message.cjs")
 
 const execFileAsync = promisify(execFile)
@@ -717,9 +718,11 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       webSecurity: false,
+      backgroundThrottling: false,
     },
   })
 
+  attachPrimaryRendererStartup(mainWindow, { ipcMain, onReady: () => desktopReminders.start() })
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show()
   })
@@ -1280,7 +1283,6 @@ app.on("second-instance", () => {
     desktopEnvironmentService.startMonitors()
     createWindow()
     createQuestionWindow()
-    desktopReminders.start()
     if (process.env.EDEN_AGENT_DESKTOP_START_PAGE === "settings") {
       void createSettingsWindow()
     } else if (process.env.EDEN_AGENT_DESKTOP_START_PAGE === "pet") {

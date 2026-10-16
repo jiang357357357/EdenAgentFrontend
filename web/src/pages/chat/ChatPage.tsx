@@ -96,6 +96,7 @@ interface ChatPageProps {
   onDeleteSession: (id: string) => Promise<void>
   onDeleteMessage: (sessionId: string, messageId: string) => Promise<void>
   onRenameSession: (id: string, title: string) => Promise<void>
+  onArchiveSession: (id: string, archived: boolean) => Promise<void>
   onNewSession: () => void
   onSendMessage: (content: string, attachments: PromptAttachment[]) => Promise<void>
   onCompact: (instructions?: string) => Promise<void>
@@ -160,6 +161,7 @@ export function ChatPage({
   onDeleteSession,
   onDeleteMessage,
   onRenameSession,
+  onArchiveSession,
   onNewSession,
   onSendMessage,
   onCompact,
@@ -526,6 +528,7 @@ export function ChatPage({
         onSelect={openWorkspaceSession}
         onDelete={onDeleteSession}
         onRename={onRenameSession}
+        onArchive={onArchiveSession}
         onNewSession={onNewSession}
         onOpenParticipants={onOpenAssistantSwitcher}
         onOpenDutyAssistant={onOpenDutyAssistantSwitcher}

@@ -1,5 +1,7 @@
 import { useId, useState } from "react"
 import { ArrowLeft, FolderSync, RefreshCw } from "lucide-react"
+import { motion } from "motion/react"
+import { pageEnterMotion } from "../../lib/page-motion"
 import { NoticeCard } from "../../components/feedback"
 import type { SharedWorkspaceStateOwner } from "../../components/shared-workspace/shared-workspace-state"
 import { sharedButtonClass } from "../../components/shared-workspace/shared-workspace-view"
@@ -29,7 +31,7 @@ export function SharedWorkspacePageView({ owner, root, choosing = false, directo
     onChooseWorkspace()
   }
   const error = directoryError || state.error
-  return <main className="flex h-full min-h-0 w-full flex-col bg-library-bg text-text" aria-labelledby="shared-workspace-title">
+  return <motion.main {...pageEnterMotion} className="flex h-full min-h-0 w-full flex-col bg-library-bg text-text" aria-labelledby="shared-workspace-title">
     <PageHeader loading={state.loading} busy={busy} onBack={onBack} onRefresh={() => void owner.refresh(true)} />
     <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border/70 px-4 py-3 text-sm sm:px-8">
       <span className="text-text-muted">共享目录</span>
@@ -57,7 +59,7 @@ export function SharedWorkspacePageView({ owner, root, choosing = false, directo
           </section>)}
       </div>
     </div>
-  </main>
+  </motion.main>
 }
 
 function PageHeader({ loading, busy, onBack, onRefresh }: {

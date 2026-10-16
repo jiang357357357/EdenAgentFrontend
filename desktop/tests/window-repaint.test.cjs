@@ -57,3 +57,12 @@ test("a minimized or destroyed surface is skipped", () => {
   f.flush()
   assert.equal(f.repaints(), 0)
 })
+
+test("returning focus after a reminder repaints the primary surface", () => {
+  const f = fixture()
+  f.window.emit("focus")
+  f.flush()
+  assert.equal(f.repaints(), 1)
+  f.window.emit("closed")
+  assert.equal(f.window.listenerCount("focus"), 0)
+})

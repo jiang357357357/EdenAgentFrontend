@@ -516,6 +516,7 @@ export function apiSession(session: import("@eden/api").SessionSummary): ApiSess
   return {
     id: session.id,
     title: session.title,
+    archived: session.archived ?? false,
     purpose: session.purpose,
     sourceChannel: session.sourceChannel,
     runtimeOrigin: session.runtimeOrigin,
@@ -1065,6 +1066,11 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
         },
       },
     ]
+  }
+  if (event.eventType === "session.archive_updated") {
+    const value = jsonObject(event.payload)
+    return typeof value?.archived === "boolean" ? [{ type: "session.archive_updated",
+      properties: { sessionID, archived: value.archived, updatedAt: Number(event.createdAt) } }] : []
   }
   if (event.eventType === "model.response") {
     const usage = modelContextUsage(event.payload)

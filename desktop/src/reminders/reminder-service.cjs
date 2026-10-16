@@ -32,7 +32,7 @@ function createDesktopReminderService({ BrowserWindow, screen, ipcMain, capabili
   function openWindow(origin, reminder, accountRevision) {
     if (!reminder || typeof reminder.id !== 'string' || typeof reminder.title !== 'string' || typeof reminder.message !== 'string') return
     let acknowledged = false
-    const window = createWindow({ BrowserWindow, screen, ipcMain, origin, reminder,
+    const window = createWindow({ BrowserWindow, screen, ipcMain, origin, reminder, logger,
       acknowledge: async () => {
         const result = await request(origin, 'desktop.reminder.close', { id: reminder.id }, accountRevision)
         acknowledged = true

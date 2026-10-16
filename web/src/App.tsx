@@ -282,6 +282,7 @@ export default function App() {
     deleteSession: deleteRuntimeSession,
     deleteMessage: deleteRuntimeMessage,
     renameSession: renameRuntimeSession,
+    setSessionArchived: setRuntimeSessionArchived,
     draftParticipantIDs,
     dismissQuestion,
     followupSubagent,
@@ -1111,6 +1112,7 @@ export default function App() {
           <AllSessionsPage
             key={runtimeOrigin}
             origin={runtimeOrigin ?? "mon"}
+            onArchive={setRuntimeSessionArchived}
             onBack={() => setActivePage("chat")}
             navigation={{
               onOpenParticipants: () => { setAssistantSwitcherMode("participants"); setActivePage("assistant-switcher") },
@@ -1237,6 +1239,7 @@ export default function App() {
             onDeleteSession={handleDeleteSession}
             onDeleteMessage={deleteRuntimeMessage}
             onRenameSession={handleRenameSession}
+            onArchiveSession={setRuntimeSessionArchived}
             onNewSession={handleNewSession}
             onSendMessage={handleSendMessage}
             onCompact={handleCompactSession}

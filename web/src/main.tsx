@@ -2,6 +2,7 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import {AppErrorBoundary} from './components/errors';
+import {DesktopRendererReady} from './components/desktop/DesktopRendererReady';
 import './index.css';
 
 // The bubble is a transparent native window. Apply this before React mounts so
@@ -15,6 +16,7 @@ const isPetSurface = initialPage === 'pet' || initialPage === 'pet-character' ||
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AppErrorBoundary petSurface={isPetSurface}>
+      <DesktopRendererReady />
       <App />
     </AppErrorBoundary>
   </StrictMode>,

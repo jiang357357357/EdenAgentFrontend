@@ -1,7 +1,7 @@
 /** Refresh the complete surface after native window state changes. */
 function attachWindowRepaint(targetWindow, { schedule = setImmediate, cancel = clearImmediate } = {}) {
   const contents = targetWindow.webContents
-  const events = ["resize", "maximize", "unmaximize", "restore", "show"]
+  const events = ["resize", "maximize", "unmaximize", "restore", "show", "focus"]
   let pending = null
   let disposed = false
   const request = () => {

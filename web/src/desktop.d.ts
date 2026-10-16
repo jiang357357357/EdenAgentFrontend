@@ -3,6 +3,7 @@ export {}
 declare global {
   interface Window {
     edenAgentDesktop?: {
+      rendererReady?(): void
       getAgentCapability?(origin?: "mon" | "local"): Promise<{ token: string; baseUrl?: string; origin?: "mon" | "local"; workspaceId?: string }>
       invoke<T = unknown>(command: string, args?: Record<string, unknown>): Promise<T>
       onViewMode?(callback: (mode: "chatWithCharacter" | "character") => void): () => void

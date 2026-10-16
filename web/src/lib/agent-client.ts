@@ -65,6 +65,7 @@ export type SessionParticipant = {
 export type ApiSession = {
   id: string
   title: string
+  archived?: boolean
   purpose?: "user_chat" | "self_awake" | "subagent"
   sourceChannel?: "app" | "qq" | "internal"
   runtimeOrigin?: "mon" | "local"
@@ -1067,6 +1068,7 @@ export function mapSession(info: ApiSession, messages: MessageData[] = []): Sess
   return {
     id: info.id,
     title: info.title || "新会话",
+    archived: info.archived ?? false,
     updatedAt: info.time.updated,
     contextTokens: info.contextTokens,
     tokenBreakdown: info.tokenBreakdown,
@@ -1133,7 +1135,7 @@ export async function isBackgroundSession(sessionId: string): Promise<boolean> {
 }
 
 export async function listSessionsRaw() {
-  const sessions = await rpcRequest("session.list", { limit: 50, includeClosed: false })
+  const sessions = await rpcRequest("session.list", { limit: 50, includeClosed: false, archived: false })
   return sessions.filter(isAppChatSession).map(apiSession)
 }
 
@@ -1313,6 +1315,10 @@ export function projectMessageEvents(events: RpcSessionEvent[]): ApiMessage[] {
 export async function renameSession(sessionID: string, title: string) {
   const session = await rpcRequest("session.rename", { sessionId: sessionID, title })
   return apiSession(session)
+}
+
+export async function setSessionArchived(sessionID: string, archived: boolean) {
+  return apiSession(await rpcRequest("session.set_archived", { sessionId: sessionID, archived }))
 }
 
 export async function listMessagesRaw(sessionID: string, before?: string, limit = 50) {

@@ -29,6 +29,7 @@ interface SidebarProps {
   onSelect: (id: string) => void
   onDelete: (id: string) => Promise<void> | void
   onRename: (id: string, title: string) => Promise<void> | void
+  onArchive: (id: string, archived: boolean) => Promise<void> | void
   onNewSession: () => void
   onOpenParticipants: () => void
   onOpenDutyAssistant: () => void
@@ -134,6 +135,7 @@ export function Sidebar({
   onSelect,
   onDelete,
   onRename,
+  onArchive,
   onNewSession,
   onOpenParticipants,
   onOpenDutyAssistant,
@@ -156,8 +158,7 @@ export function Sidebar({
   const [renamingSession, setRenamingSession] = useState<{ id: string; title: string } | null>(null)
   const filteredSessions = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase()
-    if (!normalized) return sessions
-    return sessions.filter((session) => session.title.toLocaleLowerCase().includes(normalized))
+    return sessions.filter((session) => !session.archived && (!normalized || session.title.toLocaleLowerCase().includes(normalized)))
   }, [query, sessions])
 
   return (
@@ -202,7 +203,7 @@ export function Sidebar({
           </div>
 
           <VirtualSessionList sessions={filteredSessions} activeId={activeId} resetKey={query}
-            onSelect={onSelect} onRename={setRenamingSession} onDelete={onDelete} /></> : (
+            onSelect={onSelect} onRename={setRenamingSession} onDelete={onDelete} onArchive={onArchive} /></> : (
             <WorkspaceExplorer sessionId={activeId || undefined} onSelect={onSelect}
               onOpenFile={onOpenFile} onWorkspaceChanged={onWorkspaceChanged} onOpenSharedWorkspace={onOpenSharedWorkspace} />
           )}

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ArrowLeft, RefreshCw, Search } from "lucide-react"
+import { Archive, ArchiveRestore, ArrowLeft, RefreshCw, Search } from "lucide-react"
+import { motion } from "motion/react"
 import { ActivityRail, type ActivityRailProps } from "../../components/layout"
 import { mapMessage, projectMessageEvents } from "../../lib/agent-client"
 import { rpcRequestForOrigin } from "../../lib/rpc-transport"
 import { formatLocalDateTime } from "../../lib/time"
+import { pageEnterMotion } from "../../lib/page-motion"
 import type { RpcMethodMap } from "../../lib/rpc-contracts"
 import type { MessageData } from "../../types"
 
@@ -25,14 +27,17 @@ function categoryOf(session: SessionSummary): Category {
 interface AllSessionsPageProps {
   origin: Origin
   onBack: () => void
+  onArchive: (id: string, archived: boolean) => Promise<void>
   navigation: Navigation
 }
 
-export function AllSessionsPage({ origin, onBack, navigation }: AllSessionsPageProps) {
+export function AllSessionsPage({ origin, onBack, onArchive, navigation }: AllSessionsPageProps) {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [selectedId, setSelectedId] = useState("")
   const [query, setQuery] = useState("")
   const [category, setCategory] = useState<Category>("all")
+  const [archiveFilter, setArchiveFilter] = useState("all")
+  const [archivePending, setArchivePending] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [revision, setRevision] = useState(0)
@@ -64,12 +69,21 @@ export function AllSessionsPage({ origin, onBack, navigation }: AllSessionsPageP
   const filtered = useMemo(() => {
     const text = query.trim().toLocaleLowerCase()
     return sessions.filter(session => (category === "all" || categoryOf(session) === category)
+      && (archiveFilter === "all" || session.archived === (archiveFilter === "archived"))
       && (!text || session.title.toLocaleLowerCase().includes(text) || session.id.toLocaleLowerCase().includes(text)))
-  }, [sessions, query, category])
+  }, [sessions, query, category, archiveFilter])
   useEffect(() => {
     if (!filtered.some(session => session.id === selectedId)) setSelectedId(filtered[0]?.id ?? "")
   }, [filtered, selectedId])
   const selected = sessions.find(session => session.id === selectedId)
+  const changeArchive = async () => {
+    if (!selected || archivePending) return
+    const scope = messageScopeRef.current
+    setArchivePending(true); setError("")
+    try { await onArchive(selected.id, !selected.archived); refresh() }
+    catch (reason) { if (messageScopeRef.current === scope) setError(reason instanceof Error ? reason.message : "归档操作失败。") }
+    finally { setArchivePending(false) }
+  }
 
   useEffect(() => {
     let disposed = false
@@ -109,7 +123,7 @@ export function AllSessionsPage({ origin, onBack, navigation }: AllSessionsPageP
     }
   }
 
-  return <div className="theme-page flex h-screen min-h-0 bg-bg text-text">
+  return <motion.div {...pageEnterMotion} className="theme-page flex h-screen min-h-0 bg-bg text-text">
     <ActivityRail {...navigation} active="allSessions" onOpenFiles={onBack} onOpenSessions={onBack} onOpenAllSessions={refresh} />
     <aside className="flex w-[23vw] min-w-[280px] max-w-[390px] shrink-0 flex-col border-r border-border bg-card/35">
       <div className="border-b border-border px-4 py-4">
@@ -122,9 +136,14 @@ export function AllSessionsPage({ origin, onBack, navigation }: AllSessionsPageP
           <Search className="h-4 w-4 shrink-0" />
           <input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索标题或会话 ID" className="min-w-0 flex-1 bg-transparent text-sm text-text outline-none" />
         </label>
-        <select aria-label="筛选会话类型" value={category} onChange={event => setCategory(event.target.value as Category)} className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm">
-          {Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <select aria-label="筛选会话类型" value={category} onChange={event => setCategory(event.target.value as Category)} className="min-w-0 w-full rounded-lg border border-border bg-bg px-2 py-2 text-sm">
+            {Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <select aria-label="筛选归档状态" value={archiveFilter} onChange={event => setArchiveFilter(event.target.value)} className="min-w-0 w-full rounded-lg border border-border bg-bg px-2 py-2 text-sm">
+            <option value="all">全部归档状态</option><option value="active">未归档</option><option value="archived">已归档</option>
+          </select>
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {loading && <p className="p-3 text-sm text-text-muted">正在读取会话…</p>}
@@ -133,6 +152,7 @@ export function AllSessionsPage({ origin, onBack, navigation }: AllSessionsPageP
         {filtered.map(session => <button key={session.id} type="button" onClick={() => setSelectedId(session.id)}
           className={`mb-1 w-full rounded-lg border-l-2 px-3 py-3 text-left hover:bg-card ${selectedId === session.id ? "border-accent bg-accent/8" : "border-transparent"}`}>
           <span className="block truncate text-sm font-medium">{session.title || "新会话"}</span>
+          {session.archived && <span className="text-xs text-text-muted">已归档</span>}
           <span className="mt-1 flex items-center gap-2 text-xs text-text-muted">
             <span>{categoryLabels[categoryOf(session)]}</span><span>·</span><span>{session.status === "closed" ? "已关闭" : "进行中"}</span>
           </span>
@@ -145,7 +165,11 @@ export function AllSessionsPage({ origin, onBack, navigation }: AllSessionsPageP
       <header className="flex min-h-16 items-center gap-3 border-b border-border px-6">
         <button type="button" onClick={onBack} className="rounded-lg p-2 text-text-muted hover:bg-card hover:text-text" aria-label="返回聊天"><ArrowLeft className="h-5 w-5" /></button>
         <div className="min-w-0"><h2 className="truncate font-medium">{selected?.title || "选择会话"}</h2>
-          {selected && <p className="truncate text-xs text-text-muted">{categoryLabels[categoryOf(selected)]} · {selected.status === "closed" ? "已关闭" : "进行中"} · {selected.id}</p>}</div>
+          {selected && <p className="truncate text-xs text-text-muted">{categoryLabels[categoryOf(selected)]} · {selected.archived ? "已归档 · " : ""}{selected.status === "closed" ? "已关闭" : "进行中"} · {selected.id}</p>}</div>
+        {selected && <button type="button" disabled={archivePending} onClick={() => void changeArchive()}
+          className="ml-auto flex shrink-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-card disabled:opacity-50">
+          {selected.archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+          {archivePending ? "保存中…" : selected.archived ? "取消归档" : "归档"}</button>}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
         {!selected && <p className="text-sm text-text-muted">从左侧选择会话查看消息。</p>}
@@ -161,5 +185,5 @@ export function AllSessionsPage({ origin, onBack, navigation }: AllSessionsPageP
         </div>}
       </div>
     </main>
-  </div>
+  </motion.div>
 }

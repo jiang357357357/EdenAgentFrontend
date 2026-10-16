@@ -147,7 +147,7 @@ export async function runHistorySidebarTests() {
   const noop = () => {}
   const props = { sessions, activeId: "session-0", activity: "sessions" as const,
     onSelect: (id: string) => { selected = id }, onDelete: (id: string) => { deleted = id },
-    onRename: async (id: string) => { renamed = id }, onNewSession: noop, onOpenParticipants: noop,
+    onRename: async (id: string) => { renamed = id }, onArchive: async () => {}, onNewSession: noop, onOpenParticipants: noop,
     onOpenDutyAssistant: noop, onOpenSelfAwake: noop, onOpenAllSessions: noop, onOpenMemo: noop,
     onOpenSkills: noop, onOpenConnectors: noop, onOpenConfiguration: noop, onOpenSettings: noop,
     onOpenFile: noop, onWorkspaceChanged: noop, onOpenSharedWorkspace: noop, onActivityChange: noop }
@@ -177,11 +177,21 @@ export async function runHistorySidebarTests() {
   await wait(); await wait()
   assert((document.activeElement as HTMLElement).dataset.sessionSelect === "session-999", "End moves focus to last session")
   const confirm = window.confirm
+  const openMenu = async () => {
+    host.querySelector<HTMLButtonElement>('button[data-session-select="session-999"]')!
+      .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }))
+    await until(() => Boolean(document.querySelector('[role="menu"]')))
+  }
+  const menuItem = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+    .find(item => item.textContent === text)!
+  await openMenu()
   window.confirm = () => true
-  host.querySelector<HTMLButtonElement>('button[aria-label="强制移除会话：会话 999"]')!.click()
+  menuItem("删除").click()
+  await until(() => !document.querySelector('[role="menu"]'))
   window.confirm = confirm
   assert(deleted === "session-999", "delete routes the correct ID")
-  host.querySelector<HTMLButtonElement>('button[aria-label="重命名会话：会话 999"]')!.click()
+  await openMenu()
+  menuItem("编辑").click()
   await wait()
   const dialog = document.querySelector<HTMLDialogElement>("dialog[open]")
   assert(dialog, "rename dialog opens for a virtual row")

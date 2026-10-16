@@ -1,15 +1,17 @@
-import { MessageSquare, Pencil, Trash2 } from "lucide-react"
+import { MessageSquare } from "lucide-react"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { resolveCoreAssetUrl } from "../../lib/auth"
 import { sessionListLayout, visibleSessionRows, type SessionListRow } from "../../lib/session-list-layout"
 import { cn } from "../../lib/utils"
 import type { Session } from "../../types"
+import { SessionContextMenu } from "./SessionContextMenu"
 
 type Props = {
   sessions: Session[]; activeId: string; resetKey: string
   onSelect(id: string): void
   onRename(session: { id: string; title: string }): void
   onDelete(id: string): Promise<void> | void
+  onArchive(id: string, archived: boolean): Promise<void> | void
 }
 
 function SessionAvatar({ session, active }: { session: Session; active: boolean }) {
@@ -24,34 +26,45 @@ function SessionAvatar({ session, active }: { session: Session; active: boolean 
   </span>
 }
 
-const SessionRow = memo(function SessionRow({ row, total, active, onSelect, onRename, onDelete }: {
+const SessionRow = memo(function SessionRow({ row, total, active, onSelect, onMenu }: {
   row: SessionListRow & { session: Session }; total: number; active: boolean
-} & Pick<Props, "onSelect" | "onRename" | "onDelete">) {
+  onMenu(session: Session, x: number, y: number, anchor: HTMLElement): void
+} & Pick<Props, "onSelect">) {
   const session = row.session
   return <li data-session-row={session.id} aria-posinset={row.position} aria-setsize={total}
-    className="group absolute left-0 w-full focus-within:z-10" style={{ top: row.offset, height: row.height - 4 }}>
+    onContextMenu={event => { event.preventDefault(); onMenu(session, event.clientX, event.clientY,
+      event.currentTarget.querySelector<HTMLButtonElement>("[data-session-select]")!) }}
+    onKeyDown={event => {
+      if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return
+      event.preventDefault()
+      const anchor = event.currentTarget.querySelector<HTMLButtonElement>("[data-session-select]")!
+      const rect = anchor.getBoundingClientRect()
+      onMenu(session, rect.left + 16, rect.bottom, anchor)
+    }}
+    className="absolute left-0 w-full focus-within:z-10" style={{ top: row.offset, height: row.height - 4 }}>
     <button type="button" data-session-select={session.id} onClick={() => onSelect(session.id)} title={session.title}
       aria-label={`打开会话：${session.title}`} aria-current={active ? "page" : undefined}
-      className={cn("flex h-full w-full items-center gap-[0.8vw] rounded-[0.9vh] border-l-2 px-[0.75vw] pr-[4.6vw] text-left text-[1.7vh] transition-colors",
+      className={cn("flex h-full w-full items-center gap-[0.8vw] rounded-[0.9vh] border-l-2 px-[0.75vw] text-left text-[1.7vh] transition-colors",
         active ? "border-accent bg-accent/8 text-text" : "border-transparent text-text-muted hover:bg-card hover:text-text")}>
       <SessionAvatar session={session} active={active} />
       <span className="min-w-0 flex-1 truncate">{session.title}</span>
       <span className="shrink-0 text-[1.35vh] text-text-lighter">{session.date}</span>
     </button>
-    <button type="button" onClick={() => onRename({ id: session.id, title: session.title })}
-      className="absolute right-[2.55vw] top-1/2 flex h-[4.2vh] w-[4.2vh] -translate-y-1/2 items-center justify-center rounded-[0.6vh] text-text-muted opacity-0 hover:bg-accent/10 hover:text-accent focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
-      aria-label={`重命名会话：${session.title}`} title="重命名会话"><Pencil className="h-[2vh] w-[2vh]" /></button>
-    <button type="button" onClick={() => {
-      if (window.confirm(`移除会话“${session.title}”？会立即从列表隐藏；若任务仍在运行，将同时请求停止。`)) void onDelete(session.id)
-    }} className="absolute right-[0.35vw] top-1/2 flex h-[4.2vh] w-[4.2vh] -translate-y-1/2 items-center justify-center rounded-[0.6vh] text-text-muted opacity-0 hover:bg-danger/10 hover:text-danger focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
-      aria-label={`强制移除会话：${session.title}`} title="强制移除会话"><Trash2 className="h-[2vh] w-[2vh]" /></button>
   </li>
 })
 
-export function VirtualSessionList({ sessions, activeId, resetKey, onSelect, onRename, onDelete }: Props) {
+export function VirtualSessionList({ sessions, activeId, resetKey, onSelect, onRename, onDelete, onArchive }: Props) {
   const container = useRef<HTMLDivElement>(null)
   const pendingFocus = useRef<string | undefined>(undefined)
   const [focused, setFocused] = useState<string>()
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number; anchor: HTMLElement } | null>(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
+  const openMenu = useCallback((session: Session, x: number, y: number, anchor: HTMLElement) => {
+    setMenu({ id: session.id, x, y, anchor })
+  }, [])
+  const menuSession = menu ? sessions.find(session => session.id === menu.id) : undefined
+  useEffect(closeMenu, [resetKey, closeMenu])
+  useEffect(() => { if (menu && !menuSession) closeMenu() }, [menu, menuSession, closeMenu])
   const [viewport, setViewport] = useState({ top: 0, height: 600, screen: typeof window === "undefined" ? 800 : window.innerHeight })
   const measure = useCallback(() => {
     const element = container.current
@@ -122,9 +135,16 @@ export function VirtualSessionList({ sessions, activeId, resetKey, onSelect, onR
     {sessions.length ? <ul aria-label="会话列表" className="relative" style={{ height: layout.height }}>
       {visible.map(row => row.session
         ? <SessionRow key={row.key} row={row as SessionListRow & { session: Session }} total={sessions.length}
-          active={row.session.id === activeId} onSelect={onSelect} onRename={onRename} onDelete={onDelete} />
+          active={row.session.id === activeId} onSelect={onSelect} onMenu={openMenu} />
         : <li key={row.key} role="presentation" className="absolute left-0 w-full" style={{ top: row.offset, height: row.height }}>
           <h2 className="px-2 pb-1 pt-2 text-[1.2vh] font-medium text-text-muted">{row.label}</h2></li>)}
     </ul> : <div className="px-4 py-10 text-center text-sm text-text-muted">没有匹配的会话</div>}
+    {menu && menuSession && <SessionContextMenu key={menu.id} session={menuSession} x={menu.x} y={menu.y} anchor={menu.anchor}
+      onClose={closeMenu} onEdit={() => onRename({ id: menuSession.id, title: menuSession.title })}
+      onArchive={() => onArchive(menuSession.id, !menuSession.archived)}
+      onDelete={async () => {
+        if (window.confirm(`移除会话“${menuSession.title}”？会立即从列表隐藏；若任务仍在运行，将同时请求停止。`))
+          await onDelete(menuSession.id)
+      }} />}
   </div>
 }

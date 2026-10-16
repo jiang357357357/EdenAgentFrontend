@@ -61,6 +61,7 @@ import { removeSessionState } from "./session-delete-state"
 import { reconcileRuntimeSessionStatus } from "./session-stream-state"
 import { applyTurnTiming, isTurnTimingEvent } from "./turn-timing"
 import { pruneSessionHistories } from "./session-history-cache"
+import { sessionArchiveEvent, sessionArchiveState } from "./session-archive-state"
 
 interface LocalUserMessageAction {
   type: "localUserMessage"
@@ -171,6 +172,7 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
   const session: RuntimeSession = existing
     ? {
         ...existing,
+        ...sessionArchiveState(existing, info.archived, info.time.updated),
         status: reconcileRuntimeSessionStatus(existing.status, info.runtimeStatus),
         title: info.title || existing.title || "新会话",
         contextTokens: info.contextTokens ?? existing.contextTokens,
@@ -186,6 +188,7 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
       }
     : {
         id: info.id,
+        ...sessionArchiveState(undefined, info.archived, info.time.updated),
         title: info.title || "新会话",
         contextTokens: info.contextTokens,
         tokenBreakdown: info.tokenBreakdown,
@@ -1226,6 +1229,12 @@ function reduceRuntimeState(state: RuntimeState, action: RuntimeAction): Runtime
         upsertSession(next, event.properties.info)
         return next
       }
+      const archive = sessionArchiveEvent(event)
+      if (archive) {
+        const session = next.sessions[archive.sessionID] ? ensureSession(next, archive.sessionID) : undefined
+        if (session) Object.assign(session, sessionArchiveState(session, archive.archived, archive.updatedAt))
+        return next
+      }
       const contextUsage = sessionContextUsageFromEvent(event)
       if (contextUsage) {
         const session = ensureSession(next, contextUsage.sessionID)
@@ -1455,6 +1464,7 @@ function isRuntimeStateEvent(event: ApiEvent): boolean {
   return (
     isSessionEvent(event) ||
     isSessionTitleUpdatedEvent(event) ||
+    sessionArchiveEvent(event) !== undefined ||
     isSessionParticipantsUpdatedEvent(event) ||
     isSessionAssistantHandoffEvent(event) ||
     isMessageUpdatedEvent(event) ||

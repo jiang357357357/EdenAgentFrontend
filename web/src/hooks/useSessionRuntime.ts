@@ -22,6 +22,7 @@ import {
   isBackgroundSession,
   rejectQuestion,
   renameSession as renameSessionRaw,
+  setSessionArchived as setSessionArchivedRaw,
   replyPermission,
   replyQuestion,
   sendPromptAsync,
@@ -660,6 +661,15 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     return session;
   }, [isRuntimeReady]);
 
+  const setSessionArchived = useCallback(async (sessionID: string, archived: boolean) => {
+    if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
+    const { epoch, originRevision } = scopeRef.current;
+    const session = await setSessionArchivedRaw(sessionID, archived);
+    if (!isRuntimeReady() || scopeRef.current.epoch !== epoch || getRuntimeOriginRevision() !== originRevision)
+      throw new Error('账号或执行环境已切换。');
+    dispatch(hydrateSessionList([session]));
+  }, [isRuntimeReady]);
+
   const interruptSubagent = useCallback(async (target: string) => {
     const sessionID = activeSessionIdRef.current;
     if (!sessionID || !isRuntimeReady()) throw new Error('当前没有可操作的会话。');
@@ -751,6 +761,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     deleteSession,
     deleteMessage,
     renameSession,
+    setSessionArchived,
     draftParticipantIDs,
     dismissQuestion,
     followupSubagent,

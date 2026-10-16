@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import type { BackgroundPreference } from "../../lib/use-background-preference"
 import { defaultAppearance, type AppearancePreference } from "../../lib/use-appearance-preference"
 import { cn } from "../../lib/utils"
+import { BaseThemeSelect } from "./BaseThemeSelect"
 
 interface BackgroundControlsProps {
   value: BackgroundPreference
@@ -61,23 +62,8 @@ export function BackgroundControls({ value, ready, uploading, saving, settingErr
               <X className="h-4 w-4" />
             </button>
           </div>
-          <fieldset className="mb-4">
-            <legend className="mb-3 text-xs font-medium text-text-muted">整体主题</legend>
-            <div className="grid grid-cols-2 gap-2">
-              {([
-                ["cream", "奶油米色"], ["peach", "暖杏桃色"], ["sage", "清新浅绿"],
-                ["lavender", "雾紫暮色"], ["night", "深色夜幕"],
-              ] as const).map(([theme, label]) => (
-                <button key={theme} type="button" aria-pressed={appearance.baseTheme === theme}
-                  onClick={() => onAppearanceChange({ ...appearance, baseTheme: theme, backgroundMode: "theme" })}
-                  className={cn("rounded-lg border p-2 text-left text-xs",
-                    appearance.baseTheme === theme ? "border-accent bg-accent-dim" : "border-border hover:bg-surface-hover")}>
-                  <span data-theme-swatch={theme} className="mb-2 block h-8 rounded-md border border-border/40" aria-hidden="true" />
-                  {label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
+          <BaseThemeSelect value={appearance.baseTheme} disabled={!appearanceReady}
+            onChange={theme => onAppearanceChange({ ...appearance, baseTheme: theme, backgroundMode: "theme" })} />
           <fieldset className="mb-4">
             <legend className="mb-3 text-xs font-medium text-text-muted">主题强调色</legend>
             <div className="grid grid-cols-5 gap-1">

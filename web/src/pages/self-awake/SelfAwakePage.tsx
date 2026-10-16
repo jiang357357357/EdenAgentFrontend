@@ -2,6 +2,8 @@ import { DiaryContent } from "./DiaryContent"
 import { SelfAwakeDiaryClearButton } from "./SelfAwakeDiaryClearButton"
 import { pageEnterMotion } from "../../lib/page-motion"
 import { SelfAwakeModelCalls } from "./SelfAwakeModelCalls"
+import { SelfAwakeDiaryFooter } from "./SelfAwakeDiaryFooter"
+import { selfAwakeElapsed, selfAwakeRecordMatches } from "../../lib/self-awake-metrics"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Activity,
@@ -268,6 +270,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
   const [diarySearch, setDiarySearch] = useState("")
   const [executionRunId, setExecutionRunId] = useState<string | null>(null)
   const [executionRecord, setExecutionRecord] = useState<unknown>(null)
+  const [executionRefresh, setExecutionRefresh] = useState(0)
   const [selectedToolExecutions, setSelectedToolExecutions] = useState<SelfAwakeToolExecution[]>([])
   const [toolExecutionsLoading, setToolExecutionsLoading] = useState(false)
   const [toolExecutionsError, setToolExecutionsError] = useState("")
@@ -369,6 +372,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
   const selectedStatus = statusMeta[selectedRun?.status || ""] ?? { label: selectedRun?.status || "未知", tone: "muted" as const }
   useEffect(() => {
     let disposed = false
+    let timer: number | undefined
     setExecutionRecord(null)
     setSelectedToolExecutions([])
     setToolExecutionsError("")
@@ -377,18 +381,25 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
       return () => { disposed = true }
     }
     setToolExecutionsLoading(true)
-    getSelfAwakeExecution(selectedRun.id)
-      .then((result) => {
-        if (!disposed) { setExecutionRecord(result.record); setSelectedToolExecutions(selfAwakeToolExecutions(result.record)) }
-      })
-      .catch((reason) => {
-        if (!disposed) setToolExecutionsError(getErrorMessage(reason, "读取工具记录失败。"))
-      })
-      .finally(() => {
+    const refreshExecution = async () => {
+      try {
+        const result = await getSelfAwakeExecution(selectedRun.id)
+        if (!selfAwakeRecordMatches(result.record, selectedRun.id)) throw new Error("执行记录与所选自醒不一致，请刷新重试。")
+        if (disposed) return
+        setExecutionRecord(result.record)
+        setSelectedToolExecutions(selfAwakeToolExecutions(result.record))
+        const running = selfAwakeElapsed(result.record, selectedRun.id, { status: selectedRun.status }, Date.now()).running
+        if (running) timer = window.setTimeout(() => void refreshExecution(), 2000)
+        else if (selectedRun.status === "running") void loadRuns()
+      } catch (reason) {
+        if (!disposed) setToolExecutionsError(getErrorMessage(reason, "读取执行记录失败。"))
+      } finally {
         if (!disposed) setToolExecutionsLoading(false)
-      })
-    return () => { disposed = true }
-  }, [selectedRun?.id])
+      }
+    }
+    void refreshExecution()
+    return () => { disposed = true; window.clearTimeout(timer) }
+  }, [selectedRun?.id, selectedRun?.status, selectedRun?.finished_at, executionRefresh, loadRuns])
   const allDiaryEntries = useMemo(
     () =>
       runs
@@ -573,7 +584,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
           </div>
           <button
             type="button"
-            onClick={() => void loadRuns()}
+            onClick={() => { setExecutionRefresh(value => value + 1); void loadRuns() }}
             className="flex items-center gap-[0.5vw] rounded-[0.75vh] border border-border bg-card px-[1.1vw] py-[1vh] text-[1.72vh] text-text-muted shadow-sm transition-colors hover:border-accent/35 hover:text-accent"
             title="刷新自醒记录"
           >
@@ -948,20 +959,11 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
                   <DiaryContent className="font-serif text-[clamp(14px,0.88vw,16px)] leading-[2] tracking-[0.015em]" content={trimText(selectedDiary.content, "没有写入日记。")} />
                 </div>
 
-                <footer className="flex flex-wrap items-center gap-[1.45vw] pt-[2.8vh] text-[1.52vh]">
-                  <div className="rounded-[0.55vh] border border-border bg-card/38 px-[1.15vw] py-[0.92vh]">
-                    <span className="mr-[0.65vw] text-text-muted">状态</span>
-                    <span className="text-text">{selectedStatus.label}</span>
-                  </div>
-                  <div className="rounded-[0.55vh] border border-border bg-card/38 px-[1.15vw] py-[0.92vh]">
-                    <span className="mr-[0.65vw] text-text-muted">本轮定时</span>
-                    <span className="text-text">{selectedRun.next_wake_at ? formatDateTime(selectedRun.next_wake_at) : "本轮未设置"}</span>
-                  </div>
-                  {selectedAction?.action_type && <div className="rounded-[0.55vh] border border-border bg-card/38 px-[1.15vw] py-[0.92vh]">
-                    <span className="mr-[0.65vw] text-text-muted">历史动作</span>
-                    <span className="text-text">{actionLabels[selectedAction.action_type] || selectedAction.action_type}</span>
-                  </div>}
-                </footer>
+                <SelfAwakeDiaryFooter runId={selectedRun.id} record={executionRecord}
+                  statusLabel={selectedStatus.label} nextWakeLabel={selectedRun.next_wake_at ? formatDateTime(selectedRun.next_wake_at) : "本轮未设置"}
+                  historicalAction={selectedAction?.action_type ? actionLabels[selectedAction.action_type] || selectedAction.action_type : undefined}
+                  timing={{ startedAt: selectedRun.started_at, finishedAt: selectedRun.finished_at, status: selectedRun.status }}
+                  loading={toolExecutionsLoading} error={toolExecutionsError} />
               </article>
             ) : (
               <div className="flex h-full flex-col items-center justify-center text-center text-text-muted">

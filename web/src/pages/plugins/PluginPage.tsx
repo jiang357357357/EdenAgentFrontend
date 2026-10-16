@@ -8,6 +8,8 @@ import { PluginMarketKeys } from "./PluginMarketKeys"
 import { PluginDevelopment } from "./PluginDevelopment"
 import { useCallback, useEffect, useState } from "react"
 import { ArrowLeft, PackagePlus, RefreshCw, ShieldCheck, Store, Trash2 } from "lucide-react"
+import { motion } from "motion/react"
+import { pageEnterMotion } from "../../lib/page-motion"
 import {
   addPluginMarketSource,
   enablePlugin,
@@ -50,7 +52,7 @@ export function PluginPage({ onBack }: { onBack: () => void }) {
     try { await action(); await refresh() } catch (value) { setError(value instanceof Error ? value.message : String(value)) }
     finally { setBusy(false) }
   }
-  return <main className="surface-scrollbars h-full overflow-auto bg-bg p-6 text-text">
+  return <motion.main {...pageEnterMotion} className="surface-scrollbars h-full overflow-auto bg-bg p-6 text-text">
     <header className="mb-6 flex items-center gap-3">
       <button onClick={onBack} className="rounded-lg p-2 hover:bg-border" aria-label="返回"><ArrowLeft className="h-5 w-5" /></button>
       <div><h1 className="text-2xl font-semibold">插件</h1><p className="text-xs text-text-muted">版本、信任、权限与运行时</p></div>
@@ -132,5 +134,5 @@ export function PluginPage({ onBack }: { onBack: () => void }) {
       })}
       {!plugins.length && <p className="py-12 text-center text-sm text-text-muted">尚未安装插件</p>}
     </div>
-  </main>
+  </motion.main>
 }
