@@ -125,7 +125,7 @@ test("voice configuration provides a real GSV synthesis service and local device
   assert.match(configurationSource, /GSV 语音转录/)
   assert.match(configurationSource, /GSV 转录服务地址/)
   assert.match(configurationSource, /testStt\(\)/)
-  assert.match(configurationSource, /测试连接<\/button>/)
+  assert.match(configurationSource, /测试连接\s*<\/button>/)
   assert.doesNotMatch(configurationSource, /测试转录服务/)
   assert.match(configurationSource, /testGsvStt\(sttForm\)/)
   assert.match(configurationSource, /updateGsvSttConfig\(sttForm\)/)

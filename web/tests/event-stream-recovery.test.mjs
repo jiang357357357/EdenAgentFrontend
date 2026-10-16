@@ -182,8 +182,8 @@ test("switching realms discards notifications from the old connection", async ()
 })
 
 test("recovery invalidates inactive caches without discarding messages or mutating prior state", () => {
-  const active = { id: "a", hydrated: true, messages: {} }
-  const inactive = { id: "b", hydrated: true, messages: { saved: { id: "saved" } } }
+  const active = { id: "a", status: "idle", hydrated: true, messages: {}, messageOrder: [] }
+  const inactive = { id: "b", status: "idle", hydrated: true, messages: { saved: { id: "saved" } }, messageOrder: ["saved"] }
   const state = { ...reducer.initialRuntimeState, sessions: { a: active, b: inactive }, activeSessionId: "a" }
   const recovered = reducer.runtimeReducer(state, reducer.invalidateInactiveSessions())
   assert.equal(recovered.sessions.a, active)
