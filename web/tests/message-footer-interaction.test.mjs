@@ -18,11 +18,12 @@ test('isolated Electron verifies real reply copying and deletion confirmation in
     await build({ absWorkingDir: webRoot, entryPoints: ['tests/fixtures/message-footer-interaction.tsx'],
       outfile: join(scratch, 'renderer.js'), bundle: true, format: 'iife', platform: 'browser', jsx: 'automatic',
       define: { 'process.env.NODE_ENV': '"development"' } })
-    const built = await readFile(join(webRoot, 'dist/index.html'), 'utf8')
+    const builtRoot = process.env.EDEN_MESSAGE_FOOTER_WEB_DIST ?? join(webRoot, 'dist')
+    const built = await readFile(join(builtRoot, 'index.html'), 'utf8')
     const css = /href="(?:\.?\/)?(assets\/[^"<>]+\.css)"/.exec(built)?.[1]
     assert.ok(css, 'Build the Web client before running the styled renderer fixture')
-    await writeFile(join(scratch, 'index.html'), `<!doctype html><html><meta charset="utf-8"><link rel="stylesheet" href="${pathToFileURL(join(webRoot, 'dist', css)).href}"><body class="bg-bg text-text"><script src="renderer.js"></script></body></html>`)
-    const evidence = join(taskRoot, 'dist/verification/message-footer-confirmation.png')
+    await writeFile(join(scratch, 'index.html'), `<!doctype html><html><meta charset="utf-8"><link rel="stylesheet" href="${pathToFileURL(join(builtRoot, css)).href}"><body class="bg-bg text-text"><script src="renderer.js"></script></body></html>`)
+    const evidence = process.env.EDEN_MESSAGE_FOOTER_EVIDENCE ?? join(taskRoot, 'dist/verification/message-footer-confirmation.png')
     await mkdir(dirname(evidence), { recursive: true })
     await writeFile(join(scratch, 'main.cjs'), `
 const { app, BrowserWindow } = require('electron');
@@ -33,6 +34,7 @@ app.whenReady().then(async () => {
   try {
     await window.loadFile(${JSON.stringify(join(scratch, 'index.html'))});
     const result = await window.webContents.executeJavaScript('window.runMessageFooterTests()');
+    await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 160))))');
     await writeFile(${JSON.stringify(evidence)}, (await window.webContents.capturePage()).toPNG());
     process.stdout.write('EDEN_FOOTER_RESULT=' + JSON.stringify(result) + '\\n');
   } catch (error) { process.stderr.write(String(error.stack || error)); process.exitCode = 1; }
@@ -53,8 +55,9 @@ app.whenReady().then(async () => {
         else fulfill(JSON.parse(line.slice('EDEN_FOOTER_RESULT='.length)))
       })
     })
-    assert.deepEqual(result, { writes: 1, deleteCalls: 2, focusedConfirmation: true, cancelledWithoutDelete: true,
-      duplicatePrevented: true, pendingEscapeBlocked: true, failureRetained: true, copyFailureShown: true, busyDisabled: true })
+    assert.deepEqual(result, { writes: 2, deleteCalls: 3, focusedConfirmation: true, cancelledWithoutDelete: true,
+      duplicatePrevented: true, pendingEscapeBlocked: true, failureRetained: true, copyFailureShown: true, busyDisabled: true,
+      groupedControls: true, fullReplyCopied: true, groupDeleted: true, copyReads: 1 })
   } finally {
     if (dirname(resolve(scratch)) !== resolve(tmpdir())) throw new Error('Unexpected renderer cleanup path')
     await rm(scratch, { recursive: true, force: true })

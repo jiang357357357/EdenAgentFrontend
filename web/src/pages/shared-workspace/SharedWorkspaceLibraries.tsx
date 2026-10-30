@@ -1,6 +1,6 @@
 import { useId, useState } from "react"
 import { Check, Folder, FolderPlus, Plus, Search, X } from "lucide-react"
-import type { SharedSpace } from "../../lib/shared-workspace-client"
+import type { SharedSpace, SharedHost } from "../../lib/shared-workspace-client"
 import { sharedButtonClass, sharedInputClass, sharedPrimaryButtonClass, sharedSpaceRole } from "../../components/shared-workspace/shared-workspace-view"
 
 interface LibrariesProps {
@@ -9,18 +9,22 @@ interface LibrariesProps {
   boundId: string | null
   busy: boolean
   canPublish?: boolean
+  hosts?: SharedHost[]
   onSelect(id: string): void
-  onCreate(name: string): Promise<{ space: SharedSpace } | undefined>
+  onCreate(name: string, hostDeviceId?: string): Promise<{ space: SharedSpace } | undefined>
 }
 
-export function SharedWorkspaceLibraries({ spaces, selectedId, boundId, busy, canPublish = true, onSelect, onCreate }: LibrariesProps) {
+export function SharedWorkspaceLibraries({ spaces, selectedId, boundId, busy, canPublish = true, hosts = [], onSelect, onCreate }: LibrariesProps) {
   const [query, setQuery] = useState("")
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState("")
+  const [hostId, setHostId] = useState("")
+  const publishers = hosts.filter(host => host.canManage && host.canPublish && host.reachable)
+  const target = publishers.some(host => host.deviceId === hostId) ? hostId : publishers.find(host => host.local)?.deviceId ?? publishers[0]?.deviceId ?? ""
   const id = useId()
   const filtered = spaces.filter(space => space.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
   const create = async () => {
-    const result = await onCreate(name)
+    const result = await onCreate(name, target || undefined)
     if (result) { setName(""); setQuery(""); setCreating(false); onSelect(result.space.id) }
   }
   return <aside className="flex min-w-0 flex-col rounded-xl border border-border/70 bg-library-card p-4 md:sticky md:top-0 md:max-h-[calc(100vh-13rem)]" aria-label="资料库列表">
@@ -37,12 +41,16 @@ export function SharedWorkspaceLibraries({ spaces, selectedId, boundId, busy, ca
       <Plus className="h-4 w-4" />新建资料库
     </button>
     {canPublish && creating ? <form id={`${id}-create`} className="mt-3 space-y-3 rounded-lg border border-border bg-bg/40 p-3" onSubmit={event => { event.preventDefault(); void create() }}>
+      <label className="block space-y-1 text-xs text-text-muted"><span>保存到主机</span>
+        <select aria-label="新资料库主机" className={sharedInputClass} value={target} disabled={busy} onChange={event => setHostId(event.target.value)}>
+          {publishers.map(host => <option key={host.deviceId} value={host.deviceId}>{host.name}{host.local ? "（本机）" : host.dedicated ? "（云主机）" : "（子机主机）"}</option>)}
+        </select></label>
       <label htmlFor={`${id}-name`} className="block space-y-1 text-xs text-text-muted">
         <span>新资料库名称</span><input id={`${id}-name`} value={name} maxLength={120} disabled={busy}
           onChange={event => setName(event.target.value)} className={sharedInputClass} placeholder="例如：项目资料" autoFocus />
       </label>
       <div className="flex gap-2">
-        <button type="submit" className={`${sharedPrimaryButtonClass} flex-1`} disabled={busy || !name.trim()}>创建</button>
+        <button type="submit" className={`${sharedPrimaryButtonClass} flex-1`} disabled={busy || !name.trim() || !target}>创建</button>
         <button type="button" className={sharedButtonClass} disabled={busy} onClick={() => setCreating(false)} aria-label="取消新建资料库"><X className="h-4 w-4" /></button>
       </div>
       <p className="text-xs leading-relaxed text-text-muted">创建资料库本身不会上传文件。</p>

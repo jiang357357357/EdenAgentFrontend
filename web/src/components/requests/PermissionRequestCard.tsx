@@ -23,7 +23,9 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
   const titleId = useId();
   const [submitting, setSubmitting] = useState<'once' | 'always' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const canAlwaysAllow = request.always.length > 0;
+  const desktop = request.permission === 'desktop.control';
+  const permissionLabel = desktop ? '操作本机桌面' : request.permission;
+  const canAlwaysAllow = !desktop && request.always.length > 0;
   const metadata = useMemo(() => {
     const entries = Object.entries(request.metadata ?? {});
     if (entries.length === 0) return '';
@@ -32,11 +34,13 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
   const patternSummary = request.patterns.length > 0 ? request.patterns.join(', ') : '当前工具调用';
   const agentPath = typeof request.metadata?.agentPath === 'string' ? request.metadata.agentPath : '';
   const targetPath = typeof request.metadata?.path === 'string' ? request.metadata.path : '';
+  const reason = typeof request.metadata?.reason === 'string' ? request.metadata.reason
+    : desktop && typeof request.metadata?.scope === 'string' ? request.metadata.scope : '';
   const requestSummary = [
-    `权限: ${request.permission}`,
+    `权限: ${permissionLabel}`,
     `范围: ${patternSummary}`,
-    request.tool?.callID ? `工具调用: ${request.tool.callID}` : '',
-    metadata ? `参数:\n${metadata}` : '',
+    !desktop && request.tool?.callID ? `工具调用: ${request.tool.callID}` : '',
+    desktop ? reason : metadata ? `参数:\n${metadata}` : '',
     canAlwaysAllow ? `记住范围: ${request.always.join(', ')}` : '',
   ]
     .filter(Boolean)
@@ -73,16 +77,16 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[10px] uppercase tracking-[0.15em] text-warning">权限请求</span>
-            {request.tool?.callID && <span className="text-xs text-text-muted">工具调用：{request.tool.callID}</span>}
+            {!desktop && request.tool?.callID && <span className="text-xs text-text-muted">工具调用：{request.tool.callID}</span>}
           </div>
-          <div id={titleId} className="mt-1 text-base font-medium text-text">{request.permission}</div>
+          <div id={titleId} className="mt-1 text-base font-medium text-text">{permissionLabel}</div>
 
           <div className={cn('mt-3 rounded-xl border px-3 py-3 text-xs', tone === 'overlay' ? 'border-highlight/10 bg-highlight/5 text-text' : 'border-border bg-bg text-text-muted')}>
             <div className="grid gap-2 sm:grid-cols-[5rem_minmax(0,1fr)]">
               <span>操作范围</span><span className="break-all font-mono text-current">{patternSummary}</span>
               {agentPath && <><span>执行智能体</span><span className="break-all font-mono text-current">{agentPath}</span></>}
               {targetPath && <><span>目标路径</span><span className="break-all font-mono text-current">{targetPath}</span></>}
-              {typeof request.metadata?.reason === 'string' && <><span>请求原因</span><span className="leading-relaxed text-current">{request.metadata.reason}</span></>}
+              {reason && <><span>请求原因</span><span className="leading-relaxed text-current">{reason}</span></>}
             </div>
           </div>
 
@@ -112,7 +116,7 @@ export function PermissionRequestCard({ request, onReply, tone = 'default' }: Pe
             )}
           >
             <Check className="h-3.5 w-3.5" aria-hidden="true" />
-            {submitting === 'once' ? '处理中' : '本次允许'}
+            {submitting === 'once' ? '处理中' : desktop ? '允许本任务' : '本次允许'}
           </button>
           {canAlwaysAllow && (
             <button

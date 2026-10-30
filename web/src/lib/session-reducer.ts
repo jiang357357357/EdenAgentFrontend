@@ -62,6 +62,7 @@ import { reconcileRuntimeSessionStatus } from "./session-stream-state"
 import { applyTurnTiming, isTurnTimingEvent } from "./turn-timing"
 import { pruneSessionHistories } from "./session-history-cache"
 import { sessionArchiveEvent, sessionArchiveState } from "./session-archive-state"
+import { sessionPinEvent, sessionPinState } from "./session-pin-state"
 
 interface LocalUserMessageAction {
   type: "localUserMessage"
@@ -84,6 +85,7 @@ export type RuntimeAction =
   | { type: "loadingOlderMessages"; sessionID: string; loading: boolean }
   | { type: "hydratePermissions"; permissions: PendingPermission[] }
   | { type: "hydrateQuestions"; questions: PendingQuestion[] }
+  | { type: "resolveQuestion"; requestID: string }
   | { type: "setActiveSession"; sessionID?: string }
   | { type: "setSessionStatus"; sessionID: string; status: RuntimeSession["status"] }
   | { type: "removeSession"; sessionID: string }
@@ -112,6 +114,13 @@ function sortIdsByValue(order: string[]) {
 
 function sortSessionsByActivity(state: RuntimeState) {
   state.sessionOrder.sort((left, right) => {
+    const leftSession = state.sessions[left], rightSession = state.sessions[right]
+    const pins = Number(Boolean(rightSession?.pinned)) - Number(Boolean(leftSession?.pinned))
+    if (pins) return pins
+    if (leftSession?.pinned && rightSession?.pinned) {
+      const recency = (rightSession.pinUpdatedAt ?? 0) - (leftSession.pinUpdatedAt ?? 0)
+      if (recency) return recency
+    }
     const leftTime = state.sessions[left]?.updatedAt ?? 0
     const rightTime = state.sessions[right]?.updatedAt ?? 0
     return rightTime - leftTime
@@ -173,6 +182,7 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
     ? {
         ...existing,
         ...sessionArchiveState(existing, info.archived, info.time.updated),
+        ...sessionPinState(existing, info.pinned, info.pinUpdatedAt ?? 0),
         status: reconcileRuntimeSessionStatus(existing.status, info.runtimeStatus),
         title: info.title || existing.title || "新会话",
         contextTokens: info.contextTokens ?? existing.contextTokens,
@@ -189,6 +199,7 @@ function upsertSession(state: RuntimeState, info: ApiSession): RuntimeSession {
     : {
         id: info.id,
         ...sessionArchiveState(undefined, info.archived, info.time.updated),
+        ...sessionPinState(undefined, info.pinned, info.pinUpdatedAt ?? 0),
         title: info.title || "新会话",
         contextTokens: info.contextTokens,
         tokenBreakdown: info.tokenBreakdown,
@@ -490,7 +501,7 @@ function applyMessageInfo(message: RuntimeMessage, info: ApiMessageInfo) {
   if (info.role === "assistant") {
     message.completedAt = info.time.completed
     message.turnTiming = info.turnTiming ?? message.turnTiming
-    message.runID = info.runID
+    message.runID = info.runID ?? info.turnID ?? message.runID
     message.modelID = info.modelID
     message.providerID = info.providerID
     message.speaker = info.speaker
@@ -1112,6 +1123,10 @@ function reduceRuntimeState(state: RuntimeState, action: RuntimeAction): Runtime
       replaceQuestions(next, action.questions)
       return next
 
+    case "resolveQuestion":
+      removeQuestion(next, action.requestID)
+      return next
+
     case "historyBrowsing": {
       const session = ensureSession(next, action.sessionID)
       session.historyBrowsing = action.browsing
@@ -1233,6 +1248,15 @@ function reduceRuntimeState(state: RuntimeState, action: RuntimeAction): Runtime
       if (archive) {
         const session = next.sessions[archive.sessionID] ? ensureSession(next, archive.sessionID) : undefined
         if (session) Object.assign(session, sessionArchiveState(session, archive.archived, archive.updatedAt))
+        return next
+      }
+      const pin = sessionPinEvent(event)
+      if (pin) {
+        const session = next.sessions[pin.sessionID] ? ensureSession(next, pin.sessionID) : undefined
+        if (session) {
+          Object.assign(session, sessionPinState(session, pin.pinned, pin.pinUpdatedAt))
+          sortSessionsByActivity(next)
+        }
         return next
       }
       const contextUsage = sessionContextUsageFromEvent(event)
@@ -1465,6 +1489,7 @@ function isRuntimeStateEvent(event: ApiEvent): boolean {
     isSessionEvent(event) ||
     isSessionTitleUpdatedEvent(event) ||
     sessionArchiveEvent(event) !== undefined ||
+    sessionPinEvent(event) !== undefined ||
     isSessionParticipantsUpdatedEvent(event) ||
     isSessionAssistantHandoffEvent(event) ||
     isMessageUpdatedEvent(event) ||

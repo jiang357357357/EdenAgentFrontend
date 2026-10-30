@@ -27,6 +27,9 @@ test('real React speech hook stops after four failures across repeated epochs, r
     })
     const result = JSON.parse(await readFile(path.join(root, 'result.json'), 'utf8'))
     assert.equal(result.error, undefined, result.error); assert.equal(code, 0)
+    assert.equal(result.missingConfig.calls, 0)
+    assert.equal(result.missingConfig.clip.status, 'error')
+    assert.match(result.missingConfig.clip.error, /未配置语音音色/)
     assert.equal(result.beforeRewrite, 4); assert.equal(result.afterRewrite, 4)
     assert.equal(result.pendingAfterFailure, false, JSON.stringify(result)); assert.ok(result.manualCalls > 0); assert.equal(result.pendingAfterManual, false, JSON.stringify(result))
   } finally {

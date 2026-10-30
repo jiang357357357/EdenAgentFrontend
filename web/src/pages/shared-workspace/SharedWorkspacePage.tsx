@@ -16,7 +16,10 @@ export function SharedWorkspacePage({ scope, scopeVersion = 0, onBack, onDirecto
   const pending = useRef(false)
   const mounted = useRef(true)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
-  const owner = useSharedWorkspace(scope, { details: true, scopeVersion, onInvalidated: reason => {
+  const owner = useSharedWorkspace(scope, { details: true, scopeVersion, onPostureDirectoryChanged: path => {
+    pending.current = true
+    onDirectoryChanged({ sessionId: scope.sessionId, directoryPath: path })
+  }, onInvalidated: reason => {
     if (reason === "identity" || !pending.current) onBack()
   } })
   // Keep the local switch active until React installs the returned directory's scope.

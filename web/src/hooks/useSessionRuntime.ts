@@ -6,6 +6,7 @@ import {
   createSessionRaw,
   deleteSession as deleteSessionRaw,
   deleteMessage as deleteMessageRaw,
+  readMessageReply,
     getPermissionMode,
     getRuntimeModelConfig,
   followUpTurn,
@@ -23,6 +24,7 @@ import {
   rejectQuestion,
   renameSession as renameSessionRaw,
   setSessionArchived as setSessionArchivedRaw,
+  setSessionPinned as setSessionPinnedRaw,
   replyPermission,
   replyQuestion,
   sendPromptAsync,
@@ -62,6 +64,7 @@ import { ConnectionFeedback, initialConnectionFeedback } from '../lib/connection
 import { getRuntimeOriginRevision, getStoredRuntimeOrigin } from '../lib/runtime-origin';
 import { useSessionConnectionFeedback } from './useSessionConnectionFeedback';
 import { forgetSessionChannel } from '../lib/rpc-transport';
+import { PendingQuestionSync } from '../lib/pending-question-sync';
 
 type RefreshGuard = () => boolean;
 const authenticationError = /authentication_expired|not_authenticated|core_authentication_expired|Mon authentication rejected/i;
@@ -110,6 +113,9 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     scopeRef.current = { enabled, epoch: scopeRef.current.epoch + 1, originRevision };
   }
   const scopeEpoch = scopeRef.current.epoch;
+  const questionSync = useMemo(() => new PendingQuestionSync(), [scopeEpoch]);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [questionSyncError, setQuestionSyncError] = useState<string>();
   const isRuntimeReady = useCallback(() => mountedRef.current && scopeRef.current.enabled
     && scopeRef.current.originRevision === getRuntimeOriginRevision(), [enabled, scopeEpoch]);
   const captureRefreshGuard = useCallback((revision = feedbackRevisionRef.current): RefreshGuard => {
@@ -149,6 +155,8 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
   useEffect(() => {
     connectionFeedbackController.reset(enabled);
+    setQuestionsLoading(false);
+    setQuestionSyncError(undefined);
     if (enabled) return;
     setModelErrors({});
     dispatch(resetRuntime());
@@ -179,13 +187,34 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     dispatch(hydrateSessionMessages(sessionID, page));
   }, [captureRefreshGuard]);
 
+  const refreshQuestions = useCallback(async (current: RefreshGuard = captureRefreshGuard()) => {
+    if (!current()) return;
+    const snapshot = questionSync.begin();
+    setQuestionsLoading(true);
+    try {
+      const questions = await listQuestionsRaw();
+      if (!current()) return;
+      const merged = questionSync.finish(snapshot, questions);
+      if (merged) dispatch(hydratePendingQuestions(merged.filter(item => !deletedSessionIdsRef.current.has(item.sessionID))));
+      if (questionSync.isLatest(snapshot)) setQuestionSyncError(undefined);
+    } catch (error) {
+      if (current() && questionSync.isLatest(snapshot)) setQuestionSyncError(error instanceof Error ? error.message : String(error));
+      throw error;
+    } finally {
+      questionSync.cancel(snapshot);
+      if (current() && questionSync.isLatest(snapshot)) setQuestionsLoading(false);
+    }
+  }, [captureRefreshGuard, questionSync]);
+
   const channels = useSessionConnectionFeedback(enabled, scopeEpoch, state.activeSessionId, async (sessionID, live) => {
     const epoch = scopeRef.current.epoch;
     const current = () => live() && isRuntimeReady() && scopeRef.current.epoch === epoch && !deletedSessionIdsRef.current.has(sessionID);
-    const [session, page] = await Promise.all([readSessionRaw(sessionID), listMessagesRaw(sessionID)]);
-    if (!current() || await isBackgroundSession(sessionID) || !current()) return;
-    dispatch(hydrateSessionList([session]));
-    dispatch(hydrateSessionMessages(sessionID, page));
+    await Promise.all([refreshQuestions(current), (async () => {
+      const [session, page] = await Promise.all([readSessionRaw(sessionID), listMessagesRaw(sessionID)]);
+      if (!current() || await isBackgroundSession(sessionID) || !current()) return;
+      dispatch(hydrateSessionList([session]));
+      dispatch(hydrateSessionMessages(sessionID, page));
+    })()]);
   });
 
   const refreshSessionModel = useCallback(async (sessionID: string, current: RefreshGuard = captureRefreshGuard(), propagateAuthentication = false) => {
@@ -213,20 +242,16 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
   const refreshBlockers = useCallback(async (current: RefreshGuard = captureRefreshGuard()) => {
     if (!current()) return;
-    const [permissions, questions, permissionModeResponse, screenCaptureRequests, cameraCaptureRequests] = await Promise.all([
-      listPermissionsRaw(),
-      listQuestionsRaw(),
-      getPermissionMode(),
-      listScreenCaptureRequests(),
-      listCameraCaptureRequests(),
+    const results = await Promise.allSettled([
+      refreshQuestions(current),
+      listPermissionsRaw().then(permissions => { if (current()) dispatch(hydratePendingPermissions(permissions.filter(item => !deletedSessionIdsRef.current.has(item.sessionID)))); }),
+      getPermissionMode().then(response => { if (current()) setPermissionModeState(response.mode); }),
+      listScreenCaptureRequests().then(requests => { if (current()) for (const request of requests) if (!deletedSessionIdsRef.current.has(request.sessionID)) void handleScreenCaptureRequest(request); }),
+      listCameraCaptureRequests().then(requests => { if (current()) for (const request of requests) if (!deletedSessionIdsRef.current.has(request.sessionID)) void handleCameraCaptureRequest(request); }),
     ]);
-    if (!current()) return;
-    dispatch(hydratePendingPermissions(permissions.filter((item) => !deletedSessionIdsRef.current.has(item.sessionID))));
-    dispatch(hydratePendingQuestions(questions.filter((item) => !deletedSessionIdsRef.current.has(item.sessionID))));
-    setPermissionModeState(permissionModeResponse.mode);
-    for (const request of screenCaptureRequests) if (!deletedSessionIdsRef.current.has(request.sessionID)) void handleScreenCaptureRequest(request);
-    for (const request of cameraCaptureRequests) if (!deletedSessionIdsRef.current.has(request.sessionID)) void handleCameraCaptureRequest(request);
-  }, [captureRefreshGuard]);
+    const errors = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (errors.length) throw (errors.find(result => authenticationError.test(String(result.reason))) ?? errors[0])!.reason;
+  }, [captureRefreshGuard, refreshQuestions]);
 
   useEffect(() => {
     if (!isRuntimeReady()) return;
@@ -236,13 +261,12 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
     async function load() {
       try {
-        const sessions = await refreshSessions(current);
+        const [sessions] = await Promise.all([refreshSessions(current), refreshBlockers(current)]);
         if (!current()) return;
         const firstSessionID = activeSessionIdRef.current ?? sessions[0]?.id;
         if (firstSessionID) {
           await refreshSessionMessages(firstSessionID, current);
         }
-        await refreshBlockers(current);
       } catch (error) {
         if (!current()) return;
         dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
@@ -370,6 +394,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         const eventSessionID = (event.properties as { sessionID?: string }).sessionID;
         if (event.type === 'session.deleted' && eventSessionID) { deletedSessionIdsRef.current.add(eventSessionID); forgetSessionChannel(eventSessionID); }
         else if (eventSessionID && deletedSessionIdsRef.current.has(eventSessionID)) return;
+        questionSync.event(event);
         onEventRef.current?.(event);
         if (event.type === 'screen_capture.requested') {
           const request = event.properties as Partial<PendingScreenCapture> | undefined;
@@ -414,7 +439,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       }
       cleanup?.();
     };
-  }, [connectionFeedbackController, isRuntimeReady, synchronizeConnection]);
+  }, [connectionFeedbackController, isRuntimeReady, synchronizeConnection, questionSync]);
 
   const createSession = useCallback(async () => {
     if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
@@ -645,11 +670,23 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const deleteMessage = useCallback(async (sessionID: string, messageID: string) => {
     if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
     const { epoch, originRevision } = scopeRef.current;
-    await deleteMessageRaw(sessionID, messageID);
+    const result = await deleteMessageRaw(sessionID, messageID);
     if (!isRuntimeReady() || scopeRef.current.epoch !== epoch || getRuntimeOriginRevision() !== originRevision) {
       throw new Error('账号或执行环境已切换。');
     }
-    dispatch(applyRuntimeEvent({ type: 'message.removed', properties: { sessionID, messageID, deleted: true } }));
+    for (const id of result.messageIds ?? [messageID]) {
+      dispatch(applyRuntimeEvent({ type: 'message.removed', properties: { sessionID, messageID: id, deleted: true } }));
+    }
+  }, [isRuntimeReady]);
+
+  const readReplyText = useCallback(async (sessionID: string, messageID: string) => {
+    if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
+    const { epoch, originRevision } = scopeRef.current;
+    const result = await readMessageReply(sessionID, messageID);
+    if (!isRuntimeReady() || scopeRef.current.epoch !== epoch || getRuntimeOriginRevision() !== originRevision) {
+      throw new Error('账号或执行环境已切换。');
+    }
+    return result.text;
   }, [isRuntimeReady]);
 
   const renameSession = useCallback(async (sessionID: string, title: string) => {
@@ -665,6 +702,15 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
     const { epoch, originRevision } = scopeRef.current;
     const session = await setSessionArchivedRaw(sessionID, archived);
+    if (!isRuntimeReady() || scopeRef.current.epoch !== epoch || getRuntimeOriginRevision() !== originRevision)
+      throw new Error('账号或执行环境已切换。');
+    dispatch(hydrateSessionList([session]));
+  }, [isRuntimeReady]);
+
+  const setSessionPinned = useCallback(async (sessionID: string, pinned: boolean) => {
+    if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
+    const { epoch, originRevision } = scopeRef.current;
+    const session = await setSessionPinnedRaw(sessionID, pinned);
     if (!isRuntimeReady() || scopeRef.current.epoch !== epoch || getRuntimeOriginRevision() !== originRevision)
       throw new Error('账号或执行环境已切换。');
     dispatch(hydrateSessionList([session]));
@@ -722,12 +768,16 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   }, [captureRefreshGuard, isRuntimeReady, state.sessions]);
 
   const answerQuestion = useCallback(async (requestID: string, answers: string[][], supplementary?: string[]) => {
+    const current = captureRefreshGuard();
     await replyQuestion(requestID, answers, supplementary);
-  }, []);
+    if (current()) { questionSync.resolved(requestID); dispatch({ type: 'resolveQuestion', requestID }); }
+  }, [captureRefreshGuard, questionSync]);
 
   const dismissQuestion = useCallback(async (requestID: string) => {
+    const current = captureRefreshGuard();
     await rejectQuestion(requestID);
-  }, []);
+    if (current()) { questionSync.resolved(requestID); dispatch({ type: 'resolveQuestion', requestID }); }
+  }, [captureRefreshGuard, questionSync]);
 
   const summarizeSessions = useMemo(() => createSessionSummarySelector(), [scopeEpoch]);
   const sessions = useMemo(() => summarizeSessions(state), [state, summarizeSessions]);
@@ -760,8 +810,10 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     createSession,
     deleteSession,
     deleteMessage,
+    readReplyText,
     renameSession,
     setSessionArchived,
+    setSessionPinned,
     draftParticipantIDs,
     dismissQuestion,
     followupSubagent,
@@ -771,6 +823,9 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     pendingPermissions,
     pendingQuestions,
     allPendingQuestions,
+    questionsLoading,
+    questionSyncError,
+    refreshQuestions,
     permissionMode,
     respondPermission,
     reset: () => {

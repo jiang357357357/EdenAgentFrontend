@@ -66,6 +66,8 @@ export type ApiSession = {
   id: string
   title: string
   archived?: boolean
+  pinned?: boolean
+  pinUpdatedAt?: number
   purpose?: "user_chat" | "self_awake" | "subagent"
   sourceChannel?: "app" | "qq" | "internal"
   runtimeOrigin?: "mon" | "local"
@@ -1069,6 +1071,8 @@ export function mapSession(info: ApiSession, messages: MessageData[] = []): Sess
     id: info.id,
     title: info.title || "新会话",
     archived: info.archived ?? false,
+    pinned: info.pinned ?? false,
+    pinUpdatedAt: info.pinUpdatedAt ?? 0,
     updatedAt: info.time.updated,
     contextTokens: info.contextTokens,
     tokenBreakdown: info.tokenBreakdown,
@@ -1207,7 +1211,11 @@ export async function deleteSession(sessionID: string) {
 }
 
 export async function deleteMessage(sessionID: string, messageID: string) {
-  return rpcRequest("message.delete", { sessionId: sessionID, messageId: messageID })
+  return rpcRequest("message.delete", { sessionId: sessionID, messageId: messageID, scope: "reply" })
+}
+
+export async function readMessageReply(sessionID: string, messageID: string) {
+  return rpcRequest("message.reply.read", { sessionId: sessionID, messageId: messageID })
 }
 
 export async function createSession() {
@@ -1252,7 +1260,6 @@ function applyProjectedParts(event: RpcSessionEvent, message: ApiMessage) {
 export function projectMessageEvents(events: RpcSessionEvent[]): ApiMessage[] {
   const items: ApiMessage[] = []
   const latestByTurn = new Map<string, ApiMessage>()
-  const pendingByTurn = new Map<string, RpcSessionEvent[]>()
   const toolOwners = new Map<string, ApiMessage>()
 
   for (const event of events) {
@@ -1289,24 +1296,11 @@ export function projectMessageEvents(events: RpcSessionEvent[]): ApiMessage[] {
       const existing = items.findIndex(item => item.info.id === message.info.id)
       if (existing >= 0) items[existing] = message
       else items.push(message)
-      latestByTurn.set(turnKey, message)
+      if (event.eventType !== "character.sticker.sent") latestByTurn.set(turnKey, message)
       for (const part of message.parts) {
         if (isApiToolPart(part)) toolOwners.set(`${turnKey}:${part.id}`, message)
       }
-      const pending = pendingByTurn.get(turnKey) ?? []
-      for (const companion of pending) applyProjectedParts(companion, message)
-      pendingByTurn.delete(turnKey)
       continue
-    }
-
-    if (event.eventType !== "character.sticker.sent") continue
-    const latest = latestByTurn.get(turnKey)
-    if (latest) {
-      applyProjectedParts(event, latest)
-    } else {
-      const pending = pendingByTurn.get(turnKey) ?? []
-      pending.push(event)
-      pendingByTurn.set(turnKey, pending)
     }
   }
   return items
@@ -1319,6 +1313,10 @@ export async function renameSession(sessionID: string, title: string) {
 
 export async function setSessionArchived(sessionID: string, archived: boolean) {
   return apiSession(await rpcRequest("session.set_archived", { sessionId: sessionID, archived }))
+}
+
+export async function setSessionPinned(sessionID: string, pinned: boolean) {
+  return apiSession(await rpcRequest("session.set_pinned", { sessionId: sessionID, pinned }))
 }
 
 export async function listMessagesRaw(sessionID: string, before?: string, limit = 50) {

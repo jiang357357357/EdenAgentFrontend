@@ -7,9 +7,10 @@ const ready = extra => ({ available: true, reason: null, bound: false, spaceId: 
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b }); return { promise, resolve, reject } }
 function fixture(overrides = {}) {
   const publications = []
-  const client = { isCurrent: () => true, status: async () => ready(),
+  const client = { directoryPath: 'E:/chosen', directory: async () => ({ path: 'E:/chosen' }), posture: async () => ({ mode: 'lan', revision: '0' }), isCurrent: () => true, status: async () => ready(),
     spaces: async () => [], conflicts: async () => [], members: async () => [], files: async () => [], devices: async () => [],
     network: async () => ({ deviceId: "device-1", name: "本机", listening: true, addresses: [], discoveryError: null, peers: [] }),
+    hosts: async () => [{ deviceId: 'device-1', name: '本机', addresses: [], local: true, reachable: true, canPublish: true, canManage: true, dedicated: false, error: null }],
     ...overrides }
   const owner = new SharedWorkspaceStateOwner(client, () => publications.push(owner.state))
   return { owner, publications }
@@ -46,11 +47,12 @@ test("slow background reads are not overlapped or replaced by the next polling t
 })
 
 test("manual refresh keeps its loading feedback and supersedes an older background response", async () => {
-  const pending = deferred()
+  const pending = deferred(), started = deferred()
   let requests = 0
-  const f = fixture({ status: () => ++requests === 2 ? pending.promise : Promise.resolve(ready({ pending: requests })) })
+  const f = fixture({ status: () => { if (++requests === 2) { started.resolve(); return pending.promise } return Promise.resolve(ready({ pending: requests })) } })
   await f.owner.refresh(true)
   const background = f.owner.refresh(true, "background")
+  await started.promise
   const manual = f.owner.refresh(true)
   assert.equal(f.owner.state.loading, true)
   await manual
@@ -61,10 +63,11 @@ test("manual refresh keeps its loading feedback and supersedes an older backgrou
 })
 
 test("polling skips a foreground load and an active mutation", async () => {
-  const loading = deferred(), changing = deferred()
+  const loading = deferred(), changing = deferred(), started = deferred()
   let requests = 0
-  const f = fixture({ status: () => ++requests === 1 ? loading.promise : Promise.resolve(ready()), create: () => changing.promise })
+  const f = fixture({ status: () => { started.resolve(); return ++requests === 1 ? loading.promise : Promise.resolve(ready()) }, create: () => changing.promise })
   const initial = f.owner.refresh(true)
+  await started.promise
   await f.owner.refresh(true, "background")
   assert.equal(requests, 1)
   loading.resolve(ready()); await initial

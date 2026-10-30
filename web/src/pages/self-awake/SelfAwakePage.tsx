@@ -1,5 +1,6 @@
 import { DiaryContent } from "./DiaryContent"
 import { SelfAwakeDiaryClearButton } from "./SelfAwakeDiaryClearButton"
+import { SelfAwakeControl } from "./SelfAwakeControl"
 import { pageEnterMotion } from "../../lib/page-motion"
 import { SelfAwakeModelCalls } from "./SelfAwakeModelCalls"
 import { SelfAwakeDiaryFooter } from "./SelfAwakeDiaryFooter"
@@ -7,7 +8,6 @@ import { selfAwakeElapsed, selfAwakeRecordMatches } from "../../lib/self-awake-m
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Activity,
-  AlarmClock,
   AlertCircle,
   ArrowLeft,
   ArrowRight,
@@ -34,11 +34,8 @@ import {
   type ApiSelfAwakeRun,
   type ToolStatus,
 } from "../../lib/agent-client"
-import type { RpcMethodMap } from "../../lib/rpc-contracts"
-type SelfAwakeScheduleInfo = RpcMethodMap["self_awake.list"]["result"]["schedule"]
 import { selfAwakeObservations, selfAwakeToolExecutions, type SelfAwakeToolExecution } from "../../lib/self-awake-context"
 import { formatLocalMonthDayTime, formatLocalWeekday } from "../../lib/time"
-import { selfAwakeScheduleLabel } from "../../lib/self-awake-schedule"
 
 interface SelfAwakePageProps {
   currentUser?: AuthUser | null
@@ -254,9 +251,6 @@ function runAuthorName(run?: ApiSelfAwakeRun, fallback = "未知角色") {
 }
 
 export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
-  const [wakeSchedule, setWakeSchedule] = useState<SelfAwakeScheduleInfo | null>(null)
-  const [scheduleError, setScheduleError] = useState(false)
-  const [clockNow, setClockNow] = useState(Date.now())
   const [runs, setRuns] = useState<ApiSelfAwakeRun[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string | undefined>()
   const [currentPage, setCurrentPage] = useState(1)
@@ -290,8 +284,6 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
     try {
       const pageData = await listSelfAwakeRunsPage({ page, pageSize: selfAwakePageSize, q: searchQuery, diariesOnly: activeView === "diary" })
       if (version !== loadVersion.current) return
-      setWakeSchedule(pageData.schedule ?? null)
-      setScheduleError(false)
       setCurrentPage(pageData.current_page)
       setTotalPages(pageData.total_pages)
       setTotalRuns(pageData.count)
@@ -305,7 +297,6 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
       })
     } catch (loadError) {
       if (version !== loadVersion.current) return
-      setScheduleError(true)
       setError(getErrorMessage(loadError, "读取自醒记录失败。"))
     } finally {
       if (version === loadVersion.current) { setLoading(false); setLoadingMore(false) }
@@ -327,26 +318,6 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
   useEffect(() => {
     void loadRuns()
   }, [loadRuns])
-
-  useEffect(() => {
-    let disposed = false
-    const refreshSchedule = async () => {
-      try {
-        const page = await listSelfAwakeRunsPage({ page: 1, pageSize: 1 })
-        if (!disposed) { setWakeSchedule(page.schedule ?? null); setScheduleError(false) }
-      } catch { if (!disposed) setScheduleError(true) }
-    }
-    const timer = window.setInterval(() => {
-      setClockNow(Date.now())
-      if (document.visibilityState === "visible") void refreshSchedule()
-    }, 15_000)
-    const onFocus = () => { setClockNow(Date.now()); void refreshSchedule() }
-    window.addEventListener("focus", onFocus)
-    return () => { disposed = true; window.clearInterval(timer); window.removeEventListener("focus", onFocus) }
-  }, [])
-
-  const wakeTime = wakeSchedule?.nextWakeAt
-  const wakeLabel = selfAwakeScheduleLabel(wakeSchedule, loading, scheduleError, clockNow)
 
   const selectedRun = useMemo(() => runs.find((run) => run.id === selectedRunId) ?? runs[0], [runs, selectedRunId])
   const hasMoreRuns = currentPage < totalPages
@@ -548,20 +519,7 @@ export function SelfAwakePage({ currentUser, onBack }: SelfAwakePageProps) {
         </div>
         <div className="flex items-center gap-[0.8vw]">
           <SelfAwakeDiaryClearButton onCleared={onDiariesCleared} />
-          <div
-            className="flex min-w-0 items-center gap-[0.6vw] rounded-[0.75vh] border border-accent/20 bg-card px-[1.1vw] py-[0.65vh] text-accent shadow-sm"
-            title={scheduleError ? "无法读取最新自动调度，请稍后刷新" : ["自动调度状态，与下方所选自醒记录的执行结果独立。", wakeTime ? formatDateTime(wakeTime) : "", wakeSchedule?.reason].filter(Boolean).join(" · ")}
-            role="status"
-          >
-            <AlarmClock aria-hidden="true" className="h-[2.4vh] w-[2.4vh] shrink-0" />
-            <div className="min-w-0">
-              <div className="text-[1.25vh] text-text-muted">自动调度</div>
-              <div className="truncate text-[1.65vh] tabular-nums">{wakeLabel}</div>
-              {wakeSchedule?.status === "unavailable" && (
-                <div role="alert" className="max-w-[28vw] text-[1.3vh] text-danger">{wakeSchedule.reason}</div>
-              )}
-            </div>
-          </div>
+          <SelfAwakeControl refreshVersion={executionRefresh} />
           <div className="flex overflow-hidden rounded-[0.75vh] border border-border bg-card shadow-sm">
             {[
               { key: "diary" as const, label: "日记" },

@@ -9,13 +9,16 @@ const space = { id: "space-1", name: "资料", role: "owner" }
 const file = { fileId: "file-1", path: "note.txt", revision: 1, deleted: false, sha256: "a".repeat(64), size: 3 }
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b }); return { promise, resolve, reject } }
 function fixture(overrides = {}, initial = ready()) {
-  let current = true, status = initial
+  let current = true, status = initial, posture = { mode: 'lan', revision: '0' }
   const calls = [], publications = [], fileRefreshes = []
   const client = {
+    directoryPath: 'E:/chosen', directory: async () => ({ path: 'E:/chosen' }), posture: async () => posture,
+    selectPosture: async mode => { calls.push(['posture', mode]); posture = { mode, revision: String(Number(posture.revision) + 1) }; return posture },
     isCurrent: () => current, invalidate: () => { current = false },
     status: async () => ({ ...status }), spaces: async () => [space], conflicts: async () => [],
     members: async () => [{ deviceId: "device-1", name: "本机", role: "owner" }], files: async () => [file], devices: async () => [],
     network: async () => ({ deviceId: "device-1", name: "本机", listening: true, addresses: [], discoveryError: null, peers: [] }),
+    hosts: async () => [{ deviceId: 'device-1', name: '本机', addresses: [], local: true, reachable: true, canPublish: true, canManage: true, dedicated: false, error: null }],
     invitePairing: async () => { calls.push(["invite"]); return { code: "eden-lan2:test", expiresAt: 600_000 } },
     pairDevice: async (...args) => { calls.push(["pair", ...args]); return { paired: true } },
     create: async name => { calls.push(["create", name]); return { space } },
@@ -33,6 +36,49 @@ function fixture(overrides = {}, initial = ready()) {
   const owner = new SharedWorkspaceStateOwner(client, () => publications.push(owner.state), () => fileRefreshes.push(true))
   return { owner, calls, publications, fileRefreshes, invalidate: () => { current = false }, status: value => { status = value } }
 }
+
+test('posture selection is backend-owned, latches on repeated clicks and never selects a local cloud fallback', async () => {
+  const f = fixture()
+  await f.owner.refresh(true)
+  await f.owner.selectPosture('cloud')
+  const locked = f.owner.state.posture
+  assert.equal(locked.mode, 'cloud')
+  assert.equal(f.owner.state.managementHostId, '')
+  await f.owner.selectPosture('cloud')
+  await f.owner.refresh(true)
+  assert.deepEqual(f.owner.state.posture, locked)
+  assert.deepEqual(f.calls.filter(call => call[0] === 'posture'), [['posture', 'cloud']])
+})
+
+test('a rejected posture change preserves the previous lock and clears the pending state', async () => {
+  const f = fixture({ selectPosture: async () => { throw new Error('持久保存失败') } })
+  await f.owner.refresh(true)
+  await f.owner.selectPosture('cloud')
+  assert.equal(f.owner.state.posture.mode, 'lan')
+  assert.equal(f.owner.state.busy, false)
+  assert.equal(f.owner.state.error, '持久保存失败')
+})
+
+test('a failed posture switch supersedes an outstanding refresh without leaving loading stuck', async () => {
+  const pending = deferred(), entered = deferred()
+  let reads = 0
+  const f = fixture({
+    status: async () => { if (++reads > 1) { entered.resolve(); return pending.promise } return ready() },
+    selectPosture: async () => { throw new Error('持久保存失败') },
+  })
+  await f.owner.refresh(true)
+  const refresh = f.owner.refresh(true)
+  await entered.promise
+  assert.equal(f.owner.state.loading, true)
+  await f.owner.selectPosture('cloud')
+  assert.equal(f.owner.state.loading, false)
+  assert.equal(f.owner.state.busy, false)
+  assert.equal(f.owner.state.posture.mode, 'lan')
+  pending.resolve(ready())
+  await refresh
+  assert.equal(f.owner.state.loading, false)
+  assert.equal(f.owner.state.error, '持久保存失败')
+})
 
 test("unavailable account or runtime displays its reason and never loads or mutates shared data", async () => {
   const unexpected = async () => assert.fail("unavailable DLC must not request spaces")
@@ -108,10 +154,11 @@ test("scope change prevents action completion from refreshing or announcing succ
 })
 
 test("the newest status read wins over an older read", async () => {
-  const pending = deferred()
+  const pending = deferred(), started = deferred()
   let reads = 0
-  const f = fixture({ status: () => ++reads === 1 ? pending.promise : Promise.resolve(ready({ paused: true })) })
+  const f = fixture({ status: () => { started.resolve(); return ++reads === 1 ? pending.promise : Promise.resolve(ready({ paused: true })) } })
   const first = f.owner.refresh()
+  await started.promise
   await f.owner.refresh()
   pending.resolve(ready({ paused: false }))
   await first
@@ -153,6 +200,36 @@ test("pairing uses the supplied invitation and address without binding a local d
   assert.deepEqual(f.calls, [["invite"], ["pair", "eden-lan2:other", "http://192.168.1.9:12345"]])
   assert.equal(f.owner.state.status.bound, false)
   assert.deepEqual(f.fileRefreshes, [])
+})
+
+test("cloud library permissions use cloud devices while network management follows the selected host", async () => {
+  const calls = [], local = { deviceId: 'local', name: '本机', local: true, canManage: true, canPublish: true, reachable: true },
+    cloud = { deviceId: 'cloud', name: '云主机', local: false, canManage: true, canPublish: true, reachable: true }
+  const f = fixture({ hosts: async () => [local, cloud], spaces: async () => [{ ...space, hostDeviceId: 'cloud' }],
+    devices: async id => [{ deviceId: id + '-peer', name: id, revoked: false }],
+    invitePairing: async id => { calls.push(['invite', id]); return { code: id, expiresAt: Date.now() + 600000 } },
+    revokeDevice: async (...args) => { calls.push(['revoke', ...args]); return { revoked: true } },
+    create: async (...args) => { calls.push(['create', ...args]); return { space } },
+  }, ready({ bound: true, spaceId: space.id }))
+  await f.owner.refresh(true)
+  assert.equal(f.owner.state.devices[0].deviceId, 'local-peer')
+  assert.equal(f.owner.state.memberDevices[0].deviceId, 'cloud-peer')
+  await f.owner.selectHost('cloud')
+  assert.equal(f.owner.state.devices[0].deviceId, 'cloud-peer')
+  await f.owner.invitePairing(); await f.owner.revokeDevice('cloud-peer'); await f.owner.create('云端资料', 'cloud')
+  assert.deepEqual(calls, [['invite', 'cloud'], ['revoke', 'cloud-peer', 'cloud'], ['create', '云端资料', 'cloud']])
+})
+
+test("a late deployment status cannot publish completion into another account or disposed view", async () => {
+  const pending = deferred(), f = fixture({ deploymentStatus: () => pending.promise })
+  await f.owner.refresh()
+  const polling = f.owner.pollDeployment()
+  f.owner.dispose()
+  const count = f.publications.length
+  pending.resolve({ id: 'fixture-job', state: 'succeeded', deviceId: 'cloud' })
+  await polling
+  assert.equal(f.publications.length, count)
+  assert.equal(f.owner.state.deployment, null)
 })
 
 test("without publisher DLC the receiver can pair and bind a granted library but cannot create one", async () => {
@@ -203,7 +280,7 @@ test("conflict decisions, pause, and member/device changes use service methods",
   await f.owner.removeMember("device-5")
   await f.owner.revokeDevice("device-1")
   assert.deepEqual(f.calls, [["resolve", "conflict-1", "remote"], ["resolve", "conflict-2", "local"],
-    ["pause", true], ["setMember", "device-5", "viewer"], ["removeMember", "device-5"], ["revokeDevice", "device-1"]])
+    ["pause", true], ["setMember", "device-5", "viewer"], ["removeMember", "device-5"], ["revokeDevice", "device-1", "device-1"]])
 })
 
 test("restoring a version refreshes its actual history without editing local state as a substitute", async () => {

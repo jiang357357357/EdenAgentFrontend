@@ -14,9 +14,9 @@ function attachPrimaryRendererStartup(targetWindow, { ipcMain, onReady }) {
     if (finished || !loaded || !nativeReady || !painted || targetWindow.isDestroyed() || contents.isDestroyed()) return
     finished = true
     dispose()
-    // Startup must progress even when another application covers the window.
-    // Restore normal idle throttling once the first surface is ready.
-    contents.setBackgroundThrottling(true)
+    // The primary renderer owns decision-window wakeups even while hidden in the tray.
+    // Keep it active after startup so React effects do not wait for a visible frame.
+    contents.setBackgroundThrottling(false)
     contents.invalidate()
     onReady()
   }

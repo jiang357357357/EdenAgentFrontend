@@ -19,6 +19,7 @@ export function useSessionConnectionFeedback(enabled: boolean, epoch: number, ac
     setStates({})
     if (!enabled) return
     let disposed = false
+    const connected = new Set<string>()
     const dispose = subscribeSessionChannelStatus(status => {
       if (disposed) return
       let controller = controllers.current.get(status.sessionId)
@@ -28,9 +29,11 @@ export function useSessionConnectionFeedback(enabled: boolean, epoch: number, ac
         })
         controllers.current.set(status.sessionId, controller)
       }
-      if (!status.connected) { controller.disconnected(status.error ?? '此会话连接中断'); return }
-      controller.opened()
-      const revision = controller.synchronizing()
+      if (!status.connected) { connected.delete(status.sessionId); controller.disconnected(status.error ?? '此会话连接中断'); return }
+      if (connected.has(status.sessionId)) return
+      connected.add(status.sessionId)
+      const opened = controller.opened()
+      const revision = controller.synchronizing(opened.recovering)
       void synchronize(status.sessionId, controller, revision, () => !disposed)
     })
     return () => { disposed = true; dispose(); controllers.current.clear() }

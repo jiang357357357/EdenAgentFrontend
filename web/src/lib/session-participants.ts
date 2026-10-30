@@ -40,7 +40,7 @@ export async function resolveParticipants(assistantIDs: Array<number | string>, 
     if (!Number.isSafeInteger(numericId) || numericId <= 0) throw new Error("Invalid Core assistant identity")
     try {
       identity.assertCurrent()
-      if (identity.token) assistant = await fetchAssistant(identity.token, numericId)
+      if (identity.token) assistant = await fetchAssistant(identity.token, numericId, { refresh: true })
     } catch {
       // The durable session can retain an assistant ID while Core is temporarily unavailable.
     }

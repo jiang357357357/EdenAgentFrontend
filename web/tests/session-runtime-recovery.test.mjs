@@ -241,6 +241,34 @@ test('a failing session snapshot reports its own sync error and retry leaves a s
   } finally { host.dispose() }
 })
 
+test('first session connections and ordinary sends never claim recovery or refresh on duplicate open statuses', async () => {
+  const f = fixture(), { host } = f, reads = [], sends = []
+  try {
+    await host.settle(); await f.open()
+    f.rpc.readSessionRaw = async id => { reads.push(id); return { ...session(id), participants: [{ assistantID: 42 }] } }
+    f.rpc.sendPromptAsync = async (id, text) => { sends.push([id, text]); return { turnId: 'fixture-turn' } }
+    const channel = status => f.channelListeners.at(-1)(status)
+    channel({ sessionId: 'A', connected: true }); await host.settle()
+    assert.equal(host.value.connectionFeedback.phase, 'idle')
+    assert.ok(JSON.stringify(host.value.activeSession).includes('A-message'))
+    const initialReads = reads.length
+    channel({ sessionId: 'A', connected: true }); await host.settle()
+    assert.equal(reads.length, initialReads)
+    await host.value.sendMessage('normal message', []); await host.settle()
+    assert.equal(host.value.connectionFeedback.phase, 'idle')
+    assert.deepEqual(sends, [['A', 'normal message']])
+    host.value.selectSession('B'); await host.settle()
+    channel({ sessionId: 'B', connected: false, error: 'first connection attempt failed' }); await host.settle()
+    channel({ sessionId: 'B', connected: true }); await host.settle()
+    assert.equal(host.value.connectionFeedback.phase, 'idle')
+    channel({ sessionId: 'A', connected: false, error: 'real A disconnect' }); await host.settle()
+    channel({ sessionId: 'A', connected: true }); await host.settle()
+    assert.equal(host.value.connectionFeedback.phase, 'idle', 'Background recovery must not notify this healthy conversation')
+    host.value.selectSession('A'); await host.settle()
+    assert.equal(host.value.connectionFeedback.phase, 'restored')
+  } finally { host.dispose() }
+})
+
 test('first send on an empty chosen-folder session binds its assistant and waits for its model without following tab selection', async () => {
   const f = fixture(), { host } = f, binding = deferred(), calls = []
   host.options = { defaultParticipantID: 42 }

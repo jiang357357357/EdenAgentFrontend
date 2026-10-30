@@ -5,6 +5,7 @@ function convertFileSrc(filePath) {
 }
 
 contextBridge.exposeInMainWorld("edenAgentDesktop", {
+  desktopControlWindow: true,
   rendererReady() {
     ipcRenderer.send("eden-agent:renderer-ready")
   },
@@ -53,6 +54,12 @@ contextBridge.exposeInMainWorld("edenAgentDesktop", {
     const handler = () => callback()
     ipcRenderer.on("eden-agent-open-settings", handler)
     return () => ipcRenderer.removeListener("eden-agent-open-settings", handler)
+  },
+  onMainWindowVisibility(callback) {
+    const handler = (_event, visible) => callback(visible === true)
+    ipcRenderer.on("eden-agent-main-window-visibility", handler)
+    ipcRenderer.send("eden-agent:main-window-visibility-subscribe")
+    return () => ipcRenderer.removeListener("eden-agent-main-window-visibility", handler)
   },
   onAuthState(callback) {
     const handler = (_event, state) => callback(state)

@@ -1,5 +1,7 @@
 import { pageEnterMotion } from "../../lib/page-motion"
 import { RuntimeDiagnostics } from '../../components/chat/RuntimeDiagnostics'
+import { PromptModeSettings } from './PromptModeSettings'
+import { MemoryModelSettings } from './MemoryModelSettings'
 import type { Session } from '../../types'
 import { useEffect, useRef, useState } from "react"
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react"
@@ -929,6 +931,8 @@ export function SettingsPage({
           {activeSection === "advanced" ? (
             <div className="grid h-full w-full content-start overflow-y-auto px-[4%] pb-[4%] pt-[2%]">
               <RuntimeDiagnostics sessions={sessions} activeSessionId={activeSessionId} />
+              <PromptModeSettings />
+              <MemoryModelSettings />
               <ToggleRow label="开启语音输入" description="允许通过麦克风向当前角色输入消息" value={voiceInputEnabled} onChange={(value) => patchSettings({ voiceInputEnabled: value })} />
               <div className="border-t border-border px-2 py-5">
                 <div className="mb-3">

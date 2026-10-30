@@ -40,6 +40,7 @@ const archive = async (id: string, value: boolean) => {
 function renderSidebar() {
   flushSync(() => root.render(<Sidebar {...navigation} sessions={sessions()} activeId="first" activity="sessions"
     onSelect={id => { selected = id }} onArchive={async (id, value) => { await archive(id, value); renderSidebar() }}
+    onPin={async () => {}}
     onRename={async (id, title) => { renamed = id; window.sessionMenuStore.get(id)!.title = title; renderSidebar() }}
     onDelete={async id => { deleted = id; window.sessionMenuStore.delete(id); renderSidebar() }}
     onNewSession={noop} onOpenAllSessions={noop} onOpenFile={noop} onWorkspaceChanged={noop}
@@ -70,7 +71,7 @@ window.prepareSessionMenu = async () => {
   renderSidebar(); await wait(); await open()
   assert([...host.querySelectorAll('[data-session-row]')].every(row => row.querySelectorAll("button").length === 1),
     "session rows only expose selection; edit and delete are in the context menu")
-  assert([...document.querySelectorAll('[role="menuitem"]')].map(node => node.textContent).join(",") === "编辑,归档,删除", "three menu actions")
+  assert([...document.querySelectorAll('[role="menuitem"]')].map(node => node.textContent).join(",") === "置顶,编辑,归档,删除", "session menu actions")
   const rect = menu()!.getBoundingClientRect()
   assert(rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight, "menu fits viewport")
   assert(selected === "", "right-click does not select or change the active session")

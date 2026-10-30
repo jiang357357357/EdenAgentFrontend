@@ -1,17 +1,18 @@
-import { Archive, ArchiveRestore, Pencil, Trash2 } from "lucide-react"
+import { Archive, ArchiveRestore, Pencil, Pin, PinOff, Trash2 } from "lucide-react"
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 
 interface Props {
-  session: { id: string; title: string; archived?: boolean }
+  session: { id: string; title: string; archived?: boolean; pinned?: boolean }
   x: number; y: number; anchor: HTMLElement
   onEdit(): void
   onArchive(): Promise<void> | void
+  onPin(): Promise<void> | void
   onDelete(): Promise<void> | void
   onClose(): void
 }
 
-export function SessionContextMenu({ session, x, y, anchor, onEdit, onArchive, onDelete, onClose }: Props) {
+export function SessionContextMenu({ session, x, y, anchor, onEdit, onArchive, onPin, onDelete, onClose }: Props) {
   const panel = useRef<HTMLDivElement>(null)
   const live = useRef(false)
   const [position, setPosition] = useState({ left: x, top: y })
@@ -57,10 +58,13 @@ export function SessionContextMenu({ session, x, y, anchor, onEdit, onArchive, o
   }
   const itemClass = "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm outline-none hover:bg-accent/10 focus:bg-accent/10 disabled:opacity-50"
   const ArchiveIcon = session.archived ? ArchiveRestore : Archive
+  const PinIcon = session.pinned ? PinOff : Pin
   return createPortal(<div ref={panel} role="menu" aria-label={`会话操作：${session.title}`} aria-busy={busy}
     onKeyDown={keys} onContextMenu={event => event.preventDefault()}
     className="fixed z-[100] w-44 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-border bg-card p-1 text-text shadow-xl"
     style={{ ...position, maxHeight: "calc(100vh - 1rem)" }}>
+    <button type="button" role="menuitem" disabled={busy} className={itemClass}
+      onClick={() => void action(onPin)}><PinIcon className="h-4 w-4" />{session.pinned ? "取消置顶" : "置顶"}</button>
     <button type="button" role="menuitem" disabled={busy} className={itemClass}
       onClick={() => { onClose(); onEdit() }}><Pencil className="h-4 w-4" />编辑</button>
     <button type="button" role="menuitem" disabled={busy} className={itemClass}

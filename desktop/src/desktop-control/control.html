@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Eden · 桌面控制</title>
+  <link rel="stylesheet" href="control.css">
+</head>
+<body>
+  <main aria-label="桌面控制悬浮窗">
+    <header>
+      <span class="grip" aria-hidden="true">⠿</span><span class="caption">桌面控制</span>
+      <button id="pin" class="icon" type="button" aria-label="取消置顶" title="取消置顶">⌖</button>
+      <button id="close" class="icon" type="button" aria-label="隐藏控制窗口" title="操作中会先停止，再隐藏；可从托盘重新打开">×</button>
+    </header>
+    <section role="status" aria-live="polite">
+      <h1 id="title">桌面控制就绪</h1>
+      <p id="detail">等待桌面任务</p>
+    </section>
+    <footer>
+      <span id="hint">Ctrl + Alt + F12 停止</span>
+      <button id="toggle" type="button">暂停</button>
+      <button id="stop" type="button" class="stop">停止</button>
+    </footer>
+  </main>
+  <script src="control-renderer.js"></script>
+</body>
+</html>

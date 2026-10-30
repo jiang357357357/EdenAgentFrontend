@@ -2,17 +2,23 @@ import { useAutoScrollPreference } from "./lib/use-auto-scroll-preference"
 import { useBackgroundPreference } from "./lib/use-background-preference"
 import { useAppearancePreference } from "./lib/use-appearance-preference"
 import { DesktopReminders } from "./components/notifications/DesktopReminders"
+import { DesktopControlBar } from "./components/desktop/DesktopControlBar"
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react"
 import { X } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { QuestionDecisionOverlay } from "./components/requests"
 import { setDesktopQuestionWindowVisible } from "./lib/desktop-window"
+import { reportPerformanceDiagnostic } from "./lib/desktop-window"
+import { QuestionFallback } from "./components/requests/QuestionFallback"
+import { QuestionWindowStatus } from "./components/requests/QuestionWindowStatus"
+import { useQuestionWindowVisibility } from "./hooks/useQuestionWindowVisibility"
 import { PetSurfaceErrorBoundary } from "./components/desktop-pet"
 import { ChatPage } from "./pages/chat"
 import { AllSessionsPage } from "./pages/all-sessions"
 import { CharacterPage } from "./pages/character"
 import { AssistantSwitcherPage } from "./pages/assistant-switcher"
 import { LoginPage } from "./pages/login"
+import { StartupEntrance } from "./pages/startup/StartupEntrance"
 import { OriginSelectionPage } from "./pages/origin"
 import { MemoPage } from "./pages/memo"
 import { SelfAwakePage } from "./pages/self-awake"
@@ -185,6 +191,7 @@ export default function App() {
           ? "icon"
           : "combined"
   const isAuxiliaryWindow = isSettingsWindow || isQuestionWindow || isPetWindow
+  const [entranceFinished, setEntranceFinished] = useState(false)
   const runtimeReady = authStatus === "authenticated" && (isAuxiliaryWindow || runtimeOrigin !== null)
   const [activePage, setActivePage] = useState<AppPage>(() => initialPageFromLocation())
   const [sharedWorkspaceScope, setSharedWorkspaceScope] = useState<SharedWorkspaceScope | null>(null)
@@ -206,7 +213,7 @@ export default function App() {
     ready: autoScrollReady,
     error: autoScrollError,
     change: setAutoScrollEnabled,
-  } = useAutoScrollPreference(runtimeOrigin, runtimeReady)
+  } = useAutoScrollPreference(runtimeOrigin, runtimeReady, currentUser?.id)
   const {
     value: backgroundPreference,
     imageUrl: backgroundImageUrl,
@@ -281,8 +288,10 @@ export default function App() {
     createSession: createRuntimeSession,
     deleteSession: deleteRuntimeSession,
     deleteMessage: deleteRuntimeMessage,
+    readReplyText,
     renameSession: renameRuntimeSession,
     setSessionArchived: setRuntimeSessionArchived,
+    setSessionPinned: setRuntimeSessionPinned,
     draftParticipantIDs,
     dismissQuestion,
     followupSubagent,
@@ -294,6 +303,9 @@ export default function App() {
     pendingPermissions,
     pendingQuestions,
     allPendingQuestions,
+    questionsLoading,
+    questionSyncError,
+    refreshQuestions,
     permissionMode,
     reset: resetSessionRuntime,
     respondPermission,
@@ -498,13 +510,12 @@ export default function App() {
     (request) => !activeSessionId || request.sessionID === activeSessionId,
   )
 
+  useQuestionWindowVisibility(allPendingQuestions, !isAuxiliaryWindow, runtimeReady)
   useEffect(() => {
     if (!isQuestionWindow) return
-    void setDesktopQuestionWindowVisible(allPendingQuestions.length > 0)
-    return () => {
-      void setDesktopQuestionWindowVisible(false)
-    }
-  }, [allPendingQuestions.length, isQuestionWindow])
+    void reportPerformanceDiagnostic('question-window', { pending: allPendingQuestions.length,
+      loading: questionsLoading, syncFailed: Boolean(questionSyncError), hidden: document.hidden })
+  }, [isQuestionWindow, allPendingQuestions.length, questionsLoading, questionSyncError])
 
   useEffect(() => {
     let cancelled = false
@@ -681,10 +692,10 @@ export default function App() {
 
   useEffect(() => {
     if (isSettingsWindow || isPetWindow || isQuestionWindow) return
-    void resizeDesktopWindow(authStatus === "authenticated" ? "chatWithCharacter" : "login")
+    void resizeDesktopWindow(entranceFinished && authStatus === "authenticated" ? "chatWithCharacter" : "login")
     if (authStatus !== "authenticated") return
     void setDesktopWindowAppearance("chatWithCharacter")
-  }, [authStatus, isPetWindow, isQuestionWindow, isSettingsWindow])
+  }, [authStatus, entranceFinished, isPetWindow, isQuestionWindow, isSettingsWindow])
 
   useEffect(() => {
     if (runtimeOrigin !== "local") return
@@ -1014,6 +1025,16 @@ export default function App() {
     await dismissQuestion(requestID)
   }
 
+  if (!isAuxiliaryWindow && !entranceFinished) {
+    return <StartupEntrance origin={runtimeOrigin} authStatus={authStatus} isSubmitting={isAuthenticating}
+      error={authError} userName={currentUser?.display_name || currentUser?.username}
+      onChooseOrigin={handleRuntimeOriginSelect} onContinue={() => setEntranceFinished(true)}
+      onLogin={async (username, password) => {
+        if (runtimeOrigin !== "mon") handleRuntimeOriginSelect("mon")
+        await handleLogin(username, password)
+      }} />
+  }
+
   if (runtimeOrigin === null) {
     if (isAuxiliaryWindow) {
       return (
@@ -1056,6 +1077,7 @@ export default function App() {
       {!isAuxiliaryWindow && !window.edenAgentDesktop && (
         <DesktopReminders key={runtimeOrigin} origin={runtimeOrigin} />
       )}
+      {!isAuxiliaryWindow && runtimeOrigin && <DesktopControlBar key={`desktop:${runtimeOrigin}:${currentUser?.id ?? 'local'}`} />}
       <motion.div
         animate={{
           opacity: modeContentVisible ? 1 : 0,
@@ -1066,7 +1088,7 @@ export default function App() {
         {/* Route replacement is immediate; dialogs retain their own exit animations. */}
         {isQuestionWindow ? (
           <div className="fixed inset-0 bg-bg">
-            {allPendingQuestions[0] && (
+            {allPendingQuestions[0] ? (
               <QuestionDecisionOverlay
                 key={allPendingQuestions[0].id}
                 request={allPendingQuestions[0]}
@@ -1074,7 +1096,8 @@ export default function App() {
                 onReject={handleQuestionReject}
                 fillWindow
               />
-            )}
+            ) : <QuestionWindowStatus loading={questionsLoading} error={questionSyncError}
+              onRefresh={() => void refreshQuestions().catch(() => {})} />}
           </div>
         ) : isPetWindow || activePage === "pet" ? (
           <PetSurfaceErrorBoundary surface={petSurface}>
@@ -1214,7 +1237,7 @@ export default function App() {
             connectionFeedback={connectionFeedback}
             onDismissConnectionFeedback={dismissConnectionFeedback}
             onRetryConnectionSync={retryConnectionSync}
-            runtimeError={[runtimeError, autoScrollError, backgroundError, appearanceError].filter(Boolean).join("；") || undefined}
+            runtimeError={[...new Set([runtimeError, autoScrollError, backgroundError, appearanceError].filter(Boolean))].join("；") || undefined}
             activePendingPermissions={activePendingPermissions}
             messagesScrollRef={messagesScrollRef}
             messagesEndRef={messagesEndRef}
@@ -1238,8 +1261,10 @@ export default function App() {
             onSelectSession={selectRuntimeSession}
             onDeleteSession={handleDeleteSession}
             onDeleteMessage={deleteRuntimeMessage}
+            onReadReplyText={readReplyText}
             onRenameSession={handleRenameSession}
             onArchiveSession={setRuntimeSessionArchived}
+            onPinSession={setRuntimeSessionPinned}
             onNewSession={handleNewSession}
             onSendMessage={handleSendMessage}
             onCompact={handleCompactSession}
@@ -1324,6 +1349,9 @@ export default function App() {
         )}
       </AnimatePresence>
       <AnimatePresence>
+        {!isAuxiliaryWindow && window.edenAgentDesktop && allPendingQuestions[0] && <QuestionFallback
+          key={allPendingQuestions[0].id} request={allPendingQuestions[0]} count={allPendingQuestions.length}
+          onOpenWindow={() => setDesktopQuestionWindowVisible(true)} onReply={handleQuestionReply} onReject={handleQuestionReject} />}
         {!window.edenAgentDesktop && !isPetWindow && activePage !== "pet" && activePendingQuestions[0] && (
           <QuestionDecisionOverlay
             key={activePendingQuestions[0].id}

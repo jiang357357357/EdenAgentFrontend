@@ -5,6 +5,7 @@ import type { RuntimeModelConfig, RuntimeModelOption, ModelSelectionTarget } fro
 import { cn } from "../../../lib/utils"
 import type { PermissionMode } from "../../../types"
 import { CommandExecutionSettings } from "./CommandExecutionSettings"
+import { PromptModeMenuItem } from "./PromptModeMenuItem"
 
 export const permissionOptions: Array<{ mode: PermissionMode; label: string; description: string }> = [
   { mode: "restricted", label: "受限审批", description: "写入、命令等操作按授权规则确认" },
@@ -80,6 +81,7 @@ export function ChatInputMenus({
               </button>
             )
           })}
+          <PromptModeMenuItem overlay={overlay} />
           <CommandExecutionSettings sessionId={sessionId} />
         </div>
       )}

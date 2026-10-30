@@ -2,6 +2,8 @@ import { DEFAULT_PANEL_OPACITY, type AccentTheme, type BaseTheme } from "@eden/a
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { rpcRequestForOrigin } from "./rpc-transport"
 import { getRuntimeOriginRevision } from "./runtime-origin"
+import { recoverPreferenceRead } from './preference-read'
+import { usePreferenceRevision } from './use-preference-revision'
 
 type Origin = "mon" | "local"
 type PreferenceScope = { origin: Origin; revision: number; live: boolean; sequence: number; pending: Promise<void> }
@@ -16,6 +18,7 @@ export interface AppearancePreference {
 export const defaultAppearance: AppearancePreference = { baseTheme: "night", backgroundMode: "wallpaper", accentTheme: "mist", chatFontScale: 100, componentFontScale: 100, panelOpacity: DEFAULT_PANEL_OPACITY }
 
 export function useAppearancePreference(origin: Origin | null, active: boolean, accountIdentity?: string | number) {
+  const revision = usePreferenceRevision()
   const [value, setValue] = useState(defaultAppearance)
   const [ready, setReady] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -29,13 +32,16 @@ export function useAppearancePreference(origin: Origin | null, active: boolean, 
       origin, revision: getRuntimeOriginRevision(), live: true, sequence: 0, pending: Promise.resolve(),
     }
     owner.current = scope
-    void rpcRequestForOrigin(origin, "ui.appearance.get", {}, scope.revision).then(result => {
-      if (scope.live) { setValue({ ...defaultAppearance, ...result }); setReady(true) }
-    }).catch(reason => { if (scope.live) setError(`读取外观设置失败：${String(reason)}`) })
+    const stop = recoverPreferenceRead({
+      read: () => rpcRequestForOrigin(origin, 'ui.appearance.get', {}, scope.revision),
+      current: () => scope.live && scope.revision === getRuntimeOriginRevision() && scope.sequence === 0,
+      loaded: result => { setValue({ ...defaultAppearance, ...result }); setReady(true) }, failed: setError, label: '读取外观设置失败',
+    })
     return () => {
       scope.live = false
+      stop()
     }
-  }, [origin, active, accountIdentity])
+  }, [origin, active, accountIdentity, revision])
 
   useLayoutEffect(() => {
     document.documentElement.dataset.accentTheme = value.accentTheme
@@ -59,6 +65,7 @@ export function useAppearancePreference(origin: Origin | null, active: boolean, 
         const result = await rpcRequestForOrigin(scope.origin, "ui.appearance.update", next, scope.revision)
         if (scope.live && sequence === scope.sequence) {
           setValue({ ...defaultAppearance, ...result })
+          setReady(true)
           setSaving(false)
         }
       } catch (reason) {

@@ -1,0 +1,22 @@
+.startup-login { width: min(50vw, 560px); }
+.startup-fallback-covered { filter: blur(8px) brightness(.75); }
+.startup-login-panel-visible { animation: startup-login-in .2s ease-out both; }
+.startup-dialogue { animation: startup-dialogue-in .2s ease-out both; }
+.startup-dialogue::before {
+  content: ''; position: absolute; width: 12px; height: 12px;
+  background: var(--color-card); border: inherit; transform: rotate(45deg); z-index: -1;
+}
+.startup-dialogue[data-tail="left"]::before { left: -7px; top: var(--bubble-tail-offset); border-top: 0; border-right: 0; }
+.startup-dialogue[data-tail="right"]::before { right: -7px; top: var(--bubble-tail-offset); border-bottom: 0; border-left: 0; }
+.startup-dialogue[data-tail="top"]::before { top: -7px; left: var(--bubble-tail-offset); border-bottom: 0; border-right: 0; }
+.startup-dialogue[data-tail="bottom"]::before { bottom: -7px; left: var(--bubble-tail-offset); border-top: 0; border-left: 0; }
+@keyframes startup-dialogue-in { from { opacity: 0; translate: 0 5px; } to { opacity: 1; translate: 0 0; } }
+@keyframes startup-login-in { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 640px) {
+  .startup-login { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .startup-login-panel-visible { animation: none; }
+  .startup-dialogue { animation: none; }
+  .startup-entrance * { transition-duration: .01ms !important; }
+}

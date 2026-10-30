@@ -6,6 +6,7 @@ const EMPTY_MESSAGES: Session["messages"] = []
 function summaryMatches(summary: Session, source: RuntimeSession): boolean {
   return summary.title === (source.title || "新会话") && summary.updatedAt === source.updatedAt
     && summary.archived === (source.archived ?? false)
+    && summary.pinned === (source.pinned ?? false) && summary.pinUpdatedAt === (source.pinUpdatedAt ?? 0)
     && summary.participants === source.participants && summary.avatarUrl === source.sidebarAvatarUrl
     && summary.mode === source.mode
 }
@@ -21,6 +22,7 @@ export function createSessionSummarySelector() {
       const cached = indexed.get(id)
       if (cached && summaryMatches(cached, source)) return [cached]
       return [{ id, title: source.title || "新会话", archived: source.archived ?? false, updatedAt: source.updatedAt, date: formatLocalTime(source.updatedAt),
+        pinned: source.pinned ?? false, pinUpdatedAt: source.pinUpdatedAt ?? 0,
         participants: source.participants, mode: source.mode, avatarUrl: source.sidebarAvatarUrl, messages: EMPTY_MESSAGES }]
     })
     if (next.length === previous.length && next.every((item, index) => item === previous[index])) return previous

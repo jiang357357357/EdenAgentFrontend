@@ -1,6 +1,5 @@
 import { NoticeCard } from "../../components/feedback"
-import { SharedWorkspaceDevices } from "../../components/shared-workspace/SharedWorkspaceDevices"
-import { SharedWorkspaceNetwork } from "../../components/shared-workspace/SharedWorkspaceNetwork"
+import { hostsInMode, spacesInMode, type SharedWorkspaceMode } from "../../components/shared-workspace/shared-workspace-mode"
 import type { SharedWorkspaceStateOwner } from "../../components/shared-workspace/shared-workspace-state"
 import { sharedButtonClass } from "../../components/shared-workspace/shared-workspace-view"
 import type { SharedSpace } from "../../lib/shared-workspace-client"
@@ -9,8 +8,12 @@ import { SharedWorkspaceLibraries } from "./SharedWorkspaceLibraries"
 import { SharedWorkspaceManagement } from "./SharedWorkspaceManagement"
 import { sharedWorkspaceSections, type SharedWorkspaceSection } from "./SharedWorkspaceNavigation"
 import { SharedWorkspaceSync } from "./SharedWorkspaceSync"
+import { SharedWorkspaceConnections } from './SharedWorkspaceConnections'
+import { CloudMembersPanel } from '../../components/shared-workspace/CloudMembersPanel'
+import { CloudLibraries } from './CloudLibraries'
 
-export function SharedWorkspacePanel({ section, owner, selected, root, busy, onSelect, onChooseWorkspace, onShowLibraries }: {
+export function SharedWorkspacePanel({ mode = 'lan', section, owner, selected: selection, root, busy, onSelect, onChooseWorkspace, onShowLibraries, onManageHost }: {
+  mode?: SharedWorkspaceMode
   section: SharedWorkspaceSection
   owner: SharedWorkspaceStateOwner
   selected?: SharedSpace
@@ -19,23 +22,29 @@ export function SharedWorkspacePanel({ section, owner, selected, root, busy, onS
   onSelect(id: string): void
   onChooseWorkspace(): void
   onShowLibraries(): void
+  onManageHost?(): void
 }) {
   const state = owner.state
   const status = state.status
+  const spaces = spacesInMode(state.spaces, state.hosts, mode)
+  const hosts = hostsInMode(state.hosts, mode)
+  const selected = spaces.find(space => space.id === selection?.id)
   if (!status) return null
+  if (section === 'libraries' && mode === 'cloud') return <CloudLibraries owner={owner} selected={selected} root={root} busy={busy}
+    onSelect={onSelect} onChooseWorkspace={onChooseWorkspace} onManageHost={onManageHost ?? onShowLibraries} />
   if (section === "libraries") return <div className="grid items-start gap-5 xl:grid-cols-[16rem_minmax(0,1fr)]">
-    <SharedWorkspaceLibraries spaces={state.spaces} selectedId={selected?.id || ""} boundId={status.spaceId}
-      busy={busy || state.loading} canPublish={status.canPublish} onSelect={onSelect} onCreate={name => owner.create(name)} />
+    <SharedWorkspaceLibraries spaces={spaces} selectedId={selected?.id || ""} boundId={status.spaceId}
+      busy={busy || state.loading} canPublish={status.canPublish} hosts={hosts} onSelect={onSelect} onCreate={(name, hostId) => owner.create(name, hostId)} />
     <div className="min-w-0 space-y-5">
+      {status.error && !status.bound ? <NoticeCard tone="neutral" title="请核对当前姿态的同步目录" description={status.error} /> : null}
       {status.canPublish === false ? <NoticeCard tone="neutral" title="可接收其他电脑的共享资料"
         description="接收方无需共享资料库 DLC。配对发布电脑并获得授权后，选择资料库和本地目录即可同步；只有发布本机目录才需要启用 DLC。" /> : null}
-      <SharedWorkspaceDetail owner={owner} space={selected} busy={busy} root={root} onChooseWorkspace={onChooseWorkspace} />
+      <SharedWorkspaceDetail mode={mode} owner={owner} space={selected} busy={busy} root={root} onChooseWorkspace={onChooseWorkspace} />
     </div>
   </div>
-  if (section === "network") return <div className="space-y-5">
-    <SharedWorkspaceNetwork owner={owner} busy={busy || state.loading} />
-    <SharedWorkspaceDevices devices={state.devices} busy={busy} expanded onRevoke={id => void owner.revokeDevice(id)} />
-  </div>
+  if (section === "network") return <SharedWorkspaceConnections mode={mode} owner={owner} busy={busy} />
+  if (mode === 'cloud' && section === 'members' && selected && hosts.some(host => host.deviceId === selected.hostDeviceId && host.canManage))
+    return <CloudMembersPanel key={selected.id} owner={owner} space={selected} busy={busy} />
   const current = Boolean(selected && status.bound && status.spaceId === selected.id)
   if (!current) return <section className="rounded-xl border border-border/70 bg-library-card p-6">
     <h2 className="text-base font-semibold">{sharedWorkspaceSections.find(item => item.id === section)?.label}</h2>

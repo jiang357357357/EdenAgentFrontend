@@ -24,6 +24,20 @@ after(() => {
   else delete globalThis.window
 })
 
+test('preference read recovery is a single loading notice and does not hide unconfirmed saves', async () => {
+  const { preferenceReadReconnecting } = await vite.ssrLoadModule('/src/lib/preference-read.ts')
+  const idle = { phase: 'idle', revision: 0, hasConnected: true }
+  const loading = render(RuntimeNotices, { ...noticeProps, connection: idle, runtimeError: preferenceReadReconnecting })
+  assert.match(loading, /正在重新读取界面设置/)
+  assert.doesNotMatch(loading, /操作未完成/)
+  const disconnected = render(RuntimeNotices, { ...noticeProps, connection: { ...idle, phase: 'reconnecting' }, runtimeError: preferenceReadReconnecting })
+  assert.match(disconnected, /连接中断，正在重连/)
+  assert.doesNotMatch(disconnected, /正在重新读取界面设置/)
+  const save = render(RuntimeNotices, { ...noticeProps, connection: idle, runtimeError: '保存外观设置失败：执行结果未确认' })
+  assert.match(save, /操作未完成/)
+  assert.match(save, /执行结果未确认/)
+})
+
 const callbacks = Object.fromEntries([
   'onDismissConnectionFeedback', 'onRetryConnectionSync', 'onAutoScrollChange', 'onBackgroundChange',
   'onBackgroundImageSelect', 'onAppearanceChange', 'onLoadOlderMessages', 'onSelectSession', 'onDeleteSession',

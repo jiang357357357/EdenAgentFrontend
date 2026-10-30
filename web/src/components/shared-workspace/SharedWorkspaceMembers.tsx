@@ -18,7 +18,7 @@ export function SharedWorkspaceMembers({ members, devices = [], busy, canManage,
     <p className="text-sm text-text-muted">只读设备可接收文件与查看历史；可编辑设备可双向同步与恢复文件。先在“设备配对”中配对电脑，再授予此资料库的权限。</p>
     {members.map(member => <div key={member.deviceId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3 text-sm">
       <span>{member.name}<span className="mt-1 block break-all font-mono text-xs text-text-muted">{member.deviceId}</span></span>
-      {member.role === "owner" ? <span className="text-text-muted">发布设备</span> : <div className="flex gap-2">
+      {member.role === "owner" ? <span className="text-text-muted">主机管理员</span> : <div className="flex gap-2">
         <select aria-label={`${member.name} 的权限`} value={member.role} disabled={busy || !canManage} className={sharedInputClass}
           onChange={event => onSet(member.deviceId, event.target.value as "editor" | "viewer")}>
           <option value="viewer">只读</option><option value="editor">可编辑</option>

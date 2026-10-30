@@ -1,10 +1,10 @@
-/** Wait for the server's start acknowledgement; all temporary listeners belong to this handshake. */
+/** Wait for upstream readiness before start, then for the server's acknowledgement. */
 export function startRealtimeSpeech(socket: WebSocket, options: { configId?: number; endSilenceMs?: number }, isCurrent: () => boolean): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let settled = false
+    let startSent = false
     const cleanup = () => {
       window.clearTimeout(timer)
-      socket.removeEventListener('open', opened)
       socket.removeEventListener('message', message)
       socket.removeEventListener('error', failed)
       socket.removeEventListener('close', closed)
@@ -16,8 +16,10 @@ export function startRealtimeSpeech(socket: WebSocket, options: { configId?: num
       if (error) reject(error)
       else resolve(behavior)
     }
-    const opened = () => {
+    const start = () => {
       if (!isCurrent()) { finish(new Error('语音输入已取消')); return }
+      if (startSent) return
+      startSent = true
       try {
         socket.send(JSON.stringify({ command: 'start',
           ...(typeof options.configId === 'number' ? { config_id: options.configId } : {}),
@@ -33,17 +35,16 @@ export function startRealtimeSpeech(socket: WebSocket, options: { configId?: num
       try { payload = JSON.parse(event.data) } catch { return }
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return
       const data = payload as Record<string, unknown>
-      if (data.type === 'status' && data.status === 'started') finish(undefined, data.input_behavior)
+      if (data.type === 'connection' && data.status === 'connected') start()
+      else if (data.type === 'status' && data.status === 'started') finish(undefined, data.input_behavior)
       else if (data.type === 'error') finish(new Error(typeof data.message === 'string' ? data.message.slice(0, 2000) : '语音识别启动失败'))
     }
     const failed = () => finish(new Error('无法连接语音识别服务'))
     const closed = () => finish(new Error('语音识别连接已关闭'))
     const timer = window.setTimeout(() => finish(new Error('连接语音识别服务超时')), 8000)
-    socket.addEventListener('open', opened, { once: true })
     socket.addEventListener('message', message)
     socket.addEventListener('error', failed, { once: true })
     socket.addEventListener('close', closed, { once: true })
-    if (socket.readyState === WebSocket.OPEN) opened()
-    else if (socket.readyState !== WebSocket.CONNECTING) closed()
+    if (socket.readyState !== WebSocket.OPEN && socket.readyState !== WebSocket.CONNECTING) closed()
   })
 }

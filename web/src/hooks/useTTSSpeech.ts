@@ -781,7 +781,12 @@ export function useTTSSpeech({
     if (!sources.length || clip?.status === "error" || clip?.status === "cancelled") {
       const segment = segments.find((item) => item.id === segmentId)
       const chunks = speechChunksForTTS(rawText, mode)
-      if (!sessionId || !chunks.length || typeof segment?.configId !== "number" || mode === "none") return
+      if (!sessionId || !chunks.length || mode === "none") return
+      if (typeof segment?.configId !== "number") {
+        setClips((current) => ({ ...current, [segmentId]: { status: "error", error: "当前角色未配置语音音色，请检查角色的语音配置后重试。" } }))
+        diagnose("synthesis-config-missing", { messageId, segmentId })
+        return
+      }
       stop(false)
       synthesisBudgetRef.current.reset(`${sessionId}:${messageId}`)
       // Replace any automatic work for this message before starting a manual replay.

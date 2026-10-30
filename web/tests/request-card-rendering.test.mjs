@@ -38,6 +38,13 @@ test('both permission card variants preserve explicit decisions and only offer p
   }
 })
 
+test('desktop permission explains cross-window task scope and keeps host identifiers out of the decision', () => {
+  const html = render(PermissionRequestCard, { request: { ...permission, permission: 'desktop.control',
+    patterns: ['Windows 当前交互桌面'], always: ['desktop'], metadata: { task: 'private-task-reference', scope: '本任务可操作其他应用窗口' } }, onReply: unexpectedReply })
+  assert.match(html, /操作本机桌面/); assert.match(html, /本任务可操作其他应用窗口/); assert.match(html, /允许本任务/)
+  assert.doesNotMatch(html, /始终允许|private-task-reference|tool-1/)
+})
+
 test('question cards preserve empty-answer submission gating, option selection controls, and custom-answer policy', () => {
   for (const tone of ['default', 'overlay']) {
     const html = render(QuestionRequestCard, { request: question, onReply: unexpectedReply, onReject: unexpectedReply, tone })

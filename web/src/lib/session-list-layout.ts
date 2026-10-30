@@ -10,7 +10,7 @@ export function sessionListLayout(sessions: Session[], viewportHeight: number, n
   const groups = new Map<string, Session[]>()
   for (const session of sessions) {
     const updated = session.updatedAt ?? 0
-    const label = updated >= today ? "今天" : updated >= today - 86_400_000 ? "昨天"
+    const label = session.pinned ? "置顶" : updated >= today ? "今天" : updated >= today - 86_400_000 ? "昨天"
       : updated >= today - 6 * 86_400_000 ? "本周" : "更早"
     const group = groups.get(label) ?? []
     group.push(session)
@@ -19,7 +19,7 @@ export function sessionListLayout(sessions: Session[], viewportHeight: number, n
   const height = Math.max(52, Math.round(viewportHeight * 0.075))
   const rows: SessionListRow[] = []
   let offset = 0, position = 0
-  for (const label of ["今天", "昨天", "本周", "更早"]) {
+  for (const label of ["置顶", "今天", "昨天", "本周", "更早"]) {
     const group = groups.get(label)
     if (!group) continue
     rows.push({ key: `group:${label}`, label, offset, height: 36 })

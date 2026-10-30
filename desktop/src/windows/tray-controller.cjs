@@ -19,6 +19,21 @@ function createFallbackTrayIcon(nativeImage) {
   return nativeImage.createFromBitmap(canvas, { width: size, height: size })
 }
 
+function showMainWindow(window) {
+  if (!window || window.isDestroyed()) return
+  if (window.isMinimized()) window.restore()
+  window.show()
+  window.focus()
+}
+
+function createDesktopIcon(nativeImage, platform, iconPath) {
+  if (iconPath) {
+    const icon = nativeImage.createFromPath(iconPath)
+    if (!icon.isEmpty()) return platform === "linux" ? icon.resize({ width: 24, height: 24 }) : icon
+  }
+  return createFallbackTrayIcon(nativeImage)
+}
+
 function createTrayController({
   Menu,
   Tray,
@@ -31,18 +46,10 @@ function createTrayController({
   hidePetWindows,
   createPetWindow,
   createSettingsWindow,
+  showDesktopControl,
   onQuit,
 } = {}) {
   let tray = null
-
-  function createDesktopIcon() {
-    const iconPath = resolveDesktopIconPath()
-    if (iconPath) {
-      const icon = nativeImage.createFromPath(iconPath)
-      if (!icon.isEmpty()) return platform === "linux" ? icon.resize({ width: 24, height: 24 }) : icon
-    }
-    return createFallbackTrayIcon(nativeImage)
-  }
 
   function isPetWindowVisible() {
     const petWindow = getPetWindow()
@@ -53,7 +60,7 @@ function createTrayController({
     if (!tray) return false
     const petVisible = isPetWindowVisible()
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: "显示主窗口", click: () => getMainWindow()?.show() },
+      { label: "显示主窗口", click: () => showMainWindow(getMainWindow()) },
       { label: "隐藏主窗口", click: () => getMainWindow()?.hide() },
       { type: "separator" },
       {
@@ -64,6 +71,7 @@ function createTrayController({
         },
       },
       { label: "设置", click: () => { void createSettingsWindow() } },
+      ...(showDesktopControl ? [{ label: "桌面控制", click: showDesktopControl }] : []),
       { type: "separator" },
       { label: "退出", click: onQuit },
     ]))
@@ -71,9 +79,9 @@ function createTrayController({
   }
 
   function createTray() {
-    tray = new Tray(createDesktopIcon())
+    tray = new Tray(createDesktopIcon(nativeImage, platform, resolveDesktopIconPath()))
     tray.setToolTip(title)
-    tray.on("click", () => getMainWindow()?.show())
+    tray.on("click", () => showMainWindow(getMainWindow()))
     updateTray()
     return tray
   }

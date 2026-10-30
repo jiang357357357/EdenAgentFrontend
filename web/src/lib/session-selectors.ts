@@ -447,6 +447,8 @@ function buildSessionView(session: RuntimeSession): Session {
     id: session.id,
     title: session.title || "新会话",
     archived: session.archived ?? false,
+    pinned: session.pinned ?? false,
+    pinUpdatedAt: session.pinUpdatedAt ?? 0,
     updatedAt: session.updatedAt,
     contextTokens: session.contextTokens,
     tokenBreakdown: session.tokenBreakdown,

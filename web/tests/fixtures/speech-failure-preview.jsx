@@ -5,16 +5,20 @@ import { useTTSSpeech } from '../../src/hooks/useTTSSpeech'
 window.speechFixture = { calls: [], diagnostics: [], done: false, recover: false }
 const state = window.speechFixture, wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 let controls
-function Fixture({ epoch, thinking }) {
-  const segment = { id: 'segment', messageId: 'one', configId: 1, streamEpoch: epoch, text: 'One complete sentence. Another complete sentence.', state: thinking ? 'streaming' : 'done' }
+function Fixture({ epoch, thinking, configured = true }) {
+  const segment = { id: 'segment', messageId: 'one', configId: configured ? 1 : undefined, streamEpoch: epoch, text: 'One complete sentence. Another complete sentence.', state: thinking ? 'streaming' : 'done' }
   controls = useTTSSpeech({ sessionId: '00000000-0000-4000-8000-000000000001', mode: 'all', isThinking: thinking,
     activeSegments: [segment], segments: [segment], messageRevisions: [] })
   state.pending = controls.autoPlaybackPending; state.clip = controls.clips.segment
   return <div>fixture</div>
 }
 const root = createRoot(document.getElementById('root'))
-const render = (epoch, thinking) => flushSync(() => root.render(<Fixture epoch={epoch} thinking={thinking} />))
+const render = (epoch, thinking, configured = true) => flushSync(() => root.render(<Fixture epoch={epoch} thinking={thinking} configured={configured} />))
 async function run() {
+  render(0, false, false)
+  controls.toggle('segment', 'One complete sentence.', 'one')
+  await wait(30)
+  state.missingConfig = { clip: state.clip, calls: state.calls.length }
   render(0, true); await wait(1800)
   state.beforeRewrite = state.calls.length
   for (let epoch = 1; epoch <= 15; epoch++) { render(epoch, true); await wait(10) }

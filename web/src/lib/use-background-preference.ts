@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react"
 import { resolveRuntimeBlobUrl, rpcRequestForOrigin, uploadRuntimeBlob } from "./rpc-transport"
 import { getRuntimeOriginRevision } from "./runtime-origin"
 import { ObjectUrlScope } from "./object-url-scope"
+import { recoverPreferenceRead } from './preference-read'
+import { usePreferenceRevision } from './use-preference-revision'
 
 type Origin = "mon" | "local"
 type PreferenceScope = { origin: Origin; revision: number; live: boolean; sequence: number; pending: Promise<void> }
@@ -14,6 +16,7 @@ export interface BackgroundPreference {
 const initial: BackgroundPreference = { opacity: 100, blur: 0, imageBlobId: null }
 
 export function useBackgroundPreference(origin: Origin | null, active: boolean, accountIdentity?: string | number) {
+  const revision = usePreferenceRevision()
   const [value, setValue] = useState<BackgroundPreference>(initial)
   const [ready, setReady] = useState(false)
   const [imageUrl, setImageUrl] = useState<string>()
@@ -38,21 +41,16 @@ export function useBackgroundPreference(origin: Origin | null, active: boolean, 
       pending: Promise.resolve(),
     }
     owner.current = scope
-    void rpcRequestForOrigin(origin, "ui.background.get", {}, scope.revision)
-      .then((result) => {
-        if (scope.live) {
-          latestValue.current = result
-          setValue(result)
-          setReady(true)
-        }
-      })
-      .catch((reason) => {
-        if (scope.live) setError(`读取背景设置失败：${String(reason)}`)
-      })
+    const stop = recoverPreferenceRead({
+      read: () => rpcRequestForOrigin(origin, 'ui.background.get', {}, scope.revision),
+      current: () => scope.live && scope.revision === getRuntimeOriginRevision() && scope.sequence === 0,
+      loaded: result => { latestValue.current = result; setValue(result); setReady(true) }, failed: setError, label: '读取背景设置失败',
+    })
     return () => {
       scope.live = false
+      stop()
     }
-  }, [origin, active, accountIdentity])
+  }, [origin, active, accountIdentity, revision])
 
   useEffect(() => {
     setImageUrl(undefined)
@@ -70,7 +68,7 @@ export function useBackgroundPreference(origin: Origin | null, active: boolean, 
       live = false
       urls.dispose()
     }
-  }, [origin, active, accountIdentity, value.imageBlobId])
+  }, [origin, active, accountIdentity, revision, value.imageBlobId])
 
   const change = (next: BackgroundPreference) => {
     const scope = owner.current
@@ -87,6 +85,7 @@ export function useBackgroundPreference(origin: Origin | null, active: boolean, 
         if (scope.live && sequence === scope.sequence) {
           latestValue.current = result
           setValue(result)
+          setReady(true)
           setSaving(false)
         }
       } catch (reason) {

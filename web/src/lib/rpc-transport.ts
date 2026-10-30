@@ -2,6 +2,7 @@ import { getStoredToken } from "./auth"
 import { readTurnTiming } from "./turn-timing"
 import { cancellableSpeechRequest } from "./cancellable-speech-request"
 import { compactionMessage, compactionCommandMessage } from "./compaction-message"
+import { stickerMessage } from "./sticker-message"
 import { modelContextUsage } from "./model-context-usage"
 import { EdenAgentRpcClient, type RpcCloseInfo } from "./rpc-client"
 import { SessionRpcChannels, type SessionChannelStatus } from "./session-rpc-channels"
@@ -517,6 +518,8 @@ export function apiSession(session: import("@eden/api").SessionSummary): ApiSess
     id: session.id,
     title: session.title,
     archived: session.archived ?? false,
+    pinned: session.pinned ?? false,
+    pinUpdatedAt: session.pinUpdatedAt ?? 0,
     purpose: session.purpose,
     sourceChannel: session.sourceChannel,
     runtimeOrigin: session.runtimeOrigin,
@@ -911,7 +914,7 @@ function toolResultPart(event: SessionEvent, messageID: string): ApiToolPart | u
 }
 
 export function apiMessage(event: SessionEvent, messageID = sessionEventMessageID(event)): ApiMessage | undefined {
-  const compacted = compactionMessage(event) ?? compactionCommandMessage(event)
+  const compacted = stickerMessage(event) ?? compactionMessage(event) ?? compactionCommandMessage(event)
   if (compacted) return compacted
   const payload = event.payload as JsonObject
   const message = payload.message as JsonObject | undefined
@@ -1015,36 +1018,9 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
     ]
   }
   if (event.eventType === "character.sticker.sent") {
-    const value = event.payload as JsonObject
-    const part = jsonObject(value.part) ?? jsonObject(value.sticker)
-    if (!part || !messageID) return []
-    const stickerID = Number(part.stickerID ?? part.stickerId ?? part.id)
-    const characterID = Number(part.characterID ?? part.characterId ?? part.character)
-    const name = optionalString(part.name)
-    const url = optionalString(part.url ?? part.imageUrl ?? part.image_url)
-    if (!Number.isFinite(stickerID) || !Number.isFinite(characterID) || !name || !url) return []
-    return [
-      {
-        type: "message.part.updated",
-        properties: {
-          sessionID,
-          part: {
-            id: `${event.id}-sticker`,
-            messageID,
-            sessionID,
-            type: "sticker",
-            stickerID,
-            characterID,
-            name,
-            url,
-            ...(optionalString(part.mime) ? { mime: optionalString(part.mime) } : {}),
-            ...(optionalString(part.alt ?? part.description)
-              ? { alt: optionalString(part.alt ?? part.description) }
-              : {}),
-          },
-        },
-      },
-    ]
+    const sticker = stickerMessage(event)
+    return sticker ? [{ type: "message.updated", properties: { sessionID, info: sticker.info } },
+      ...sticker.parts.map(part => ({ type: "message.part.updated", properties: { sessionID, part } }))] : []
   }
   if (event.eventType === "session.deleted") {
     return [{ type: "session.deleted", properties: { sessionID } }]
@@ -1072,6 +1048,11 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
     return typeof value?.archived === "boolean" ? [{ type: "session.archive_updated",
       properties: { sessionID, archived: value.archived, updatedAt: Number(event.createdAt) } }] : []
   }
+  if (event.eventType === "session.pin_updated") {
+    const value = jsonObject(event.payload)
+    return typeof value?.pinned === "boolean" && typeof value.pinUpdatedAt === "number"
+      ? [{ type: "session.pin_updated", properties: { sessionID, pinned: value.pinned, pinUpdatedAt: value.pinUpdatedAt } }] : []
+  }
   if (event.eventType === "model.response") {
     const usage = modelContextUsage(event.payload)
     return usage
@@ -1094,7 +1075,7 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
       },
     ]
   }
-  if (event.eventType === "session.participants_updated") {
+  if (event.eventType === "session.participants_updated" || event.eventType === "session.metadata.updated") {
     const value = event.payload as JsonObject
     return [
       {

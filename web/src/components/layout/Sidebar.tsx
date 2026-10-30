@@ -30,6 +30,7 @@ interface SidebarProps {
   onDelete: (id: string) => Promise<void> | void
   onRename: (id: string, title: string) => Promise<void> | void
   onArchive: (id: string, archived: boolean) => Promise<void> | void
+  onPin: (id: string, pinned: boolean) => Promise<void> | void
   onNewSession: () => void
   onOpenParticipants: () => void
   onOpenDutyAssistant: () => void
@@ -136,6 +137,7 @@ export function Sidebar({
   onDelete,
   onRename,
   onArchive,
+  onPin,
   onNewSession,
   onOpenParticipants,
   onOpenDutyAssistant,
@@ -203,7 +205,7 @@ export function Sidebar({
           </div>
 
           <VirtualSessionList sessions={filteredSessions} activeId={activeId} resetKey={query}
-            onSelect={onSelect} onRename={setRenamingSession} onDelete={onDelete} onArchive={onArchive} /></> : (
+            onSelect={onSelect} onRename={setRenamingSession} onDelete={onDelete} onArchive={onArchive} onPin={onPin} /></> : (
             <WorkspaceExplorer sessionId={activeId || undefined} onSelect={onSelect}
               onOpenFile={onOpenFile} onWorkspaceChanged={onWorkspaceChanged} onOpenSharedWorkspace={onOpenSharedWorkspace} />
           )}

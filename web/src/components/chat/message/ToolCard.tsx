@@ -1,6 +1,6 @@
 import { memo, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { AlertCircle, ChevronRight, Wrench } from "lucide-react"
+import { AlertCircle, ChevronRight, LoaderCircle, Wrench } from "lucide-react"
 import type { CoordinationBatch, SubagentThread, SubagentThreadDetails, ToolCall } from "../../../types"
 import { cn } from "../../../lib/utils"
 import { toolInputPreview } from "../../../lib/tool-input-display"
@@ -152,7 +152,8 @@ function ToolCardView({
               ) : null}
               {tool.input ? <ToolParameters input={tool.input} /> : null}
               {tool.status === "running" && !tool.output && !tool.error ? (
-                <NoticeCard tone="info" title="正在执行中…" busy />
+                <NoticeCard tone="info" title="正在执行中…"
+                  icon={<LoaderCircle className="h-4 w-4 animate-spin" />} />
               ) : null}
               {command ? <ToolCommandOutput command={command} /> : null}
               {workspaceDiff ? (

@@ -21,7 +21,7 @@ export function SharedWorkspaceManagement({ owner, busy, section }: {
     {section === "history" ? <SharedWorkspaceHistory files={state.files} versions={state.history} fileId={state.historyFileId}
       loading={state.historyLoading} busy={busy} canWrite={canWrite} onSelect={fileId => void owner.loadHistory(fileId)}
       onRestore={(fileId, revision) => void owner.restore(fileId, revision)} /> : null}
-    {section === "members" ? <SharedWorkspaceMembers members={state.members} devices={state.devices} busy={busy} canManage={space?.role === "owner"}
+    {section === "members" ? <SharedWorkspaceMembers members={state.members} devices={state.memberDevices} busy={busy} canManage={space?.role === "owner"}
       onSet={(deviceId, role) => void owner.setMember(deviceId, role)} onRemove={deviceId => void owner.removeMember(deviceId)} /> : null}
   </section>
 }

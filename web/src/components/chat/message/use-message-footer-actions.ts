@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { copyReplyText } from "../../../lib/reply-copy"
 
-export function useMessageFooterActions(text: string, onDelete?: () => Promise<void>) {
+export function useMessageFooterActions(text: string, onDelete?: () => Promise<void>, onReadText?: () => Promise<string>) {
   const [copied, setCopied] = useState(false)
   const [copying, setCopying] = useState(false)
   const [copyError, setCopyError] = useState("")
@@ -17,11 +17,14 @@ export function useMessageFooterActions(text: string, onDelete?: () => Promise<v
   }, [copied])
 
   const copy = async () => {
-    if (copyingRef.current || !text.trim()) return
+    if (copyingRef.current || !onReadText && !text.trim()) return
     copyingRef.current = true
     setCopying(true); setCopied(false); setCopyError("")
     try {
-      await copyReplyText(text)
+      const content = onReadText ? await onReadText() : text
+      if (!content.trim()) throw new Error("这组回答没有可复制的正文。")
+      if (!mounted.current) return
+      await copyReplyText(content)
       if (mounted.current) setCopied(true)
     } catch (error) {
       if (mounted.current) setCopyError(error instanceof Error ? error.message : "复制失败，请重试。")

@@ -32,7 +32,7 @@ test('native readiness and a loaded document cannot open reminders before React 
   f.ready()
   assert.equal(f.starts(), 1)
   assert.equal(f.repaints(), 1)
-  assert.deepEqual(f.throttling, [true])
+  assert.deepEqual(f.throttling, [false], 'the primary must keep waking decision windows while hidden')
   f.ready(); f.contents.emit('did-finish-load'); f.window.emit('ready-to-show')
   assert.equal(f.starts(), 1)
 })

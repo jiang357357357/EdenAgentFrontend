@@ -11,6 +11,7 @@ export function useSharedWorkspace(scope: SharedWorkspaceScope, options: {
   scopeVersion?: number
   onFilesChanged?(): void
   onInvalidated?(reason: SharedWorkspaceInvalidation): void
+  onPostureDirectoryChanged?(path: string): void
 } = {}) {
   const [, redraw] = useState(0)
   const callbacks = useRef(options)
@@ -19,12 +20,13 @@ export function useSharedWorkspace(scope: SharedWorkspaceScope, options: {
   const scopeVersion = options.scopeVersion ?? 0
   const client = useMemo(() => createSharedWorkspaceClient(directoryPath, sessionId), [directoryPath, sessionId, scopeVersion])
   const owner = useMemo(() => new SharedWorkspaceStateOwner(client, () => redraw(value => value + 1),
-    () => callbacks.current.onFilesChanged?.()), [client])
+    () => callbacks.current.onFilesChanged?.(), path => callbacks.current.onPostureDirectoryChanged?.(path)), [client])
   useEffect(() => {
     owner.activate()
     void owner.refresh(callbacks.current.details)
     const timer = window.setInterval(() => {
       if (!owner.state.busy && !owner.state.loading) void owner.refresh(callbacks.current.details, "background")
+      if (callbacks.current.details) void owner.pollDeployment()
     }, 5000)
     const invalidate = (reason: SharedWorkspaceInvalidation) => {
       client.invalidate(); owner.dispose(); callbacks.current.onInvalidated?.(reason)

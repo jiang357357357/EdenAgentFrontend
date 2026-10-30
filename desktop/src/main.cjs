@@ -1,5 +1,6 @@
 require('./app/installed-launch.cjs').assertInstalledLaunch()
 const { createDesktopReminderService } = require("./reminders/reminder-service.cjs")
+const { createDesktopControlService } = require("./desktop-control/control-service.cjs")
 const { app, BrowserWindow, Menu, Tray, clipboard, desktopCapturer, dialog, ipcMain, nativeImage, powerMonitor, protocol, screen, net, session, shell } = require("electron")
 const { execFile, spawn } = require("node:child_process")
 const fs = require("node:fs")
@@ -48,8 +49,10 @@ const { registerAppProtocol } = require("./protocols/app-protocol.cjs")
 const { createWebAppLoader } = require("./windows/web-app-loader.cjs")
 const { createTrayController } = require("./windows/tray-controller.cjs")
 const { attachWindowRepaint } = require("./windows/window-repaint.cjs")
+const { attachMainWindowVisibility } = require("./windows/main-window-visibility.cjs")
 const { attachPrimaryRendererStartup } = require("./windows/primary-renderer-startup.cjs")
 const { rendererConsoleError } = require("./windows/renderer-console-message.cjs")
+const { createQuestionWindowController } = require("./windows/question-window.cjs")
 
 const execFileAsync = promisify(execFile)
 
@@ -100,6 +103,9 @@ const rustServer = createAgentServerManager({
 })
 const desktopReminders = createDesktopReminderService({ BrowserWindow, screen, ipcMain,
   capability: origin => rustServer.capability(origin), coreToken: () => authSession?.token ?? null })
+const desktopControl = createDesktopControlService({ BrowserWindow, screen, ipcMain,
+  capability: origin => rustServer.capability(origin), coreToken: () => authSession?.token ?? null,
+  placementFile: path.join(app.getPath('userData'), 'desktop-control-window.json') })
 const localRuntimeService = createLocalRuntimeService({
   configStore: localRuntimeConfig,
   rustServer,
@@ -141,7 +147,12 @@ let petWindow = null
 let petBubbleWindow = null
 let petBubbleIconWindow = null
 let settingsWindow = null
-let questionWindow = null
+const questionWindowController = createQuestionWindowController({ BrowserWindow, screen,
+  preload: path.join(__dirname, 'preload.cjs'), resolveIcon: () => resolveWindowIcon(),
+  load: target => loadWebApp(target, 'question'),
+  attach: target => { attachRendererDiagnostics(target, 'question'); attachWindowActivityEvents(target, 'question') },
+  quitting: () => isQuitting || hasQuitFlag(), owner: () => mainWindow?.webContents,
+})
 let isQuitting = false
 let currentViewMode = "chatWithCharacter"
 let petSettings = petSettingsStore.read()
@@ -200,6 +211,7 @@ const { createTray, updateTray } = createTrayController({
   hidePetWindows,
   createPetWindow,
   createSettingsWindow,
+  showDesktopControl: () => desktopControl.show(),
   onQuit: () => {
     isQuitting = true
     quitFlagController.signalQuit()
@@ -269,7 +281,7 @@ function preferredAutomaticSpeechSurface() {
 
 function broadcastAuthState(state) {
   for (const targetWindow of BrowserWindow.getAllWindows()) {
-    if (!targetWindow.isDestroyed()) targetWindow.webContents.send("eden-agent-auth-state", state)
+    if (!targetWindow.isDestroyed() && !desktopControl.owns(targetWindow.webContents)) targetWindow.webContents.send("eden-agent-auth-state", state)
   }
 }
 
@@ -277,7 +289,10 @@ function setAuthSession(token, response) {
   const previousToken = authSession?.token
   authSessionRevision += 1
   authSession = token && response?.valid !== false ? { token, response, verifiedAt: Date.now() } : null
-  if (previousToken !== authSession?.token) desktopReminders.authenticationChanged()
+  if (previousToken !== authSession?.token) {
+    desktopReminders.authenticationChanged()
+    desktopControl.authenticationChanged()
+  }
   broadcastAuthState(authSession
     ? { type: "authenticated", token: authSession.token, response: authSession.response }
     : { type: "unauthenticated" })
@@ -669,22 +684,21 @@ function setWindowAppearance(mode, targetWindow = mainWindow) {
 
 function attachRendererDiagnostics(targetWindow, label) {
   const contents = targetWindow.webContents
-  contents.on("render-process-gone", (_event, details) => {
-    speechPlaybackCoordinator.revokeOwner(contents.id, "renderer-gone")
-    if (!app.isPackaged) report(`process gone: ${details.reason} (${details.exitCode})`)
-  })
-  if (app.isPackaged) return
   const report = (message) => {
     const line = `[${new Date().toISOString()}] [${label}] ${message}`
     console.error(`[Eden Agent][Renderer] ${line}`)
     try {
-      const diagnosticsDir = path.join(agentRoot, ".artifacts")
+      const diagnosticsDir = app.isPackaged ? path.join(app.getPath('userData'), 'logs') : path.join(agentRoot, ".artifacts")
       fs.mkdirSync(diagnosticsDir, { recursive: true })
       fs.appendFileSync(path.join(diagnosticsDir, "renderer-diagnostics.log"), `${line}\n`, "utf8")
     } catch (error) {
       console.error(`[Eden Agent][Renderer] unable to write diagnostics: ${error.message || error}`)
     }
   }
+  contents.on("render-process-gone", (_event, details) => {
+    speechPlaybackCoordinator.revokeOwner(contents.id, "renderer-gone")
+    report(`process gone: ${details.reason} (${details.exitCode})`)
+  })
   contents.on("console-message", (event, ...args) => {
     const message = rendererConsoleError(event, args)
     if (message) report(message)
@@ -722,7 +736,8 @@ function createWindow() {
     },
   })
 
-  attachPrimaryRendererStartup(mainWindow, { ipcMain, onReady: () => desktopReminders.start() })
+  attachPrimaryRendererStartup(mainWindow, { ipcMain, onReady: () => { desktopReminders.start(); desktopControl.start() } })
+  attachMainWindowVisibility(mainWindow, { ipcMain })
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show()
   })
@@ -744,60 +759,11 @@ function createWindow() {
 }
 
 function createQuestionWindow() {
-  if (questionWindow && !questionWindow.isDestroyed()) return questionWindow
-  const preload = path.join(__dirname, "preload.cjs")
-  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
-  const workArea = display.workArea
-  const bounds = {
-    width: Math.round(workArea.width * 0.36),
-    height: Math.round(workArea.height * 0.72),
-  }
-  questionWindow = new BrowserWindow({
-    title: "Eden Agent 用户决策",
-    ...bounds,
-    minWidth: Math.round(workArea.width * 0.28),
-    minHeight: Math.round(workArea.height * 0.5),
-    center: true,
-    show: false,
-    frame: true,
-    autoHideMenuBar: true,
-    alwaysOnTop: true,
-    skipTaskbar: false,
-    backgroundColor: "#f5f5f4",
-    icon: resolveWindowIcon(),
-    webPreferences: {
-      preload,
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      webSecurity: false,
-    },
-  })
-  questionWindow.on("close", (event) => {
-    if (isQuitting || hasQuitFlag()) return
-    event.preventDefault()
-    questionWindow?.hide()
-  })
-  questionWindow.on("closed", () => {
-    questionWindow = null
-  })
-  attachRendererDiagnostics(questionWindow, "question")
-  attachWindowActivityEvents(questionWindow, "question")
-  loadWebApp(questionWindow, "question")
-  return questionWindow
+  return questionWindowController.create()
 }
 
-function setQuestionWindowVisible(visible) {
-  const targetWindow = createQuestionWindow()
-  if (!visible) {
-    targetWindow.hide()
-    return true
-  }
-  if (targetWindow.isMinimized()) targetWindow.restore()
-  targetWindow.setAlwaysOnTop(true)
-  targetWindow.show()
-  targetWindow.focus()
-  return true
+function setQuestionWindowVisible(visible, sender) {
+  return questionWindowController.setVisible(sender, visible)
 }
 
 async function createPetWindow() {
@@ -1191,7 +1157,7 @@ registerDesktopIpc({
       await createPetWindow()
       return true
     },
-    set_question_window_visible: ({ args }) => setQuestionWindowVisible(Boolean(args.visible)),
+    set_question_window_visible: ({ args, sender }) => setQuestionWindowVisible(Boolean(args.visible), sender),
     set_view_mode_state: ({ args }) => {
       currentViewMode = args.mode === "character" ? "character" : "chatWithCharacter"
       updateTray()
@@ -1308,6 +1274,7 @@ app.on("second-instance", () => {
     }
     isQuitting = true
     desktopReminders.close()
+    desktopControl.close()
     globalPointerObserver.dispose()
     stopActivityPresence()
     processLifecycle.stopDevParentWatch()

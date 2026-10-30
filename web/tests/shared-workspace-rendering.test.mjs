@@ -17,8 +17,9 @@ const space = { id: "space-1", name: "资料", role: "owner" }
 const file = { fileId: "file-1", path: "note.txt", revision: 1, deleted: false, sha256: "a".repeat(64), size: 3 }
 const { SharedWorkspacePageView } = await vite.ssrLoadModule("/src/pages/shared-workspace/SharedWorkspacePageView.tsx")
 const { SharedWorkspaceLibraries } = await vite.ssrLoadModule("/src/pages/shared-workspace/SharedWorkspaceLibraries.tsx")
+const { SharedHostDeployment } = await vite.ssrLoadModule('/src/components/shared-workspace/SharedHostDeployment.tsx')
 const pageOwner = status => ({ state: { status, spaces: [space], conflicts: [], members: [], files: [], history: [],
-  devices: [], historyFileId: "", busy: false, loading: false, historyLoading: false, error: "", notice: "" },
+  devices: [], memberDevices: [], hosts: [], managementHostId: '', deployment: null, historyFileId: "", busy: false, loading: false, historyLoading: false, error: "", notice: "" },
   refresh: noAction, create: noAction, bind: noAction, sync: noAction, pause: noAction, revokeDevice: noAction,
   resolve: noAction, loadHistory: noAction, restore: noAction, setMember: noAction, removeMember: noAction })
 const pageStatus = { available: true, canPublish: true, publishReason: null, bound: false, root: "E:/project", spaceId: null, state: "unbound",
@@ -89,13 +90,25 @@ test("a receiver without DLC keeps pairing and remote-library binding while loca
   const owner = pageOwner({ ...pageStatus, canPublish: false, publishReason: "DLC 未安装" })
   owner.state.spaces = [{ ...space, role: "editor", hostName: "发布电脑" }]
   owner.state.network = { name: "接收电脑", deviceId: "receiver", addresses: [], listening: true, discoveryError: null, peers: [] }
+  owner.state.hosts = [{ deviceId: 'receiver', name: '接收电脑', local: true, reachable: true, canPublish: false, canManage: true, dedicated: false, addresses: [], error: null }]
+  owner.state.managementHostId = 'receiver'
   const html = render(SharedWorkspacePageView, { owner, root: pageStatus.root, onBack: noAction, onChooseWorkspace: noAction })
   assert.match(html, /接收方无需共享资料库 DLC/)
-  assert.match(html, /确认配对设备/)
+  assert.match(html, /配对局域网设备/)
   assert.match(html, /选择资料库：资料/)
   assert.doesNotMatch(html, /共享资料库暂不可用/)
   assert.ok(buttons(html).find(button => button[2].includes("新建资料库") && /disabled=""/.test(button[1])))
-  assert.ok(buttons(html).find(button => button[2].includes("创建配对邀请") && !/disabled=""/.test(button[1])))
+  assert.ok(buttons(html).find(button => button[2].includes("为所选主机创建邀请") && !/disabled=""/.test(button[1])))
+})
+
+test("the cloud deployment form requires host-key confirmation and leaves passwords out of rendered state", () => {
+  const owner = pageOwner(pageStatus)
+  const html = render(SharedHostDeployment, { owner, busy: false })
+  assert.match(html, /SSH 部署共享主机/)
+  assert.match(html, /读取 SSH 主机指纹/)
+  assert.match(html, /type="password"/)
+  assert.match(html, /Linux/)
+  assert.ok(buttons(html).find(button => button[2].includes('部署并连接云主机') && /disabled=""/.test(button[1])))
 })
 
 test("library browser shows service permissions and current binding without made-up file counts", () => {
@@ -139,7 +152,7 @@ test("history restore is disabled for viewers while both data and deletion revis
 test("owner member management keeps ownership immutable and new members default to viewer", () => {
   const html = render(SharedWorkspaceMembers, { members: [{ deviceId: "device-1", name: "发布电脑", role: "owner" }, { deviceId: "device-2", name: "接收电脑", role: "editor" }],
     busy: false, canManage: true, onSet: noAction, onRemove: noAction })
-  assert.match(html, /发布设备/)
+  assert.match(html, /主机管理员/)
   assert.doesNotMatch(html, /发布电脑 的权限/)
   assert.match(html, /接收电脑 的权限/)
   assert.match(html, /<option value="viewer" selected="">只读<\/option>/)
@@ -160,7 +173,7 @@ test("device revocation is explicit and already revoked devices cannot be revoke
   assert.match(html, /已撤销/)
   assert.equal(buttons(html).filter(button => button[2].includes("撤销配对")).length, 1)
   assert.doesNotMatch(html, /确认撤销<\/button>/)
-  assert.match(html, /撤销配对会移除此设备对本机资料库的权限/)
+  assert.match(html, /撤销配对会移除此设备对所选主机资料库的权限/)
   assert.match(html, /已配对/)
   assert.doesNotMatch(html, /已连接|在线/)
 })

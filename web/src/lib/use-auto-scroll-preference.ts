@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { rpcRequestForOrigin } from './rpc-transport'
 import { getRuntimeOriginRevision } from './runtime-origin'
+import { recoverPreferenceRead } from './preference-read'
+import { usePreferenceRevision } from './use-preference-revision'
 
 type Origin = 'mon' | 'local'
-export function useAutoScrollPreference(origin: Origin | null, active: boolean) {
+export function useAutoScrollPreference(origin: Origin | null, active: boolean, accountIdentity?: string | number) {
+  const revision = usePreferenceRevision()
   const [enabled, setEnabled] = useState(false)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string>()
@@ -13,11 +16,13 @@ export function useAutoScrollPreference(origin: Origin | null, active: boolean) 
     if (!origin || !active) return
     const scope = { origin, revision: getRuntimeOriginRevision(), live: true, busy: false }
     owner.current = scope
-    void rpcRequestForOrigin(origin, 'ui.preferences.get', {}, scope.revision).then(value => {
-      if (scope.live) { setEnabled(value.autoScrollEnabled); setReady(true) }
-    }).catch(reason => { if (scope.live) setError(`读取滚动偏好失败：${String(reason)}`) })
-    return () => { scope.live = false }
-  }, [origin, active])
+    const stop = recoverPreferenceRead({
+      read: () => rpcRequestForOrigin(origin, 'ui.preferences.get', {}, scope.revision),
+      current: () => scope.live && scope.revision === getRuntimeOriginRevision(),
+      loaded: value => { setEnabled(value.autoScrollEnabled); setReady(true) }, failed: setError, label: '读取滚动偏好失败',
+    })
+    return () => { scope.live = false; stop() }
+  }, [origin, active, accountIdentity, revision])
   const change = (value: boolean) => {
     const scope = owner.current
     if (!ready || !scope?.live || scope.busy) return

@@ -15,6 +15,7 @@ import { AttachmentImage } from "./AttachmentImage"
 import { AttachmentFiles } from "./AttachmentFiles"
 import { MessageFooter } from "./MessageFooter"
 import { replyCopyText } from "../../../lib/reply-copy"
+import type { ReplyActionGroup } from "../../../lib/reply-action-groups"
 
 interface MessageBubbleProps {
   message: MessageData
@@ -41,6 +42,8 @@ interface MessageBubbleProps {
   onInspectSubagent?: (target: string) => Promise<SubagentThreadDetails>
   onInterruptSubagent?: (target: string) => Promise<unknown>
   onDeleteMessage?: () => Promise<void>
+  onReadReplyText?: () => Promise<string>
+  replyGroup?: ReplyActionGroup
   deleteDisabled?: boolean
 }
 
@@ -69,6 +72,8 @@ export function MessageBubble({
   onInspectSubagent,
   onInterruptSubagent,
   onDeleteMessage,
+  onReadReplyText,
+  replyGroup,
   deleteDisabled,
 }: MessageBubbleProps) {
   const isUser = message.role === "user"
@@ -249,7 +254,7 @@ export function MessageBubble({
                     alt={segment.alt || segment.name}
                     title={segment.name}
                     onClick={() => onPreviewImage?.(src, segment.alt || segment.name)}
-                    className="mb-[0.85vh] h-auto max-h-[22vh] w-auto max-w-[22vh] cursor-pointer object-contain drop-shadow-sm transition-transform hover:scale-[1.02]"
+                    className="mb-[0.85vh] h-auto max-h-[22vh] w-auto max-w-[22vh] cursor-pointer rounded-[1.35vh] object-contain drop-shadow-sm transition-transform hover:scale-[1.02]"
                     draggable={false}
                   />
                 )
@@ -341,9 +346,12 @@ export function MessageBubble({
           <div className="px-[0.45vh] text-[1.65vh] text-text-muted">正在组织回复...</div>
         )}
 
-        {!isUser && !message.isStreaming && <MessageFooter key={message.id} durationMs={message.replyDurationMs}
-          text={replyCopyText(message)} onDelete={message.id.startsWith("compaction:") ? undefined : onDeleteMessage}
-          deleteDisabled={deleteDisabled} />}
+        {!isUser && !message.isStreaming && !replyGroup?.pending && (groupPosition === "single" || groupPosition === "last") &&
+          <MessageFooter key={message.id} durationMs={replyGroup?.durationMs ?? message.replyDurationMs}
+            text={replyGroup?.text ?? replyCopyText(message)} onReadText={onReadReplyText}
+            copyAvailable={replyGroup?.copyAvailable} messageCount={replyGroup?.messageIDs.length}
+            onDelete={message.id.startsWith("compaction:") ? undefined : onDeleteMessage}
+            deleteDisabled={deleteDisabled} />}
       </div>
     </div>
   )

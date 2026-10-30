@@ -17,7 +17,7 @@ const space = { id: "space-1", name: "资料", role: "owner" }
 const status = { available: true, canPublish: true, publishReason: null, bound: true, spaceId: space.id, state: "paused",
   root: "E:/project", paused: true, pending: 3, conflicts: 2, lastSync: null, reason: null, error: null }
 const owner = (overrides = {}, spaces = [space]) => ({ state: { status: { ...status, ...overrides }, spaces, members: [], files: [], conflicts: [],
-  devices: [], history: [], historyFileId: "", busy: false, loading: false, historyLoading: false, error: "", notice: "" },
+  devices: [], memberDevices: [], hosts: [], managementHostId: '', deployment: null, history: [], historyFileId: "", busy: false, loading: false, historyLoading: false, error: "", notice: "" },
   refresh: noAction, create: noAction, bind: noAction, sync: noAction, pause: noAction, revokeDevice: noAction,
   resolve: noAction, loadHistory: noAction, restore: noAction, setMember: noAction, removeMember: noAction })
 const render = (component, props) => renderToStaticMarkup(h(component, props))
@@ -29,7 +29,7 @@ test("the navigation contains only shared-library functions and one current sect
     const html = render(SharedWorkspaceNavigation, { active: id, prefix: "shared", pending: 3, conflicts: 2, onSelect: noAction })
     const current = [...html.matchAll(/<button\b([^>]*)>/g)].filter(match => match[1].includes('aria-current="page"'))
     assert.equal(current.length, 1)
-    assert.ok(current[0][1].includes(`aria-label="${label}"`))
+    assert.ok(current[0][1].includes(`aria-label="${id === 'network' ? '设备与配对' : label}"`))
     assert.ok(current[0][1].includes(`aria-controls="shared-panel-${id}"`))
     assert.match(html, /aria-label="共享资料库功能"/)
     assert.doesNotMatch(html, /主导航|所有会话|值日生|退出登录|>插件</)
@@ -66,9 +66,13 @@ test("unbound or different-library sections never expose the bound library's con
 })
 
 test("device pairing remains accessible before a library is bound and without publisher DLC", () => {
-  const html = panel("network", { selected: undefined, owner: owner({ bound: false, spaceId: null, canPublish: false }) })
-  assert.match(html, /局域网设备配对/)
-  assert.match(html, /本机与已配对设备/)
+  const receiver = owner({ bound: false, spaceId: null, canPublish: false })
+  receiver.state.network = { deviceId: 'receiver', name: '接收电脑', peers: [], addresses: [], listening: true, discoveryError: null }
+  receiver.state.hosts = [{ deviceId: 'receiver', name: '接收电脑', local: true, canManage: true, canPublish: false, reachable: true, dedicated: false, addresses: [] }]
+  receiver.state.managementHostId = 'receiver'
+  const html = panel("network", { selected: undefined, owner: receiver })
+  assert.match(html, /共享主机连接/)
+  assert.match(html, /所选主机的已配对设备/)
   assert.doesNotMatch(html, /前往资料库|新建资料库|绑定并共享此目录/)
 })
 

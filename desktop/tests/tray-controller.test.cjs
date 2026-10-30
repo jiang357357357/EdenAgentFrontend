@@ -21,7 +21,12 @@ test("tray controller builds menus from current window state", async () => {
   let petVisible = true
   let menuTemplate = null
   const calls = []
-  const mainWindow = { show: () => calls.push("show-main"), hide: () => calls.push("hide-main") }
+  let minimized = false, destroyed = false
+  const mainWindow = {
+    isDestroyed: () => destroyed, isMinimized: () => minimized,
+    restore: () => { minimized = false; calls.push("restore-main") },
+    show: () => calls.push("show-main"), hide: () => calls.push("hide-main"), focus: () => calls.push("focus-main"),
+  }
   const petWindow = {
     isDestroyed: () => false,
     isVisible: () => petVisible,
@@ -59,11 +64,22 @@ test("tray controller builds menus from current window state", async () => {
   menuTemplate[4].click()
   menuTemplate[6].click()
   await Promise.resolve()
-  assert.deepEqual(calls, ["show-main", "show-main", "hide-main", "hide-pet", "settings", "quit"])
+  assert.deepEqual(calls, ["show-main", "focus-main", "show-main", "focus-main", "hide-main", "hide-pet", "settings", "quit"])
 
   controller.updateTray()
   assert.equal(menuTemplate[3].label, "显示桌宠")
   menuTemplate[3].click()
   await Promise.resolve()
   assert.equal(calls.at(-1), "show-pet")
+
+  minimized = true
+  menuTemplate[0].click()
+  assert.deepEqual(calls.slice(-3), ["restore-main", "show-main", "focus-main"])
+  minimized = true
+  tray.handlers.get("click")()
+  assert.deepEqual(calls.slice(-3), ["restore-main", "show-main", "focus-main"])
+  destroyed = true
+  const before = calls.length
+  menuTemplate[0].click(); tray.handlers.get("click")()
+  assert.equal(calls.length, before)
 })

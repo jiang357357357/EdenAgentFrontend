@@ -13,6 +13,7 @@ interface ChatComposerFooterProps {
   canSend: boolean
   contextTokens: number
   contextWindow: number
+  contextRefreshKey?: unknown
   disabled?: boolean
   hasDialog: boolean
   hideComposerFooter: boolean
@@ -56,6 +57,7 @@ export function ChatComposerFooter({
   canSend,
   contextTokens,
   contextWindow,
+  contextRefreshKey,
   disabled,
   hasDialog,
   hideComposerFooter,
@@ -144,7 +146,7 @@ export function ChatComposerFooter({
         </div>
           <div className="absolute bottom-[1.75vh] right-[-7.5vh] z-30 flex flex-col items-center gap-[0.9vh]">
             <ReplyTimer sessionId={sessionId} />
-            <TokenMeter sessionId={sessionId} draft={draft} inputTokens={inputTokens} contextTokens={contextTokens} contextWindow={contextWindow} breakdown={tokenBreakdown} />
+            <TokenMeter key={sessionId} sessionId={sessionId} draft={draft} inputTokens={inputTokens} contextTokens={contextTokens} contextWindow={contextWindow} breakdown={tokenBreakdown} refreshKey={contextRefreshKey} isRunning={Boolean(disabled)} />
           </div>
         </>
       ) : null}

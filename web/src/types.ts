@@ -175,6 +175,8 @@ export interface Session {
   id: string
   title: string
   archived?: boolean
+  pinned?: boolean
+  pinUpdatedAt?: number
   updatedAt?: number
   contextTokens?: number
   tokenBreakdown?: TokenBreakdown
@@ -559,6 +561,8 @@ export interface RuntimeSession {
   title: string
   archived?: boolean
   archiveUpdatedAt?: number
+  pinned?: boolean
+  pinUpdatedAt?: number
   contextTokens?: number
   tokenBreakdown?: TokenBreakdown
   status: SessionStatus

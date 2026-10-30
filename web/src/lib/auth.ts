@@ -341,7 +341,7 @@ export function isAuthExpiredError(error: unknown) {
 }
 
 function isDesktopRuntime() {
-  return Boolean(window.edenAgentDesktop)
+  return Boolean(window.edenAgentDesktop) || window.location?.protocol === "edenagent:"
 }
 
 async function invokeDesktop<T>(command: string, args?: Record<string, unknown>) {

@@ -1,4 +1,4 @@
-import { MessageSquare } from "lucide-react"
+import { MessageSquare, Pin } from "lucide-react"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { resolveCoreAssetUrl } from "../../lib/auth"
 import { sessionListLayout, visibleSessionRows, type SessionListRow } from "../../lib/session-list-layout"
@@ -12,6 +12,7 @@ type Props = {
   onRename(session: { id: string; title: string }): void
   onDelete(id: string): Promise<void> | void
   onArchive(id: string, archived: boolean): Promise<void> | void
+  onPin(id: string, pinned: boolean): Promise<void> | void
 }
 
 function SessionAvatar({ session, active }: { session: Session; active: boolean }) {
@@ -48,12 +49,13 @@ const SessionRow = memo(function SessionRow({ row, total, active, onSelect, onMe
         active ? "border-accent bg-accent/8 text-text" : "border-transparent text-text-muted hover:bg-card hover:text-text")}>
       <SessionAvatar session={session} active={active} />
       <span className="min-w-0 flex-1 truncate">{session.title}</span>
+      {session.pinned && <span title="已置顶" aria-label="已置顶"><Pin className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden="true" /></span>}
       <span className="shrink-0 text-[1.35vh] text-text-lighter">{session.date}</span>
     </button>
   </li>
 })
 
-export function VirtualSessionList({ sessions, activeId, resetKey, onSelect, onRename, onDelete, onArchive }: Props) {
+export function VirtualSessionList({ sessions, activeId, resetKey, onSelect, onRename, onDelete, onArchive, onPin }: Props) {
   const container = useRef<HTMLDivElement>(null)
   const pendingFocus = useRef<string | undefined>(undefined)
   const [focused, setFocused] = useState<string>()
@@ -117,14 +119,14 @@ export function VirtualSessionList({ sessions, activeId, resetKey, onSelect, onR
     const target = event.target as HTMLElement
     const id = target.closest<HTMLElement>("[data-session-row]")?.dataset.sessionRow
     if (!id || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return
-    const index = sessions.findIndex(session => session.id === id)
-    const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? sessions.length - 1
-      : Math.max(0, Math.min(sessions.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))
-    const next = sessions[nextIndex]
-    const row = layout.rows.find(item => item.key === next?.id)
-    if (!next || !row || !container.current) return
+    const ordered = layout.rows.filter(item => item.session)
+    const index = ordered.findIndex(item => item.key === id)
+    const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? ordered.length - 1
+      : Math.max(0, Math.min(ordered.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))
+    const row = ordered[nextIndex]
+    if (!row || !container.current) return
     event.preventDefault()
-    pendingFocus.current = next.id
+    pendingFocus.current = row.key
     container.current.scrollTop = row.offset
     measure()
   }
@@ -142,6 +144,11 @@ export function VirtualSessionList({ sessions, activeId, resetKey, onSelect, onR
     {menu && menuSession && <SessionContextMenu key={menu.id} session={menuSession} x={menu.x} y={menu.y} anchor={menu.anchor}
       onClose={closeMenu} onEdit={() => onRename({ id: menuSession.id, title: menuSession.title })}
       onArchive={() => onArchive(menuSession.id, !menuSession.archived)}
+      onPin={async () => {
+        const pinned = !menuSession.pinned
+        await onPin(menuSession.id, pinned)
+        if (pinned && container.current) { container.current.scrollTop = 0; measure() }
+      }}
       onDelete={async () => {
         if (window.confirm(`移除会话“${menuSession.title}”？会立即从列表隐藏；若任务仍在运行，将同时请求停止。`))
           await onDelete(menuSession.id)

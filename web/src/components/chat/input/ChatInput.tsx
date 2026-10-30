@@ -431,6 +431,7 @@ export function ChatInput({
           canSend={canSend}
           contextTokens={contextTokens}
           contextWindow={contextWindow}
+          contextRefreshKey={modelConfig}
           disabled={disabled}
           hasDialog={hasDialog}
           hideComposerFooter={hideComposerFooter}

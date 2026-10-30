@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { NoticeCard, noticeActionClass } from '../feedback'
 import type { ConnectionFeedbackState } from '../../lib/connection-feedback'
+import { preferenceReadReconnecting } from '../../lib/preference-read'
 
 interface RuntimeNoticesProps {
   connection: ConnectionFeedbackState
@@ -47,7 +48,9 @@ export function RuntimeNotices({ connection, runtimeError, modelRetry, onDismiss
   if (connection.phase === 'idle' && !runtimeError && !modelRetry) return null
   return <div className="my-3 space-y-3">
     <ConnectionNotice connection={connection} onDismiss={onDismissConnection} onRetrySync={onRetrySync} />
-    {runtimeError && <NoticeCard tone="warning" title="操作未完成" description={runtimeError}
+    {runtimeError === preferenceReadReconnecting ? (connection.phase === 'idle' || connection.phase === 'restored')
+      ? <NoticeCard title="正在重新读取界面设置" description={preferenceReadReconnecting} busy /> : null
+      : runtimeError && <NoticeCard tone="warning" title="操作未完成" description={runtimeError}
       actions={onSelectAssistant && /会话助手（ID：.+）已不在 Mon Core 中|请先为此会话选择助手/.test(runtimeError)
         ? <button type="button" className={noticeActionClass} onClick={onSelectAssistant}>重新选择助手</button> : undefined} />}
     {modelRetry && <NoticeCard title="模型响应中断，正在重试" busy

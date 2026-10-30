@@ -4,7 +4,6 @@ import { RuntimeDiagnostics } from "../../components/chat/RuntimeDiagnostics"
 import { RuntimeNotices } from "../../components/chat/RuntimeNotices"
 import type { ConnectionFeedbackState } from "../../lib/connection-feedback"
 import { BackgroundControls } from "../../components/chat/BackgroundControls"
-import { SubagentPanel } from "../../components/chat/SubagentPanel"
 import { Move, File, Lock, LockOpen, MessageSquare, X } from "lucide-react"
 import { motion } from "motion/react"
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
@@ -15,7 +14,6 @@ import { DirectorPlanCard, MessageBubble, RunReviewCard } from "../../components
 import { PermissionRequestCard } from "../../components/requests"
 import { Sidebar } from "../../components/layout"
 import type { SharedWorkspaceScope } from "../../components/shared-workspace/use-shared-workspace"
-import { MemoryCandidatesPanel } from "../../components/memories/MemoryCandidatesPanel"
 import { resolveCoreAssetUrl, type ActiveCharacterAction, type AuthUser, type CoreAssistant } from "../../lib/auth"
 import {
   DEFAULT_PET_SETTINGS,
@@ -29,6 +27,7 @@ import { startCompanionDirectorRun } from "../../lib/companion-director-state"
 import { createContextTokenEstimator } from "../../lib/token-usage"
 import { readWorkspaceFile, type WorkspaceEntry, type WorkspaceFileContent } from "../../lib/agent-client"
 import { messageGroupPosition, messageRenderKey } from "../../lib/message-grouping"
+import { buildReplyActionGroups } from "../../lib/reply-action-groups"
 import { buildRunReviewIndex } from "../../lib/run-review"
 import { getStoredRuntimeOrigin } from "../../lib/runtime-origin"
 import type { BackgroundPreference } from "../../lib/use-background-preference"
@@ -95,8 +94,10 @@ interface ChatPageProps {
   onSelectSession: (id: string) => void
   onDeleteSession: (id: string) => Promise<void>
   onDeleteMessage: (sessionId: string, messageId: string) => Promise<void>
+  onReadReplyText: (sessionId: string, messageId: string) => Promise<string>
   onRenameSession: (id: string, title: string) => Promise<void>
   onArchiveSession: (id: string, archived: boolean) => Promise<void>
+  onPinSession: (id: string, pinned: boolean) => Promise<void>
   onNewSession: () => void
   onSendMessage: (content: string, attachments: PromptAttachment[]) => Promise<void>
   onCompact: (instructions?: string) => Promise<void>
@@ -160,8 +161,10 @@ export function ChatPage({
   onSelectSession,
   onDeleteSession,
   onDeleteMessage,
+  onReadReplyText,
   onRenameSession,
   onArchiveSession,
+  onPinSession,
   onNewSession,
   onSendMessage,
   onCompact,
@@ -389,8 +392,12 @@ export function ChatPage({
   const localSTTConfigId = getStoredRuntimeOrigin() === "local" ? 0 : undefined
   const soloTTSConfigId =
     participantCount === 1 ? (activeSession?.participants?.[0]?.ttsConfigID ?? localTTSConfigId) : undefined
-  const messageSpeechSegments = (message?: MessageData): SpeechSegment[] => {
+  const messageSpeechSegments = useCallback((message?: MessageData): SpeechSegment[] => {
     if (!message) return []
+    const participant = message.speaker
+      ? activeSession?.participants?.find((item) => String(item.assistantID) === String(message.speaker?.assistantID))
+      : participantCount === 1 ? activeSession?.participants?.[0] : undefined
+    const configId = participant ? participant.ttsConfigID ?? localTTSConfigId : message.speaker?.ttsConfigID ?? soloTTSConfigId
     if (message.segments?.length) {
       return message.segments.flatMap((segment) => {
         if (segment.type !== "text") return []
@@ -403,7 +410,7 @@ export function ChatPage({
                 state: segment.state,
                 streamEpoch: message.speechEpoch ?? 0,
                 streamResetReason: message.speechResetReason,
-                configId: message.speaker?.ttsConfigID ?? soloTTSConfigId,
+                configId,
               },
             ]
           : []
@@ -418,13 +425,13 @@ export function ChatPage({
         state: message.isStreaming ? "streaming" : "done",
         streamEpoch: message.speechEpoch ?? 0,
         streamResetReason: message.speechResetReason,
-        configId: message.speaker?.ttsConfigID ?? soloTTSConfigId,
+        configId,
       },
     ]
-  }
+  }, [activeSession?.participants, participantCount, localTTSConfigId, soloTTSConfigId])
   const speechSegments = useMemo(
     () => messages.filter((message) => message.role === "assistant").flatMap(messageSpeechSegments),
-    [messages],
+    [messages, messageSpeechSegments],
   )
   const openWorkspaceFile = (entry: WorkspaceEntry) => {
     setOpenFiles((current) => (current.some((file) => file.path === entry.path) ? current : [...current, entry]))
@@ -461,7 +468,7 @@ export function ChatPage({
   )
   const activeSpeechSegments = useMemo(
     () => activeSpeechMessages.flatMap(messageSpeechSegments),
-    [activeSpeechMessages],
+    [activeSpeechMessages, messageSpeechSegments],
   )
   const speech = useTTSSpeech({
     audioOutputDeviceId: petSettings.audioOutputDeviceId,
@@ -487,6 +494,10 @@ export function ChatPage({
     [messages, visibleMessageStart, visibleMessageEnd],
   )
   const runReviewsByMessageIndex = useMemo(() => buildRunReviewIndex(renderedMessages), [renderedMessages])
+  const replyActionGroups = useMemo(() => buildReplyActionGroups(renderedMessages,
+    isThinking && visibleMessageEnd === messages.length,
+    visibleMessageStart === 0 && Boolean(activeSession?.hasMoreMessages)),
+    [renderedMessages, isThinking, visibleMessageEnd, messages.length, visibleMessageStart, activeSession?.hasMoreMessages])
   useEffect(() => {
     let disposed = false
     let unsubscribe: (() => void) | undefined
@@ -529,6 +540,7 @@ export function ChatPage({
         onDelete={onDeleteSession}
         onRename={onRenameSession}
         onArchive={onArchiveSession}
+        onPin={onPinSession}
         onNewSession={onNewSession}
         onOpenParticipants={onOpenAssistantSwitcher}
         onOpenDutyAssistant={onOpenDutyAssistantSwitcher}
@@ -640,12 +652,6 @@ export function ChatPage({
             })}
           </div>
           <div className="ml-auto flex h-10 shrink-0 items-center bg-bg/80 px-1.5">
-            {activeSessionId && !activeFile && (
-              <MemoryCandidatesPanel key={`memory-${activeSessionId}`} sessionId={activeSessionId} />
-            )}
-            {activeSessionId && !activeFile && (
-              <SubagentPanel key={`subagents-${activeSessionId}`} sessionId={activeSessionId} />
-            )}
             <button
               type="button"
               onClick={() => setCharacterEditing((value) => !value)}
@@ -825,6 +831,8 @@ export function ChatPage({
                             <MessageBubble
                               message={msg}
                               onDeleteMessage={() => onDeleteMessage(activeSessionId, msg.id)}
+                              onReadReplyText={msg.id.startsWith("compaction:") ? undefined : () => onReadReplyText(activeSessionId, msg.id)}
+                              replyGroup={replyActionGroups.get(msg.id)}
                               deleteDisabled={isThinking}
                               groupPosition={messageGroupPosition(renderedMessages, messageIndex)}
                               allowOrganizingReply={absoluteMessageIndex === latestStreamingAssistantIndex}

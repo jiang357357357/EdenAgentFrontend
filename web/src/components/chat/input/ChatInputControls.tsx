@@ -1,4 +1,5 @@
-import { ContextContentDialog } from "./ContextContentDialog"
+import { ContextWindowDialog } from "./ContextWindowDialog"
+import { useContextLimit } from "./hooks/useContextLimit"
 import { ArrowUp, Circle, Square } from "lucide-react"
 import { motion } from "motion/react"
 import { useEffect, useId, useRef, useState } from "react"
@@ -65,19 +66,25 @@ export function StopButton({ overlay, onStop }: { overlay: boolean; onStop: () =
 export function TokenMeter({
   inputTokens,
   contextTokens,
-  contextWindow,
+  contextWindow: fallbackContextWindow,
   breakdown,
   sessionId,
   draft = "",
+  refreshKey,
+  isRunning = false,
 }: {
   sessionId?: string
   draft?: string
+  refreshKey?: unknown
+  isRunning?: boolean
   inputTokens: number
   contextTokens: number
   contextWindow: number
   breakdown?: import("../../../types").TokenBreakdown
 }) {
   const [contextOpen, setContextOpen] = useState(false)
+  const context = useContextLimit(sessionId, refreshKey ?? fallbackContextWindow, isRunning)
+  const contextWindow = context.info?.contextWindow ?? fallbackContextWindow
   const knownTokens = (value: number | undefined) => value === undefined ? "未提供" : formatTokenCount(value)
   const authoritativeContextTokens = contextTokens
   const providerAdjustment = breakdown?.providerAdjustment ?? 0
@@ -101,9 +108,8 @@ export function TokenMeter({
           warning ? "text-danger" : "text-text-muted",
         )}
         aria-label={`上下文占用约 ${Math.round(contextPercent)}%，${authoritativeContextTokens} tokens，上限 ${contextWindow}；本次待发送输入约 ${inputTokens} tokens`}
-        onDoubleClick={() => setContextOpen(true)}
-        onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setContextOpen(true) } }}
-        title="双击查看上下文内容"
+        onClick={() => { context.reload(); setContextOpen(true) }}
+        title="调整上下文上限"
         aria-haspopup="dialog"
         aria-describedby={tooltipId}
       >
@@ -121,7 +127,7 @@ export function TokenMeter({
         <span className="relative z-10 whitespace-nowrap text-center">{Math.round(contextPercent)}%</span>
       </button>
 
-      {contextOpen && <ContextContentDialog key={sessionId} sessionId={sessionId} draft={draft} onClose={() => setContextOpen(false)} />}
+      {contextOpen && <ContextWindowDialog {...context} sessionId={sessionId} draft={draft} contextTokens={contextTokens} isRunning={isRunning} onClose={() => setContextOpen(false)} />}
       <div
         id={tooltipId}
         role="tooltip"

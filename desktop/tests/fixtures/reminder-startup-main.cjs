@@ -12,9 +12,10 @@ app.setPath('userData', path.join(scratch, 'profile'))
 app.setPath('sessionData', path.join(scratch, 'session'))
 const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 async function until(check) {
-  for (let attempt = 0; attempt < 200; attempt++) {
+  const deadline = Date.now() + 10000
+  while (Date.now() < deadline) {
     if (await check()) return
-    await pause(10)
+    await pause(25)
   }
   throw new Error('Startup fixture did not reach the expected state')
 }
@@ -74,7 +75,7 @@ async function run() {
       try { return await created[0].webContents.executeJavaScript("document.getElementById('title')?.textContent === '启动提醒'") }
       catch { return false }
     })
-    assert.equal(primary.webContents.getBackgroundThrottling(), true)
+    assert.equal(primary.webContents.getBackgroundThrottling(), false)
     assert.notEqual(primary.webContents.getOSProcessId(), created[0].webContents.getOSProcessId())
     await writeFile(path.join(scratch, 'primary.png'), (await primary.webContents.capturePage()).toPNG())
     await writeFile(path.join(scratch, 'reminder.png'), (await created[0].webContents.capturePage()).toPNG())

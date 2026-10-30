@@ -80,6 +80,18 @@ test("a changed workspace response is rejected instead of showing another direct
   await assert.rejects(client.status(), /共享目录已改变/)
 })
 
+test("a stale local Agent reports a restart instruction while cloud and permission failures remain intact", async () => {
+  const client = createSharedWorkspaceClient("E:/explicit", "session-a")
+  reply = async method => { throw new Error(`Method not implemented: ${method}`) }
+  await assert.rejects(client.cloudDirectories('cloud-host'), /Agent 后端尚未加载.*重启本机 Agent/)
+  const cloudError = new Error('云主机共享服务需要更新')
+  reply = async () => { throw cloudError }
+  await assert.rejects(client.cloudDirectories('cloud-host'), error => error === cloudError)
+  const denied = new Error('仅云主机管理员可以浏览源目录')
+  reply = async () => { throw denied }
+  await assert.rejects(client.cloudDirectories('cloud-host'), error => error === denied)
+})
+
 test("shared directory selection uses its own revision-checked RPC and event without switching the workspace", async () => {
   calls.length = 0
   reply = async () => ({ path: 'E:/shared-library', revision: 'next', status: 'ready', error: null })
@@ -102,4 +114,15 @@ test("an account switch during a pending operation rejects its completion and bl
   await assert.rejects(client.sync(), /结果未确认/)
   await assert.rejects(client.sync(), /已切换/)
   assert.equal(calls.length, 1)
+})
+
+test("creating a cloud folder sends only its host, parent and name without sharing or binding", async () => {
+  calls.length = 0
+  reply = async () => ({ path: '/srv/团队资料' })
+  const client = createSharedWorkspaceClient('E:/explicit', 'session-a')
+  assert.deepEqual(await client.createCloudDirectory('cloud-host', '/srv', '团队资料'), { path: '/srv/团队资料' })
+  assert.equal(calls.length, 1)
+  assert.deepEqual(calls[0].slice(0, 3), ['mon', 'sharedWorkspace.cloudDirectory.create', {
+    expectedWorkspacePath: 'E:/explicit', sessionId: 'session-a', hostDeviceId: 'cloud-host', parent: '/srv', name: '团队资料',
+  }])
 })

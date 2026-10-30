@@ -12,21 +12,23 @@ const frontend = fileURLToPath(new URL('../../', import.meta.url)), root = path.
 const platform = process.argv[2] ?? process.platform, arch = process.argv[3] ?? process.arch
 if (process.argv.length > 4 || !['linux', 'win32', 'darwin'].includes(platform) || !['x64', 'arm64'].includes(arch)) throw new Error('Usage: node Script/Project/package_desktop.mjs <linux|win32|darwin> <x64|arm64>')
 const electronZipDir = process.env.EDEN_ELECTRON_ZIP_DIR
-const runtime = path.join(root, 'dist', `runtime-${platform}-${arch}`)
+const runtime = path.resolve(process.env.EDEN_AGENT_PACKAGE_RUNTIME ?? path.join(root, 'dist', `runtime-${platform}-${arch}`))
 const manifest = JSON.parse(await readFile(path.join(runtime, 'runtime-manifest.json'), 'utf8'))
 if (manifest.platform !== platform || manifest.arch !== arch || manifest.node !== '22.23.1') throw new Error('Prepare a matching TS runtime distribution first')
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 if (digest(await readFile(path.join(runtime, 'server/main.mjs'))) !== manifest.entrySha256) throw new Error('Server artifact differs from its manifest')
 if (manifest.runtimeProcess !== 'server/runtime-process.mjs' || digest(await readFile(path.join(runtime, manifest.runtimeProcess))) !== manifest.runtimeProcessSha256)
   throw new Error('Isolated runtime process is missing or differs from its manifest')
-await stat(path.join(frontend, 'web/dist/index.html'))
-const output = path.join(frontend, 'dist/app'), target = path.join(output, `eden-agent-${platform}-${arch}`)
+const web = path.resolve(process.env.EDEN_AGENT_PACKAGE_WEB ?? path.join(frontend, 'web/dist'))
+await stat(path.join(web, 'index.html'))
+const output = path.resolve(process.env.EDEN_AGENT_PACKAGE_OUTPUT ?? path.join(frontend, 'dist/app')), target = path.join(output, `eden-agent-${platform}-${arch}`)
 if (existsSync(target)) throw new Error(`Refusing to overwrite a desktop artifact: ${target}`)
 const temporary = await mkdtemp(path.join(os.tmpdir(), 'eden-desktop-package-'))
 try {
   const app = path.join(temporary, 'app')
   await mkdir(app)
-  for (const relative of ['desktop/src', 'desktop/assets', 'web/dist']) await cp(path.join(frontend, relative), path.join(app, relative), { recursive: true })
+  for (const relative of ['desktop/src', 'desktop/assets']) await cp(path.join(frontend, relative), path.join(app, relative), { recursive: true })
+  await cp(web, path.join(app, 'web/dist'), { recursive: true })
   await mkdir(path.join(app, 'release-tools'))
   for (const file of releaseToolFiles) await cp(fileURLToPath(new URL(file, import.meta.url)), path.join(app, 'release-tools', file))
   const source = JSON.parse(await readFile(path.join(frontend, 'package.json'), 'utf8'))
@@ -38,14 +40,23 @@ try {
     resources.push(path.join(runtime, entry.name))
   }
   if (platform === 'win32') {
-    const observer = path.join(frontend, 'desktop/native/win32-pointer-observer/bin/edenagent-pointer-observer.exe')
+    const observer = process.env.EDEN_AGENT_PACKAGE_POINTER_OBSERVER ?? path.join(frontend, 'desktop/native/win32-pointer-observer/bin/edenagent-pointer-observer.exe')
     await stat(observer); resources.push(observer)
   }
   const outputs = await packager({ dir: app, name: 'eden-agent', platform, arch, out: output,
     overwrite: false, electronVersion: '42.4.0', asar: false, prune: false,
     ...(electronZipDir ? { electronZipDir } : {}),
     ...(platform === 'darwin' ? {} : { icon: path.join(frontend, 'desktop/assets', platform === 'win32' ? 'icon.ico' : 'icon.png') }),
-    extraResource: resources,
+    ...(platform === 'linux' ? {
+      // Packager's extraResource copy resolves relative symlinks to the build
+      // tree. The bundled Python must keep them relative after relocation.
+      extraResource: [],
+      afterCopyExtraResources: [async ({ buildPath }) => {
+        for (const resource of resources) await cp(resource, path.join(buildPath, 'resources', path.basename(resource)), {
+          recursive: true, verbatimSymlinks: true,
+        })
+      }],
+    } : { extraResource: resources }),
   })
   for (const directory of outputs) await writeDesktopManifest(directory, { platform, arch, version: source.version, electron: '42.4.0', node: manifest.node, runtimeEntrySha256: manifest.entrySha256, runtimeProcessSha256: manifest.runtimeProcessSha256 })
   process.stdout.write(JSON.stringify({ outputs, runtime, platform, arch }, null, 2) + '\n')
