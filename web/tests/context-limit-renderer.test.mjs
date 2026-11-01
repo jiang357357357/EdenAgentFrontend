@@ -12,7 +12,7 @@ test('hidden Electron verifies context limit editing, persistence, error recover
   timeout: 60000, skip: process.platform !== 'win32' ? 'Windows renderer acceptance' : false,
 }, async () => {
   const webRoot = fileURLToPath(new URL('../', import.meta.url)), agentRoot = resolve(webRoot, '../..')
-  const evidence = join(agentRoot, '.artifacts/context-limit-20261023')
+  const evidence = join(agentRoot, '../.release/current/Agent/context-limit')
   const scratch = await mkdtemp(join(tmpdir(), 'eden-context-renderer-'))
   try {
     const electron = createRequire(new URL('../../desktop/package.json', import.meta.url))('electron')

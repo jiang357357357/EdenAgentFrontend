@@ -16,9 +16,9 @@ test('opening animation covers cold loading, supports skipping and reduced motio
   const assets = path.join(web, 'public/startup-scene')
   try { await access(path.join(assets, 'manifest.json')) } catch { t.skip('Local startup assets are required'); return }
   const scratch = await mkdtemp(path.join(tmpdir(), 'eden-startup-opening-'))
-  const evidenceName = process.env.EDEN_STARTUP_EVIDENCE_NAME || 'startup-opening-20261021'
+  const evidenceName = process.env.EDEN_STARTUP_EVIDENCE_NAME || 'startup-opening'
   assert.match(evidenceName, /^[a-z0-9-]+$/)
-  const evidence = path.join(agent, '.artifacts', evidenceName)
+  const evidence = path.join(agent, '../.release/current/Agent', evidenceName)
   await mkdir(evidence, { recursive: true })
   const css = await readFile(path.join(web, 'dist/assets', (await readdir(path.join(web, 'dist/assets'))).find(name => name.endsWith('.css'))))
   const errors = [], checks = [], images = [], observations = []

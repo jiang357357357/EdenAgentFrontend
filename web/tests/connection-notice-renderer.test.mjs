@@ -4,19 +4,18 @@ import { mkdtemp, readFile, readdir, writeFile, mkdir, rm } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 import { build } from 'esbuild'
 import { _electron } from 'playwright-core'
 
-test('real sockets reproduce the first-connect recovery notice and only actual recovery notifies after the fix', {
+test('real sockets keep first connection silent and notify only after actual recovery', {
   timeout: 90000, skip: process.platform !== 'win32',
 }, async t => {
   const web = fileURLToPath(new URL('../', import.meta.url)), agent = path.resolve(web, '../..')
   const scratch = await mkdtemp(path.join(tmpdir(), 'eden-connection-notice-'))
-  const evidence = path.join(agent, '.artifacts/connection-notice-20261022')
+  const evidence = path.join(agent, '../.release/current/Agent/connection-notice')
   await mkdir(evidence, { recursive: true })
   const css = await readFile(path.join(web, 'dist/assets', (await readdir(path.join(web, 'dist/assets'))).find(name => name.endsWith('.css'))))
   let application, page, holdRecovery = false, failC = false
@@ -56,21 +55,10 @@ test('real sockets reproduce the first-connect recovery notice and only actual r
   await new Promise(resolve => http.listen(0, '127.0.0.1', resolve))
   try {
     const origin = `http://127.0.0.1:${http.address().port}`
-    const before = new Map()
-    for (const file of ['src/lib/connection-feedback.ts', 'src/hooks/useSessionConnectionFeedback.ts']) {
-      const source = execFileSync('git', ['show', `HEAD:web/${file}`], { cwd: path.join(agent, 'frontend'), encoding: 'utf8' })
-      before.set(path.join(web, file), source)
-      await writeFile(path.join(evidence, 'baseline-' + path.basename(file)), source)
-    }
-    for (const mode of ['baseline', 'fixed']) {
+    for (const mode of ['fixed']) {
       await build({ absWorkingDir: web, entryPoints: ['tests/fixtures/connection-notice-renderer.tsx'], outfile: path.join(scratch, `${mode}.js`),
         bundle: true, format: 'iife', platform: 'browser', jsx: 'automatic', logLevel: 'silent',
-        define: { 'import.meta.env': JSON.stringify({ DEV: true, VITE_EDEN_AGENT_LOCAL_BASE_URL: origin, VITE_EDEN_AGENT_LOCAL_CAPABILITY_TOKEN: 'synthetic-fixture' }) },
-        plugins: mode === 'baseline' ? [{ name: 'before-fix-source', setup(builder) {
-          builder.onLoad({ filter: /(?:connection-feedback|useSessionConnectionFeedback)\.ts$/ }, args => {
-            const contents = before.get(path.normalize(args.path)); return contents === undefined ? undefined : { contents, loader: 'ts', resolveDir: path.dirname(args.path) }
-          })
-        } }] : [] })
+        define: { 'import.meta.env': JSON.stringify({ DEV: true, VITE_EDEN_AGENT_LOCAL_BASE_URL: origin, VITE_EDEN_AGENT_LOCAL_CAPABILITY_TOKEN: 'synthetic-fixture' }) } })
     }
     const main = path.join(scratch, 'main.cjs')
     await writeFile(main, `const{app,BrowserWindow}=require('electron');app.setPath('userData',${JSON.stringify(path.join(scratch, 'profile'))});app.on('window-all-closed',()=>{});app.whenReady().then(()=>new BrowserWindow({show:false,width:960,height:540,webPreferences:{offscreen:true,backgroundThrottling:false,contextIsolation:true,nodeIntegration:false}}).loadURL('about:blank'));`)
@@ -79,10 +67,6 @@ test('real sockets reproduce the first-connect recovery notice and only actual r
     page = await application.firstWindow(); page.setDefaultTimeout(15000); page.on('pageerror', error => errors.push(error.message))
     const root = page.locator('main'), restored = page.getByRole('heading', { name: '连接已恢复', exact: true })
     const sessionConnections = mode => connections.filter(connection => connection.mode === mode)
-    await page.goto(origin + '/baseline'); await restored.waitFor()
-    assert.equal(sessionConnections('baseline').length, 1); assert.equal(sessionConnections('baseline')[0].closed, false)
-    await page.screenshot({ path: path.join(evidence, 'baseline-false-recovery.png') })
-    checks.push('before-fix-first-connect-notifies-despite-one-socket-and-no-disconnection')
     await page.goto(origin + '/fixed')
     await page.waitForFunction(() => Number(document.querySelector('main')?.getAttribute('data-reads')) >= 1)
     assert.equal(await root.getAttribute('data-phase'), 'idle'); assert.equal(await restored.count(), 0)
@@ -110,7 +94,7 @@ test('real sockets reproduce the first-connect recovery notice and only actual r
     failC = false; await page.getByRole('button', { name: '重新同步', exact: true }).click(); await restored.waitFor()
     checks.push('first-snapshot-failure-remains-actionable-and-explicit-retry-still-works')
     assert.equal(requests.filter(request => request.method === 'turn.start').length, 3); assert.deepEqual(errors, [])
-    const result = { passed: true, verifiedAt: new Date().toISOString(), checks, errors, turnSubmissions: 3, baselineFalseNoticeWithoutDisconnection: true,
+    const result = { passed: true, verifiedAt: new Date().toISOString(), checks, errors, turnSubmissions: 3,
       transport: 'real loopback WebSocket, production channel pool, React hook and notice; isolated RPC fixture, no model calls or user database' }
     await writeFile(path.join(evidence, 'renderer-result.json'), JSON.stringify(result, null, 2)); t.diagnostic(JSON.stringify(result))
   } finally {

@@ -27,7 +27,7 @@ test('isolated Electron verifies history maintenance races and virtual sidebar i
     const css = /href="(?:\.?\/)?(assets\/[^"<>]+\.css)"/.exec(built)?.[1]
     assert.ok(css, 'build frontend before styled acceptance')
     await writeFile(join(scratch, 'index.html'), `<!doctype html><html><meta charset="utf-8"><link rel="stylesheet" href="${pathToFileURL(join(webRoot, 'dist', css)).href}"><body class="bg-bg text-text"><script src="renderer.js"></script></body></html>`)
-    const evidence = join(agentRoot, '.artifacts/history-sidebar-20261012')
+    const evidence = join(agentRoot, '../.release/current/Agent/history-sidebar')
     await mkdir(evidence, { recursive: true })
     await writeFile(join(scratch, 'main.cjs'), `
 const { app, BrowserWindow } = require('electron');

@@ -13,7 +13,7 @@ test('cold and cached lighting switches retain the native canvas throughout load
   const assets = path.join(web, 'public/startup-scene')
   try { await access(path.join(assets, 'manifest.json')) } catch { t.skip('Local startup assets are required'); return }
   const scratch = await mkdtemp(path.join(tmpdir(), 'eden-startup-handoff-'))
-  const evidence = path.join(agent, '.artifacts/startup-handoff-20261021')
+  const evidence = path.join(agent, '../.release/current/Agent/startup-handoff')
   await mkdir(evidence, { recursive: true })
   const css = await readFile(path.join(web, 'dist/assets', (await readdir(path.join(web, 'dist/assets'))).find(name => name.endsWith('.css'))))
   const requests = [], heldRequests = [], errors = [], checks = [], screenshots = []

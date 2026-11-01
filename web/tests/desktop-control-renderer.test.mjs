@@ -12,7 +12,7 @@ import { _electron } from 'playwright-core'
 test('desktop controls use real RPC and show active, paused, stopped and error states', { timeout: 60000, skip: process.platform !== 'win32' }, async () => {
   const web = fileURLToPath(new URL('../', import.meta.url)), agent = path.resolve(web, '../..')
   const scratch = await mkdtemp(path.join(tmpdir(), 'eden-desktop-control-ui-'))
-  const evidence = path.join(agent, '.artifacts/desktop-control-20261022/renderer')
+  const evidence = path.join(agent, '../.release/current/Agent/desktop-control/renderer')
   await mkdir(evidence, { recursive: true })
   const css = await readFile(path.join(web, 'dist/assets', (await readdir(path.join(web, 'dist/assets'))).find(n => n.endsWith('.css'))))
   const status = { available: true, busy: false, paused: false, stopped: false, observerAvailable: true, operations: [], control: undefined }

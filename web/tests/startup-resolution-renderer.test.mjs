@@ -12,7 +12,7 @@ test('actual HiDPI canvas and foreground filters stay native across resizing and
   const web = fileURLToPath(new URL('../', import.meta.url)), agent = path.resolve(web, '../..')
   const assets = path.join(web, 'public/startup-scene'), startup = path.join(web, 'src/pages/startup')
   try { await access(path.join(assets, 'manifest.json')) } catch { t.skip('Local startup assets are required'); return }
-  const evidence = path.join(agent, '.artifacts/startup-sharpness-20261021')
+  const evidence = path.join(agent, '../.release/current/Agent/startup-sharpness')
   await mkdir(evidence, { recursive: true })
   const scratch = await mkdtemp(path.join(tmpdir(), 'eden-startup-hidpi-'))
   const cssName = (await readdir(path.join(web, 'dist/assets'))).find(name => name.endsWith('.css'))

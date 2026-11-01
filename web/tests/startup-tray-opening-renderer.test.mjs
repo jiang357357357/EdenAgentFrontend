@@ -15,7 +15,7 @@ test('native tray reopening replays the opening over retained room and login sta
   const assets = path.join(web, 'public/startup-scene')
   try { await access(path.join(assets, 'manifest.json')) } catch { t.skip('Local startup assets are required'); return }
   const scratch = await mkdtemp(path.join(tmpdir(), 'eden-tray-opening-'))
-  const evidence = path.join(agent, '.artifacts/startup-tray-opening-20261021')
+  const evidence = path.join(agent, '../.release/current/Agent/startup-tray-opening')
   await mkdir(evidence, { recursive: true })
   const css = await readFile(path.join(web, 'dist/assets', (await readdir(path.join(web, 'dist/assets'))).find(name => name.endsWith('.css'))))
   const checks = [], errors = [], requests = [], images = []

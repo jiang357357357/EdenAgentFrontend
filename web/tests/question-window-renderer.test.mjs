@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 test('hidden Electron verifies primary wakeup, auxiliary sync retry and an answerable primary fallback over IPC', { timeout: 60000, skip: process.platform !== 'win32' }, async () => {
   const webRoot = fileURLToPath(new URL('../', import.meta.url)), root = resolve(webRoot, '../..')
   const scratch = await mkdtemp(join(tmpdir(), 'eden-question-window-'))
-  const evidence = join(root, '.artifacts/question-repair-20261024')
+  const evidence = join(root, '../.release/current/Agent/question-repair')
   try {
     await build({ absWorkingDir: webRoot, entryPoints: ['tests/fixtures/question-window-renderer.tsx'], outfile: join(scratch, 'renderer.js'),
       bundle: true, platform: 'browser', format: 'iife', jsx: 'automatic',
