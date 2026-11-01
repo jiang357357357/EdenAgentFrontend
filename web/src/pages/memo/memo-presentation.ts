@@ -20,6 +20,7 @@ export type StatusFilter = "all" | ApiMemoStatus
 export type KindFilter = "all" | ApiMemoKind
 export type MemoGroup = { key: string; label: string; dateLabel: string; items: ApiMemo[] }
 export const memoLimit = 160
+export const deliveryLabels = { auto: "由角色选择", qq: "QQ", email: "邮件", device: "设备通知", app: "App 通知" }
 export const secondaryButton =
   "inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-text-muted transition-colors hover:bg-surface-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
 export const primaryButton =

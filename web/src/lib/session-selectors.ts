@@ -143,6 +143,9 @@ function mapMetaPart(part: RuntimePart): MetaPartCard | undefined {
     }
     case "compaction": {
       const compaction = part as RuntimeCompactionPart
+      if (compaction.progress) return { id: compaction.id, type: compaction.type, compactionProgress: true,
+        title: compaction.progress.paused ? '历史整理已暂停' : compaction.progress.complete ? '历史分段整理完成' : '正在整理历史',
+        summary: compaction.summary, tone: compaction.progress.paused ? 'warning' : 'muted' }
       const details = typeof compaction.details === "string"
         ? compaction.details
         : compaction.details

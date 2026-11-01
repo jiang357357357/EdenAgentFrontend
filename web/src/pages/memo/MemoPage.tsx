@@ -22,8 +22,8 @@ import {
 } from "./memo-presentation"
 import { useMemoWorkspace } from "./use-memo-workspace"
 
-export function MemoPage({ onBack }: { onBack: () => void }) {
-  const workspace = useMemoWorkspace()
+export function MemoPage({ onBack, roleSessionId }: { onBack: () => void; roleSessionId?: string }) {
+  const workspace = useMemoWorkspace(roleSessionId)
   const [scope, setScope] = useState<DateScope>("all")
   const [status, setStatus] = useState<StatusFilter>("all")
   const [kind, setKind] = useState<KindFilter>("all")

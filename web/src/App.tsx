@@ -1158,7 +1158,7 @@ export default function App() {
             onBack={() => setActivePage("chat")}
           />
         ) : activePage === "memo" ? (
-          <MemoPage onBack={() => setActivePage("chat")} />
+          <MemoPage onBack={() => setActivePage("chat")} roleSessionId={activeSessionId} />
         ) : activePage === "shared-workspace" && sharedWorkspaceScope ? (
           <SharedWorkspacePage key={`${runtimeOrigin}:${sharedWorkspaceScope.sessionId}`}
             scope={sharedWorkspaceScope} scopeVersion={sharedWorkspaceRevision} onBack={() => setActivePage("chat")} onDirectoryChanged={scope => {

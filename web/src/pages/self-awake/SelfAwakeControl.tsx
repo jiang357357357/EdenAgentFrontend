@@ -1,15 +1,13 @@
 import { useId } from "react"
 import { AlarmClock, RefreshCw } from "lucide-react"
-import { selfAwakeScheduleLabel } from "../../lib/self-awake-schedule"
+import { selfAwakeControlState } from "../../lib/self-awake-control-state"
 import { useSelfAwakeControl } from "./use-self-awake-control"
 
 export function SelfAwakeControl({ refreshVersion }: { refreshVersion: number }) {
   const { control, error, saving, now, toggle, refresh } = useSelfAwakeControl(refreshVersion)
   const descriptionId = useId()
   const schedule = control?.schedule ?? null
-  const label = selfAwakeScheduleLabel(schedule, !control, Boolean(error), now)
-  const issue = error || (control?.publicationError ? `设置已保存，调度同步等待重试：${control.publicationError}` : "")
-    || (schedule && ["unavailable", "failed", "blocked", "overdue", "retrying"].includes(schedule.status) ? schedule.reason : "")
+  const { label, issue } = selfAwakeControlState(control, error, now)
   const description = "控制当前账号在此世界的全部角色自醒。关闭后保留待执行计划和历史，已提交的回合继续完成。开启后，到期计划可能立即执行。"
 
   return (

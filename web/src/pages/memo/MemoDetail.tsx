@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import type { ApiMemo } from "../../lib/agent-client"
 import { cn } from "../../lib/utils"
-import { fullDate, kindMeta, memoSchedule, priorityLabels, secondaryButton, statusMeta } from "./memo-presentation"
+import { deliveryLabels, fullDate, kindMeta, memoSchedule, priorityLabels, secondaryButton, statusMeta } from "./memo-presentation"
 
 interface MemoDetailProps {
   memo?: ApiMemo
@@ -120,6 +120,10 @@ export function MemoDetail({ memo, saving, onEdit, onAction, onCreate }: MemoDet
                 </button>
               </div>
               <dl className="mt-4 grid gap-3 border-t border-border/60 pt-4 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <dt className="text-text-muted">提醒方式</dt>
+                  <dd>{deliveryLabels[memo.delivery?.channel ?? "auto"]}</dd>
+                </div>
                 {memo.due_at && (
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <dt className="flex items-center gap-2 text-text-muted">

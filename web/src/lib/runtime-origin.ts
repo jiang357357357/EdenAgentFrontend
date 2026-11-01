@@ -27,6 +27,7 @@ export function isRuntimeOrigin(value: unknown): value is RuntimeOrigin {
 }
 
 export function getStoredRuntimeOrigin(): RuntimeOrigin | null {
+  if (typeof window === 'undefined') return null
   const value = window.localStorage.getItem(RUNTIME_ORIGIN_STORAGE_KEY)
   return isRuntimeOrigin(value) ? value : null
 }

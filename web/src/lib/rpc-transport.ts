@@ -954,6 +954,7 @@ export function apiMessage(event: SessionEvent, messageID = sessionEventMessageI
 export function mapMemoForView(memo: MemoInfo): JsonObject {
   const iso = (value: number | null | undefined) => (value == null ? null : new Date(Number(value)).toISOString())
   return {
+    delivery: memo.delivery ?? { channel: 'auto' },
     id: Number(memo.id),
     user: 0,
     title: memo.title,
@@ -1177,6 +1178,8 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
   if (
     event.eventType.startsWith("agent.message_") ||
     event.eventType === "agent.session_compact" ||
+    event.eventType === "agent.compaction_progress" ||
+    event.eventType === "agent.auto_compaction_failed" ||
     event.eventType === "input.queued"
   ) {
     const message = apiMessage(event, messageID)

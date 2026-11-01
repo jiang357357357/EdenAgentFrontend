@@ -44,6 +44,10 @@ export function MetaPartCard({ part }: MetaPartCardProps) {
   const saved = typeof before === 'number' && typeof after === 'number' ? before - after : undefined;
   const reduction = saved !== undefined && before ? Math.round((saved / before) * 100) : undefined;
 
+  if (part.compactionProgress) return <section role="status" className="mx-auto my-3 w-[84%] rounded-lg border border-border bg-card/70 px-4 py-3 text-sm text-text-muted">
+    <p className="font-medium">{part.title}</p><p className="mt-1">{part.summary}</p>
+  </section>;
+
   if (isCompaction) {
     return (
       <section className="mx-auto my-[1.25vh] w-[84%] min-w-[36vh] max-w-[88vh] overflow-hidden rounded-[1.1vh] border border-border/80 bg-card/70 shadow-sm backdrop-blur-sm">

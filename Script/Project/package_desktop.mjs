@@ -1,5 +1,6 @@
 import { releaseToolFiles } from './release_tool_files.mjs'
 import { writeDesktopManifest } from './desktop_manifest.mjs'
+import { snapshotStartupScene, stageDesktopWeb, desktopScenePath, verifyDesktopStartupScene } from './startup_scene.mjs'
 import { packager } from '@electron/packager'
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
@@ -21,6 +22,9 @@ if (manifest.runtimeProcess !== 'server/runtime-process.mjs' || digest(await rea
   throw new Error('Isolated runtime process is missing or differs from its manifest')
 const web = path.resolve(process.env.EDEN_AGENT_PACKAGE_WEB ?? path.join(frontend, 'web/dist'))
 await stat(path.join(web, 'index.html'))
+const startupSource = path.resolve(process.env.EDEN_AGENT_STARTUP_SCENE_SOURCE ?? path.join(web, 'startup-scene'))
+const startup = await snapshotStartupScene(startupSource)
+const startupScene = { path: desktopScenePath(platform), ...startup.record }
 const output = path.resolve(process.env.EDEN_AGENT_PACKAGE_OUTPUT ?? path.join(frontend, 'dist/app')), target = path.join(output, `eden-agent-${platform}-${arch}`)
 if (existsSync(target)) throw new Error(`Refusing to overwrite a desktop artifact: ${target}`)
 const temporary = await mkdtemp(path.join(os.tmpdir(), 'eden-desktop-package-'))
@@ -28,7 +32,7 @@ try {
   const app = path.join(temporary, 'app')
   await mkdir(app)
   for (const relative of ['desktop/src', 'desktop/assets']) await cp(path.join(frontend, relative), path.join(app, relative), { recursive: true })
-  await cp(web, path.join(app, 'web/dist'), { recursive: true })
+  await stageDesktopWeb(web, path.join(app, 'web/dist'), startup)
   await mkdir(path.join(app, 'release-tools'))
   for (const file of releaseToolFiles) await cp(fileURLToPath(new URL(file, import.meta.url)), path.join(app, 'release-tools', file))
   const source = JSON.parse(await readFile(path.join(frontend, 'package.json'), 'utf8'))
@@ -58,6 +62,10 @@ try {
       }],
     } : { extraResource: resources }),
   })
-  for (const directory of outputs) await writeDesktopManifest(directory, { platform, arch, version: source.version, electron: '42.4.0', node: manifest.node, runtimeEntrySha256: manifest.entrySha256, runtimeProcessSha256: manifest.runtimeProcessSha256 })
-  process.stdout.write(JSON.stringify({ outputs, runtime, platform, arch }, null, 2) + '\n')
+  for (const directory of outputs) {
+    await verifyDesktopStartupScene(directory, platform, startupScene)
+    await writeDesktopManifest(directory, { platform, arch, version: source.version, electron: '42.4.0', node: manifest.node,
+      runtimeEntrySha256: manifest.entrySha256, runtimeProcessSha256: manifest.runtimeProcessSha256, startupScene })
+  }
+  process.stdout.write(JSON.stringify({ outputs, runtime, platform, arch, startupScene }, null, 2) + '\n')
 } finally { await rm(temporary, { recursive: true, force: true }) }

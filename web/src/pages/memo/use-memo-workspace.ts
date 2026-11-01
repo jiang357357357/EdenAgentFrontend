@@ -7,6 +7,7 @@ import {
   snoozeMemo,
   updateMemo,
   type ApiMemo,
+  type ApiMemoDelivery,
   type ApiMemoKind,
   type ApiMemoPriority,
   type ApiMemoStatus,
@@ -23,11 +24,12 @@ function emptyForm() {
     priority: "normal" as ApiMemoPriority,
     remindAt: "",
     dueAt: "",
+    delivery: "auto" as ApiMemoDelivery["channel"],
   }
 }
 export type MemoForm = ReturnType<typeof emptyForm>
 
-export function useMemoWorkspace() {
+export function useMemoWorkspace(roleSessionId?: string) {
   const [memos, setMemos] = useState<ApiMemo[]>([])
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(true)
@@ -96,6 +98,7 @@ export function useMemoWorkspace() {
       priority: memo.priority,
       remindAt: toDateTimeLocalInputValue(memo.remind_at),
       dueAt: toDateTimeLocalInputValue(memo.due_at),
+      delivery: memo.delivery?.channel ?? "auto",
     })
     setEditorOpen(true)
   }
@@ -116,11 +119,17 @@ export function useMemoWorkspace() {
       setEditorError("提醒需要设置提醒时间或截止时间。")
       return
     }
+    if ((form.remindAt || form.dueAt) && !(editingMemo ? editingMemo.related_session_id : roleSessionId)) {
+      setEditorError("请先打开负责提醒的角色聊天，再新建这项提醒。当前备忘尚未关联角色。")
+      return
+    }
     mutation.current = true
     setSaving(true)
     setEditorError("")
     try {
       const input = {
+        delivery: { channel: form.delivery },
+        related_session_id: editingMemo?.related_session_id ?? roleSessionId ?? "",
         title: form.title.trim(),
         content: form.content.trim(),
         kind: form.kind,

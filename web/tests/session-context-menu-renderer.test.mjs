@@ -12,7 +12,7 @@ test('isolated Electron verifies session context menu, archive failure/recovery,
   timeout: 60000, skip: process.platform !== 'win32' ? 'Windows renderer acceptance' : false,
 }, async () => {
   const webRoot = fileURLToPath(new URL('../', import.meta.url)), agentRoot = resolve(webRoot, '../..')
-  const evidence = resolve(agentRoot, '../.release/session-archive-20261015')
+  const evidence = resolve(agentRoot, '../.release/current/Agent/session-menu')
   const scratch = await mkdtemp(join(tmpdir(), 'eden-session-menu-'))
   try {
     const electron = createRequire(new URL('../../desktop/package.json', import.meta.url))('electron')

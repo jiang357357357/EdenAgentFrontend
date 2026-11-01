@@ -40,3 +40,23 @@ test('automatic compaction keeps automatic origin and comparable host estimates'
   assert.equal(part.tokensBefore, 30)
   assert.equal(part.tokensAfter, 12)
 })
+
+test('compaction progress updates one card and replays its latest durable cursor', () => {
+  const first = { ...event, id: 'progress-1', eventType: 'agent.compaction_progress', payload: { processed: 2, total: 40, resumed: false } }
+  const next = { ...first, id: 'progress-2', seq: 2n, payload: { processed: 33, total: 40, resumed: true } }
+  const replay = client.projectMessageEvents([first, next])
+  assert.equal(replay.length, 1)
+  assert.match(replay[0].parts[0].summary, /33\/40/)
+  assert.match(replay[0].parts[0].summary, /恢复上次进度/)
+  assert.equal(replay[0].parts[0].progress.complete, false)
+  const live = client.createSessionEventProjector()(next)
+  assert.equal(live.find(item => item.type === 'message.updated').properties.info.id, replay[0].info.id)
+})
+
+test('paused compaction keeps its saved-work notice without leaking the provider failure', () => {
+  const failure = { ...event, eventType: 'agent.auto_compaction_failed', payload: { message: 'private provider details' } }
+  const result = transport.apiMessage(failure)
+  assert.equal(result.parts[0].progress.paused, true)
+  assert.match(result.parts[0].summary, /已保存/)
+  assert.doesNotMatch(JSON.stringify(result), /private provider details/)
+})

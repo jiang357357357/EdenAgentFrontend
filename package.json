@@ -1,7 +1,7 @@
 {
   "name": "eden-agent-frontend",
   "private": true,
-  "version": "1.11.8",
+  "version": "1.11.9",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "main": "desktop/src/main.cjs",
@@ -10,6 +10,7 @@
     "dev": "node ../Script/Project/dev_desktop.mjs",
     "test:dev-smoke": "node Script/Project/dev.mjs --smoke-web",
     "test:process-runner": "node --test tests/process-runner.test.mjs",
+    "test:package": "node --test tests/startup-scene-package.test.mjs tests/desktop-manifest.test.mjs",
     "dev:web": "npm --prefix web run dev",
     "dev:shell": "npm --prefix desktop run dev",
     "dev:desktop": "npm run dev",

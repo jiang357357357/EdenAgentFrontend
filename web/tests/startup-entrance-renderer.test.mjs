@@ -10,13 +10,11 @@ import { _electron } from 'playwright-core'
 
 test('original Spine entrance effects, ordered stages, login and return run in an isolated Electron renderer', { timeout: 300000, skip: process.platform !== 'win32' }, async t => {
   const web = fileURLToPath(new URL('../', import.meta.url)), agent = path.resolve(web, '../..')
-  const assets = path.join(web, 'public/startup-scene')
+  const assets = path.resolve(process.env.EDEN_AGENT_STARTUP_SCENE_SOURCE ?? path.join(web, 'public/startup-scene'))
   try { await access(path.join(assets, 'manifest.json')) }
   catch { t.skip('Prepare the local startup assets before renderer acceptance'); return }
   const scratch = await mkdtemp(path.join(tmpdir(), 'eden-startup-scene-'))
-  const evidenceName = process.env.EDEN_STARTUP_EVIDENCE_NAME ?? 'startup-mode-selector-20261021'
-  assert.match(evidenceName, /^[a-z0-9-]+$/)
-  const evidence = path.join(agent, '.artifacts', evidenceName)
+  const evidence = path.resolve(process.env.EDEN_STARTUP_EVIDENCE_DIR ?? path.join(scratch, 'evidence'))
   await mkdir(evidence, { recursive: true })
   let application, page, loginCalls = 0, coreLoginCalls = 0
   const assetRequests = [], traces = [], captures = []
@@ -385,7 +383,7 @@ test('original Spine entrance effects, ordered stages, login and return run in a
   } catch (error) {
     const failure = { at: new Date().toISOString(), error: String(error), runtimeLogs, assetRequests,
       surface: await page?.evaluate(() => ({ text: document.body.innerText, html: document.querySelector('[data-startup-phase]')?.outerHTML })).catch(() => null) }
-    await writeFile(path.join(evidence, 'failure-' + Date.now() + '.json'), JSON.stringify(failure, null, 2))
+    await writeFile(path.join(evidence, 'failure.json'), JSON.stringify(failure, null, 2))
     throw error
   } finally {
     await application?.close(); http.closeAllConnections(); await new Promise(resolve => http.close(resolve))

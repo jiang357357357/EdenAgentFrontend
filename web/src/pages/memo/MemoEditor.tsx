@@ -3,6 +3,7 @@ import { Check, LoaderCircle, X } from "lucide-react"
 import type { ApiMemo } from "../../lib/agent-client"
 import {
   fieldClass,
+  deliveryLabels,
   fullDate,
   kindMeta,
   primaryButton,
@@ -181,6 +182,13 @@ export function MemoEditor({
                   当前延后至 {fullDate(memo.snoozed_until)}。修改时间会替换这次延后安排。
                 </p>
               )}
+              <label className="grid gap-2 text-xs text-text-muted">
+                提醒方式
+                <select value={form.delivery} onChange={(event) => patch("delivery", event.target.value as MemoForm["delivery"])} className={fieldClass}>
+                  {Object.entries(deliveryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+                <span className="text-[11px] leading-5">到点唤醒关联聊天的角色，由角色选择已授权的方式联系你；也可以在这里指定渠道。</span>
+              </label>
             </aside>
           </fieldset>
           {error && (

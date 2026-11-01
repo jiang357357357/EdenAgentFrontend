@@ -14,9 +14,11 @@ export function JobOutcomeReview({ sessionId, kind, title = '作业结果与恢�
   const [decision, setDecision] = useState<'completed' | 'cancelled'>('cancelled'), [note, setNote] = useState('')
   const [confirmed, setConfirmed] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('')
   const job = jobs.find(value => value.id === selected)
+  const memoJob = kind === 'memo.reminder' || kind === 'memo.reminder.redelivery'
   async function load(before?: JobCursor) {
     setBusy(true); setError(''); setSelected(''); setConfirmed(false)
-    try { const page = await rpcRequestForOrigin(origin, 'job.page', { ...(sessionId ? { sessionId } : {}), ...(kind ? { kind } : {}), states: ['unknown', 'failed', 'cancelled'], ...(before ? { before } : {}), limit: 20 }); setJobs(page.items); setCursor(page.nextCursor) }
+    const states: JobInfo['state'][] = memoJob ? ['unknown', 'failed', 'cancelled', 'completed', 'dispatched'] : ['unknown', 'failed', 'cancelled']
+    try { const page = await rpcRequestForOrigin(origin, 'job.page', { ...(sessionId ? { sessionId } : {}), ...(kind ? { kind } : {}), states, ...(before ? { before } : {}), limit: 20 }); setJobs(page.items); setCursor(page.nextCursor) }
     catch (reason) { setError(String(reason)) } finally { setBusy(false) }
   }
   async function resolve() {
@@ -28,11 +30,12 @@ export function JobOutcomeReview({ sessionId, kind, title = '作业结果与恢�
     } catch (reason) { setError(String(reason)) } finally { setBusy(false) }
   }
   return <details className="mt-2 rounded border p-2"><summary>{title}</summary>
-    <button disabled={busy} onClick={() => void load()} className="my-2 rounded border px-2 py-1">刷新待确认及已停止作业</button>
+    <button disabled={busy} onClick={() => void load()} className="my-2 rounded border px-2 py-1">{memoJob ? '刷新提醒投递记录' : '刷新待确认及已停止作业'}</button>
     {jobs.map(value => <button key={value.id} disabled={busy} onClick={() => { setSelected(value.id); setConfirmed(false); setNote(''); setDecision('cancelled') }} className="block w-full rounded border p-1 text-left">{value.kind} · {new Date(value.createdAt).toLocaleString()}</button>)}
     {cursor && <button disabled={busy} onClick={() => void load(cursor)} className="my-2 rounded border px-2 py-1">更早的待处理作业</button>}
     {job?.inputId && job.sessionId && <InputOutcomeReview key={`${job.id}:${job.sessionId}`} sessionId={job.sessionId} />}
-    {job && ['failed','cancelled'].includes(job.state) && ['memo.reminder','memo.reminder.redelivery'].includes(job.kind) && <MemoJobResubmit key={job.id} job={job} />}
+    {job?.error && <p className="mt-2 text-text-muted">{job.error}</p>}
+    {job && ['failed','cancelled','completed'].includes(job.state) && ['memo.reminder','memo.reminder.redelivery'].includes(job.kind) && <MemoJobResubmit key={job.id} job={job} />}
     {job && ['failed','cancelled'].includes(job.state) && job.kind === 'plugin.hook' && <PluginHookResubmit key={job.id} job={job} />}
     {job && ['failed','cancelled'].includes(job.state) && job.kind === 'self_awake' && <SelfAwakeJobResubmit key={job.id} jobId={job.id} />}
     {job && job.state === 'unknown' && <><pre className="max-h-48 overflow-auto whitespace-pre-wrap">{JSON.stringify(job, null, 2)}</pre>

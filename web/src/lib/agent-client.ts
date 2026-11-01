@@ -307,8 +307,10 @@ export type ApiPaginatedResult<T> = {
 export type ApiMemoKind = "note" | "reminder" | "todo"
 export type ApiMemoStatus = "active" | "done" | "archived" | "cancelled"
 export type ApiMemoPriority = "low" | "normal" | "high"
+export type ApiMemoDelivery = { channel: "auto" | "qq" | "email" | "device" | "app" }
 
 export type ApiMemo = {
+  delivery?: ApiMemoDelivery
   id: number
   user: number
   title: string
@@ -333,6 +335,8 @@ export type ApiMemo = {
 }
 
 export type ApiMemoInput = {
+  delivery?: ApiMemoDelivery
+  related_session_id?: string
   title: string
   content?: string
   kind?: ApiMemoKind
@@ -1893,12 +1897,13 @@ export async function createMemo(input: ApiMemoInput) {
     ...(input.remind_at ? { remindAt: Date.parse(input.remind_at) } : {}),
     ...(input.due_at ? { dueAt: Date.parse(input.due_at) } : {}),
     ...(input.snoozed_until ? { snoozedUntil: Date.parse(input.snoozed_until) } : {}),
-    repeatRule: input.repeat_rule ?? "", relatedSessionId: "", metadata: (input.metadata ?? {}) as JsonValue }))
+    delivery: input.delivery, repeatRule: input.repeat_rule ?? "", relatedSessionId: input.related_session_id ?? "", metadata: (input.metadata ?? {}) as JsonValue }))
   return mapMemoForView(memo) as ApiMemo
 }
 
 export async function updateMemo(id: number, input: Partial<ApiMemoInput>) {
   const patch: Record<string, JsonValue> = {}
+  if (input.delivery !== undefined) patch.delivery = input.delivery
   if (input.title !== undefined) patch.title = input.title
   if (input.content !== undefined) patch.content = input.content
   if (input.kind !== undefined) patch.kind = input.kind

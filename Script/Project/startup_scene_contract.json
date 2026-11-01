@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "resourceId": "agent-startup-scene",
+  "models": {
+    "arona_workpage_daytime_2": ["arona_workpage_daytime_2.png", "arona_workpage_daytime_2_2.png"],
+    "arona_workpage_nighttime_2": ["arona_workpage_nighttime_2.png", "arona_workpage_nighttime_2_2.png"],
+    "arona_spr": ["arona_spr.png"],
+    "NP0035_spr": ["NP0035_spr.png"]
+  },
+  "posters": ["thumb-day_3.png", "thumb-night_3.png"],
+  "notices": ["LICENSE.txt", "NOTICE.txt", "SPINE-LICENSE.txt", "DISTRIBUTION-NOTICE.txt"]
+}

@@ -27,6 +27,7 @@ export interface MetaPartCard {
   tone?: "default" | "muted" | "accent" | "warning"
   contextTokensBefore?: number
   contextTokensAfter?: number
+  compactionProgress?: boolean
 }
 
 export interface PermissionToolRef {
@@ -410,6 +411,7 @@ export interface RuntimeCompactionPart {
   details?: unknown
   tokensBefore?: number
   tokensAfter?: number
+  progress?: { paused: boolean; complete: boolean }
 }
 
 export interface RuntimeSubtaskPart {
