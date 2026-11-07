@@ -2,11 +2,12 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
 
-const [characterSource, configurationSource, clientSource, desktopWindowSource] = await Promise.all([
+const [characterSource, configurationSource, clientSource, desktopWindowSource, navigationSource] = await Promise.all([
   readFile(new URL("../src/lib/local-character.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/configuration/ConfigurationPage.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/lib/session-participants.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/lib/desktop-window.ts", import.meta.url), "utf8"),
+  readFile(new URL("../src/lib/character-navigation.ts", import.meta.url), "utf8"),
 ])
 
 test("local character visuals map to the existing renderer contract", () => {
@@ -63,7 +64,7 @@ test("the complete local character dossier is editable and persisted into the pa
 })
 
 test("character configuration expands into three dedicated views", () => {
-  assert.match(configurationSource, /type CharacterConfigurationView = "basic" \| "complete" \| "visual"/)
+  assert.match(navigationSource, /type CharacterConfigurationView = ['"]basic['"] \| ['"]complete['"] \| ['"]visual['"]/)
   assert.match(configurationSource, /id: "basic", label: "基本信息"/)
   assert.match(configurationSource, /id: "complete", label: "完整角色"/)
   assert.match(configurationSource, /id: "visual", label: "视觉资源"/)

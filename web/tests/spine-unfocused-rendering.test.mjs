@@ -10,7 +10,7 @@ const source = await readFile(
 test("desktop pet Spine rendering is not stopped merely because its window is unfocused", () => {
   const tickerState = source.match(/const updateTickerState = \(\) => \{([\s\S]*?)\n    \}/)?.[1] ?? ""
 
-  assert.match(tickerState, /document\.hidden/)
+  assert.match(tickerState, /!isRendererVisible/)
   assert.match(tickerState, /!isIntersecting/)
   assert.doesNotMatch(tickerState, /document\.hasFocus/)
   assert.doesNotMatch(source, /addEventListener\("(?:focus|blur)", handleVisibility\)/)

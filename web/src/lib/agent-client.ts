@@ -491,6 +491,8 @@ export type ApiCompactionPart = {
   details?: unknown
   tokensBefore?: number
   tokensAfter?: number
+  progress?: { paused: boolean; complete: boolean }
+  eventSequence?: string
 }
 
 export type ApiSubtaskPart = {
@@ -1889,6 +1891,12 @@ export async function listMemos(params: {
 } = {}) {
   const memos = await rpcRequest("memo.list", { limit: params.limit ?? 80, ...(params.q ? { query: params.q } : {}) })
   return memos.map((memo) => mapMemoForView(memo) as ApiMemo)
+}
+
+export async function listMemoPage(params: { q?: string; limit?: number; cursor?: string } = {}) {
+  const page = await rpcRequest('memo.page', { limit: params.limit ?? 80,
+    ...(params.q ? { query: params.q } : {}), ...(params.cursor ? { cursor: params.cursor } : {}) })
+  return { ...page, items: page.items.map(memo => mapMemoForView(memo) as ApiMemo) }
 }
 
 export async function createMemo(input: ApiMemoInput) {

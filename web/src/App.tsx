@@ -1,3 +1,4 @@
+import { PluginUiProvider } from './components/plugin-ui/PluginUiProvider'
 import { useAutoScrollPreference } from "./lib/use-auto-scroll-preference"
 import { useBackgroundPreference } from "./lib/use-background-preference"
 import { useAppearancePreference } from "./lib/use-appearance-preference"
@@ -75,6 +76,7 @@ import {
   RUNTIME_ORIGIN_STORAGE_KEY,
 } from "./lib/runtime-origin"
 import { getStoredLocalCharacter, localCharacterAssistant, saveStoredLocalCharacter } from "./lib/local-character"
+import type { CharacterConfigurationNavigation, CharacterConfigurationView } from './lib/character-navigation'
 
 const screenTransition = {
   duration: 0.28,
@@ -194,6 +196,7 @@ export default function App() {
   const [entranceFinished, setEntranceFinished] = useState(false)
   const runtimeReady = authStatus === "authenticated" && (isAuxiliaryWindow || runtimeOrigin !== null)
   const [activePage, setActivePage] = useState<AppPage>(() => initialPageFromLocation())
+  const [characterConfigurationNavigation, setCharacterConfigurationNavigation] = useState<CharacterConfigurationNavigation>()
   const [sharedWorkspaceScope, setSharedWorkspaceScope] = useState<SharedWorkspaceScope | null>(null)
   const [sharedWorkspaceRevision, setSharedWorkspaceRevision] = useState(0)
   const [sidebarActivity, setSidebarActivity] = useState<"sessions" | "files">("sessions")
@@ -301,6 +304,7 @@ export default function App() {
     loadOlderMessages,
     setHistoryBrowsing,
     pendingPermissions,
+    allPendingPermissions,
     pendingQuestions,
     allPendingQuestions,
     questionsLoading,
@@ -318,6 +322,7 @@ export default function App() {
   } = useSessionRuntime(runtimeReady, {
     onEvent: handleRuntimeEvent,
     defaultParticipantID: currentAssistant?.id,
+    autoSelectFirst: isAuxiliaryWindow,
   })
 
   const latestSessionId = sessions[0]?.id
@@ -922,7 +927,12 @@ export default function App() {
   }
 
   const handleOpenConfiguration = () => {
+    setCharacterConfigurationNavigation(undefined)
     setActivePage("configuration")
+  }
+  const handleOpenCharacterConfiguration = (view: CharacterConfigurationView) => {
+    setCharacterConfigurationNavigation(previous => ({ view, revision: (previous?.revision ?? 0) + 1 }))
+    setActivePage('configuration')
   }
 
   const handleChangeRuntimeOrigin = () => {
@@ -1072,8 +1082,105 @@ export default function App() {
     return <LoginPage onLogin={handleLogin} isSubmitting={isAuthenticating} error={authError} />
   }
 
+  const renderApplicationPage = (pageId: string, documentSessionId?: string) => pageId === "allSessions" ? (
+          <AllSessionsPage
+            key={runtimeOrigin}
+            origin={runtimeOrigin ?? "mon"}
+            onArchive={setRuntimeSessionArchived}
+            onBack={() => setActivePage("chat")}
+            navigation={{
+              onOpenParticipants: () => { setAssistantSwitcherMode("participants"); setActivePage("assistant-switcher") },
+              onOpenDutyAssistant: () => { setAssistantSwitcherMode("default"); setActivePage("assistant-switcher") },
+              onOpenSelfAwake: () => setActivePage("selfAwake"),
+              onOpenMemo: () => setActivePage("memo"),
+              onOpenSkills: () => setActivePage("skills"),
+              onOpenConnectors: () => setActivePage("connectors"),
+              onOpenConfiguration: handleOpenConfiguration,
+              onOpenSettings: () => setActivePage("settings"),
+              onLogout: handleLogout,
+            }}
+          />
+        ) : pageId === "selfAwake" ? (
+          <SelfAwakePage
+            key={runtimeOrigin}
+            currentUser={currentUser}
+            assistant={currentAssistant}
+            toolStatus={toolStatus}
+            onBack={() => setActivePage("chat")}
+          />
+        ) : pageId === "memo" ? (
+          <MemoPage onBack={() => setActivePage("chat")} roleSessionId={documentSessionId ?? activeSessionId} />
+        ) : pageId === "shared-workspace" && sharedWorkspaceScope ? (
+          <SharedWorkspacePage key={`${runtimeOrigin}:${sharedWorkspaceScope.sessionId}`}
+            scope={sharedWorkspaceScope} scopeVersion={sharedWorkspaceRevision} onBack={() => setActivePage("chat")} onDirectoryChanged={scope => {
+              setSharedWorkspaceScope(scope)
+              setSharedWorkspaceRevision(value => value + 1)
+            }} />
+        ) : pageId === "skills" ? (
+          <SkillPage sessionId={(documentSessionId ?? activeSessionId) || undefined} onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
+        ) : pageId === "plugins" ? (
+          <PluginPage key={runtimeOrigin} onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
+        ) : pageId === "connectors" ? (
+          <ConnectorPage onBack={() => setActivePage("chat")} />
+        ) : pageId === "configuration" ? (
+          <ConfigurationPage
+            characterNavigation={characterConfigurationNavigation}
+            onBack={() => setActivePage("chat")}
+            onChangeOrigin={handleChangeRuntimeOrigin}
+            onOpenParticipants={() => {
+              setAssistantSwitcherMode("participants")
+              setActivePage("assistant-switcher")
+            }}
+            onOpenDutyAssistant={() => {
+              setAssistantSwitcherMode("default")
+              setActivePage("assistant-switcher")
+            }}
+            onOpenSelfAwake={() => setActivePage("selfAwake")}
+            onOpenAllSessions={() => setActivePage("allSessions")}
+            onOpenMemo={() => setActivePage("memo")}
+            onOpenSkills={() => setActivePage("skills")}
+            onOpenConnectors={() => setActivePage("connectors")}
+            onOpenSettings={() => setActivePage("settings")}
+            onCharacterSaved={handleLocalCharacterSaved}
+          />
+        ) : pageId === "assistant-switcher" ? (
+          <AssistantSwitcherPage
+            currentAssistant={assistantSwitcherMode === "default" ? currentAssistant : conversationAssistant}
+            mode={assistantSwitcherMode}
+            sessionParticipantIDs={
+              activeSession?.participants?.map((participant) => participant.assistantID) ??
+              (draftParticipantIDs.length ? draftParticipantIDs : currentAssistant?.id ? [currentAssistant.id] : [])
+            }
+            onParticipantsChanged={async (assistantIds) => {
+              await updateSessionParticipants(assistantIds)
+            }}
+            onAssistantChanged={(assistant) => {
+              setCurrentAssistant(assistant)
+              setCurrentAssistantError(undefined)
+              setActiveCharacterAction(undefined)
+            }}
+            onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")}
+          />
+        ) : pageId === "settings" ? (
+          <SettingsPage
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            assistant={conversationAssistant}
+            assistantError={currentAssistantError}
+            activeCharacterAction={activeCharacterAction}
+            onBack={isSettingsWindow ? undefined : () => setActivePage("chat")}
+            onOpenAssistantSwitcher={() => {
+              setAssistantSwitcherMode("session")
+              setActivePage("assistant-switcher")
+            }}
+            onOpenSkills={() => setActivePage("skills")}
+            onOpenPlugins={() => setActivePage("plugins")}
+          />
+        ) : null
+
   return (
-    <>
+    <PluginUiProvider key={`ui:${runtimeOrigin}:${currentUser?.id ?? 'local'}`} origin={runtimeOrigin ?? 'mon'}
+      sessionId={activeSessionId || undefined} enabled={Boolean(runtimeOrigin) && !isAuxiliaryWindow}>
       {!isAuxiliaryWindow && !window.edenAgentDesktop && (
         <DesktopReminders key={runtimeOrigin} origin={runtimeOrigin} />
       )}
@@ -1131,101 +1238,9 @@ export default function App() {
               onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
             />
           </PetSurfaceErrorBoundary>
-        ) : activePage === "allSessions" ? (
-          <AllSessionsPage
-            key={runtimeOrigin}
-            origin={runtimeOrigin ?? "mon"}
-            onArchive={setRuntimeSessionArchived}
-            onBack={() => setActivePage("chat")}
-            navigation={{
-              onOpenParticipants: () => { setAssistantSwitcherMode("participants"); setActivePage("assistant-switcher") },
-              onOpenDutyAssistant: () => { setAssistantSwitcherMode("default"); setActivePage("assistant-switcher") },
-              onOpenSelfAwake: () => setActivePage("selfAwake"),
-              onOpenMemo: () => setActivePage("memo"),
-              onOpenSkills: () => setActivePage("skills"),
-              onOpenConnectors: () => setActivePage("connectors"),
-              onOpenConfiguration: handleOpenConfiguration,
-              onOpenSettings: () => setActivePage("settings"),
-              onLogout: handleLogout,
-            }}
-          />
-        ) : activePage === "selfAwake" ? (
-          <SelfAwakePage
-            key={runtimeOrigin}
-            currentUser={currentUser}
-            assistant={currentAssistant}
-            toolStatus={toolStatus}
-            onBack={() => setActivePage("chat")}
-          />
-        ) : activePage === "memo" ? (
-          <MemoPage onBack={() => setActivePage("chat")} roleSessionId={activeSessionId} />
-        ) : activePage === "shared-workspace" && sharedWorkspaceScope ? (
-          <SharedWorkspacePage key={`${runtimeOrigin}:${sharedWorkspaceScope.sessionId}`}
-            scope={sharedWorkspaceScope} scopeVersion={sharedWorkspaceRevision} onBack={() => setActivePage("chat")} onDirectoryChanged={scope => {
-              setSharedWorkspaceScope(scope)
-              setSharedWorkspaceRevision(value => value + 1)
-            }} />
-        ) : activePage === "skills" ? (
-          <SkillPage sessionId={activeSessionId || undefined} onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
-        ) : activePage === "plugins" ? (
-          <PluginPage key={runtimeOrigin} onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")} />
-        ) : activePage === "connectors" ? (
-          <ConnectorPage onBack={() => setActivePage("chat")} />
-        ) : activePage === "configuration" ? (
-          <ConfigurationPage
-            onBack={() => setActivePage("chat")}
-            onChangeOrigin={handleChangeRuntimeOrigin}
-            onOpenParticipants={() => {
-              setAssistantSwitcherMode("participants")
-              setActivePage("assistant-switcher")
-            }}
-            onOpenDutyAssistant={() => {
-              setAssistantSwitcherMode("default")
-              setActivePage("assistant-switcher")
-            }}
-            onOpenSelfAwake={() => setActivePage("selfAwake")}
-            onOpenAllSessions={() => setActivePage("allSessions")}
-            onOpenMemo={() => setActivePage("memo")}
-            onOpenSkills={() => setActivePage("skills")}
-            onOpenConnectors={() => setActivePage("connectors")}
-            onOpenSettings={() => setActivePage("settings")}
-            onCharacterSaved={handleLocalCharacterSaved}
-          />
-        ) : activePage === "assistant-switcher" ? (
-          <AssistantSwitcherPage
-            currentAssistant={assistantSwitcherMode === "default" ? currentAssistant : conversationAssistant}
-            mode={assistantSwitcherMode}
-            sessionParticipantIDs={
-              activeSession?.participants?.map((participant) => participant.assistantID) ??
-              (draftParticipantIDs.length ? draftParticipantIDs : currentAssistant?.id ? [currentAssistant.id] : [])
-            }
-            onParticipantsChanged={async (assistantIds) => {
-              await updateSessionParticipants(assistantIds)
-            }}
-            onAssistantChanged={(assistant) => {
-              setCurrentAssistant(assistant)
-              setCurrentAssistantError(undefined)
-              setActiveCharacterAction(undefined)
-            }}
-            onBack={() => setActivePage(isSettingsWindow ? "settings" : "chat")}
-          />
-        ) : activePage === "settings" ? (
-          <SettingsPage
-            sessions={sessions}
-            activeSessionId={activeSessionId}
-            assistant={conversationAssistant}
-            assistantError={currentAssistantError}
-            activeCharacterAction={activeCharacterAction}
-            onBack={isSettingsWindow ? undefined : () => setActivePage("chat")}
-            onOpenAssistantSwitcher={() => {
-              setAssistantSwitcherMode("session")
-              setActivePage("assistant-switcher")
-            }}
-            onOpenSkills={() => setActivePage("skills")}
-            onOpenPlugins={() => setActivePage("plugins")}
-          />
-        ) : (
+        ) : isSettingsWindow ? renderApplicationPage(activePage) : (
           <ChatPage
+            applicationPage={{ id: activePage, render: renderApplicationPage, onChange: page => setActivePage(page as AppPage) }}
             sessions={sessions}
             activeSessionId={activeSessionId}
             activeSession={activeSession}
@@ -1238,7 +1253,7 @@ export default function App() {
             onDismissConnectionFeedback={dismissConnectionFeedback}
             onRetryConnectionSync={retryConnectionSync}
             runtimeError={[...new Set([runtimeError, autoScrollError, backgroundError, appearanceError].filter(Boolean))].join("；") || undefined}
-            activePendingPermissions={activePendingPermissions}
+            activePendingPermissions={allPendingPermissions}
             messagesScrollRef={messagesScrollRef}
             messagesEndRef={messagesEndRef}
             autoScrollEnabled={autoScrollEnabled}
@@ -1292,6 +1307,7 @@ export default function App() {
             onOpenSettings={() => {
               setActivePage("settings")
             }}
+            onOpenPlugins={() => setActivePage("plugins")}
             onOpenSelfAwake={() => {
               setActivePage("selfAwake")
             }}
@@ -1307,6 +1323,7 @@ export default function App() {
             }}
             onOpenConfiguration={handleOpenConfiguration}
             sidebarActivity={sidebarActivity}
+            onOpenCharacterConfiguration={handleOpenCharacterConfiguration}
             onSidebarActivityChange={setSidebarActivity}
             onOpenSharedWorkspace={scope => {
               setSharedWorkspaceScope(scope)
@@ -1361,6 +1378,6 @@ export default function App() {
           />
         )}
       </AnimatePresence>
-    </>
+    </PluginUiProvider>
   )
 }

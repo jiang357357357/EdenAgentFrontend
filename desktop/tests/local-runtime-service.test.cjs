@@ -2,6 +2,24 @@ const assert = require("node:assert/strict")
 const test = require("node:test")
 const { createLocalRuntimeService } = require("../src/app/local-runtime-service.cjs")
 
+test('save waits for the restarted backend listener instead of returning a not-yet-ready capability', async t => {
+  const { createServer } = require('node:http')
+  let ready = false
+  const server = createServer((_request, response) => { response.writeHead(ready ? 200 : 503); response.end('{}') })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => server.close(resolve)))
+  const service = createLocalRuntimeService({ configStore: createStore(),
+    serverHealthUrl: `http://127.0.0.1:${server.address().port}/healthz`,
+    rustServer: { status: () => ({ running: true }), restart: async () => {
+      setTimeout(() => { ready = true }, 40)
+      return { restarted: true, externallyManaged: false }
+    } },
+  })
+  const result = await service.saveAndRestart({ maxOutputTokens: 16384 })
+  assert.equal(result.server.online, true)
+  assert.equal(result.restarted, true)
+})
+
 function createStore(overrides = {}) {
   const state = {
     provider: "openai",

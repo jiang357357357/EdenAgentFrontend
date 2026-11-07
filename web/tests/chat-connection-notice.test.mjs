@@ -68,10 +68,12 @@ test('first entry exposes the conversation toolbar before a session or preferenc
       connectionFeedback: { phase: 'idle', revision: 0, hasConnected: false } })
     const toolbar = html.match(/<header\b[^>]*aria-label="会话工具栏"[^>]*>(.*?)<\/header>/s)?.[1]
     assert.ok(toolbar, 'The empty conversation must retain its toolbar')
-    assert.match(toolbar, /新会话/)
-    for (const label of ['调整角色位置', '调整回复长度', '调整界面外观', '关闭新消息自动滚动']) {
+    assert.match(html, /aria-label="编辑器标签 main"/)
+    for (const label of ['调整回复长度', '调整界面外观', '关闭新消息自动滚动']) {
       assert.ok(toolbar.includes(`aria-label="${label}"`), `${label} remains accessible`)
     }
+    assert.doesNotMatch(toolbar, /aria-label="调整角色位置"/)
+    assert.match(html, /aria-label="角色"/)
     assert.equal(/<button\b[^>]*disabled=""[^>]*aria-label="调整界面外观"/.test(toolbar), !ready)
     assert.doesNotMatch(toolbar, /role="tab"/)
     assert.match(html, /想聊点什么？/)
@@ -94,7 +96,8 @@ test('wallpaper preferences remain intact while empty and restored chats use a t
       const toolbar = html.match(/<header\b[^>]*aria-label="会话工具栏"[^>]*>(.*?)<\/header>/s)?.[1]
       assert.ok(toolbar)
       if (session) {
-        assert.match(toolbar, /role="tab" aria-selected="true"/)
+        assert.match(html, /aria-label="编辑器标签 main"/)
+        assert.doesNotMatch(toolbar, /role="tab"/)
         assert.doesNotMatch(toolbar, /新会话/)
         for (const message of session.messages) assert.ok(html.includes(message.content))
       }
@@ -102,18 +105,16 @@ test('wallpaper preferences remain intact while empty and restored chats use a t
   }
 })
 
-test('chat and character panels share every opacity value including completely transparent and opaque', () => {
+test('chat preserves every panel opacity value while an unconfigured character occupies no workbench space', () => {
   for (const panelOpacity of [0, 37, 85, 100]) {
     const html = render(ChatPage, { ...props, sessions: [], activeSessionId: '',
       appearancePreference: { ...props.appearancePreference, panelOpacity },
       connectionFeedback: { phase: 'idle', revision: 0, hasConnected: false } })
     assert.ok(html.includes(`--interface-panel-background:color-mix(in oklab, var(--color-bg) ${panelOpacity}%, transparent)`))
     const main = html.match(/<main\b[^>]*>/)?.[0]
-    const character = html.match(/<aside\b[^>]*w-\[34vw\][^>]*>/)?.[0]
-    for (const panel of [main, character]) {
-      assert.match(panel, /background-color:var\(--interface-panel-background\)/)
-      assert.doesNotMatch(panel, /(?:style="|;)opacity:/)
-    }
+    assert.match(main, /background-color:var\(--interface-panel-background\)/)
+    assert.doesNotMatch(main, /(?:style="|;)opacity:/)
+    assert.doesNotMatch(html, /aria-label="角色立绘"/)
   }
 })
 

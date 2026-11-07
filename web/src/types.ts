@@ -412,6 +412,7 @@ export interface RuntimeCompactionPart {
   tokensBefore?: number
   tokensAfter?: number
   progress?: { paused: boolean; complete: boolean }
+  eventSequence?: string
 }
 
 export interface RuntimeSubtaskPart {

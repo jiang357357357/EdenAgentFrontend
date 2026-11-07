@@ -11,7 +11,6 @@ import { MemoEditor } from "./MemoEditor"
 import { MemoTimeline } from "./MemoTimeline"
 import {
   groupMemos,
-  memoLimit,
   memoSchedule,
   scheduleInScope,
   primaryButton,
@@ -178,7 +177,9 @@ export function MemoPage({ onBack, roleSessionId }: { onBack: () => void; roleSe
           kind={kind}
           loading={workspace.loading}
           hasFilters={hasFilters}
-          limited={workspace.memos.length >= memoLimit}
+          limited={workspace.hasMore}
+          loadingMore={workspace.loadingMore}
+          onLoadMore={() => void workspace.loadMore()}
           failed={Boolean(workspace.error)}
           onScope={setScope}
           onStatus={setStatus}

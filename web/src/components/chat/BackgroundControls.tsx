@@ -4,6 +4,7 @@ import type { BackgroundPreference } from "../../lib/use-background-preference"
 import { defaultAppearance, type AppearancePreference } from "../../lib/use-appearance-preference"
 import { cn } from "../../lib/utils"
 import { BaseThemeSelect } from "./BaseThemeSelect"
+import { ChatToolbarPopover } from './ChatToolbarPopover'
 
 interface BackgroundControlsProps {
   value: BackgroundPreference
@@ -49,7 +50,7 @@ export function BackgroundControls({ value, ready, uploading, saving, settingErr
         <Palette className="h-4 w-4" />
       </button>
       {open ? (
-        <div className="appearance-controls absolute right-0 top-[calc(100%+0.5rem)] z-50 max-h-[80dvh] w-72 overflow-y-auto rounded-xl border border-border bg-card/95 p-4 text-text shadow-xl backdrop-blur-xl">
+        <ChatToolbarPopover anchor={root} label="界面外观" onClose={()=>setOpen(false)} className="appearance-controls z-50 w-72 max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-card/95 p-4 text-text shadow-xl backdrop-blur-xl">
           <div className="mb-4 flex items-center justify-between">
             <span className="text-sm font-medium">界面外观</span>
             <span role="status" title={settingError} className={cn("ml-auto mr-2 text-xs", settingError ? "text-danger" : "text-text-muted")}>{settingError ? "设置失败" : saving ? "正在保存…" : "自动保存"}</span>
@@ -180,7 +181,7 @@ export function BackgroundControls({ value, ready, uploading, saving, settingErr
             <RotateCcw className="h-3.5 w-3.5" />
             恢复默认外观
           </button>
-        </div>
+        </ChatToolbarPopover>
       ) : null}
     </div>
   )

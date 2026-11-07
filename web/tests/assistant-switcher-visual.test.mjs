@@ -70,7 +70,8 @@ test("Spine stays visually empty until its first fitted frame is ready", () => {
 
 test("a visible non-focusable desktop-pet window still renders Spine frames", () => {
   assert.doesNotMatch(spineSource, /document\.hidden \|\| !document\.hasFocus\(\)/)
-  assert.match(spineSource, /if \(document\.hidden \|\| !isIntersecting\) app\.ticker\.stop\(\)/)
+  assert.match(spineSource, /if \(!isRendererVisible \|\| !isIntersecting\) app\.ticker\.stop\(\)/)
+  assert.match(spineSource, /observeRendererVisibility\(visible =>/)
   assert.match(spineSource, /spine\.y = [^\n]+\n\s+app\.render\(\)/)
 })
 

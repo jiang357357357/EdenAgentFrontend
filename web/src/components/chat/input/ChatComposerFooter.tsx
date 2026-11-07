@@ -97,8 +97,8 @@ export function ChatComposerFooter({
   return (
     <>
       {!voicePanelVisible && (
-        <div className={cn("absolute z-20 flex h-[5.4vh] items-center justify-between gap-[1.4vh]", overlay ? "inset-x-[2.4vh] bottom-[1.6vh]" : "bottom-[1.7vh] left-[2.4vh] right-[9.1vh]") }>
-          <div className="flex min-w-0 items-center gap-[1.6vh]">
+        <div className={cn("absolute z-20 flex h-[5.4vh] items-center justify-between gap-[1.4vh]", overlay ? "inset-x-[2.4vh] bottom-[1.6vh]" : "workbench-composer-row bottom-[1.7vh] left-[2.4vh] right-[9.1vh]") }>
+          <div className="workbench-composer-actions flex min-w-0 items-center gap-[1.6vh]">
             <button type="button" onClick={onFilePick} disabled={isDialogMode || Boolean(disabled)} className={cn("flex h-[4.2vh] w-[4.2vh] flex-shrink-0 items-center justify-center rounded-[1.2vh] transition-colors disabled:cursor-not-allowed disabled:opacity-35", overlay ? "text-text/85 hover:bg-highlight/10 hover:text-text" : "text-text-muted hover:bg-bg hover:text-text")} aria-label="添加附件" title={disabled ? "当前回合中只能排队文字消息" : "添加附件"}>
               <Plus className="h-[2.8vh] w-[2.8vh]" />
             </button>
@@ -114,7 +114,7 @@ export function ChatComposerFooter({
             )}
           </div>
 
-          <div className="flex flex-shrink-0 items-center gap-[1.5vh]">
+          <div className="workbench-composer-models flex flex-shrink-0 items-center gap-[1.5vh]">
             {outputActive || disabled ? <LoaderCircle className={cn("h-[2.5vh] w-[2.5vh] animate-spin", overlay ? "text-text/80" : "text-text-muted")} aria-label="正在处理" /> : null}
             {voiceInputEnabled && !overlay ? (
               <button type="button" onClick={onToggleVoiceInput} disabled={Boolean(disabled) || voiceStatus === "connecting" || voiceStatus === "transcribing"} className={cn("flex h-[4.2vh] w-[4.2vh] flex-shrink-0 items-center justify-center rounded-full transition-[color,background-color,transform] disabled:cursor-wait", voiceStatus === "recording" ? "bg-danger/10 text-danger" : voiceError ? "text-danger hover:bg-danger/10" : "text-text-muted hover:bg-bg hover:text-text")} style={{ transform: voiceStatus === "recording" ? `scale(${1 + voiceLevel * 0.12})` : undefined }} aria-label={voiceStatus === "recording" ? "停止录音" : "开始语音输入"} title={voiceError || (voiceStatus === "recording" ? "停止录音" : "语音输入")}>
@@ -139,12 +139,12 @@ export function ChatComposerFooter({
 
       {!overlay && !voicePanelVisible ? (
         <>
-        <div className="absolute bottom-[1.5vh] right-[2.4vh] z-30">
+        <div className="workbench-composer-send absolute bottom-[1.5vh] right-[2.4vh] z-30">
           <div className="flex flex-col items-center gap-[0.9vh]">
             {disabled && onAbort ? <><SendButton canSend={canSend} disabled={!allowFollowUp} dialogMode={isDialogMode} overlay={false} onSend={onSend} /><StopButton overlay={false} onStop={() => void onAbort()} /></> : <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay={false} onSend={onSend} />}
           </div>
         </div>
-          <div className="absolute bottom-[1.75vh] right-[-7.5vh] z-30 flex flex-col items-center gap-[0.9vh]">
+          <div className="workbench-composer-meters absolute bottom-[1.75vh] right-[-7.5vh] z-30 flex flex-col items-center gap-[0.9vh]">
             <ReplyTimer sessionId={sessionId} />
             <TokenMeter key={sessionId} sessionId={sessionId} draft={draft} inputTokens={inputTokens} contextTokens={contextTokens} contextWindow={contextWindow} breakdown={tokenBreakdown} refreshKey={contextRefreshKey} isRunning={Boolean(disabled)} />
           </div>

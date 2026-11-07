@@ -14,7 +14,7 @@ const [appSource, pageSource, authSource, runtimeHookSource, transportSource, cl
   readFile(new URL("../src/lib/agent-client.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/generated/eden-agent-rpc.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/components/layout/Sidebar.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../src/pages/chat/ChatPage.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/components/workbench/AgentWorkbench.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/configuration/ConfigurationPage.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/lib/local-character.ts", import.meta.url), "utf8"),
 ])

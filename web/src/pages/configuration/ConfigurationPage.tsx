@@ -1,4 +1,5 @@
 import { pageEnterMotion } from "../../lib/page-motion"
+import { useDocumentRegistration } from '../../components/workbench/document-lifecycle'
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ObjectUrlScope } from "../../lib/object-url-scope"
 import {
@@ -56,9 +57,9 @@ import {
 import { DEFAULT_LOCAL_CHARACTER, localCharacterAssistant, normalizeLocalCharacter } from "../../lib/local-character"
 import { CharacterVisualRenderer } from "../../components/character"
 import { cn } from "../../lib/utils"
+import type { CharacterConfigurationView, CharacterConfigurationNavigation } from '../../lib/character-navigation'
 
 type ConfigurationSection = "model" | "character" | "voice" | "workspace" | "search" | "security" | "logs"
-type CharacterConfigurationView = "basic" | "complete" | "visual"
 type CharacterSaveState = "idle" | "pending" | "saving" | "saved" | "invalid" | "error"
 
 interface ConfigurationPageProps {
@@ -73,6 +74,7 @@ interface ConfigurationPageProps {
   onOpenConnectors: () => void
   onOpenSettings: () => void
   onCharacterSaved: (character: LocalCharacterConfig) => Promise<void> | void
+  characterNavigation?: CharacterConfigurationNavigation
 }
 
 const providerOptions = [
@@ -244,10 +246,15 @@ export function ConfigurationPage({
   onOpenConnectors,
   onOpenSettings,
   onCharacterSaved,
+  characterNavigation,
 }: ConfigurationPageProps) {
   const [section, setSection] = useState<ConfigurationSection>("model")
   const [characterMenuOpen, setCharacterMenuOpen] = useState(false)
   const [characterView, setCharacterView] = useState<CharacterConfigurationView>("basic")
+  useEffect(() => {
+    if (!characterNavigation) return
+    setSection('character'); setCharacterView(characterNavigation.view); setCharacterMenuOpen(false)
+  }, [characterNavigation])
   const [config, setConfig] = useState<LocalRuntimeConfig | null>(null)
   const [form, setForm] = useState<LocalRuntimeConfigInput>(emptyForm)
   const [character, setCharacter] = useState<LocalCharacterConfig>({ ...DEFAULT_LOCAL_CHARACTER })
@@ -699,12 +706,20 @@ export function ConfigurationPage({
       if (result.restarted) {
         window.setTimeout(() => { void load() }, 1500)
       }
+      return true
     } catch (saveError) {
       setError(messageOf(saveError, "保存尘世配置失败。"))
+      return false
     } finally {
       setSaving(false)
     }
   }
+
+  useDocumentRegistration({
+    dirty: Boolean(config && Object.keys(form).some(key => form[key as keyof LocalRuntimeConfigInput] !== config[key as keyof LocalRuntimeConfigInput])),
+    save: async () => { if (!await handleSave()) throw new Error('模型配置保存失败，请查看配置页中的错误信息。') },
+    saveLabel: '模型配置已保存',
+  })
 
   const chooseCharacterAvatar = async () => {
     try {

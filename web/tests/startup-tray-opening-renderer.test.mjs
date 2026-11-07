@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { createServer } from 'node:http'
 import { build } from 'esbuild'
 import { _electron } from 'playwright-core'
+import { extensionFrameEsbuild } from './fixtures/extension-frame-esbuild.mjs'
 
 test('native tray reopening replays the opening over retained room and login state', {
   timeout: 180000, skip: process.platform !== 'win32',
@@ -47,6 +48,7 @@ test('native tray reopening replays the opening over retained room and login sta
     const origin = `http://127.0.0.1:${http.address().port}/`
     await build({ absWorkingDir: web, entryPoints: ['tests/fixtures/startup-entrance-renderer.tsx'], outfile: path.join(scratch, 'renderer.js'),
       bundle: true, format: 'iife', platform: 'browser', jsx: 'automatic', loader: { '.png': 'file', '.jpg': 'file', '.svg': 'file' },
+      plugins: [extensionFrameEsbuild()],
       logLevel: 'silent', define: { __MON_AUTH_MODE__: '"production"', 'import.meta.env': JSON.stringify({ DEV: true,
         VITE_EDEN_AGENT_MON_BASE_URL: origin, VITE_EDEN_AGENT_LOCAL_BASE_URL: origin }) } })
     const main = path.join(scratch, 'main.cjs')
@@ -94,13 +96,32 @@ app.whenReady().then(()=>{
     await page.emulateMedia({ reducedMotion: 'no-preference' }); await page.goto(origin)
     await active(false)
     const initial = await page.locator('.startup-opening-emblem').evaluate(element => getComputedStyle(element).transform)
-    await page.waitForTimeout(3400)
+    // Loading may finish while native-hidden; GPU warm-up must wait without
+    // falling through the 12-second asset-loading timeout.
+    await page.waitForTimeout(13000)
     assert.equal(await page.locator('.startup-opening-emblem').evaluate(element => getComputedStyle(element).transform), initial)
     assert.equal(await overlay.getAttribute('data-opening-phase'), 'playing')
     await show(); await page.waitForTimeout(1450); await capture('initial-tray-opening')
     assert.equal(await overlay.count(), 1); await actor.waitFor()
-    await application.evaluate(() => globalThis.primary.webContents.setBackgroundThrottling(true))
+    await application.evaluate(() => globalThis.primary.webContents.setBackgroundThrottling(false))
     checks.push('hidden-startup-pauses-until-real-tray-show-and-then-plays-the-opening')
+
+    await page.evaluate(() => {
+      window.sceneFrames = 0
+      window.sceneObserver = new MutationObserver(records => { window.sceneFrames += records.length })
+      window.sceneObserver.observe(document.querySelector('[data-startup-renderer]'), {
+        attributes: true, attributeFilter: ['data-scene-frame'],
+      })
+    })
+    await page.waitForFunction(() => window.sceneFrames > 2)
+    await hide(); await page.waitForTimeout(200)
+    assert.equal(await page.evaluate(() => document.hidden), false)
+    const hiddenFrames = await page.evaluate(() => window.sceneFrames)
+    await page.waitForTimeout(500)
+    assert.equal(await page.evaluate(() => window.sceneFrames), hiddenFrames)
+    await show(); await skip(); await actor.waitFor()
+    await page.waitForFunction(before => window.sceneFrames > before, hiddenFrames)
+    checks.push('native-hidden-scene-stops-and-resumes-frames-with-background-throttling-disabled')
 
     await page.getByRole('combobox', { name: '运行模式' }).selectOption('local')
     await page.getByRole('button', { name: '切换角色动作', exact: true }).click()
@@ -144,7 +165,12 @@ app.whenReady().then(()=>{
 
     await application.evaluate(() => globalThis.primary.minimize()); await active(false)
     assert.equal(await application.evaluate(() => globalThis.primary.isMinimized()), true)
+    await page.waitForTimeout(200)
+    const minimizedFrames = await page.evaluate(() => window.sceneFrames)
+    await page.waitForTimeout(400)
+    assert.equal(await page.evaluate(() => window.sceneFrames), minimizedFrames)
     await show(true); assert.equal(await application.evaluate(() => globalThis.primary.isMinimized()), false)
+    await page.waitForFunction(before => window.sceneFrames > before, minimizedFrames)
     await skip(); await page.getByRole('dialog').waitFor()
     assert.equal(await page.getByLabel('用户名', { exact: true }).inputValue(), 'temporary-tray-account')
     checks.push('minimized-window-restores-from-tray-and-replays-over-the-same-login')
@@ -183,7 +209,7 @@ app.whenReady().then(()=>{
     checks.push('reduced-motion-reopen-uses-static-cover-and-immediate-ready-content')
     assert.deepEqual(errors, [])
     const result = { passed: true, verifiedAt: new Date().toISOString(), checks, errors, images, loginCalls,
-      realNativeVisibility: true, realProductionPreload: true, realProductionTrayHandlers: true, nativeBackgroundThrottling: true,
+      realNativeVisibility: true, realProductionPreload: true, realProductionTrayHandlers: true, backgroundThrottling: false,
       osTrayIcon: 'test adapter', realPrivateAssets: true }
     await writeFile(path.join(evidence, 'tray-opening-result.json'), JSON.stringify(result, null, 2)); t.diagnostic(JSON.stringify(result))
     await cdp.detach()

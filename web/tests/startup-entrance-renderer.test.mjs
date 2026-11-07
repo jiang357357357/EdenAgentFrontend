@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { createServer } from 'node:http'
 import { build } from 'esbuild'
 import { _electron } from 'playwright-core'
+import { extensionFrameEsbuild } from './fixtures/extension-frame-esbuild.mjs'
 
 test('original Spine entrance effects, ordered stages, login and return run in an isolated Electron renderer', { timeout: 300000, skip: process.platform !== 'win32' }, async t => {
   const web = fileURLToPath(new URL('../', import.meta.url)), agent = path.resolve(web, '../..')
@@ -61,7 +62,7 @@ test('original Spine entrance effects, ordered stages, login and return run in a
   const checks = []
   try {
     await build({ absWorkingDir: web, entryPoints: ['tests/fixtures/startup-entrance-renderer.tsx'],
-      outfile: path.join(scratch, 'renderer.js'), bundle: true, format: 'iife', platform: 'browser', jsx: 'automatic',
+      outfile: path.join(scratch, 'renderer.js'), bundle: true, format: 'iife', platform: 'browser', jsx: 'automatic', plugins: [extensionFrameEsbuild()],
       loader: { '.png': 'file', '.jpg': 'file', '.svg': 'file' }, logLevel: 'silent', define: {
         __MON_AUTH_MODE__: '"production"', 'import.meta.env': JSON.stringify({ DEV: true,
           VITE_EDEN_AGENT_MON_BASE_URL: origin, VITE_EDEN_AGENT_LOCAL_BASE_URL: origin }),

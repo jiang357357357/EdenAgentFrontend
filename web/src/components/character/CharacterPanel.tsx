@@ -11,9 +11,11 @@ interface CharacterPanelProps {
   assistantError?: string;
   editing?: boolean;
   activeAction?: ActiveCharacterAction;
+  showEmpty?: boolean;
+  onConfigure?: () => void;
 }
 
-export function CharacterPanel({ assistant, assistantError, activeAction, editing = false }: CharacterPanelProps) {
+export function CharacterPanel({ assistant, assistantError, activeAction, editing = false, showEmpty = false, onConfigure }: CharacterPanelProps) {
   const character = assistant?.character;
   const displayName = assistant?.name || character?.name || '默认助手';
   const activeActionImage =
@@ -27,8 +29,10 @@ export function CharacterPanel({ assistant, assistantError, activeAction, editin
   const hasSpine = Boolean(spineAsset);
   const hasVisual = Boolean(character && (hasSpine || image));
 
+  if (!hasVisual && !editing && !showEmpty) return null;
+
   return (
-    <aside className="flex h-[100vh] w-[34vw] flex-none items-end justify-center overflow-hidden border-l border-border bg-transparent" style={{ backgroundColor: 'var(--interface-panel-background)' }}>
+    <aside aria-label="角色立绘" data-editing={editing} className="chat-character-panel relative flex h-full flex-none items-end justify-center overflow-hidden border-l border-border bg-transparent" style={{ backgroundColor: 'var(--interface-panel-background)' }}>
       <div className="relative h-full w-full overflow-hidden">
         {hasVisual && character ? (
           <AdjustableCharacterView key={`${getStoredRuntimeOrigin()}:${character.id}`} storageKey={`eden-character-placement:${getStoredRuntimeOrigin()}:${character.id}`} editing={editing} nativeTransform={hasSpine}>
@@ -60,6 +64,7 @@ export function CharacterPanel({ assistant, assistantError, activeAction, editin
               <p className="mt-[1vh] text-[1.35vh] leading-relaxed text-text-muted">
                 {assistantError || (assistant ? '请在角色编辑里添加待机动作图片。' : '请在 Core 助手管理里设置默认助手。')}
               </p>
+              {onConfigure && <button type="button" onClick={onConfigure} className="mt-4 rounded-lg border border-border px-4 py-2 text-sm text-text hover:bg-bg">配置立绘</button>}
             </div>
           </div>
         )}

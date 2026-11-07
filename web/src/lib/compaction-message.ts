@@ -14,6 +14,7 @@ export function compactionMessage(event: SessionEventInput): ApiMessage | undefi
   return {
     info: { id, role: 'assistant', modelID: '', providerID: '', ...(event.turnId ? { turnID: String(event.turnId) } : {}), time: { created: time, completed: time } },
     parts: [{ id: `${id}:summary`, messageID: id, sessionID: event.sessionId, type: 'compaction', auto: payload.automatic === true,
+      eventSequence: String(event.seq),
       summary: entry.summary, ...(typeof entry.firstKeptEntryId === 'string' ? { firstKeptEntryId: entry.firstKeptEntryId } : {}),
       ...(typeof entry.tokensBefore === 'number' ? { tokensBefore: entry.tokensBefore } : {}),
       ...(typeof payload.tokensAfter === 'number' ? { tokensAfter: payload.tokensAfter } : typeof entry.tokensAfter === 'number' ? { tokensAfter: entry.tokensAfter } : {}),
@@ -34,7 +35,7 @@ function compactionProgressMessage(event: SessionEventInput): ApiMessage | undef
   return { info: { id, role: 'assistant', modelID: '', providerID: '', ...(event.turnId ? { turnID: String(event.turnId) } : {}),
       time: { created: Number(event.createdAt), ...(completed ? { completed: Number(event.createdAt) } : {}) } },
     parts: [{ id: `${id}:status`, messageID: id, sessionID: event.sessionId, type: 'compaction', auto: true, summary,
-      progress: { paused, complete: completed } }] }
+      progress: { paused, complete: completed }, eventSequence: String(event.seq) }] }
 }
 
 /** Display accepted /compact inputs without putting the command into model history. */

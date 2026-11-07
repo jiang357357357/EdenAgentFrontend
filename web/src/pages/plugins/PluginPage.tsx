@@ -1,138 +1,52 @@
-import { PluginRecovery } from "./PluginRecovery"
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { ArrowLeft, Code, History, Package, PackagePlus, RefreshCw, Store } from 'lucide-react'
+import { motion } from 'motion/react'
+import type { PluginPreviewInfo } from '@eden/api'
+import { pageEnterMotion } from '../../lib/page-motion'
+import { listPlugins, type Plugin } from '../../lib/agent-client'
+import { getRuntimeOriginRevision } from '../../lib/runtime-origin'
 import { JobOutcomeReview } from '../../components/chat/JobOutcomeReview'
-import { PluginComponents } from "./PluginComponents"
-import { McpPanel } from '../../components/chat/McpPanel'
-import { PluginPackagePreview } from "./PluginPackagePreview"
-import type { PluginPreviewInfo } from "@eden/api"
-import { PluginMarketKeys } from "./PluginMarketKeys"
-import { PluginDevelopment } from "./PluginDevelopment"
-import { useCallback, useEffect, useState } from "react"
-import { ArrowLeft, PackagePlus, RefreshCw, ShieldCheck, Store, Trash2 } from "lucide-react"
-import { motion } from "motion/react"
-import { pageEnterMotion } from "../../lib/page-motion"
-import {
-  addPluginMarketSource,
-  enablePlugin,
-  inspectPlugin,
-  inspectPluginMarketRelease,
-  installPlugin,
-  listPluginMarketReleases,
-  listPluginMarketSources,
-  listPlugins,
-  refreshPluginMarketSource,
-  removePluginMarketSource,
-  setPluginPermissions,
-  uninstallPlugin,
-  type Plugin,
-  type PluginMarketRelease,
-  type PluginMarketSource,
-} from "../../lib/agent-client"
+import { InstalledPlugins } from './InstalledPlugins'
+import { PluginInstaller } from './PluginInstaller'
+import { PluginMarket } from './PluginMarket'
+import { PluginDevelopment } from './PluginDevelopment'
+import { PluginRecovery } from './PluginRecovery'
+import './plugin-management.css'
 
-export function PluginPage({ onBack }: { onBack: () => void }) {
-  const [plugins, setPlugins] = useState<Plugin[]>([])
-  const [marketSources, setMarketSources] = useState<PluginMarketSource[]>([])
-  const [marketReleases, setMarketReleases] = useState<PluginMarketRelease[]>([])
-  const [source, setSource] = useState("")
-  const [previewDetails, setPreviewDetails] = useState<PluginPreviewInfo | null>(null)
-  const [previewID, setPreviewID] = useState("")
-  const [previewLabel, setPreviewLabel] = useState("")
-  const [marketForm, setMarketForm] = useState({ id: "", name: "", url: "", keyID: "" })
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState("")
-  const refresh = useCallback(async () => {
-    setPlugins(await listPlugins())
-    try { setMarketSources(await listPluginMarketSources()) }
-    catch (reason) { setMarketSources([]); setError(`插件市场暂不可用：${String(reason)}`) }
-    try { setMarketReleases(await listPluginMarketReleases()) }
-    catch { setMarketReleases([]) }
-  }, [])
-  useEffect(() => { void refresh().catch((value) => setError(String(value))) }, [refresh])
-  const run = async (action: () => Promise<unknown>) => {
-    setBusy(true); setError("")
-    try { await action(); await refresh() } catch (value) { setError(value instanceof Error ? value.message : String(value)) }
-    finally { setBusy(false) }
+const sections=[['installed','已安装',Package],['install','安装插件',PackagePlus],['market','插件市场',Store],['development','开发',Code],['recovery','恢复',History]] as const
+type View=(typeof sections)[number][0]
+export function PluginPage({ onBack }: { onBack():void }) {
+  const [plugins,setPlugins]=useState<Plugin[]>([]),[view,setView]=useState<View>('installed'),[visited,setVisited]=useState<View[]>(['installed'])
+  const [preview,setPreview]=useState<PluginPreviewInfo|null>(null),[focus,setFocus]=useState<{id:string;revision:number}>()
+  const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState('')
+  const mounted=useRef(true),request=useRef(0),locked=useRef(false),id=useId()
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;request.current++}},[])
+  const refresh=useCallback(async()=>{
+    const sequence=++request.current,origin=getRuntimeOriginRevision();setLoading(true)
+    try{const values=await listPlugins();if(mounted.current&&sequence===request.current&&origin===getRuntimeOriginRevision())setPlugins(values)}
+    finally{if(mounted.current&&sequence===request.current)setLoading(false)}
+  },[])
+  useEffect(()=>{void refresh().catch(reason=>{if(mounted.current)setError(String(reason))})},[refresh])
+  const run=async(action:()=>Promise<unknown>)=>{
+    if(locked.current)return false
+    locked.current=true;setBusy(true);setError('')
+    try{await action();await refresh();return true}
+    catch(reason){if(mounted.current)setError(reason instanceof Error?reason.message:String(reason));return false}
+    finally{locked.current=false;if(mounted.current)setBusy(false)}
   }
-  return <motion.main {...pageEnterMotion} className="surface-scrollbars h-full overflow-auto bg-bg p-6 text-text">
-    <header className="mb-6 flex items-center gap-3">
-      <button onClick={onBack} className="rounded-lg p-2 hover:bg-border" aria-label="返回"><ArrowLeft className="h-5 w-5" /></button>
-      <div><h1 className="text-2xl font-semibold">插件</h1><p className="text-xs text-text-muted">版本、信任、权限与运行时</p></div>
-      <button onClick={() => void refresh()} className="ml-auto rounded-lg p-2 hover:bg-border" aria-label="刷新"><RefreshCw className="h-4 w-4" /></button>
-    </header>
-    {error && <div className="mb-4 rounded-lg bg-danger-dim p-3 text-sm text-danger">{error}</div>}
-    {previewDetails && <PluginPackagePreview preview={previewDetails} />}
-    <PluginDevelopment onChanged={refresh} />
-    <JobOutcomeReview kind="plugin.hook" title="插件钩子作业恢复" />
-    <PluginMarketKeys onChanged={refresh} />
-    <PluginRecovery disabled={busy || Boolean(previewID)} onPreview={preview => {
-      setPreviewDetails(preview); setPreviewID(preview.previewID); setPreviewLabel(`${preview.name} · ${preview.version}`)
-    }} />
-    <section className="mb-6 rounded-xl border border-border bg-card p-4">
-      <div className="flex gap-2"><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="本地插件目录" className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm" />
-      <button disabled={busy || !source} onClick={() => void run(async () => { const preview = await inspectPlugin(source); setPreviewID(preview.previewID); setPreviewDetails(preview); setPreviewLabel(`${preview.name} ${preview.version}`) })} className="rounded-lg bg-accent hover:bg-accent-hover px-4 py-2 text-sm text-on-accent disabled:opacity-40">检查</button>
-      <button disabled={busy || !previewID} onClick={() => void run(async () => { await installPlugin(previewID); setPreviewID(""); setPreviewDetails(null); setPreviewLabel(""); setSource("") })} className="flex items-center gap-2 rounded-lg bg-success-solid px-4 py-2 text-sm text-on-solid disabled:opacity-40"><PackagePlus className="h-4 w-4" />安装{previewLabel ? ` ${previewLabel}` : ""}</button></div>
-    </section>
-    <section className="mb-6 rounded-xl border border-border bg-card p-4">
-      <div className="mb-3 flex items-center gap-2"><Store className="h-4 w-4" /><h2 className="font-medium">签名插件市场</h2></div>
-      <div className="grid gap-2 md:grid-cols-4">
-        <input value={marketForm.id} onChange={(event) => setMarketForm({ ...marketForm, id: event.target.value })} placeholder="来源 ID" className="rounded-lg border px-3 py-2 text-sm" />
-        <input value={marketForm.name} onChange={(event) => setMarketForm({ ...marketForm, name: event.target.value })} placeholder="显示名称" className="rounded-lg border px-3 py-2 text-sm" />
-        <input value={marketForm.url} onChange={(event) => setMarketForm({ ...marketForm, url: event.target.value })} placeholder="HTTPS 索引 URL" className="rounded-lg border px-3 py-2 text-sm" />
-        <input value={marketForm.keyID} onChange={(event) => setMarketForm({ ...marketForm, keyID: event.target.value })} placeholder="可信密钥 ID" className="rounded-lg border px-3 py-2 text-sm" />
-      </div>
-      <button disabled={busy || Object.values(marketForm).some((value) => !value.trim())} onClick={() => void run(async () => {
-        await addPluginMarketSource(marketForm)
-        await refreshPluginMarketSource(marketForm.id)
-        setMarketForm({ id: "", name: "", url: "", keyID: "" })
-      })} className="mt-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-40">添加并验证来源</button>
-      {marketSources.length > 0 && <div className="mt-4 space-y-2">{marketSources.map((item) => <div key={item.id} className="flex items-center gap-3 rounded-lg bg-bg px-3 py-2 text-xs">
-        <span className="min-w-0 flex-1"><b>{item.name}</b><span className="block truncate text-text-muted">{item.url} · {item.keyID}{item.indexRevision ? ` · ${item.indexRevision.slice(0, 10)}` : ""}</span>{item.lastError && <span className="block text-danger">{item.lastError}</span>}</span>
-        <button disabled={busy} onClick={() => void run(() => refreshPluginMarketSource(item.id))} className="rounded p-1 hover:bg-border" aria-label="刷新来源"><RefreshCw className="h-4 w-4" /></button>
-        <button disabled={busy} onClick={() => void run(() => removePluginMarketSource(item.id))} className="rounded p-1 text-danger hover:bg-danger-dim" aria-label="移除来源"><Trash2 className="h-4 w-4" /></button>
-      </div>)}</div>}
-      {marketReleases.length > 0 && <div className="mt-4 grid gap-2 md:grid-cols-2">{marketReleases.map((release) => <div key={`${release.sourceID}:${release.pluginID}:${release.version}`} className="rounded-lg border border-border p-3 text-sm">
-        <div className="flex gap-2"><span className="min-w-0 flex-1"><b>{release.name}</b><span className="block text-xs text-text-muted">{release.pluginID} · {release.version} · {release.sourceID}</span></span>{release.revoked && <span className="text-xs text-danger">已撤销</span>}</div>
-        <p className="mt-2 text-xs text-text-muted">{release.revocationReason ?? release.description}</p>
-        <button disabled={busy || release.revoked} onClick={() => void run(async () => { const preview = await inspectPluginMarketRelease(release.sourceID, release.pluginID, release.version); setPreviewID(preview.previewID); setPreviewDetails(preview); setPreviewLabel(`${release.name} ${release.version}`) })} className="mt-2 rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40">下载并审查</button>
-      </div>)}</div>}
-    </section>
-    <div className="grid gap-4">
-      {plugins.map((plugin) => {
-        const grants = new Map(plugin.permissionGrants.map((grant) => [`${grant.capability}\0${grant.resource}\0${grant.access}`, grant.decision]))
-        return <article key={plugin.id} className="rounded-xl border border-border bg-card p-5">
-          <div className="flex items-start gap-3"><div className="min-w-0 flex-1"><h2 className="font-semibold">{plugin.name}</h2><p className="text-xs text-text-muted">{plugin.id} · {plugin.version}</p><p className="mt-2 text-sm text-text-muted">{plugin.description}</p></div>
-          <span className={`rounded-full px-2 py-1 text-xs ${plugin.trustState.startsWith("verified:") ? "bg-success-dim text-success" : "bg-warning-dim text-warning"}`}>{plugin.trustState}</span></div>
-          {(plugin.sourceType === "marketplace" || plugin.sourceType === "local") && <PluginComponents plugin={plugin} onChanged={refresh} />}
-          {plugin.components.some(component => component.kind === 'mcp_stdio' || component.kind === 'mcp_http') && <McpPanel pluginId={plugin.id} />}
-          {plugin.permissions.length > 0 && <div className="mt-4 space-y-2"><div className="flex items-center gap-2 text-sm font-medium"><ShieldCheck className="h-4 w-4" />权限</div>{plugin.permissions.map((permission) => {
-            const key = `${permission.capability}\0${permission.resource}\0${permission.access}`
-            return <label key={key} className="flex items-center gap-3 rounded-lg bg-bg px-3 py-2 text-xs">
-              <input
-                type="checkbox"
-                checked={grants.get(key) === "allowed"}
-                onChange={(event) => {
-                  const checked = event.target.checked
-                  void run(() => setPluginPermissions(
-                    plugin.id,
-                    plugin.revision,
-                    plugin.permissions.map((item) => ({
-                      capability: item.capability,
-                      resource: item.resource,
-                      access: item.access,
-                      decision: item === permission
-                        ? (checked ? "allowed" : "denied")
-                        : (grants.get(`${item.capability}\0${item.resource}\0${item.access}`) ?? "denied"),
-                    })),
-                  ))
-                }}
-              />
-              <span className="flex-1">{permission.description}<span className="block text-text-muted">{permission.capability} · {permission.access} · {permission.resource}</span></span>{permission.required && <b className="text-danger">必需</b>}
-            </label>
-          })}</div>}
-          {plugin.uiContributions.filter((item) => item.location === "plugin_detail").map((item) => <div key={`${item.componentId}:${item.id}`} className={`mt-4 rounded-lg border p-3 text-sm ${item.tone === "success" ? "border-success/30 bg-success-dim" : item.tone === "warning" ? "border-warning/30 bg-warning-dim" : "border-info/30 bg-info-dim"}`}><b>{item.title}</b><p className="mt-1 whitespace-pre-wrap text-xs text-text-muted">{item.body}</p></div>)}
-          <div className="mt-4 flex gap-2"><button disabled={busy} onClick={() => void run(() => enablePlugin(plugin.id, !plugin.enabled))} className="rounded-lg border px-3 py-2 text-sm">{plugin.enabled ? "停用" : "启用"}</button><button disabled={busy} onClick={() => void run(() => uninstallPlugin(plugin.id))} className="ml-auto flex items-center gap-2 rounded-lg border border-danger/30 px-3 py-2 text-sm text-danger"><Trash2 className="h-4 w-4" />卸载</button></div>
-        </article>
-      })}
-      {!plugins.length && <p className="py-12 text-center text-sm text-text-muted">尚未安装插件</p>}
-    </div>
+  const choose=(next:View)=>{setView(next);setVisited(current=>current.includes(next)?current:[...current,next])}
+  const inspect=(value:PluginPreviewInfo)=>{setPreview(value);choose('install')}
+  return <motion.main {...pageEnterMotion} className="plugin-management theme-page bg-bg text-text">
+    <header className="plugin-management-header"><button aria-label="返回" onClick={onBack}><ArrowLeft size={18}/></button><div><h1>插件管理</h1><p>{plugins.length} 个已安装插件</p></div>
+      <button aria-label="刷新插件列表" disabled={loading||busy} onClick={()=>{setError('');void refresh().catch(reason=>setError(String(reason)))}}><RefreshCw size={16} className={loading?'animate-spin':''}/><span>刷新</span></button></header>
+    <nav className="plugin-management-nav surface-scrollbars" role="tablist" aria-label="插件管理分类">{sections.map(([key,label,Icon])=><button key={key} id={`${id}-${key}`} role="tab" aria-selected={view===key} aria-controls={`${id}-${key}-panel`} onClick={()=>choose(key)}><Icon size={16}/>{label}</button>)}</nav>
+    {error&&<div role="alert" className="plugin-page-error">{error}</div>}
+    <div className="plugin-management-content">{visited.map(key=><section key={key} id={`${id}-${key}-panel`} role="tabpanel" aria-labelledby={`${id}-${key}`} hidden={view!==key} className="plugin-management-section surface-scrollbars" data-section={key}>
+      {key==='installed'&&<InstalledPlugins plugins={plugins} loading={loading} busy={busy} run={run} onChanged={refresh} active={view===key} focus={focus}/>}
+      {key==='install'&&<PluginInstaller preview={preview} onPreview={setPreview} busy={busy} run={run} onInstalled={pluginId=>{setFocus(current=>({id:pluginId,revision:(current?.revision??0)+1}));choose('installed')}}/>}
+      {key==='market'&&<PluginMarket busy={busy} run={run} onPreview={inspect} onChanged={refresh}/>}
+      {key==='development'&&<div className="plugin-settings-view"><PluginDevelopment onChanged={refresh}/></div>}
+      {key==='recovery'&&<div className="plugin-settings-view"><h2>插件恢复</h2><p className="plugin-view-description">检查迁移副本和未确认的插件钩子作业，按实际结果继续处理。</p><PluginRecovery disabled={busy||Boolean(preview)} onPreview={inspect}/><JobOutcomeReview kind="plugin.hook" title="插件钩子作业恢复"/></div>}
+    </section>)}</div>
   </motion.main>
 }

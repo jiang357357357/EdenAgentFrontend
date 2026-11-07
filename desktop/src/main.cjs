@@ -2,6 +2,7 @@ require('./app/installed-launch.cjs').assertInstalledLaunch()
 const { createDesktopReminderService } = require("./reminders/reminder-service.cjs")
 const { createDesktopControlService } = require("./desktop-control/control-service.cjs")
 const { app, BrowserWindow, Menu, Tray, clipboard, desktopCapturer, dialog, ipcMain, nativeImage, powerMonitor, protocol, screen, net, session, shell } = require("electron")
+require('./app/extension-renderers.cjs').configureExtensionRenderers(app)
 const { execFile, spawn } = require("node:child_process")
 const fs = require("node:fs")
 const path = require("node:path")
@@ -112,7 +113,7 @@ const localRuntimeService = createLocalRuntimeService({
   serverHealthUrl: `http://127.0.0.1:${process.env.EDEN_AGENT_LOCAL_PORT || "40093"}/healthz`,
 })
 ipcMain.handle("eden-agent:capability", (_event, origin) =>
-  require('./processes/verify-workspace-endpoint.cjs').verifyWorkspaceEndpoint(rustServer.capability(origin)))
+  require('./processes/verify-workspace-endpoint.cjs').verifyDesktopCapability(rustServer, origin))
 ipcMain.on("eden-agent:convert-file-src", (event, filePath) => {
   event.returnValue = desktopFileUrl(resolveBundledWebAssetPath(filePath, {
     preloadDirectory: __dirname,
@@ -136,6 +137,7 @@ const { loadWebApp, navigationPolicyOptions } = createWebAppLoader({
   defaultWebPort: DEFAULT_WEB_PORT,
   isInternalAppUrl,
   isSupportedExternalUrl,
+  isQuitting: () => isQuitting,
 })
 const desktopEnvironmentService = createDesktopEnvironmentService({
   screen,

@@ -3,7 +3,7 @@ import {
   archiveMemo,
   completeMemo,
   createMemo,
-  listMemos,
+  listMemoPage,
   snoozeMemo,
   updateMemo,
   type ApiMemo,
@@ -33,6 +33,9 @@ export function useMemoWorkspace(roleSessionId?: string) {
   const [memos, setMemos] = useState<ApiMemo[]>([])
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const paging = useRef(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [editorError, setEditorError] = useState("")
@@ -56,10 +59,11 @@ export function useMemoWorkspace(roleSessionId?: string) {
   const refresh = useCallback(async () => {
     const current = ++request.current
     setLoading(true)
+    setLoadingMore(false); paging.current = false; setNextCursor(null)
     setError("")
     try {
-      const data = await listMemos({ q: queryRef.current.trim() || undefined, limit: memoLimit })
-      if (mounted.current && current === request.current) setMemos(data)
+      const data = await listMemoPage({ q: queryRef.current.trim() || undefined, limit: memoLimit })
+      if (mounted.current && current === request.current) { setMemos(data.items); setNextCursor(data.nextCursor) }
     } catch (reason) {
       if (mounted.current && current === request.current)
         setError(reason instanceof Error ? reason.message : String(reason))
@@ -67,6 +71,25 @@ export function useMemoWorkspace(roleSessionId?: string) {
       if (mounted.current && current === request.current) setLoading(false)
     }
   }, [])
+
+  const loadMore = async () => {
+    if (!nextCursor || loading || saving || paging.current) return
+    const current = request.current
+    paging.current = true; setLoadingMore(true); setError('')
+    try {
+      const data = await listMemoPage({ q: queryRef.current.trim() || undefined, limit: memoLimit, cursor: nextCursor })
+      if (!mounted.current || current !== request.current) return
+      setMemos(items => {
+        const seen = new Set(items.map(item => item.id))
+        return [...items, ...data.items.filter(item => !seen.has(item.id))]
+      })
+      setNextCursor(data.nextCursor)
+    } catch (reason) {
+      if (mounted.current && current === request.current) setError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      if (mounted.current && current === request.current) { paging.current = false; setLoadingMore(false) }
+    }
+  }
 
   useEffect(() => {
     request.current++
@@ -126,6 +149,7 @@ export function useMemoWorkspace(roleSessionId?: string) {
     mutation.current = true
     setSaving(true)
     setEditorError("")
+    request.current++; paging.current = false; setLoadingMore(false)
     try {
       const input = {
         delivery: { channel: form.delivery },
@@ -160,7 +184,7 @@ export function useMemoWorkspace(roleSessionId?: string) {
       if (mounted.current) setEditorError(reason instanceof Error ? reason.message : String(reason))
     } finally {
       mutation.current = false
-      if (mounted.current) setSaving(false)
+      if (mounted.current) { setSaving(false); setLoading(false) }
     }
   }
 
@@ -170,6 +194,7 @@ export function useMemoWorkspace(roleSessionId?: string) {
     setSaving(true)
     setError("")
     request.current++ // A list response started before the mutation must not replace its result.
+    paging.current = false; setLoadingMore(false)
     try {
       const updated =
         action === "complete"
@@ -196,6 +221,9 @@ export function useMemoWorkspace(roleSessionId?: string) {
     query,
     setQuery,
     loading,
+    loadingMore,
+    hasMore: nextCursor !== null,
+    loadMore,
     saving,
     error,
     editorError,

@@ -10,6 +10,6 @@ const composerSource = await readFile(
 test("normal chat keeps the context meter outside, to the right, and bottom-anchored", () => {
   assert.match(
     composerSource,
-    /className="absolute bottom-\[[\d.]+vh\] right-\[-[\d.]+vh\][^"]*">\s*<ReplyTimer\b[^>]*\/>\s*<TokenMeter\b/,
+    /className="workbench-composer-meters absolute bottom-\[[\d.]+vh\] right-\[-[\d.]+vh\][^"]*">\s*<ReplyTimer\b[^>]*\/>\s*<TokenMeter\b/,
   )
 })

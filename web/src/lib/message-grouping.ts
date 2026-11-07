@@ -1,4 +1,5 @@
 import type { MessageData } from "../types"
+import { isCompactionMessage } from './compaction-display'
 
 export type MessageGroupPosition = "single" | "first" | "middle" | "last"
 
@@ -16,7 +17,7 @@ function speakerIdentity(message: MessageData): string | undefined {
 
 export function messagesShareAssistantGroup(left?: MessageData, right?: MessageData) {
   if (!left || !right || left.role !== "assistant" || right.role !== "assistant") return false
-  if ([left, right].some(message => message.id.startsWith("compaction:") || message.kind === "slash-command")) return false
+  if ([left, right].some(message => isCompactionMessage(message.id) || message.kind === "slash-command")) return false
   const leftSpeaker = speakerIdentity(left)
   const rightSpeaker = speakerIdentity(right)
 

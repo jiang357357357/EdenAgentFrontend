@@ -55,9 +55,10 @@ export class SessionRpcChannels {
   }
 
   /** Keep current/busy conversations live; old idle views can be restored on demand. */
-  retain(activeSessionId?: string): void {
+  retain(activeSessionId?: string, retainedSessionIds: Iterable<string> = []): void {
+    const retained = new Set(retainedSessionIds)
     for (const channel of this.channels.values()) {
-      if (channel.id !== activeSessionId && !channel.busy && Date.now() - channel.lastUsed > 5 * 60_000)
+      if (channel.id !== activeSessionId && !retained.has(channel.id) && !channel.busy && Date.now() - channel.lastUsed > 5 * 60_000)
         this.forget(channel.id)
     }
   }

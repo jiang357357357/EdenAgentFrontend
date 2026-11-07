@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ConnectionFeedback, type ConnectionFeedbackState } from '../lib/connection-feedback'
-import { subscribeSessionChannelStatus, retainSessionChannels } from '../lib/rpc-transport'
+import { subscribeSessionChannelStatus, pinSessionChannel } from '../lib/rpc-transport'
 
 /** Recovery belongs to the failed conversation; switching tabs selects its own feedback. */
 export function useSessionConnectionFeedback(enabled: boolean, epoch: number, activeSessionId: string | undefined,
-  restore: (sessionId: string, current: () => boolean) => Promise<void>) {
+  restore: (sessionId: string, current: () => boolean) => Promise<void>, sessionOnly = false) {
   const [states, setStates] = useState<Record<string, ConnectionFeedbackState>>({})
   const controllers = useRef(new Map<string, ConnectionFeedback>())
   const restoreRef = useRef(restore)
@@ -22,6 +22,7 @@ export function useSessionConnectionFeedback(enabled: boolean, epoch: number, ac
     const connected = new Set<string>()
     const dispose = subscribeSessionChannelStatus(status => {
       if (disposed) return
+      if (sessionOnly && status.sessionId !== activeSessionId) return
       let controller = controllers.current.get(status.sessionId)
       if (!controller) {
         controller = new ConnectionFeedback(state => {
@@ -37,8 +38,8 @@ export function useSessionConnectionFeedback(enabled: boolean, epoch: number, ac
       void synchronize(status.sessionId, controller, revision, () => !disposed)
     })
     return () => { disposed = true; dispose(); controllers.current.clear() }
-  }, [enabled, epoch, synchronize])
-  useEffect(() => { retainSessionChannels(activeSessionId) }, [activeSessionId])
+  }, [enabled, epoch, synchronize, sessionOnly, sessionOnly ? activeSessionId : undefined])
+  useEffect(() => enabled ? pinSessionChannel(activeSessionId) : undefined, [enabled, activeSessionId, epoch])
   const retry = useCallback(() => {
     const controller = activeSessionId ? controllers.current.get(activeSessionId) : undefined
     if (controller && activeSessionId) void synchronize(activeSessionId, controller, controller.synchronizing())

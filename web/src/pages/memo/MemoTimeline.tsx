@@ -21,6 +21,8 @@ interface MemoTimelineProps {
   loading: boolean
   hasFilters: boolean
   limited: boolean
+  loadingMore?: boolean
+  onLoadMore?: () => void
   failed: boolean
   onScope: (scope: DateScope) => void
   onStatus: (status: StatusFilter) => void
@@ -148,8 +150,12 @@ export function MemoTimeline(props: MemoTimelineProps) {
       </div>
       <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-5 py-3 text-xs text-text-muted">
         <span>
-          {count} 条备忘{props.limited ? " · 当前结果最多 160 条，可搜索缩小范围" : ""}
+          当前显示 {count} 条备忘{props.limited ? " · 还有更多记录" : ""}
         </span>
+        {props.limited && props.onLoadMore && <button type="button" onClick={props.onLoadMore}
+          disabled={props.loadingMore || props.loading} className="rounded border border-border px-3 py-1.5 text-text hover:bg-surface-hover disabled:opacity-50">
+          {props.loadingMore ? '正在加载…' : '加载更多'}
+        </button>}
         <span className="inline-flex items-center gap-1.5">
           <CalendarDays className="h-3.5 w-3.5" />
           按本地时间排列

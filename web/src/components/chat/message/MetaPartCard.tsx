@@ -67,7 +67,7 @@ export function MetaPartCard({ part }: MetaPartCardProps) {
                 已完成
               </span>
               {before !== undefined && after !== undefined ? (
-                <span className="ml-auto shrink-0 text-[1.2vh] tabular-nums text-text-muted/70">
+                <span title="本地估算的上下文 token 数，包含系统提示和工具定义，不等同于计费用量" className="ml-auto shrink-0 text-[1.2vh] tabular-nums text-text-muted/70">
                   {before.toLocaleString()} → <span className="text-text-muted">{after.toLocaleString()}</span>
                 </span>
               ) : null}

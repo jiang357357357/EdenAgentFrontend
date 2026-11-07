@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import test from "node:test"
 
-const chatPageSource = readFileSync(new URL("../src/pages/chat/ChatPage.tsx", import.meta.url), "utf8")
+const chatPageSource = readFileSync(new URL("../src/pages/chat/ChatConversation.tsx", import.meta.url), "utf8") + readFileSync(new URL("../src/pages/chat/use-conversation-window.ts", import.meta.url), "utf8")
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
 
 test("session switches anchor at the bottom without inheriting smooth scrolling", () => {

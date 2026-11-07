@@ -7,22 +7,23 @@ import { mkdtemp, readFile, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { extensionFrameEsbuild } from './fixtures/extension-frame-esbuild.mjs'
 
 test('isolated Electron expands real exec_command cards and preserves readable multiline results', {
   timeout: 60_000, skip: process.platform !== 'win32' ? 'Windows desktop renderer acceptance' : false,
 }, async () => {
-  const webRoot = fileURLToPath(new URL('../', import.meta.url)), taskRoot = resolve(webRoot, '../..')
+  const webRoot = fileURLToPath(new URL('../', import.meta.url))
   const scratch = await mkdtemp(join(tmpdir(), 'eden-tool-command-'))
   try {
     const electron = createRequire(new URL('../../desktop/package.json', import.meta.url))('electron')
     await build({ absWorkingDir: webRoot, entryPoints: ['tests/fixtures/tool-command-interaction.tsx'],
       outfile: join(scratch, 'renderer.js'), bundle: true, format: 'iife', platform: 'browser', jsx: 'automatic',
-      define: { 'process.env.NODE_ENV': '"development"' } })
+      define: { 'process.env.NODE_ENV': '"development"' }, plugins: [extensionFrameEsbuild()] })
     const built = await readFile(join(webRoot, 'dist/index.html'), 'utf8')
     const css = /href="(?:\.?\/)?(assets\/[^"<>]+\.css)"/.exec(built)?.[1]
     assert.ok(css, 'Build the Web client before running the styled renderer fixture')
     await writeFile(join(scratch, 'index.html'), `<!doctype html><html><meta charset="utf-8"><link rel="stylesheet" href="${pathToFileURL(join(webRoot, 'dist', css)).href}"><body class="bg-bg text-text"><script src="renderer.js"></script></body></html>`)
-    const evidence = join(taskRoot, 'dist/verification/tool-command-results.png')
+    const evidence = join(scratch, 'tool-command-results.png')
     await mkdir(dirname(evidence), { recursive: true })
     await writeFile(join(scratch, 'main.cjs'), `
 const { app, BrowserWindow } = require('electron');

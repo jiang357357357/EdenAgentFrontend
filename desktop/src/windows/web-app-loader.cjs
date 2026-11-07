@@ -1,4 +1,5 @@
 const { desktopAppUrl } = require("../protocols/app-protocol.cjs")
+const { extensionWindowDecision, attachExtensionChild } = require('./extension-window-policy.cjs')
 
 function createWebAppLoader({
   app,
@@ -8,6 +9,7 @@ function createWebAppLoader({
   isInternalAppUrl,
   isSupportedExternalUrl,
   logger = console,
+  isQuitting = () => false,
 } = {}) {
   if (!app) throw new TypeError("app is required")
   if (!shell?.openExternal) throw new TypeError("shell.openExternal is required")
@@ -45,10 +47,14 @@ function createWebAppLoader({
     const contents = targetWindow.webContents
     const isInternal = (url) => isInternalAppUrl(url, navigationPolicyOptions())
 
-    contents.setWindowOpenHandler(({ url }) => {
+    contents.setWindowOpenHandler((details) => {
+      const extension = extensionWindowDecision(details, navigationPolicyOptions())
+      if(extension)return extension
+      const {url}=details
       if (!isInternal(url)) openExternalNavigation(url)
       return { action: "deny" }
     })
+    contents.on('did-create-window', (window, details) => attachExtensionChild(window, details, navigationPolicyOptions(), isQuitting))
 
     const guardMainFrameNavigation = (event, url) => {
       if (isInternal(url)) return

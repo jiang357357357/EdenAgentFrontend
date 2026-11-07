@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url"
 import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
+import { legacyFramePlugin } from './legacy-frame-plugin.mjs'
 import { loadMonConfig } from "../../Script/Project/monconfig.mjs"
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
@@ -22,7 +23,8 @@ export default defineConfig({
   define: {
     __MON_AUTH_MODE__: JSON.stringify(authMode),
   },
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), legacyFramePlugin()],
+  worker: { format: 'es' },
   server: {
     host: serverHost,
     port: webPort,
@@ -38,5 +40,6 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
+    rollupOptions: { input: { index: path.resolve(currentDir,'index.html'), extensionWindow: path.resolve(currentDir,'extension-window.html') } },
   },
 })

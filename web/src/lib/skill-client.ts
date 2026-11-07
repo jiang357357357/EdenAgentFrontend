@@ -31,6 +31,8 @@ export type InstalledSkill = {
   installedAt?: string
   updatedAt?: string
   shadowed?: boolean
+  shadowedSources?: { scope: string; workspaceRoot: string; source: { type: string; uri: string; ref: string; subpath: string } }[]
+  toolConflicts?: { name: string; identities: string[] }[]
 }
 
 export type SkillDetails = InstalledSkill & {
@@ -55,6 +57,7 @@ export type SkillPreview = {
   totalBytes: number
   expiresAt: number
   replaceInstallationID?: string | null
+  warnings?: string[]
 }
 
 export function createSkillClient(rpcRequest: typeof defaultRequest = defaultRequest, sessionId?: string) {
@@ -98,6 +101,8 @@ function mapSkillInfo(skill: SkillInfo): InstalledSkill {
     contentHash: skill.contentHash,
     totalBytes: Number(skill.totalBytes),
     missingTools: skill.missingTools,
+    shadowedSources: skill.shadowedSources,
+    toolConflicts: skill.toolConflicts,
   }
 }
 
@@ -135,6 +140,7 @@ function inspectSkill(input: {
     fileCount: Number(preview.fileCount),
     totalBytes: Number(preview.totalBytes),
     expiresAt: Number(preview.expiresAt),
+    warnings: preview.warnings,
   }))
 }
 

@@ -73,6 +73,15 @@ function createLocalRuntimeService({ configStore, rustServer, fetchImpl = global
   async function saveAndRestart(input = {}) {
     configStore.save(input)
     const restart = await rustServer.restart("local")
+    if (restart.restarted) {
+      const deadline = Date.now() + 45_000
+      while (!(await serverOnline())) {
+        const state = rustServer.status("local")
+        if (state.running === false && state.exitCode != null) throw new Error("配置已保存，但本地后端启动失败，请查看运行日志。")
+        if (Date.now() >= deadline) throw new Error("配置已保存，但重启后的本地后端未及时就绪，请查看运行日志。")
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+    }
     return {
       ...(await read()),
       restarted: restart.restarted,

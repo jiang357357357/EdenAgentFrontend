@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Eden 扩展</title></head>
+<body style="margin:0"><script>
+// Only the owning workbench may connect an isolated extension frame in this window.
+addEventListener('message',event=>{
+  if(event.source!==opener||event.data?.type!=='eden-floating-frame-connect'||!event.ports[0])return;
+  document.querySelector('iframe')?.contentWindow?.postMessage(event.data.message,'*',[event.ports[0]]);
+});
+window.__edenExtensionWindowReady=true;
+</script></body></html>

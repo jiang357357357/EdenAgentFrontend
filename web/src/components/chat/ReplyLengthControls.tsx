@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { rpcRequest } from "../../lib/rpc-transport"
 import { getRuntimeOriginRevision } from "../../lib/runtime-origin"
 import { cn } from "../../lib/utils"
+import { ChatToolbarPopover } from './ChatToolbarPopover'
 
 type Length = "short" | "medium" | "long"
 type Character = { id: string; name: string }
@@ -56,7 +57,7 @@ export function ReplyLengthControls({ characters }: { characters: Character[] })
       className={cn("flex h-8 w-8 items-center justify-center rounded-md transition-colors", open ? "bg-card text-accent shadow-sm" : "text-text-muted hover:bg-bg hover:text-text")}>
       <AlignLeft className="h-4 w-4" />
     </button>
-    {open && <div role="dialog" aria-label="回复长度" className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-72 max-w-[90vw] rounded-xl border border-border bg-card p-4 text-text shadow-xl">
+    {open && <ChatToolbarPopover anchor={root} label="回复长度" onClose={()=>setOpen(false)} className="z-50 w-72 max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-card p-4 text-text shadow-xl">
       <div className="mb-3 flex items-center justify-between"><span className="text-sm font-medium">回复长度</span><button type="button" onClick={() => setOpen(false)} aria-label="关闭回复长度设置" className="rounded p-1 text-text-muted hover:bg-bg"><X className="h-4 w-4" /></button></div>
       {characters.length > 1 ? <select aria-label="选择角色" value={id} onChange={event => setSelected(event.target.value)} className="mb-3 w-full rounded border border-border bg-card p-2 text-sm">{characters.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select> : <p className="mb-3 text-sm text-text-muted">{character?.name ?? "请先选择会话角色"}</p>}
       <div className="space-y-2" role="group" aria-label="回复长度选项">{choices.map(item => <button key={item.value} type="button" disabled={!ready || busy} aria-pressed={ready && length === item.value} onClick={() => void change(item.value)}
@@ -65,6 +66,6 @@ export function ReplyLengthControls({ characters }: { characters: Character[] })
       </button>)}</div>
       {error && <p role="alert" className="mt-3 text-xs text-danger">{error}</p>}
       <p className="mt-3 text-xs leading-relaxed text-text-muted">按角色保存，从下一条聊天回复生效。本轮提出的长度要求优先。</p>
-    </div>}
+    </ChatToolbarPopover>}
   </div>
 }

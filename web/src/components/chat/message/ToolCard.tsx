@@ -5,6 +5,7 @@ import type { CoordinationBatch, SubagentThread, SubagentThreadDetails, ToolCall
 import { cn } from "../../../lib/utils"
 import { toolInputPreview } from "../../../lib/tool-input-display"
 import { toolCommandDisplay } from "../../../lib/tool-command-display"
+import { PluginUiSlot } from '../../plugin-ui/PluginUiSlot'
 import { SubagentActivityCard } from "./SubagentActivityCard"
 import { ToolParameters, toolTextClass } from "./ToolParameters"
 import { ToolCommandOutput } from "./ToolCommandOutput"
@@ -199,6 +200,7 @@ function ToolCardView({
           </motion.div>
         ) : null}
       </AnimatePresence>
+      <PluginUiSlot slot="tool_card" tool={tool} />
       {linkedSubagents.length ? (
         <SubagentActivityCard
           threads={linkedSubagents}

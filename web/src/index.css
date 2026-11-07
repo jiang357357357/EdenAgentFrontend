@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "./theme.css";
+@import "./chat-workspace.css";
+@import "./workbench.css";
 @plugin "@tailwindcss/typography";
 
 @layer base {
@@ -162,7 +164,7 @@
 .interface-background::before {
   content: "";
   position: absolute;
-  z-index: 0;
+  z-index: -1;
   inset: -32px;
   pointer-events: none;
   background-image: var(--interface-background-image, url("./assets/interface-background.jpg"));
@@ -284,11 +286,6 @@
 .interface-dark .appearance-controls {
   --interface-component-font-scale: 1;
   --interface-component-font-delta: 0px;
-}
-
-.interface-background > * {
-  position: relative;
-  z-index: 1;
 }
 
 /* Page gradients stay on page surfaces; cards retain a stable reading background. */

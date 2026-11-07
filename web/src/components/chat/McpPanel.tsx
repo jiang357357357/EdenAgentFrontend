@@ -4,8 +4,8 @@ import { McpResult } from './McpResult'
 import { rpcRequestForOrigin } from '../../lib/rpc-transport'
 import { getStoredRuntimeOrigin } from '../../lib/runtime-origin'
 const labels: Record<string, string> = { running: '等待结果', completed: '已确认', failed: '失败', unknown: '结果未知' }
-export function McpPanel({ sessionId, pluginId }: { sessionId?: string; pluginId?: string }) {
-  const [open, setOpen] = useState(false), [status, setStatus] = useState<Status | null>(null)
+export function McpPanel({ sessionId, pluginId, defaultOpen = false }: { sessionId?: string; pluginId?: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen), [status, setStatus] = useState<Status | null>(null)
   const [history, setHistory] = useState<History | null>(null), [error, setError] = useState('')
   const [before, setBefore] = useState<number | undefined>(), [refresh, setRefresh] = useState(0)
   const origin = getStoredRuntimeOrigin()

@@ -5,11 +5,13 @@ import type { SceneCommand, SceneFrame, StartupPhase } from './scene-transition'
 import { sceneResolution } from './scene-resolution'
 import type { StartupScene } from './startup-assets'
 import type { SpineBounds } from '../../components/character/renderer/spine/spine-layout'
+import { observeRendererVisibility } from '../../lib/render-visibility'
 
 interface Callbacks { ready(): void; bounds(value: SpineBounds): void; foreground?(value: SpineBounds | undefined): void; phase(value: StartupPhase): void; error(error: unknown): void }
 export class StartupSceneRenderer {
   private readonly app: Application
   private readonly observer: ResizeObserver
+  private readonly unsubscribeVisibility: () => void
   private readonly cache = new SceneModelCache()
   private readonly textureLimit: number
   private controller?: AbortController
@@ -34,7 +36,9 @@ export class StartupSceneRenderer {
     this.observer = new ResizeObserver(() => this.fit()); this.observer.observe(host)
     this.watchResolution()
     this.app.ticker.add(this.update, this, UPDATE_PRIORITY.NORMAL)
-    document.addEventListener('visibilitychange', this.visibility); this.visibility()
+    this.unsubscribeVisibility = observeRendererVisibility(visible => {
+      if (visible) this.app.ticker.start(); else this.app.ticker.stop()
+    })
     this.changeScene(scene)
   }
   changeScene(scene: StartupScene, pose = scene.room.idle_animation!) {
@@ -48,6 +52,9 @@ export class StartupSceneRenderer {
     this.timeout = window.setTimeout(() => { controller.abort(); this.fail(new Error('场景加载超时')) }, 12000)
     void this.cache.load(scene, controller.signal).then(models => {
       if (this.disposed || controller.signal.aborted || this.requested?.key !== key) return
+      // Native-hidden windows pause GPU warm-up until shown; asset loading has
+      // succeeded, so waiting for that first visible frame must not time out.
+      window.clearTimeout(this.timeout)
       this.pending = new SceneSurface(scene, models, this.requested.pose)
       this.cache.retain(this.active && sceneModelKey(this.active.scene), key); this.fit()
     }).catch(error => { if (!this.disposed && !controller.signal.aborted) this.fail(error) })
@@ -129,10 +136,9 @@ export class StartupSceneRenderer {
     if (this.lastPhase !== frame.phase) { this.lastPhase = frame.phase; this.callbacks.phase(frame.phase) }
   }
   private fail(error: unknown) { this.app.ticker.stop(); this.callbacks.error(error) }
-  private visibility = () => { if (document.hidden) this.app.ticker.stop(); else this.app.ticker.start() }
   dispose() {
     this.disposed = true; this.cancelPending(); this.observer.disconnect()
-    document.removeEventListener('visibilitychange', this.visibility)
+    this.unsubscribeVisibility()
     this.resolutionMedia?.removeEventListener('change', this.resolutionChanged)
     this.app.ticker.remove(this.update, this); this.active?.dispose(); this.cache.dispose()
     this.app.destroy(true, { children: false })

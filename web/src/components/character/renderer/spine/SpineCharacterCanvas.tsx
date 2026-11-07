@@ -16,6 +16,7 @@ import {
 import { cn } from "../../../../lib/utils"
 import { reportPerformanceDiagnostic } from "../../../../lib/desktop-window"
 import { listenDesktopGlobalPetPointer } from "../../../../lib/desktop-window"
+import { observeRendererVisibility } from "../../../../lib/render-visibility"
 import {
   actionMapping,
   interactionTrackAvailable,
@@ -161,7 +162,10 @@ export function SpineCharacterCanvas({
     let diagnosticStartedAt = performance.now()
     const rendererResolution = Math.min(window.devicePixelRatio || 1, 2)
     const app = new Application({
-      resizeTo: host,
+      // ResizeObserver is the sole size owner; Pixi's window resize plugin
+      // would otherwise resize independently of the fitted character frame.
+      width: Math.max(1, host.clientWidth),
+      height: Math.max(1, host.clientHeight),
       antialias: true,
       autoDensity: true,
       resolution: rendererResolution,
@@ -322,23 +326,24 @@ export function SpineCharacterCanvas({
 
     const observer = new ResizeObserver(() => {
       if (!syncRendererToHost()) return
+      if (!loadedRef.current) return
       if (readyReported) {
-        window.requestAnimationFrame(() => {
-          if (!disposed) fitModel()
-        })
+        // Resizing clears the drawing buffer. Fit and paint before returning
+        // to the browser, rather than presenting transparency until next RAF.
+        if (!disposed) fitModel()
       } else {
         scheduleFitUntilReady()
       }
     })
     observer.observe(host)
 
-    let isIntersecting = true
+    let isIntersecting = true, isRendererVisible = !document.hidden
     const updateTickerState = () => {
       // Desktop pet windows intentionally stay unfocused while the user works
       // in another application. Focus therefore cannot represent visibility:
       // stopping here leaves a newly loaded Spine model permanently transparent
       // until an unrelated resize happens to force Pixi to render one frame.
-      if (document.hidden || !isIntersecting) app.ticker.stop()
+      if (!isRendererVisible || !isIntersecting) app.ticker.stop()
       else app.ticker.start()
     }
     const visibilityObserver = new IntersectionObserver(([entry]) => {
@@ -346,16 +351,17 @@ export function SpineCharacterCanvas({
       updateTickerState()
     })
     visibilityObserver.observe(host)
-    const handleVisibility = () => updateTickerState()
-    document.addEventListener("visibilitychange", handleVisibility)
-    updateTickerState()
+    const unsubscribeVisibility = observeRendererVisibility(visible => {
+      isRendererVisible = visible
+      updateTickerState()
+    })
 
     const scheduleBlink = (delayMs = randomSpineDelayMs(12, 15)) => {
       if (blinkTimer !== undefined) window.clearTimeout(blinkTimer)
       blinkTimer = window.setTimeout(() => {
         const loaded = loadedRef.current
         const blink = interactionAnimationsRef.current.blink
-        if (!disposed && !document.hidden && loaded && blink) {
+        if (!disposed && isRendererVisible && isIntersecting && loaded && blink) {
           playBlinkAnimation(loaded.spine, blink)
         }
         if (!disposed) scheduleBlink()
@@ -371,7 +377,7 @@ export function SpineCharacterCanvas({
         const rareIdle = animations.rareIdle
         if (
           !disposed &&
-          !document.hidden &&
+          isRendererVisible && isIntersecting &&
           layoutRef.current === "memory-lobby" &&
           loaded &&
           rareIdle &&
@@ -482,7 +488,7 @@ export function SpineCharacterCanvas({
       startupPendingRef.current = false
       observer.disconnect()
       visibilityObserver.disconnect()
-      document.removeEventListener("visibilitychange", handleVisibility)
+      unsubscribeVisibility()
       app.ticker.remove(updateSpine)
       const releaseTimer = pointerInteractionRef.current.releaseTimer
       if (releaseTimer) window.clearTimeout(releaseTimer)

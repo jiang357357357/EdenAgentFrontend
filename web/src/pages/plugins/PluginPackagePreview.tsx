@@ -11,8 +11,9 @@ export function PluginPackagePreview({ preview }: { preview: PluginPreviewInfo }
     </dl>
     <h3 className="mt-3 text-xs font-medium">组件</h3>
     <ul className="mt-1 space-y-1 text-xs">{preview.components.map(component => <li key={component.id}>{component.id} · {component.kind} · {component.path} · {component.enabledByDefault ? '默认启用请求' : '默认停用'}</li>)}</ul>
+    {!!preview.warnings?.length && <ul className="mt-3 space-y-1 text-xs text-warning">{preview.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>}
     <h3 className="mt-3 text-xs font-medium">声明权限</h3>
     {preview.permissions.length ? <ul className="mt-1 space-y-1 text-xs">{preview.permissions.map((permission, index) => <li key={index}>{permission.capability} · {permission.resource || '未指定资源'} · {permission.access} · {permission.required ? '必需' : '可选'}<p>{permission.description}</p></li>)}</ul> : <p className="mt-1 text-xs">未声明权限</p>}
-    <p className="mt-3 text-xs text-text-muted">签名确认包的来源与完整性。安装、权限授权和组件执行分别处理。</p>
+    <p className="mt-3 text-xs text-text-muted">已验证的签名确认包的来源与完整性。安装、权限授权和组件执行分别处理；授权不构成操作系统沙箱隔离。</p>
   </section>
 }

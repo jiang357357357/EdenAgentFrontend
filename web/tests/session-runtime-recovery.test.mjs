@@ -30,7 +30,7 @@ const vite = await createServer({ configFile: false, optimizeDeps: { noDiscovery
       if (id === '\0recovery:history') return 'export const useSessionHistoryMaintenance=()=>{};'
       const call = (name, group) => `export const ${name}=(...args)=>globalThis.${key}.${group}.${name}(...args);`
       if (id === '\0recovery:hooks') return hooks.map(name => call(name, 'host')).join('\n')
-      if (id === '\0recovery:transport') return `export const subscribeSessionChannelStatus=fn=>{globalThis.${key}.channelListeners.push(fn);return ()=>{} }; export const retainSessionChannels=()=>{}; export const forgetSessionChannel=()=>{};`
+      if (id === '\0recovery:transport') return `export const subscribeSessionChannelStatus=fn=>{globalThis.${key}.channelListeners.push(fn);return ()=>{} }; export const retainSessionChannels=()=>{}; export const forgetSessionChannel=()=>{}; export const pinSessionChannel=id=>{const pins=globalThis.${key}.pins,owner=Symbol();if(id)pins.set(owner,id);return ()=>pins.delete(owner)};`
       if (id === '\0recovery:rpc') return rpcNames.map(name => call(name, 'rpc')).join('\n')
       if (id === '\0recovery:origin') return `export const getRuntimeOriginRevision=()=>globalThis.${key}.origin; export const getStoredRuntimeOrigin=()=>globalThis.${key}.realm;`
       if (id === '\0recovery:screen') return call('handleScreenCaptureRequest', 'rpc')
@@ -73,7 +73,7 @@ const page = (id, text = id) => ({ items: [{ info: { id: `${id}-message`, sessio
   parts: [{ id: `${id}-text`, type: 'text', text }] }], hasMore: false })
 function fixture() {
   const host = new HookHost()
-  const f = { host, origin: 0, realm: 'mon', subscriptions: [], channelListeners: [], modelCalls: [], captures: [], rpc: {} }
+  const f = { host, origin: 0, realm: 'mon', subscriptions: [], channelListeners: [], modelCalls: [], captures: [], pins: new Map(), rpc: {} }
   Object.assign(f.rpc, {
     readSessionRaw: async id => session(id), listSessionsRaw: async () => [session('A'), session('B')], listMessagesRaw: async id => page(id),
     listPermissionsRaw: async () => [], listQuestionsRaw: async () => [], getPermissionMode: async () => ({ mode: 'restricted' }),
@@ -87,6 +87,56 @@ function fixture() {
   f.reconnect = async () => { f.subscriptions.at(-1).onError('fixture disconnect'); await f.open() }
   return f
 }
+
+test('session editor leases follow selection and release when disabled or unmounted', async () => {
+  const f = fixture(), { host } = f
+  try {
+    await host.settle(); await f.open()
+    assert.deepEqual([...f.pins.values()], ['A'])
+    host.value.selectSession('B'); await host.settle()
+    assert.deepEqual([...f.pins.values()], ['B'])
+    host.enabled = false; host.dirty = true; await host.settle()
+    assert.equal(f.pins.size, 0)
+    host.enabled = true; host.dirty = true; await host.settle(); await f.open()
+    assert.equal(f.pins.size, 1)
+  } finally { host.dispose() }
+  assert.equal(f.pins.size, 0)
+})
+
+test('an independent editor ignores sibling snapshots and message events but keeps its own stream and global mode', async () => {
+  const f = fixture(), { host } = f, reads = [], events = []
+  host.options = { initialSessionID: 'A', autoSelectFirst: false, manageGlobalRequests: false, sessionOnly: true, onEvent: event => events.push(event) }
+  f.rpc.readSessionRaw = async id => { reads.push(id); return session(id) }
+  try {
+    await host.settle(); await f.open()
+    f.channelListeners.at(-1)({ sessionId: 'B', connected: true })
+    const event = f.subscriptions.at(-1).onEvent
+    event({ type: 'session.created', properties: { info: session('B') } })
+    event({ type: 'message.updated', properties: { sessionID: 'B', info: page('B').items[0].info } })
+    event({ type: 'message.part.updated', properties: { part: { id: 'B-text', sessionID: 'B', messageID: 'B-message', type: 'text', text: 'SIBLING_ONLY' } } })
+    event({ type: 'session.status', properties: { sessionID: 'A', status: { type: 'busy' } } })
+    event({ type: 'permission.mode', properties: { mode: 'takeover' } })
+    await host.settle()
+    assert.deepEqual(host.value.sessions.map(item => item.id), ['A'])
+    assert.ok(!reads.includes('B'))
+    assert.ok(!JSON.stringify(host.value.activeSession).includes('SIBLING_ONLY'))
+    assert.equal(events.length, 2)
+    assert.equal(host.value.permissionMode, 'takeover')
+  } finally { host.dispose() }
+})
+
+test('an unbound independent editor cannot acquire a sibling through a channel snapshot or creation event', async () => {
+  const f = fixture(), { host } = f
+  host.options = { autoSelectFirst: false, manageGlobalRequests: false, sessionOnly: true }
+  try {
+    await host.settle(); await f.open()
+    f.channelListeners.at(-1)({ sessionId: 'B', connected: true })
+    f.subscriptions.at(-1).onEvent({ type: 'session.created', properties: { info: session('B') } })
+    await host.settle()
+    assert.equal(host.value.activeSessionId, '')
+    assert.deepEqual(host.value.sessions, [])
+  } finally { host.dispose() }
+})
 
 test('late reset/disabled/world snapshots and old callbacks cannot repopulate the runtime or start capture', async () => {
   const f = fixture(); const { host } = f

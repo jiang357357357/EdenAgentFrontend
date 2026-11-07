@@ -56,6 +56,7 @@ const env = (
 type RuntimeOrigin = "mon" | "local"
 const desktopBaseUrls: Partial<Record<RuntimeOrigin, string>> = {}
 const workspaceIds: Partial<Record<RuntimeOrigin, string>> = {}
+const editorSessionPins = new Map<RuntimeOrigin, Map<string, Set<symbol>>>()
 
 function currentRuntimeOrigin(): RuntimeOrigin {
   return getStoredRuntimeOrigin() ?? "mon"
@@ -110,7 +111,28 @@ function sessionChannels(): SessionRpcChannels {
   })
   return sessionPool
 }
-export function retainSessionChannels(activeSessionId?: string): void { sessionPool?.retain(activeSessionId) }
+export function retainSessionChannels(activeSessionId?: string): void {
+  sessionPool?.retain(activeSessionId, editorSessionPins.get(currentRuntimeOrigin())?.keys())
+}
+export function pinSessionChannel(sessionId?: string): () => void {
+  if (!sessionId) return () => {}
+  const origin = currentRuntimeOrigin(), pins = editorSessionPins.get(origin) ?? new Map<string, Set<symbol>>()
+  editorSessionPins.set(origin, pins)
+  const owners = pins.get(sessionId) ?? new Set<symbol>(), owner = Symbol('editor')
+  owners.add(owner); pins.set(sessionId, owners); retainSessionChannels(sessionId)
+  return () => {
+    owners.delete(owner)
+    if (!owners.size) pins.delete(sessionId)
+    retainSessionChannels()
+  }
+}
+/** Keep the view's session channel connected while it observes events. */
+export function openPluginSessionChannel(origin: RuntimeOrigin, sessionId: string): () => void {
+  if (origin !== currentRuntimeOrigin()) throw new Error('当前世界已切换')
+  const release = pinSessionChannel(sessionId)
+  void sessionChannels().ensure(sessionId).catch(() => {}) // Channel status and retry are managed by the pool.
+  return release
+}
 export function forgetSessionChannel(sessionId: string): void { sessionPool?.forget(sessionId) }
 export function subscribeSessionChannelStatus(listener: (status: SessionChannelStatus) => void): () => void {
   sessionStatusListeners.add(listener)
@@ -154,6 +176,12 @@ async function capabilityToken(origin: RuntimeOrigin = currentRuntimeOrigin()): 
     return desktop.token
   }
   throw new Error("Eden Agent capability token is unavailable")
+}
+
+/** Non-secret namespace for local interface preferences. */
+export async function getWorkspaceIdentity(origin: RuntimeOrigin): Promise<string> {
+  await capabilityToken(origin)
+  return workspaceIds[origin] ?? agentHttpBaseUrl(origin)
 }
 
 async function connectedClient(): Promise<EdenAgentRpcClient> {

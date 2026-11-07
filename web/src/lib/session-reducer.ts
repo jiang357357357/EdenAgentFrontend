@@ -79,7 +79,7 @@ export type RuntimeAction =
   | { type: "pruneHistories" }
   | { type: "historyBrowsing"; sessionID: string; browsing: boolean }
   | { type: "invalidateInactiveSessions" }
-  | { type: "hydrateSessions"; sessions: ApiSession[] }
+  | { type: "hydrateSessions"; sessions: ApiSession[]; autoSelectFirst?: boolean }
   | { type: "hydrateMessages"; sessionID: string; messages: ApiMessage[]; hasMore: boolean; nextCursor?: string | null; directorRuns?: CompanionDirectorRun[] }
   | { type: "prependMessages"; sessionID: string; messages: ApiMessage[]; hasMore: boolean; nextCursor?: string | null }
   | { type: "loadingOlderMessages"; sessionID: string; loading: boolean }
@@ -431,6 +431,8 @@ function mapPart(part: ApiPart): RuntimePart {
       details: part.details,
       tokensBefore: part.tokensBefore,
       tokensAfter: part.tokensAfter,
+      progress: part.progress,
+      eventSequence: part.eventSequence,
     }
     return compactionPart
   }
@@ -1067,7 +1069,7 @@ function reduceRuntimeState(state: RuntimeState, action: RuntimeAction): Runtime
       for (const session of action.sessions) {
         upsertSession(next, session)
       }
-      if (!next.activeSessionId && next.sessionOrder[0]) {
+      if (action.autoSelectFirst !== false && !next.activeSessionId && next.sessionOrder[0]) {
         next.activeSessionId = next.sessionOrder[0]
       }
       if (next.connectionState === "connecting") {
@@ -1530,8 +1532,8 @@ export function setLoadingOlderMessages(sessionID: string, loading: boolean): Ru
   return { type: "loadingOlderMessages", sessionID, loading }
 }
 
-export function hydrateSessionList(sessions: ApiSession[]): RuntimeAction {
-  return { type: "hydrateSessions", sessions }
+export function hydrateSessionList(sessions: ApiSession[], autoSelectFirst = true): RuntimeAction {
+  return { type: "hydrateSessions", sessions, ...(autoSelectFirst ? {} : { autoSelectFirst: false }) }
 }
 
 export function invalidateInactiveSessions(): RuntimeAction {

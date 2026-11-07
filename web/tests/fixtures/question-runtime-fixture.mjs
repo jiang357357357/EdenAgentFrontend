@@ -30,7 +30,7 @@ const vite = await createServer({ configFile: false, optimizeDeps: { noDiscovery
       if (id === '\0recovery:history') return 'export const useSessionHistoryMaintenance=()=>{};'
       const call = (name, group) => `export const ${name}=(...args)=>globalThis.${key}.${group}.${name}(...args);`
       if (id === '\0recovery:hooks') return hooks.map(name => call(name, 'host')).join('\n')
-      if (id === '\0recovery:transport') return `export const subscribeSessionChannelStatus=fn=>{globalThis.${key}.channelListeners.push(fn);return ()=>{} }; export const retainSessionChannels=()=>{}; export const forgetSessionChannel=()=>{};`
+      if (id === '\0recovery:transport') return `export const subscribeSessionChannelStatus=fn=>{globalThis.${key}.channelListeners.push(fn);return ()=>{} }; export const retainSessionChannels=()=>{}; export const forgetSessionChannel=()=>{}; export const pinSessionChannel=()=>()=>{};`
       if (id === '\0recovery:rpc') return rpcNames.map(name => call(name, 'rpc')).join('\n')
       if (id === '\0recovery:origin') return `export const getRuntimeOriginRevision=()=>globalThis.${key}.origin; export const getStoredRuntimeOrigin=()=>globalThis.${key}.realm;`
       if (id === '\0recovery:screen') return call('handleScreenCaptureRequest', 'rpc')

@@ -20,4 +20,7 @@ async function verifyWorkspaceEndpoint(access, { fetchRequest = fetch, timeoutMs
   } while (Date.now() < deadline)
   throw new Error(`无法连接本工作区 Agent 服务（${access.baseUrl}）：${failure?.message || '等待超时'}`)
 }
-module.exports = { verifyWorkspaceEndpoint }
+function verifyDesktopCapability(manager, origin) {
+  return verifyWorkspaceEndpoint(manager.capability(origin), { timeoutMs: manager.status(origin).managed ? 45000 : 10000 })
+}
+module.exports = { verifyWorkspaceEndpoint, verifyDesktopCapability }

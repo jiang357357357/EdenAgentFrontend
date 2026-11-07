@@ -14,8 +14,10 @@ import {
   Sparkles,
   UserRoundCheck,
   UsersRound,
+  X,
 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useContext, useEffect, useMemo, useRef, useState } from "react"
+import { ExtensionActivityContext } from "../plugin-ui/ExtensionWorkbenchContext"
 import { VirtualSessionList } from "./VirtualSessionList"
 import type { WorkspaceEntry } from "../../lib/agent-client"
 import { WorkspaceExplorer } from "./WorkspaceExplorer"
@@ -110,6 +112,7 @@ export function ActivityRail({
   logoutLabel = "退出登录",
   onOpenSettings,
 }: ActivityRailProps) {
+  const extensionActivity = useContext(ExtensionActivityContext)
   return (
     <nav className="flex h-full w-16 shrink-0 flex-col border-r border-border bg-transparent" aria-label="主导航">
       <div className="min-h-0 flex-1 overflow-y-auto pb-[0.6vh]">
@@ -122,6 +125,7 @@ export function ActivityRail({
         <ActivityButton label="备忘" icon={FileText} onClick={onOpenMemo} />
         <ActivityButton label="技能" icon={Brain} onClick={onOpenSkills} />
         <ActivityButton label="连接器" icon={Cable} onClick={onOpenConnectors} />
+        {extensionActivity}
       </div>
       <ActivityButton label="配置" icon={SlidersHorizontal} active={active === "configuration"} onClick={onOpenConfiguration} />
       <ActivityButton label="设置" icon={Settings} onClick={onOpenSettings} />
@@ -156,6 +160,16 @@ export function Sidebar({
   activity,
   onActivityChange,
 }: SidebarProps) {
+  const [panelOpen, setPanelOpen] = useState(false)
+  const sidebarRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!panelOpen) return
+    const outside = (event: PointerEvent) => { if (!sidebarRef.current?.contains(event.target as Node)) setPanelOpen(false) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setPanelOpen(false) }
+    document.addEventListener('pointerdown', outside)
+    window.addEventListener('keydown', escape)
+    return () => { document.removeEventListener('pointerdown', outside); window.removeEventListener('keydown', escape) }
+  }, [panelOpen])
   const [query, setQuery] = useState("")
   const [renamingSession, setRenamingSession] = useState<{ id: string; title: string } | null>(null)
   const filteredSessions = useMemo(() => {
@@ -164,11 +178,11 @@ export function Sidebar({
   }, [query, sessions])
 
   return (
-    <aside className="relative z-20 flex h-full w-[20vw] min-w-[280px] max-w-[360px] shrink-0 border-r border-border bg-bg/72 backdrop-blur-xl">
+    <aside ref={sidebarRef} data-panel-open={panelOpen} aria-label="会话与文件导航" className="chat-sidebar relative z-20 flex h-full w-[20vw] min-w-[280px] max-w-[360px] shrink-0 border-r border-border bg-bg/72 backdrop-blur-xl">
         <ActivityRail
           active={activity}
-          onOpenFiles={() => onActivityChange("files")}
-          onOpenSessions={() => onActivityChange("sessions")}
+          onOpenFiles={() => { onActivityChange("files"); setPanelOpen(true) }}
+          onOpenSessions={() => { onActivityChange("sessions"); setPanelOpen(true) }}
           onOpenAllSessions={onOpenAllSessions}
           onOpenParticipants={onOpenParticipants}
           onOpenDutyAssistant={onOpenDutyAssistant}
@@ -182,7 +196,8 @@ export function Sidebar({
           onOpenSettings={onOpenSettings}
         />
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="chat-sidebar-content flex min-w-0 flex-1 flex-col">
+          <button type="button" className="chat-sidebar-panel-close m-2 ml-auto h-8 w-8 shrink-0 items-center justify-center rounded bg-card text-text-muted" aria-label="关闭导航侧栏" onClick={() => setPanelOpen(false)}><X className="h-4 w-4" /></button>
           {activity === "sessions" ? <><div className="flex items-center gap-2 border-b border-border p-3">
             <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-card px-3 text-text-muted focus-within:border-accent/50 focus-within:text-text">
               <Search className="h-4 w-4 shrink-0" />
@@ -205,9 +220,9 @@ export function Sidebar({
           </div>
 
           <VirtualSessionList sessions={filteredSessions} activeId={activeId} resetKey={query}
-            onSelect={onSelect} onRename={setRenamingSession} onDelete={onDelete} onArchive={onArchive} onPin={onPin} /></> : (
+            onSelect={id => { onSelect(id); setPanelOpen(false) }} onRename={setRenamingSession} onDelete={onDelete} onArchive={onArchive} onPin={onPin} /></> : (
             <WorkspaceExplorer sessionId={activeId || undefined} onSelect={onSelect}
-              onOpenFile={onOpenFile} onWorkspaceChanged={onWorkspaceChanged} onOpenSharedWorkspace={onOpenSharedWorkspace} />
+              onOpenFile={entry => { onOpenFile(entry); setPanelOpen(false) }} onWorkspaceChanged={onWorkspaceChanged} onOpenSharedWorkspace={onOpenSharedWorkspace} />
           )}
 
         </div>

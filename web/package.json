@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node --experimental-strip-types --test tests/*.test.mjs",
-    "test:message-actions": "node --experimental-strip-types --test tests/message-actions.test.mjs",
-    "test:slash-commands": "node --experimental-strip-types --test tests/slash-commands.test.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "test:message-actions": "node --import tsx --test tests/message-actions.test.mjs",
+    "test:slash-commands": "node --import tsx --test tests/slash-commands.test.mjs",
     "typecheck": "tsc --noEmit",
     "build": "npm run check:theme && tsc && vite build",
     "check:theme": "node scripts/check-theme.mjs",

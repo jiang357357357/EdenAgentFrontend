@@ -1,6 +1,7 @@
 import { PluginDraftHelp } from './PluginDraftHelp'
 import { PluginHistory } from "./PluginHistory"
 import { useEffect, useState } from 'react'
+import { useDocumentRegistration } from '../../components/workbench/document-lifecycle'
 import { usePluginDevelopment, type PluginDraftSummary, type PluginVersionSummary } from '../../lib/plugin-development'
 
 export function PluginDevelopment({ onChanged }: { onChanged: () => Promise<void> }) {
@@ -24,6 +25,15 @@ export function PluginDevelopment({ onChanged }: { onChanged: () => Promise<void
   }
   const edited = () => { setDirty(true); setSaved(false); setRevision(''); setResult('') }
   const canReplace = () => !dirty || window.confirm('编辑器有未保存修改，确认放弃这些修改并替换内容？可先导出草稿备份。')
+  async function saveDraft() {
+    if (busy) throw new Error('插件操作尚未完成，请稍后保存。')
+    if (!manifest || !source) throw new Error('请填写插件清单与源码后保存。')
+    const parsed = JSON.parse(manifest)
+    const draft = await api.save({ manifest: parsed, source, expectedDraftRevision: parsed.id === id ? draftRevision : null })
+    setDraftRevision(draft.draftRevision ?? null); setId(parsed.id); setSaved(true); setDirty(false); setRevision('')
+    return { saved: parsed.id }
+  }
+  useDocumentRegistration({ dirty, save: async () => { await saveDraft(); await refresh() }, discard: () => setDirty(false), saveLabel: '插件草稿已保存' })
   function exportDraft() {
     const url = URL.createObjectURL(new Blob([JSON.stringify({ format: 'eden.plugin-draft-edit.v1', manifestText: manifest, source, draftRevision }, null, 2)], { type: 'application/json' }))
     const link = document.createElement('a'); link.href = url; link.download = `${id || 'new-plugin'}-draft.json`; link.click()
@@ -64,7 +74,7 @@ export function PluginDevelopment({ onChanged }: { onChanged: () => Promise<void
       <label className="text-xs">index.ts<textarea disabled={busy} value={source} onChange={event => { setSource(event.target.value); edited() }} spellCheck={false} className="mt-1 h-64 w-full rounded border p-2 font-mono" /></label>
     </div>
     <div className="mt-3 flex flex-wrap gap-2 text-sm">
-      <button disabled={busy || !manifest || !source} onClick={() => void run(async () => { const parsed = JSON.parse(manifest); const draft = await api.save({ manifest: parsed, source, expectedDraftRevision: parsed.id === id ? draftRevision : null }); setDraftRevision(draft.draftRevision ?? null); setId(parsed.id); setSaved(true); setDirty(false); setRevision(''); return { saved: parsed.id } })} className="rounded border px-3 py-1 disabled:opacity-40">保存草稿</button>
+      <button disabled={busy || !manifest || !source} onClick={() => void run(saveDraft)} className="rounded border px-3 py-1 disabled:opacity-40">保存草稿</button>
       <button disabled={busy || !saved || !draftRevision} onClick={() => void run(async () => { const value = await api.validate(id, draftRevision!); setRevision(value.revision); return value })} className="rounded border px-3 py-1 disabled:opacity-40">验证源码</button>
       <button disabled={busy || !saved || !draftRevision} onClick={() => void run(() => api.test(id, draftRevision!))} className="rounded border px-3 py-1 disabled:opacity-40">运行声明测试</button>
       <button disabled={busy || !saved || !revision} onClick={() => void run(async () => { const value = await api.install(id, revision); await onChanged(); return value })} className="rounded border px-3 py-1 disabled:opacity-40">安装此版本</button>

@@ -31,6 +31,7 @@ import { presentRuntimeError } from "./runtime-error"
 import { stripAssistantSpeakerPrefix } from "./assistant-message-text"
 import { replyDurations } from "./turn-timing"
 import { cachedMessageView, cachedSessionView } from "./session-view-cache"
+import { compactionDisplayOrder } from './compaction-display'
 
 function isRuntimeTextPart(part: RuntimePart): part is RuntimeTextPart {
   return part.type === "text" && "text" in part && typeof part.text === "string"
@@ -143,9 +144,11 @@ function mapMetaPart(part: RuntimePart): MetaPartCard | undefined {
     }
     case "compaction": {
       const compaction = part as RuntimeCompactionPart
-      if (compaction.progress) return { id: compaction.id, type: compaction.type, compactionProgress: true,
-        title: compaction.progress.paused ? '历史整理已暂停' : compaction.progress.complete ? '历史分段整理完成' : '正在整理历史',
-        summary: compaction.summary, tone: compaction.progress.paused ? 'warning' : 'muted' }
+      const progress = compaction.progress ?? (compaction.id.startsWith('compaction-progress:')
+        ? { paused: Boolean(compaction.summary?.startsWith('历史整理已暂停')), complete: false } : undefined)
+      if (progress) return { id: compaction.id, type: compaction.type, compactionProgress: true,
+        title: progress.paused ? '历史整理已暂停' : progress.complete ? '正在完成压缩' : '正在整理历史',
+        summary: compaction.summary, tone: progress.paused ? 'warning' : 'muted' }
       const details = typeof compaction.details === "string"
         ? compaction.details
         : compaction.details
@@ -155,7 +158,7 @@ function mapMetaPart(part: RuntimePart): MetaPartCard | undefined {
         id: compaction.id,
         type: compaction.type,
         title: compaction.auto ? "自动压缩上下文" : "上下文压缩",
-        summary: "压缩已完成，点击查看摘要；短对话压缩后可能更长。",
+        summary: "压缩已完成，点击查看摘要。",
         detail: compaction.summary || details,
         tone: "accent",
         contextTokensBefore: compaction.tokensBefore,
@@ -218,9 +221,8 @@ function userMessageSignature(message: RuntimeMessage) {
 }
 
 function visibleMessages(session: RuntimeSession) {
-  const uniqueMessageOrder = [...new Set(session.messageOrder)]
-  const serverUsers = uniqueMessageOrder
-    .map((messageID) => session.messages[messageID])
+  const orderedMessages = compactionDisplayOrder([...new Set(session.messageOrder)].map(id => session.messages[id]).filter(Boolean))
+  const serverUsers = orderedMessages
     .filter((message): message is RuntimeMessage => Boolean(message && !message.localOnly && message.role === "user"))
   const availableServerUsers = serverUsers.filter((message) => !message.renderKey || message.renderKey === message.id)
   const serverUsersBySignature = new Map<string, RuntimeMessage[]>()
@@ -233,9 +235,7 @@ function visibleMessages(session: RuntimeSession) {
   }
   const consumedServerIDs = new Set<string>()
 
-  return uniqueMessageOrder
-    .map((messageID) => session.messages[messageID])
-    .filter(Boolean)
+  return orderedMessages
     .filter((message) => {
       if (!message.localOnly || message.role !== "user") return true
       if (message.deliveryState === "failed") return true

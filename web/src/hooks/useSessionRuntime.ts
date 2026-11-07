@@ -72,6 +72,10 @@ const authenticationError = /authentication_expired|not_authenticated|core_authe
 interface UseSessionRuntimeOptions {
   onEvent?: (event: ApiEvent) => void;
   defaultParticipantID?: number | string;
+  initialSessionID?: string;
+  manageGlobalRequests?: boolean;
+  autoSelectFirst?: boolean;
+  sessionOnly?: boolean;
 }
 
 async function refreshModelWhenIdle(sessionID: string) {
@@ -83,7 +87,7 @@ async function refreshModelWhenIdle(sessionID: string) {
 }
 
 export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOptions = {}) {
-  const [state, dispatch] = useReducer(runtimeReducer, initialRuntimeState);
+  const [state, dispatch] = useReducer(runtimeReducer, { ...initialRuntimeState, activeSessionId: options.initialSessionID || undefined });
   const [permissionMode, setPermissionModeState] = useState<PermissionMode>('restricted');
   const [draftParticipantIDs, setDraftParticipantIDs] = useState<Array<number | string>>([]);
   const [modelErrors, setModelErrors] = useState<Record<string, string>>({});
@@ -164,7 +168,8 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
   const refreshSessions = useCallback(async (current: RefreshGuard = captureRefreshGuard()) => {
     if (!current()) return [];
-    const sessions = (await listSessionsRaw()).filter((session) => !deletedSessionIdsRef.current.has(session.id));
+    const sessions = (await listSessionsRaw()).filter((session) => !deletedSessionIdsRef.current.has(session.id)
+      && (!options.sessionOnly || session.id === activeSessionIdRef.current));
     if (!current()) return [];
     const visible = new Set(sessions.map((session) => session.id));
     const hidden = await Promise.all(cachedSessionIdsRef.current.filter((id) => !visible.has(id))
@@ -176,9 +181,9 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       if (activeSessionIdRef.current === id) activeSessionIdRef.current = undefined;
     }
     const remaining = sessions.filter((session) => !deletedSessionIdsRef.current.has(session.id));
-    dispatch(hydrateSessionList(remaining));
+    dispatch(hydrateSessionList(remaining, options.autoSelectFirst !== false));
     return remaining;
-  }, [captureRefreshGuard]);
+  }, [captureRefreshGuard, options.autoSelectFirst, options.sessionOnly]);
 
   const refreshSessionMessages = useCallback(async (sessionID?: string, current: RefreshGuard = captureRefreshGuard()) => {
     if (!sessionID || !current()) return;
@@ -208,14 +213,15 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
   const channels = useSessionConnectionFeedback(enabled, scopeEpoch, state.activeSessionId, async (sessionID, live) => {
     const epoch = scopeRef.current.epoch;
-    const current = () => live() && isRuntimeReady() && scopeRef.current.epoch === epoch && !deletedSessionIdsRef.current.has(sessionID);
+    const current = () => live() && isRuntimeReady() && scopeRef.current.epoch === epoch && !deletedSessionIdsRef.current.has(sessionID)
+      && (!options.sessionOnly || activeSessionIdRef.current === sessionID);
     await Promise.all([refreshQuestions(current), (async () => {
       const [session, page] = await Promise.all([readSessionRaw(sessionID), listMessagesRaw(sessionID)]);
       if (!current() || await isBackgroundSession(sessionID) || !current()) return;
-      dispatch(hydrateSessionList([session]));
+      dispatch(hydrateSessionList([session], options.autoSelectFirst !== false));
       dispatch(hydrateSessionMessages(sessionID, page));
     })()]);
-  });
+  }, options.sessionOnly);
 
   const refreshSessionModel = useCallback(async (sessionID: string, current: RefreshGuard = captureRefreshGuard(), propagateAuthentication = false) => {
     if (!current()) return;
@@ -242,6 +248,11 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
   const refreshBlockers = useCallback(async (current: RefreshGuard = captureRefreshGuard()) => {
     if (!current()) return;
+    if (options.manageGlobalRequests === false) {
+      const response = await getPermissionMode();
+      if (current()) setPermissionModeState(response.mode);
+      return;
+    }
     const results = await Promise.allSettled([
       refreshQuestions(current),
       listPermissionsRaw().then(permissions => { if (current()) dispatch(hydratePendingPermissions(permissions.filter(item => !deletedSessionIdsRef.current.has(item.sessionID)))); }),
@@ -251,7 +262,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     ]);
     const errors = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
     if (errors.length) throw (errors.find(result => authenticationError.test(String(result.reason))) ?? errors[0])!.reason;
-  }, [captureRefreshGuard, refreshQuestions]);
+  }, [captureRefreshGuard, refreshQuestions, options.manageGlobalRequests]);
 
   useEffect(() => {
     if (!isRuntimeReady()) return;
@@ -263,7 +274,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       try {
         const [sessions] = await Promise.all([refreshSessions(current), refreshBlockers(current)]);
         if (!current()) return;
-        const firstSessionID = activeSessionIdRef.current ?? sessions[0]?.id;
+        const firstSessionID = activeSessionIdRef.current ?? (options.autoSelectFirst === false ? undefined : sessions[0]?.id);
         if (firstSessionID) {
           await refreshSessionMessages(firstSessionID, current);
         }
@@ -327,7 +338,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       const [sessions] = await Promise.all([refreshSessions(current), refreshBlockers(current)]);
       while (current()) {
         const selectedSessionID = activeSessionIdRef.current;
-        const sessionID = selectedSessionID ?? sessions[0]?.id;
+        const sessionID = selectedSessionID ?? (options.autoSelectFirst === false ? undefined : sessions[0]?.id);
         if (sessionID) {
           await refreshSessionModel(sessionID, current, true);
           if (!current()) return;
@@ -391,18 +402,21 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       },
       onEvent: filterChatEvents(isBackgroundSession, (event) => {
         if (!currentScope()) return;
-        const eventSessionID = (event.properties as { sessionID?: string }).sessionID;
+        const properties = event.properties as { sessionID?: string; info?: { id?: string; sessionID?: string }; part?: { sessionID?: string } };
+        const eventSessionID = properties.sessionID ?? properties.part?.sessionID ?? properties.info?.sessionID
+          ?? (/^session\.(created|updated)$/.test(event.type) ? properties.info?.id : undefined);
+        if (options.sessionOnly && eventSessionID && eventSessionID !== activeSessionIdRef.current) return;
         if (event.type === 'session.deleted' && eventSessionID) { deletedSessionIdsRef.current.add(eventSessionID); forgetSessionChannel(eventSessionID); }
         else if (eventSessionID && deletedSessionIdsRef.current.has(eventSessionID)) return;
         questionSync.event(event);
         onEventRef.current?.(event);
-        if (event.type === 'screen_capture.requested') {
+        if (event.type === 'screen_capture.requested' && options.manageGlobalRequests !== false) {
           const request = event.properties as Partial<PendingScreenCapture> | undefined;
           if (request && typeof request.id === 'string') {
             void handleScreenCaptureRequest(request as PendingScreenCapture);
           }
         }
-        if (event.type === 'camera_capture.requested') {
+        if (event.type === 'camera_capture.requested' && options.manageGlobalRequests !== false) {
           const request = event.properties as Partial<PendingCameraCapture> | undefined;
           if (request && typeof request.id === 'string') {
             void handleCameraCaptureRequest(request as PendingCameraCapture);
@@ -439,7 +453,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       }
       cleanup?.();
     };
-  }, [connectionFeedbackController, isRuntimeReady, synchronizeConnection, questionSync]);
+  }, [connectionFeedbackController, isRuntimeReady, synchronizeConnection, questionSync, options.sessionOnly]);
 
   const createSession = useCallback(async () => {
     if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
@@ -472,7 +486,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       // This existing API persists participants and resolves their model before returning.
       const prepared = await updateSessionParticipantsRaw(sessionID, participantIDs);
       if (!current()) throw new Error('账号或世界已切换，请核对原会话，勿自动重试');
-      dispatch(hydrateSessionList([prepared]));
+      dispatch(hydrateSessionList([prepared], options.autoSelectFirst !== false));
       setModelErrors(values => { const next = { ...values }; delete next[sessionID]; return next; });
     } catch (error) {
       if (current()) setModelErrors(values => ({ ...values, [sessionID]: error instanceof Error ? error.message : String(error) }));
@@ -492,7 +506,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         activeSessionIdRef.current = session.id;
         setDraftParticipantIDs([]);
         sendingSessionIdsRef.current.add(session.id);
-        dispatch(hydrateSessionList([session]));
+        dispatch(hydrateSessionList([session], options.autoSelectFirst !== false));
         dispatch(setActiveSession(session.id));
         const optimisticMessage = pushLocalUserMessage(session.id, content, attachments);
         dispatch(optimisticMessage);
@@ -635,7 +649,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       throw new Error('智能体正在处理当前任务，请等待本轮结束后再调整会话助手。');
     }
     const session = await updateSessionParticipantsRaw(sessionID, assistantIDs);
-    dispatch(hydrateSessionList([session]));
+    dispatch(hydrateSessionList([session], options.autoSelectFirst !== false));
     setModelErrors((current) => {
       if (!current[sessionID]) return current;
       const next = { ...current };
@@ -694,7 +708,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     const normalized = title.trim();
     if (!normalized) throw new Error('会话标题不能为空。');
     const session = await renameSessionRaw(sessionID, normalized);
-    dispatch(hydrateSessionList([session]));
+    dispatch(hydrateSessionList([session], options.autoSelectFirst !== false));
     return session;
   }, [isRuntimeReady]);
 
@@ -704,7 +718,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     const session = await setSessionArchivedRaw(sessionID, archived);
     if (!isRuntimeReady() || scopeRef.current.epoch !== epoch || getRuntimeOriginRevision() !== originRevision)
       throw new Error('账号或执行环境已切换。');
-    dispatch(hydrateSessionList([session]));
+    dispatch(hydrateSessionList([session], options.autoSelectFirst !== false));
   }, [isRuntimeReady]);
 
   const setSessionPinned = useCallback(async (sessionID: string, pinned: boolean) => {
@@ -713,7 +727,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     const session = await setSessionPinnedRaw(sessionID, pinned);
     if (!isRuntimeReady() || scopeRef.current.epoch !== epoch || getRuntimeOriginRevision() !== originRevision)
       throw new Error('账号或执行环境已切换。');
-    dispatch(hydrateSessionList([session]));
+    dispatch(hydrateSessionList([session], options.autoSelectFirst !== false));
   }, [isRuntimeReady]);
 
   const interruptSubagent = useCallback(async (target: string) => {
@@ -821,6 +835,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     isThinking,
     interruptSubagent,
     pendingPermissions,
+    allPendingPermissions: selectPendingPermissions(state),
     pendingQuestions,
     allPendingQuestions,
     questionsLoading,

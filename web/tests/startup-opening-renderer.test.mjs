@@ -18,7 +18,7 @@ test('opening animation covers cold loading, supports skipping and reduced motio
   const scratch = await mkdtemp(path.join(tmpdir(), 'eden-startup-opening-'))
   const evidenceName = process.env.EDEN_STARTUP_EVIDENCE_NAME || 'startup-opening'
   assert.match(evidenceName, /^[a-z0-9-]+$/)
-  const evidence = path.join(agent, '../.release/current/Agent', evidenceName)
+  const evidence = process.env.EDEN_STARTUP_EVIDENCE_DIR ? path.resolve(process.env.EDEN_STARTUP_EVIDENCE_DIR, evidenceName) : path.join(scratch, evidenceName)
   await mkdir(evidence, { recursive: true })
   const css = await readFile(path.join(web, 'dist/assets', (await readdir(path.join(web, 'dist/assets'))).find(name => name.endsWith('.css'))))
   const errors = [], checks = [], images = [], observations = []
@@ -55,6 +55,11 @@ test('opening animation covers cold loading, supports skipping and reduced motio
     const session = await page.context().newCDPSession(page)
     await page.addInitScript(() => {
       window.openingStates = []
+      window.openingCaptionReadyAt = null
+      document.addEventListener('animationend', event => {
+        if (event.animationName === 'startup-caption-in' && event.target?.classList?.contains('startup-opening-caption'))
+          window.openingCaptionReadyAt = performance.now()
+      })
       const inspect = () => {
         const overlay = document.querySelector('[data-startup-opening-overlay]')
         const next = { present: !!overlay, phase: overlay?.getAttribute('data-opening-phase'), reduced: overlay?.getAttribute('data-reduced-motion') }
@@ -106,7 +111,8 @@ test('opening animation covers cold loading, supports skipping and reduced motio
     await page.goto(origin); await overlay.waitFor(); await page.waitForTimeout(1450)
     const readableAt = await page.locator('.startup-opening-caption').evaluate(element => {
       if (getComputedStyle(element).opacity !== '1') throw new Error('Opening quote is still hidden')
-      return performance.now()
+      if (window.openingCaptionReadyAt === null) throw new Error('Opening caption animation completion was not observed')
+      return window.openingCaptionReadyAt
     })
     await capture('opening-quote-reading')
     await actor.waitFor(); await states('normal-opening')

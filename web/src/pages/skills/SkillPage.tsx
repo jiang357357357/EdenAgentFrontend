@@ -56,6 +56,7 @@ function SkillRow({
         </div>
         <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{skill.description}</p>
         {!!skill.missingTools?.length && <p className="mt-1 text-xs text-danger">缺少可用工具：{skill.missingTools.join("、")}</p>}
+        {!!skill.shadowedSources?.length && <p className="mt-1 text-xs text-warning">另有 {skill.shadowedSources.length} 个同名来源被当前技能遮蔽</p>}
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-text-muted">
           <span>{skill.scope === "system" ? "系统范围" : skill.scope === "project" ? "当前项目" : "当前用户"}</span>
           <span>
@@ -65,6 +66,8 @@ function SkillRow({
                 ? "本地目录"
                 : skill.sourceType === "generated"
                   ? "智能体创建"
+                  : skill.sourceType === "marketplace"
+                    ? "插件提供"
                   : "随应用提供"}
           </span>
           {skill.tools?.length ? <span>{skill.tools.length} 个工具</span> : null}
@@ -85,6 +88,7 @@ function ScopedSkillPage({ onBack, sessionId }: { onBack: () => void; sessionId?
   const [skills, setSkills] = useState<InstalledSkill[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [pluginIssues, setPluginIssues] = useState<{ id: string; message: string }[]>([])
   const [installOpen, setInstallOpen] = useState(false)
   const [selectedID, setSelectedID] = useState("")
   const [query, setQuery] = useState("")
@@ -101,6 +105,7 @@ function ScopedSkillPage({ onBack, sessionId }: { onBack: () => void; sessionId?
       const [nextSkills, status, toolStatus] = await Promise.all([listSkills(), catalogStatus(), getToolStatus()])
       if (generation !== refreshGeneration.current) return
       setSkills(nextSkills)
+      setPluginIssues(status.pluginIssues ?? [])
       setToolDetails(toolStatus.toolDetails ?? {})
       if (status.error) setError(`目录刷新失败，保留上次有效目录：${status.error}`)
       setSelectedID((current) =>
@@ -211,6 +216,9 @@ function ScopedSkillPage({ onBack, sessionId }: { onBack: () => void; sessionId?
               {error}
             </div>
           )}
+          {!!pluginIssues.length && <div role="status" className="mt-3 rounded-xl border border-warning/30 bg-warning-dim px-3 py-2 text-xs text-warning">
+            部分插件的技能不可用：{pluginIssues.map(item => <p key={item.id}>{item.id} · {item.message}</p>)}
+          </div>}
           <div className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {loading && skills.length === 0 ? (
               <div className="flex h-40 items-center justify-center text-sm text-text-muted">

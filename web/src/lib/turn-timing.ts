@@ -1,4 +1,5 @@
 import type { RuntimeMessage, RuntimeSession, TurnTiming } from "../types"
+import { isCompactionMessage } from './compaction-display'
 
 export interface TurnTimingEvent {
   type: "session.turn_timing"
@@ -36,7 +37,7 @@ export function replyDurations(messages: RuntimeMessage[], liveTimings?: Record<
   const lastReplies = new Map<string, RuntimeMessage>()
   const historicalTimings = new Map<string, TurnTiming>()
   for (const message of messages) {
-    if (message.role === "assistant" && message.turnID && !message.id.startsWith("compaction:")) {
+    if (message.role === "assistant" && message.turnID && !isCompactionMessage(message.id)) {
       lastReplies.set(message.turnID, message)
       historicalTimings.set(message.turnID, { ...historicalTimings.get(message.turnID), ...readTurnTiming(message.turnTiming) })
     }

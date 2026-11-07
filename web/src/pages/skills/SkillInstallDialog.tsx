@@ -65,7 +65,7 @@ export function SkillInstallDialog({ onClose, onInstalled, sessionId }: { onClos
             <div className="flex items-center">
               <div>
                 <h2 className="text-lg font-semibold">安装技能</h2>
-                <p className="mt-1 text-xs text-text-muted">先预检内容、权限与目录安全，再确认安装。</p>
+                <p className="mt-1 text-xs text-text-muted">先检查技能内容和来源，再确认安装。代码工具经审批后按当前系统账户权限运行，当前没有操作系统沙箱隔离。</p>
               </div>
               <button
                 type="button"
@@ -169,6 +169,7 @@ export function SkillInstallDialog({ onClose, onInstalled, sessionId }: { onClos
                   <span>{readableBytes(preview.totalBytes)}</span>
                   <span>{preview.tools.length} 个工具</span>
                 </div>
+                {!!preview.warnings?.length && <ul className="mt-3 space-y-1 text-xs text-warning">{preview.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>}
               </div>
             )}
             {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}

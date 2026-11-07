@@ -5,7 +5,7 @@ import { test } from "node:test"
 const clientSource = await readFile(new URL("../src/lib/agent-client.ts", import.meta.url), "utf8")
 const realtimeSource = await readFile(new URL("../src/lib/realtime-stt.ts", import.meta.url), "utf8")
 const transportSource = await readFile(new URL("../src/lib/rpc-transport.ts", import.meta.url), "utf8")
-const chatSource = await readFile(new URL("../src/pages/chat/ChatPage.tsx", import.meta.url), "utf8")
+const chatSource = await readFile(new URL("../src/pages/chat/ChatConversation.tsx", import.meta.url), "utf8")
 const speechSource = await readFile(new URL("../src/hooks/useTTSSpeech.ts", import.meta.url), "utf8")
 const petSpeechSource = await readFile(new URL("../src/components/desktop-pet/bubble/hooks/usePetSpeechPlayback.ts", import.meta.url), "utf8")
 

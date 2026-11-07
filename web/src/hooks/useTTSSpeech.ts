@@ -1021,6 +1021,11 @@ export function useTTSSpeech({
     }
     const runWasActive = runActiveRef.current
     if (isThinking && !runWasActive) {
+      // A paused answer cannot drain its queue. Keep it available for manual
+      // replay, but release the old playback cycle before the next answer.
+      if (paused && audioRef.current?.paused) {
+        stopPlayback({ disableAutomaticPlayback: false, resetOutputGate: false, reason: "new-run-after-paused-playback" })
+      }
       automaticPlaybackEnabledRef.current = true
       // Connector/self-awake runs can become active before their new message
       // shell arrives. Completed messages visible at that boundary belong to
@@ -1148,7 +1153,8 @@ export function useTTSSpeech({
       runActiveRef.current = false
       runBaselineMessageIdsRef.current.clear()
       // Every ended stream must release its reservation, including segments removed from the final view.
-      for (const state of streamStatesRef.current.values()) {
+      const completedStates = new Map(streamStatesRef.current)
+      for (const state of completedStates.values()) {
         state.complete = true
         playbackQueueRef.current.sealGroup(state.streamKey)
         updateStreamingClip(state)
@@ -1159,12 +1165,15 @@ export function useTTSSpeech({
       void finalQueue.finally(() => {
         if (generationRef.current !== finalGeneration) return
         const segmentId = progressRef.current?.segmentId
-        if (segmentId && !audioRef.current) {
+        if (segmentId && !audioRef.current && [...completedStates.values()].some(state => state.segmentId === segmentId)) {
           progressRef.current = null
           setActiveSegmentId((current) => current === segmentId ? null : current)
           setPaused(false)
         }
-        streamStatesRef.current.clear()
+        // A new run may have started while this playback cycle was draining.
+        for (const [key, state] of completedStates) {
+          if (streamStatesRef.current.get(key) === state) streamStatesRef.current.delete(key)
+        }
       })
     }
   }, [activeSegments, isThinking, mode, sessionId])
