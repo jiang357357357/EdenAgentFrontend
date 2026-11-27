@@ -2,6 +2,7 @@ import { pageEnterMotion } from "../../lib/page-motion"
 import { ConnectorHistory } from './ConnectorHistory'
 import { ConnectorCredential } from './ConnectorCredential'
 import { ConnectorPermissions } from './ConnectorPermissions'
+import { ConnectionImport } from './ConnectionImport'
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Activity,
@@ -579,7 +580,7 @@ export function ConnectorPage({ onBack }: { onBack: () => void }) {
 
       {addOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/25 p-5 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
+          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
             <div className="flex items-center">
               <div>
                 <h2 className="text-lg font-semibold">添加连接器</h2>
@@ -593,6 +594,9 @@ export function ConnectorPage({ onBack }: { onBack: () => void }) {
                 <X className="h-4 w-4" />
               </button>
             </div>
+            <ConnectionImport available={catalog.map(entry => entry.key)} onImport={value => {
+              setNewType(value.connectorKey); setNewIdentity(value.identityKey); setNewSettings(JSON.stringify(value.settings, null, 2))
+            }} />
             <label className="mt-5 block text-xs font-medium text-text-muted">连接器类型</label>
             <select
               value={newType}

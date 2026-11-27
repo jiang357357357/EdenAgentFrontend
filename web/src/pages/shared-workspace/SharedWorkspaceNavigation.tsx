@@ -23,14 +23,14 @@ export function SharedWorkspaceNavigation({ mode = 'lan', active, prefix, pendin
   canSync?: boolean
   canManageMembers?: boolean
 }) {
-  const sections = sharedWorkspaceSections.filter(item => mode !== 'cloud' || item.id === 'libraries' || item.id === 'network'
-    || (item.id === 'members' ? hasSelection && canManageMembers : canSync))
+  const sections = sharedWorkspaceSections.filter(item => mode !== 'cloud' || item.id === 'libraries'
+    || (item.id !== 'network' && (item.id === 'members' ? hasSelection && canManageMembers : canSync)))
   return <nav aria-label="共享资料库功能" className="flex min-h-0 shrink-0 flex-col border-b border-border/70 bg-library-card/45 md:w-48 md:border-b-0 md:border-r">
     <p className="hidden shrink-0 px-5 pb-3 pt-6 text-xs font-medium text-text-muted md:block">功能导航</p>
     <div className="flex min-h-0 gap-1 overflow-x-auto p-2 md:flex-1 md:flex-col md:overflow-x-hidden md:overflow-y-auto md:px-3 md:pb-5 md:pt-0">
       {sections.map(({ id, label, icon: Icon }) => {
         const count = id === "conflicts" ? conflicts : id === "sync" ? pending : 0
-        const title = id === 'network' ? mode === 'lan' ? '设备与配对' : '云主机管理' : label
+        const title = id === 'network' ? '设备与配对' : label
         return <button type="button" key={id} id={`${prefix}-navigation-${id}`} aria-label={title}
           aria-current={active === id ? "page" : undefined} aria-controls={`${prefix}-panel-${id}`} onClick={() => onSelect(id)}
           className={`flex shrink-0 items-center gap-3 rounded-lg border px-3 py-3 text-left text-sm transition focus-visible:outline-2 focus-visible:outline-accent ${active === id

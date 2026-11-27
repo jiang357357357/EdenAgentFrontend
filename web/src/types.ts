@@ -63,6 +63,8 @@ export interface PendingQuestion {
   sessionID: string
   questions: PendingQuestionItem[]
   tool?: PermissionToolRef
+  turnID?: string
+  toolCallID?: string
 }
 
 export interface MessageData {

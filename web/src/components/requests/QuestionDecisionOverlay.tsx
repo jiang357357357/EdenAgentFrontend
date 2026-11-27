@@ -1,276 +1,43 @@
-import { useEffect, useMemo, useRef, useState } from "react"
-import { motion } from "motion/react"
-import { HelpCircle } from "lucide-react"
-import type { PendingQuestion } from "../../types"
-import { cn } from "../../lib/utils"
-import { NoticeCard, noticeActionClass, noticeSurface } from "../feedback"
+import { useEffect, useId, useRef } from 'react'
+import { motion } from 'motion/react'
+import { cn } from '../../lib/utils'
+import { QuestionForm } from './QuestionForm'
+import type { QuestionAnswerActions } from './useQuestionDraft'
 
-interface QuestionDecisionOverlayProps {
-  request: PendingQuestion
-  onReply: (requestID: string, answers: string[][], supplementary?: string[]) => Promise<void>
-  onReject: (requestID: string) => Promise<void>
-  fillWindow?: boolean
-}
+interface QuestionDecisionOverlayProps extends QuestionAnswerActions { fillWindow?: boolean }
 
-const dialogMotion = {
-  initial: { opacity: 0, y: "-0.5vh", scale: 0.985 },
-  animate: { opacity: 1, y: "-2.5vh", scale: 1 },
-  exit: { opacity: 0, y: "-1vh", scale: 0.99 },
-}
-
-export function QuestionDecisionOverlay({ request, onReply, onReject, fillWindow = false }: QuestionDecisionOverlayProps) {
+export function QuestionDecisionOverlay({ fillWindow = false, ...actions }: QuestionDecisionOverlayProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
-  const [selected, setSelected] = useState<Record<number, string[]>>({})
-  const [custom, setCustom] = useState<Record<number, string>>({})
-  const [submitting, setSubmitting] = useState<"reply" | "reject" | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    setSelected({})
-    setCustom({})
-    setSubmitting(null)
-    setError(null)
-  }, [request.id])
-
-  const answers = useMemo(
-    () => request.questions.map((_, index) => selected[index] ?? []),
-    [request.questions, selected],
-  )
-  const supplementary = useMemo(
-    () => request.questions.map((item, index) => item.custom !== false ? custom[index]?.trim() ?? '' : ''),
-    [request.questions, custom],
-  )
-  const canSubmit = answers.length > 0 && answers.every((answer, index) => answer.length > 0 || Boolean(supplementary[index]))
-
+  const titleID = useId()
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    dialogRef.current?.focus()
+    dialogRef.current?.querySelector<HTMLFormElement>('form')?.focus()
     return () => previousFocus?.focus()
-  }, [])
+  }, [actions.request.id])
 
-  async function handleReply() {
-    if (submitting) return
-    if (!canSubmit) {
-      setError("请先完成所有问题的选择。")
-      dialogRef.current?.querySelector<HTMLInputElement>('input[type="radio"], input[type="checkbox"]')?.focus()
-      return
-    }
-    setSubmitting("reply")
-    setError(null)
-    try {
-      await onReply(request.id, answers, supplementary)
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
-      setSubmitting(null)
-    }
-  }
-
-  async function handleReject() {
-    if (submitting) return
-    setSubmitting("reject")
-    setError(null)
-    try {
-      await onReject(request.id)
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : String(nextError))
-      setSubmitting(null)
-    }
-  }
-
-  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Escape") {
-      event.preventDefault()
-      void handleReject()
-      return
-    }
-    if (event.key !== "Tab") return
-
-    const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    )
-    if (!focusable?.length) return
-    const first = focusable[0]
-    const last = focusable[focusable.length - 1]
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault()
-      last.focus()
+  function trapFocus(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'Tab') return
+    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]), summary, [tabindex="0"]',
+    ) ?? []).filter(node => node.getClientRects().length > 0)
+    const first = focusable[0], last = focusable[focusable.length - 1]
+    const initialFocus = document.activeElement === dialogRef.current || document.activeElement === dialogRef.current?.querySelector('form')
+    if (event.shiftKey && (document.activeElement === first || initialFocus)) {
+      event.preventDefault(); last?.focus()
     } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault()
-      first.focus()
+      event.preventDefault(); first?.focus()
     }
   }
 
-  function updateOption(questionIndex: number, label: string, multiple = false) {
-    setSelected((current) => {
-      const picked = current[questionIndex] ?? []
-      return {
-        ...current,
-        [questionIndex]: multiple
-          ? picked.includes(label)
-            ? picked.filter((item) => item !== label)
-            : [...picked, label]
-          : picked.includes(label) ? [] : [label],
-      }
-    })
-  }
-
-  const eyebrow = request.questions[0]?.header || "需要确认"
-
-  return (
-    <motion.div
-      key={`question-backdrop-${request.id}`}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-scrim/65 p-4 backdrop-blur-[2px]"
-      aria-hidden={false}
-    >
-      <motion.div
-        ref={dialogRef}
-        {...dialogMotion}
-        transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={`question-title-${request.id}`}
-        tabIndex={-1}
-        onKeyDown={handleKeyDown}
-        className={cn(
-          noticeSurface({ tone: "info" }),
-          "flex flex-col overflow-hidden bg-card shadow-xl outline-none",
-          fillWindow
-            ? "h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)]"
-            : "h-[74.5vh] max-h-[74.5vh] w-[32vw] min-w-[min(300px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)]",
-        )}
-      >
-        <form
-          className="flex min-h-0 flex-1 flex-col"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void handleReply()
-          }}
-        >
-          <div
-            className={cn(
-              "min-h-0 flex-1 overflow-y-auto px-[clamp(18px,1.8vw,36px)] pb-[2vh] pt-[4.7vh]",
-              request.questions.length === 1 && "question-decision-body-single",
-            )}
-          >
-            <p className="flex items-center gap-2 text-[1.55vh] font-medium tracking-[0.02em] text-info">
-              <HelpCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
-              {eyebrow}
-            </p>
-
-            <div className="mt-[1.5vh] space-y-[3vh]">
-              {request.questions.map((item, questionIndex) => {
-                const picked = selected[questionIndex] ?? []
-                return (
-                  <fieldset
-                    key={`${request.id}-${questionIndex}`}
-                    className={cn(questionIndex > 0 && "border-t border-border pt-[3vh]")}
-                  >
-                    {questionIndex > 0 && (
-                      <p className="mb-[0.9vh] text-[1.45vh] font-medium tracking-[0.02em] text-accent">
-                        {item.header || `问题 ${questionIndex + 1}`}
-                      </p>
-                    )}
-                    <legend
-                      id={questionIndex === 0 ? `question-title-${request.id}` : undefined}
-                      className="mb-[1.7vh] block w-full font-serif text-[2.8vh] font-medium leading-[1.35] text-text"
-                    >
-                      {item.question}
-                    </legend>
-
-                    {!item.multiple && <p className="mb-[1vh] text-[1.3vh] text-text-muted">单选，点击已选项可取消</p>}
-                    <div className="space-y-[1.25vh]">
-                      {item.options.map((option) => {
-                        const checked = picked.includes(option.label)
-                        return (
-                          <label
-                            key={option.label}
-                            className={cn(
-                              "flex cursor-pointer items-center gap-[1vw] rounded-[1vh] border px-[1vw] py-[1.35vh] transition-[border-color,background-color,box-shadow]",
-                              option.description ? "min-h-[9vh]" : "min-h-[6.8vh]",
-                              checked
-                                ? "border-accent/45 bg-accent/[0.06] shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-accent)_8%,transparent)]"
-                                : "border-border bg-card hover:border-border hover:bg-border/60",
-                              submitting && "cursor-wait opacity-70",
-                            )}
-                          >
-                            <input
-                              type="checkbox"
-                              name={`question-${request.id}-${questionIndex}`}
-                              value={option.label}
-                              checked={checked}
-                              disabled={submitting !== null}
-                              onChange={() => updateOption(questionIndex, option.label, item.multiple)}
-                              className={cn(
-                                "h-[2.3vh] w-[2.3vh] flex-none accent-warning outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
-                                item.multiple ? "rounded-[0.35vh]" : "rounded-full",
-                              )}
-                            />
-                            <span className="min-w-0">
-                              <span className="block text-[1.8vh] font-medium leading-[1.35] text-text">{option.label}</span>
-                              {option.description && (
-                                <span className="mt-[0.35vh] block text-[1.45vh] leading-[1.45] text-text-muted">
-                                  {option.description}
-                                </span>
-                              )}
-                            </span>
-                          </label>
-                        )
-                      })}
-                    </div>
-
-                    {item.custom !== false && (
-                      <label className="mt-[1.8vh] block border-t border-border pt-[1.5vh]">
-                        <span className="mb-[0.8vh] block text-[1.45vh] font-medium text-text-muted">补充说明（可选）</span>
-                        <textarea
-                          value={custom[questionIndex] ?? ""}
-                          onChange={(event) => {
-                            const value = event.currentTarget.value
-                            setCustom((current) => ({ ...current, [questionIndex]: value }))
-                          }}
-                          maxLength={4000}
-                          disabled={submitting !== null}
-                          rows={2}
-                          placeholder="请输入补充说明（可选）"
-                          className="min-h-[8vh] w-full resize-y rounded-[1vh] border border-border bg-card px-[0.8vw] py-[1.1vh] text-[1.5vh] leading-[1.45] text-text outline-none transition-colors placeholder:text-text-lighter focus:border-accent/55 focus:ring-2 focus:ring-accent/10 disabled:cursor-wait disabled:opacity-70"
-                        />
-                      </label>
-                    )}
-                  </fieldset>
-                )
-              })}
-            </div>
-
-            {error && (
-              <NoticeCard tone="error" title="问题答复失败" description={error} className="mt-[1.5vh]" />
-            )}
-          </div>
-
-          <div className="flex-none px-[clamp(18px,1.8vw,36px)] pb-[3.9vh]">
-            <button
-              type="submit"
-              disabled={submitting !== null}
-              aria-busy={submitting === "reply"}
-              className={cn(noticeActionClass,
-                "h-[5.4vh] w-full border-accent bg-accent px-[1vw] text-[1.8vh] font-semibold text-on-accent hover:border-accent-hover hover:bg-accent-hover")}
-            >
-              {submitting === "reply" ? "正在提交…" : "确认选择"}
-            </button>
-            <button
-              type="button"
-              disabled={submitting !== null}
-              onClick={() => void handleReject()}
-              aria-busy={submitting === "reject"}
-              className={cn(noticeActionClass, "mt-2 h-[4.5vh] w-full text-[1.65vh] text-text-muted")}
-            >
-              {submitting === "reject" ? "正在处理…" : "暂不处理"}
-            </button>
-          </div>
-        </form>
-      </motion.div>
+  return <motion.div key={`question-backdrop-${actions.request.id}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
+    className={cn('fixed inset-0 z-[90] flex items-center justify-center', fillWindow ? 'bg-card' : 'bg-scrim/65 p-4 backdrop-blur-[2px]')}>
+    <motion.div ref={dialogRef} initial={{ opacity: 0, scale: 0.99 }} animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.99 }} transition={{ duration: 0.2 }}
+      role="dialog" aria-modal="true" aria-labelledby={titleID} tabIndex={-1} onKeyDown={trapFocus}
+      className={cn('question-dialog', fillWindow && 'question-dialog-native')}>
+      <span id={titleID} className="sr-only">问题确认，共 {actions.request.questions.length} 个问题</span>
+      <QuestionForm key={actions.request.id} {...actions} modal />
     </motion.div>
-  )
+  </motion.div>
 }

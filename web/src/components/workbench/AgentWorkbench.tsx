@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'motion/react'
 import { Workbench } from './Workbench'
@@ -13,12 +13,26 @@ import { pageEnterMotion } from '../../lib/page-motion'
 import type { ChatPageProps } from '../../pages/chat/chat-page-props'
 import { ChatConversation } from '../../pages/chat/ChatConversation'
 import { ApplicationPageLayout } from './ApplicationPageLayout'
-import { isApplicationPage } from './application-pages'
+import { isApplicationPage, type ChatParticipantSelection } from './application-pages'
 export function AgentWorkbench(props: ChatPageProps) {
-  const {sessions,activeSessionId,currentUser,assistant,assistantError,activeCharacterAction,isThinking,backgroundPreference,backgroundImageUrl,appearancePreference,onSelectSession,onNewSession,applicationPage,onOpenPlugins,onDeleteSession,onRenameSession,onArchiveSession,onPinSession,onOpenAssistantSwitcher,onOpenDutyAssistantSwitcher,onOpenSelfAwake,onOpenAllSessions,onOpenMemo,onOpenSkills,onOpenConnectors,onOpenConfiguration,onLogout,onOpenSettings,onOpenSharedWorkspace,sidebarActivity,onSidebarActivityChange,activePendingPermissions,onPermissionReply}=props
+  const {sessions,activeSessionId,currentUser,assistant,assistantError,activeCharacterAction,isThinking,backgroundPreference,backgroundImageUrl,appearancePreference,onSelectSession,onNewSession,applicationPage,onOpenPlugins,onDeleteSession,onRenameSession,onArchiveSession,onPinSession,onOpenAssistantSwitcher,onOpenSelfAwake,onOpenAllSessions,onOpenMemo,onOpenSkills,onOpenConnectors,onOpenConfiguration,onLogout,onOpenSettings,onOpenSharedWorkspace,sidebarActivity,onSidebarActivityChange,activePendingPermissions,onPermissionReply}=props
   const [characterEditing,setCharacterEditing]=useState(false)
   const applicationActive=isApplicationPage(applicationPage?.id)
   const workbench=useChatWorkbench({account:String(currentUser?.id??'local'),sessionId:activeSessionId,sessions,onSelectSession,onNewSession,onShowChat:()=>applicationPage?.onChange('chat')})
+  const [chatSelections, setChatSelections] = useState<Record<string, ChatParticipantSelection>>({})
+  const registerChatSelection = useCallback((selection: ChatParticipantSelection) => {
+    const id = selection.documentId
+    setChatSelections(current => ({ ...current, [id]: selection }))
+    return () => setChatSelections(current => {
+      if (current[id] !== selection) return current
+      const next = { ...current }
+      delete next[id]
+      return next
+    })
+  }, [])
+  const { active, focused } = workbench.state
+  const focusedDocumentId = active.application ?? active[focused]
+  const chatSelection = focusedDocumentId ? chatSelections[focusedDocumentId] : undefined
   useEffect(()=>{
     if(!workbench.state.tabs.some(tab=>tab.kind==='page'&&tab.page==='character'))setCharacterEditing(false)
   },[workbench.state.tabs])
@@ -30,7 +44,7 @@ export function AgentWorkbench(props: ChatPageProps) {
     window.addEventListener('keydown',finish)
     return()=>window.removeEventListener('keydown',finish)
   },[characterEditing])
-  return (<ApplicationPageLayout page={applicationPage} sessionId={activeSessionId}><motion.div
+  return (<ApplicationPageLayout page={applicationPage} sessionId={activeSessionId} chat={chatSelection}><motion.div
       key="chat-with-character"
       {...pageEnterMotion}
       className="chat-workspace theme-page fixed inset-0 z-10 flex h-[100vh] w-[100vw] overflow-hidden bg-bg interface-background interface-dark font-sans text-text"
@@ -49,11 +63,14 @@ export function AgentWorkbench(props: ChatPageProps) {
       <Workbench state={workbench.state} dispatch={workbench.dispatch} sessionId={activeSessionId} running={isThinking} active={!applicationActive}
         characterMenu={{origin:getStoredRuntimeOrigin()??'local',name:assistant?.name||assistant?.character?.name,
           onConfigure:view=>{if(props.onOpenCharacterConfiguration)props.onOpenCharacterConfiguration(view);else onOpenConfiguration()},
-          onParticipants:onOpenAssistantSwitcher,onDefault:onOpenDutyAssistantSwitcher,
+          onOpenRoster:onOpenAssistantSwitcher,
           editing:characterEditing,onToggleEditing:()=>{setCharacterEditing(!characterEditing);if(!characterEditing)workbench.openPortrait()},
           onShowPortrait:()=>{setCharacterEditing(false);workbench.openPortrait()}}}
         onSelect={workbench.select} onNewChat={workbench.newChat} onOpenPlugin={workbench.openPlugin} onManagePlugins={onOpenPlugins}
-        onOpenPage={page=>applicationPage?.onChange(page)} error={workbench.error} onRetry={workbench.retry} hydrated={workbench.ready} storageKey={workbench.storageKey} renderChat={(tab, focused) => <SessionChatEditor key={tab.id} tab={tab} focused={focused} base={props} onSessionCreated={workbench.bindSession} />}
+        onOpenPage={page=>applicationPage?.onChange(page)} error={workbench.error} onRetry={workbench.retry} hydrated={workbench.ready} storageKey={workbench.storageKey}
+        renderChat={(tab, focused) => <SessionChatEditor key={tab.id} tab={tab} focused={focused} base={props}
+          onSessionCreated={workbench.bindSession} registerChatSelection={registerChatSelection}
+          onOpenSessionAssistantSwitcher={() => { workbench.select(tab.id); props.onOpenSessionAssistantSwitcher() }} />}
         portrait={<CharacterPanel showEmpty editing={characterEditing} assistant={assistant} assistantError={assistantError} activeAction={activeCharacterAction}
           onConfigure={()=>{if(getStoredRuntimeOrigin()==='local'&&props.onOpenCharacterConfiguration)props.onOpenCharacterConfiguration('visual');else onOpenAssistantSwitcher()}} />}
         sidebar={<Sidebar
@@ -65,8 +82,7 @@ export function AgentWorkbench(props: ChatPageProps) {
         onArchive={onArchiveSession}
         onPin={onPinSession}
         onNewSession={workbench.newChat}
-        onOpenParticipants={onOpenAssistantSwitcher}
-        onOpenDutyAssistant={onOpenDutyAssistantSwitcher}
+        onOpenRoles={onOpenAssistantSwitcher}
         onOpenSelfAwake={onOpenSelfAwake}
         onOpenAllSessions={onOpenAllSessions}
         onOpenMemo={onOpenMemo}
@@ -87,18 +103,16 @@ export function AgentWorkbench(props: ChatPageProps) {
       </Workbench>
       {activePendingPermissions.length > 0 && typeof document !== "undefined"
         ? createPortal(
-            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-scrim/35 p-4 backdrop-blur-[2px]">
-              <div className="grid max-h-[80vh] w-full max-w-2xl gap-3 overflow-y-auto">
-                {activePendingPermissions.map((request) => (
-                  <PermissionRequestCard
-                    key={request.id}
-                    request={request}
-                    onReply={onPermissionReply}
-                    tone="overlay"
-                  />
-                ))}
-              </div>
-            </div>,
+            <section aria-label="待处理权限请求" className="fixed left-3 top-14 z-[9999] grid max-h-[45vh] w-[calc(100%-1.5rem)] max-w-md gap-3 overflow-y-auto">
+              {activePendingPermissions.map((request) => (
+                <PermissionRequestCard
+                  key={request.id}
+                  request={request}
+                  onReply={onPermissionReply}
+                  tone="overlay"
+                />
+              ))}
+            </section>,
             document.body,
           )
         : null}

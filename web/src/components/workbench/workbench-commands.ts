@@ -3,8 +3,9 @@ import { pageTitles, type WorkbenchAction, type WorkbenchState, type WorkbenchTa
 import type { DocumentLifecycle } from './document-lifecycle'
 import type { WorkbenchCommand } from './WorkbenchDialogs'
 import { movableDocument } from './plugin-placement'
-export function buildWorkbenchCommands({state,dispatch,store,onSelect,onClose,onNewChat,sessionId,onOpenPage}: {
+export function buildWorkbenchCommands({state,dispatch,store,onSelect,onClose,onNewChat,sessionId,onOpenPage,toggleAuxiliary}: {
   state:WorkbenchState;dispatch(action:WorkbenchAction):void;store:DocumentLifecycle;onSelect(id:string):void;onClose(id:string):void;onNewChat():void;sessionId:string;onOpenPage?:(page:string)=>void
+  toggleAuxiliary():void
 }):WorkbenchCommand[] {
   const active=state.tabs.find(tab=>tab.id===(state.active.application??state.active[state.focused])), groups=editorGroups(state.layout)
   const movable=!active||movableDocument(active)
@@ -12,7 +13,7 @@ export function buildWorkbenchCommands({state,dispatch,store,onSelect,onClose,on
   const commands:WorkbenchCommand[]=[
     {id:'chat.new',title:'新建聊天页面',run:onNewChat},
     {id:'sidebar.toggle',title:'显示／隐藏主侧栏',shortcut:'Ctrl+B',run:()=>dispatch({type:'layout',patch:{sidebarOpen:!state.sidebarOpen}})},
-    {id:'auxiliary.toggle',title:'显示／隐藏工具侧栏',shortcut:'Ctrl+Shift+B',run:()=>dispatch({type:'layout',patch:{sideOpen:!state.sideOpen}})},
+    {id:'auxiliary.toggle',title:'显示／隐藏工具侧栏',shortcut:'Ctrl+Shift+B',run:toggleAuxiliary},
     {id:'panel.toggle',title:'显示／隐藏运行面板',shortcut:'Ctrl+J',run:()=>dispatch({type:'layout',patch:{bottomOpen:!state.bottomOpen}})},
   ]
   if(movable)commands.push({id:'layout.right',title:'向右拆分编辑组',run:()=>dispatch({type:'split',group,axis:'horizontal',id:active?.id})},

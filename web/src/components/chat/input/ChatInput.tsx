@@ -1,24 +1,28 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { useDraftInput } from '../../workbench/document-lifecycle'
 import { motion, AnimatePresence } from "motion/react"
 import { cn } from "../../../lib/utils"
 import { updateDesktopActivityFacts } from "../../../lib/desktop-window"
 import { DEFAULT_CONTEXT_WINDOW, estimateTextTokens } from "../../../lib/token-usage"
-import type { PermissionMode, PromptAttachment, TokenBreakdown, ToolCall } from "../../../types"
+import type { CallAudioSettings, DesktopVoiceCallState, DesktopVoiceDestination, DesktopVoiceTurn } from "../../../lib/agent-voice-call"
+import type { CoreAssistant } from "../../../lib/auth"
+import type { MessageData, PermissionMode, PromptAttachment, TokenBreakdown, ToolCall } from "../../../types"
 import { AttachmentTray } from "./AttachmentTray"
 import { ChatComposerFooter } from "./ChatComposerFooter"
 import { ChatDialogPanel } from "./ChatDialogPanel"
 import { ChatInputMenus } from "./ChatInputMenus"
 import { SlashCommandMenu } from "./SlashCommandMenu"
 import { VoiceConversationPanel } from "./VoiceConversationPanel"
+import { voiceCallCaptions, type VoiceCallPlayback } from "./voice-call-captions"
 import { useChatAttachments } from "./hooks/useChatAttachments"
 import { useRealtimeVoiceInput } from "./hooks/useRealtimeVoiceInput"
+import { useWorkbenchPhone, type PhoneState } from "../../workbench/workbench-phone"
 import { useChatSettingsMenus } from "./hooks/useChatSettingsMenus"
 import { useSlashCommandMenu } from "./hooks/useSlashCommandMenu"
 import type { DialogSegment } from "./types"
 
 interface ChatInputProps {
-  onSend: (text: string, attachments: PromptAttachment[]) => void | Promise<void>
+  onSend: (text: string, attachments: PromptAttachment[], voice?: DesktopVoiceTurn) => void | Promise<void>
   disabled?: boolean
   allowFollowUp?: boolean
   overlay?: boolean
@@ -41,6 +45,12 @@ interface ChatInputProps {
   permissionMode?: PermissionMode
   onPermissionModeChange?: (mode: PermissionMode) => Promise<void>
   voiceInputEnabled?: boolean
+  callAssistant?: CoreAssistant | null | undefined
+  onVoiceCallChange?: (call: DesktopVoiceCallState | null) => void
+  onPrepareDraftVoiceCall?: (() => Promise<DesktopVoiceDestination>) | undefined
+  callAudioSettings?: CallAudioSettings
+  voicePlayback?: VoiceCallPlayback | undefined
+  voiceMessages?: readonly MessageData[]
   audioInputDeviceId?: string
   sttConfigId?: number | null
   halfDuplexOutputActive?: boolean
@@ -80,6 +90,12 @@ export function ChatInput({
   permissionMode = "restricted",
   onPermissionModeChange,
   voiceInputEnabled = false,
+  callAssistant,
+  onVoiceCallChange,
+  onPrepareDraftVoiceCall,
+  callAudioSettings,
+  voicePlayback,
+  voiceMessages,
   audioInputDeviceId = "default",
   sttConfigId,
   halfDuplexOutputActive = false,
@@ -135,6 +151,8 @@ export function ChatInput({
   const previousSegmentCountRef = useRef(0)
   const {
     cancelVoiceInput,
+    callGreeting,
+    callPhase,
     halfDuplexActive,
     halfDuplexPaused,
     halfDuplexWaiting,
@@ -146,12 +164,16 @@ export function ChatInput({
     voiceError,
     voiceLevel,
     voiceStatus,
+    voiceTranscript,
   } = useRealtimeVoiceInput({
     audioInputDeviceId,
+    callAudioSettings,
     disabled,
     halfDuplexOutputActive,
     input,
-    onSend: (text) => onSend(text, []),
+    onSend: (text, voice) => onSend(text, [], voice),
+    onCallStateChange: onVoiceCallChange,
+    prepareDraftCall: onPrepareDraftVoiceCall,
     onStart: closeMenus,
     overlay,
     setInput,
@@ -175,13 +197,26 @@ export function ChatInput({
   const outputSegments = dialogSegments?.length ? dialogSegments : fallbackOutputSegments
   const [outputIndex, setOutputIndex] = useState(0)
   const [overlayMode, setOverlayMode] = useState<"input" | "dialog">("input")
+  const [callMinimized, setCallMinimized] = useState(false)
   const hasDialog = overlay && (outputActive || outputSegments.length > 0)
   const isDialogMode = overlay && overlayMode === "dialog" && hasDialog
   const currentOutput = outputSegments[Math.min(outputIndex, Math.max(outputSegments.length - 1, 0))]
   const overlayFontRatio = Math.max(70, Math.min(140, overlayFontScale)) / 100
-  const voicePanelVisible = !overlay && (halfDuplexActive || voiceBusy)
+  const hasCallDetails = !overlay && voiceInputEnabled && (halfDuplexActive || voiceBusy || Boolean(voiceError))
+  const liveTranscript = voiceStatus === "recording" || voiceStatus === "transcribing" || halfDuplexWaiting ? voiceTranscript : ""
+  const captions = useMemo(() => voiceCallCaptions(voiceMessages ?? [], assistantName, callGreeting, liveTranscript, voicePlayback),
+    [voiceMessages, assistantName, callGreeting, liveTranscript, voicePlayback])
+  const phoneState: PhoneState = voiceError ? "failed" : callPhase === "dialing" ? "dialing" : hasCallDetails ? "connected" : "idle"
+  const dialUnavailable = !voiceInputEnabled ? "请在设置中开启语音输入" : disabled || halfDuplexOutputActive ? "请等当前回复结束"
+    : !sessionId && !onPrepareDraftVoiceCall ? "请先打开一个会话"
+    : sessionId && typeof sttConfigId !== "number" ? "当前角色尚未配置语音识别" : ""
+  const openVoicePanel = () => {
+    setCallMinimized(false)
+    if (!hasCallDetails) void toggleVoiceInput()
+  }
+  useWorkbenchPhone(phoneState, hasCallDetails ? "" : dialUnavailable, openVoicePanel)
   const canSend = Boolean(input.trim() || attachments.length > 0)
-    && !voiceBusy
+    && !voiceBusy && !halfDuplexActive
     && !(disabled && attachments.length > 0)
   const inputTokens = estimateTextTokens(input)
   const contextWindow = currentModel?.contextWindow ?? DEFAULT_CONTEXT_WINDOW
@@ -286,7 +321,7 @@ export function ChatInput({
 
   return (
     <div
-      data-meters={!overlay && !hideComposerFooter && !voicePanelVisible}
+      data-meters={!overlay && !hideComposerFooter}
       className={cn(
         "sticky bottom-0 z-10",
         overlay
@@ -295,6 +330,26 @@ export function ChatInput({
       )}
       style={overlay ? { height: standaloneOverlay ? "100%" : `${overlayHeight ?? (overlayCompact ? 20 : 40)}vh` } : undefined}
     >
+      {hasCallDetails && !callMinimized && (
+        <VoiceConversationPanel
+          assistantName={assistantName}
+          assistant={callAssistant}
+          callPhase={callPhase}
+          elapsedLabel={voiceElapsedLabel}
+          error={voiceError}
+          outputActive={halfDuplexOutputActive}
+          replyPlaying={Boolean(voicePlayback)}
+          captions={captions}
+          level={voiceLevel}
+          onHangUp={cancelVoiceInput}
+          onMinimize={() => setCallMinimized(true)}
+          onMute={pauseVoiceSession}
+          onUnmute={resumeVoiceSession}
+          muted={halfDuplexPaused}
+          status={voiceStatus}
+          waiting={halfDuplexWaiting}
+        />
+      )}
       <AttachmentTray attachments={attachments} onRemove={removeAttachment} overlay={overlay} />
 
       <div className={cn("relative", overlay && "h-full")}>
@@ -349,21 +404,6 @@ export function ChatInput({
             onAdvance={advanceOutput}
             onPreviewImage={onPreviewImage}
             standaloneOverlay={standaloneOverlay}
-          />
-        ) : voicePanelVisible ? (
-          <VoiceConversationPanel
-            assistantName={assistantName}
-            elapsedLabel={voiceElapsedLabel}
-            error={voiceError}
-            halfDuplexOutputActive={halfDuplexOutputActive}
-            input={input}
-            level={voiceLevel}
-            onCancel={cancelVoiceInput}
-            onPause={pauseVoiceSession}
-            onResume={resumeVoiceSession}
-            paused={halfDuplexPaused}
-            status={voiceStatus}
-            waiting={halfDuplexWaiting}
           />
         ) : (
           <textarea
@@ -457,18 +497,13 @@ export function ChatInput({
           onToggleModelMenu={toggleModelMenu}
           onToggleOverlayMode={toggleOverlayMode}
           onTogglePermissionMenu={togglePermissionMenu}
-          onToggleVoiceInput={() => void toggleVoiceInput()}
+          onToggleVoiceInput={openVoicePanel}
           outputActive={outputActive}
           outputIndex={outputIndex}
           overlay={overlay}
           permissionLabel={activePermission.label}
           permissionMenuOpen={permissionMenuOpen}
-          voiceBusy={voiceBusy}
-          voiceError={voiceError}
-          voiceInputEnabled={voiceInputEnabled}
-          voiceLevel={voiceLevel}
-          voicePanelVisible={voicePanelVisible}
-          voiceStatus={voiceStatus}
+          voiceInputEnabled={!hasCallDetails && !dialUnavailable}
         />
         <AnimatePresence>
           {permissionError && !permissionMenuOpen && (

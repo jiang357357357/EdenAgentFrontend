@@ -48,15 +48,15 @@ test('desktop permission explains cross-window task scope and keeps host identif
 test('question cards preserve empty-answer submission gating, option selection controls, and custom-answer policy', () => {
   for (const tone of ['default', 'overlay']) {
     const html = render(QuestionRequestCard, { request: question, onReply: unexpectedReply, onReject: unexpectedReply, tone })
-    assert.equal((html.match(/aria-pressed="false"/g) ?? []).length, 2)
+    assert.equal((html.match(/aria-checked="false"/g) ?? []).length, 2)
     assert.doesNotMatch(html, /<input\b/)
-    const submit = buttons(html).find(button => button[2].includes('提交回答'))
+    const submit = buttons(html).find(button => /type="submit"/.test(button[1]))
     const reject = buttons(html).find(button => button[2].includes('暂不处理'))
     assert.ok(submit && /\bdisabled=""/.test(submit[1]))
     assert.ok(reject && !/\bdisabled=""/.test(reject[1]))
     const custom = render(QuestionRequestCard, { request: { ...question, questions: [{ ...question.questions[0], custom: true }] },
       onReply: unexpectedReply, onReject: unexpectedReply, tone })
-    assert.match(custom, /<input\b[^>]*placeholder="自定义回答"/)
+    assert.match(custom, /<textarea\b/)
     assert.match(custom, /maxLength="4000"/)
   }
 })
@@ -65,14 +65,31 @@ test('the question overlay remains a focusable labelled modal form with explicit
   const html = render(QuestionDecisionOverlay, { request: question, onReply: unexpectedReply, onReject: unexpectedReply })
   assert.match(html, /role="dialog"/)
   assert.match(html, /aria-modal="true"/)
-  assert.match(html, /aria-labelledby="question-title-question-1"/)
+  const dialogLabel = /role="dialog"[^>]*aria-labelledby="([^"]+)"/.exec(html)?.[1]
+  assert.ok(dialogLabel && html.includes(`id="${dialogLabel}"`))
   assert.match(html, /tabindex="-1"/)
-  assert.match(html, /<legend[^>]*id="question-title-question-1"/)
+  assert.match(html, /问题确认，共 1 个问题/)
   assert.match(html, /<form\b/)
-  assert.equal((html.match(/type="checkbox"/g) ?? []).length, 2)
+  assert.equal((html.match(/role="radio"/g) ?? []).length, 2)
   assert.doesNotMatch(html, /<textarea\b/)
-  assert.ok(buttons(html).some(button => /type="submit"/.test(button[1]) && button[2].includes('确认选择')))
+  assert.ok(buttons(html).some(button => /type="submit"/.test(button[1]) && button[2].includes('还需回答 1 个问题') && /disabled/.test(button[1])))
   assert.ok(buttons(html).some(button => /type="button"/.test(button[1]) && button[2].includes('暂不处理')))
+})
+
+test('one, two and three questions expose the actual total, unique question navigation and independent section labels', () => {
+  for (const count of [1, 2, 3]) {
+    const request = { ...question, questions: Array.from({ length: count }, (_, index) => ({ ...question.questions[0], header: `分类 ${index}`, question: `第 ${index + 1} 个独立问题？`, multiple: index === 2 })) }
+    for (const component of [QuestionRequestCard, QuestionDecisionOverlay]) {
+      const html = render(component, { request, onReply: unexpectedReply, onReject: unexpectedReply })
+      assert.match(html, new RegExp(`aria-label="本次共 ${count} 个问题"`))
+      assert.equal((html.match(/data-question-index=/g) ?? []).length, count)
+      assert.equal((html.match(/aria-controls=/g) ?? []).length, count)
+      assert.match(html, new RegExp(`aria-valuenow="0" aria-valuemin="0" aria-valuemax="${count}"`))
+      for (let index = 1; index <= count; index++) assert.ok(html.includes(`第 ${index} 题 / 共 ${count} 题`))
+      if (count === 3) assert.equal((html.match(/role="checkbox"/g) ?? []).length, 2)
+      assert.doesNotMatch(html, /已回答|工具调用:/, 'a draft is never presented as a committed answer')
+    }
+  }
 })
 
 test('tool cards remain collapsed controls and retain distinct running, success, failed, and aborted labels', () => {

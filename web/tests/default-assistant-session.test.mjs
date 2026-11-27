@@ -13,7 +13,7 @@ test("new conversations bind the authenticated Core current assistant", () => {
   assert.match(appSource, /defaultParticipantID:\s*currentAssistant\?\.id/)
   assert.match(runtimeSource, /defaultParticipantID\?: number \| string/)
   assert.match(runtimeSource, /setDraftParticipantIDs\(\(current\) => current\.length \? current : \[defaultParticipantID\]\)/)
-  assert.match(runtimeSource, /createSessionRaw\(draftParticipantIDs/)
+  assert.match(runtimeSource, /const participantIDs = draftParticipantIDs\.length \? draftParticipantIDs : defaultParticipantID == null \? \[\] : \[defaultParticipantID\];\s*const request = createSessionRaw\(participantIDs\)/)
 })
 
 test("participant profiles are resolved before the durable session is created", () => {

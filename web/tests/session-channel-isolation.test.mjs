@@ -88,3 +88,20 @@ test('account change closes every session socket and ignores queued old events',
   assert.ok(old.every(socket => socket.readyState === 3))
   assert.deepEqual(received, [])
 })
+
+test('the desktop cursor accepts a compacted range and resumes from the next durable event', async () => {
+  const received = []
+  disposers.push(await transport.subscribeRpcEvents(value => received.push(value)))
+  await transport.rpcRequest('event.list', { sessionId: a, afterSeq: '0', limit: 1 })
+  const socket = channel(a)
+  assert.ok(socket.requests[0].params.capabilities.includes('session-stream-compaction'))
+  event(socket, a, 1)
+  socket.receive({ method: 'session.event', params: { id: '00000000-0000-4000-8000-000000000007', sessionId: a,
+    turnId: null, seq: '7', eventType: 'stream.compacted', payload: { firstSeq: '2' }, createdAt: 2 } })
+  event(socket, a, 8)
+  assert.deepEqual(received.map(value => value.seq), ['1', '8'])
+  assert.equal(socket.readyState, 1)
+  socket.close(1013, 'fixture disconnect')
+  await until(() => channel(a) !== socket && channel(a)?.requests.length)
+  assert.equal(channel(a).requests[0].params.afterSeq, '8')
+})

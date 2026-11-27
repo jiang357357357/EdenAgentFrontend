@@ -3,8 +3,12 @@ import { getStoredRuntimeOrigin } from '../../lib/runtime-origin'
 import type { ChatPageProps } from './chat-page-props'
 import { ChatConversationToolbar } from './ChatConversationToolbar'
 import { useWorkbenchToolbarSlot } from '../../components/workbench/workbench-toolbar-slot'
+import { WorkbenchPhoneSlot } from '../../components/workbench/workbench-phone'
 import { RuntimeNotices } from "../../components/chat/RuntimeNotices"
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { QuestionToolProvider } from '../../components/requests/QuestionToolContext'
+import { ToolQuestionRequests } from '../../components/requests/ToolQuestionRequests'
+import { unplacedQuestions } from '../../lib/question-tool-state'
+import { Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ChatInput } from "../../components/chat/input"
 import { DirectorPlanCard, MessageBubble, RunReviewCard } from "../../components/chat/message"
 import { resolveCoreAssetUrl, type ActiveCharacterAction, type AuthUser, type CoreAssistant } from "../../lib/auth"
@@ -15,6 +19,7 @@ import {
   type PetSettings,
 } from "../../lib/desktop-window"
 import { useTTSSpeech, type SpeechSegment } from "../../hooks/useTTSSpeech"
+import type { DesktopVoiceCallState } from "../../lib/agent-voice-call"
 import { usePerformanceDiagnostics } from "../../hooks/usePerformanceDiagnostics"
 import { startCompanionDirectorRun } from "../../lib/companion-director-state"
 import { createContextTokenEstimator } from "../../lib/token-usage"
@@ -24,6 +29,7 @@ import { buildRunReviewIndex } from "../../lib/run-review"
 import { cn } from "../../lib/utils"
 import type {
   PendingPermission,
+  PendingQuestion,
   MessageData,
   PermissionMode,
   PromptAttachment,
@@ -33,6 +39,7 @@ import type {
 
 const EMPTY_THREADS: NonNullable<Session["agentThreads"]> = []
 const EMPTY_BATCHES: NonNullable<Session["coordinationBatches"]> = []
+const EMPTY_QUESTIONS: PendingQuestion[] = []
 const IGNORE_HISTORY_BROWSING = () => {}
 
 export function ChatConversation({
@@ -49,6 +56,10 @@ export function ChatConversation({
   onRetryConnectionSync,
   runtimeError,
   activePendingPermissions,
+  activePendingQuestions = EMPTY_QUESTIONS,
+  onQuestionReply,
+  onQuestionReject,
+  onOpenQuestionWindow,
   messagesScrollRef,
   messagesEndRef,
   autoScrollReady = true,
@@ -76,6 +87,7 @@ export function ChatConversation({
   onArchiveSession,
   onPinSession,
   onNewSession,
+  onPrepareDraftVoiceCall,
   onSendMessage,
   onCompact,
   onAbort,
@@ -88,7 +100,6 @@ export function ChatConversation({
   onPreviewImage,
   onLogout,
   onOpenAssistantSwitcher,
-  onOpenDutyAssistantSwitcher,
   onOpenSessionAssistantSwitcher,
   onOpenSettings,
   onOpenPlugins,
@@ -118,6 +129,11 @@ export function ChatConversation({
       ),
   )
   const [petSettings, setPetSettings] = useState<PetSettings>(DEFAULT_PET_SETTINGS)
+  const [voiceCall, setVoiceCall] = useState<DesktopVoiceCallState | null>(null)
+  const [callGreetingIds, setCallGreetingIds] = useState<ReadonlySet<string>>(() => new Set())
+  const ownsPhoneSlot = Boolean(useContext(WorkbenchPhoneSlot))
+  const voiceCallActive = voiceCall?.sessionId === activeSessionId && voiceCall?.phase === 'connected'
+  const voiceCallOpening = voiceCall !== null && voiceCall.phase !== 'connected'
   const assistantName = assistant?.name || assistant?.character?.name || "助手"
   const assistantInitial = assistantName.trim().slice(0, 1) || "助"
   const assistantAvatarUrl = resolveCoreAssetUrl(assistant?.character?.avatar_url)
@@ -217,14 +233,17 @@ export function ChatConversation({
     [lastUserMessageIndex, messages],
   )
   const activeSpeechSegments = useMemo(
-    () => activeSpeechMessages.flatMap(messageSpeechSegments),
-    [activeSpeechMessages, messageSpeechSegments],
+    () => activeSpeechMessages.filter(message => !callGreetingIds.has(message.id)).flatMap(messageSpeechSegments),
+    [activeSpeechMessages, callGreetingIds, messageSpeechSegments],
   )
+  const speechMode = voiceCallOpening ? 'none'
+    : voiceCallActive && (focused || ownsPhoneSlot) ? 'text_only'
+    : focused ? petSettings.ttsMode : 'none'
   const speech = useTTSSpeech({
     audioOutputDeviceId: petSettings.audioOutputDeviceId,
     sessionId: activeSessionId,
-    mode: focused ? petSettings.ttsMode : 'none',
-    isThinking,
+    mode: speechMode,
+    isThinking: !voiceCallOpening && isThinking,
     segments: speechSegments,
     activeSegments: activeSpeechSegments,
     messageRevisions: activeSpeechMessages.map((message) => ({
@@ -235,6 +254,14 @@ export function ChatConversation({
     speechRate: petSettings.speechRate,
     speechVolume: petSettings.speechVolume,
   })
+  const callPlayback = voiceCallActive && !speech.paused && speech.activeSegmentId
+    ? speechSegments.find(segment => segment.id === speech.activeSegmentId) : undefined
+  const handleVoiceCallChange = (call: DesktopVoiceCallState | null) => {
+    if (!call) speech.stop(true, false, 'voice-call-ended')
+    if (call?.phase === 'dialing') speech.stop(true, false, 'voice-call-dialing')
+    if (call?.phase === 'opening') setCallGreetingIds(ids => new Set(ids).add(call.greetingMessageId))
+    setVoiceCall(call)
+  }
   const latestStreamingAssistantIndex = messages.reduce(
     (latestIndex, message, index) => (message.role === "assistant" && message.isStreaming ? index : latestIndex),
     -1,
@@ -266,7 +293,10 @@ export function ChatConversation({
     }
   }, [])
 
+  const unplaced = useMemo(() => unplacedQuestions(activePendingQuestions, activeSessionId, renderedMessages), [activePendingQuestions, activeSessionId, renderedMessages])
   return (
+    <QuestionToolProvider sessionID={activeSessionId} requests={activePendingQuestions} onQuestionReply={onQuestionReply}
+      onQuestionReject={onQuestionReject} onOpenQuestionWindow={onOpenQuestionWindow}>
       <main
         aria-label="聊天工作区"
         className={`chat-main relative grid h-full min-h-0 min-w-0 flex-1 ${toolbarTarget ? 'grid-rows-[auto_minmax(0,1fr)_auto]' : 'grid-rows-[auto_auto_minmax(0,1fr)_auto]'} overflow-hidden`}
@@ -445,9 +475,13 @@ export function ChatConversation({
                         向下滚动查看较新消息
                       </div>
                     ) : null}
-                    <div ref={messagesEndRef} className="h-[7vh]" />
                   </div>
                 )}
+                {unplaced.length > 0 && <div className="mx-[4cqw] my-4 overflow-hidden rounded-xl border border-border bg-card">
+                  <p className="px-4 pt-3 text-sm text-text-muted">待回答的问题 · 对应工具消息尚未显示</p>
+                  <ToolQuestionRequests requests={unplaced} onQuestionReply={onQuestionReply} onQuestionReject={onQuestionReject} onOpenQuestionWindow={onOpenQuestionWindow} />
+                </div>}
+                <div ref={messagesEndRef} className="h-[7vh]" />
               </div>
             </div>
 
@@ -464,9 +498,15 @@ export function ChatConversation({
                   disabled={taskRunning}
                   allowFollowUp={taskRunning}
                   assistantName={assistantName}
+                  callAssistant={assistant}
                   permissionMode={permissionMode}
                   onPermissionModeChange={onPermissionModeChange}
-                  voiceInputEnabled={focused && petSettings.voiceInputEnabled}
+                  voiceInputEnabled={(focused || ownsPhoneSlot) && petSettings.voiceInputEnabled}
+                  onVoiceCallChange={handleVoiceCallChange}
+                  onPrepareDraftVoiceCall={onPrepareDraftVoiceCall}
+                  callAudioSettings={petSettings}
+                  voicePlayback={callPlayback}
+                  voiceMessages={messages}
                   audioInputDeviceId={petSettings.audioInputDeviceId}
                   sttConfigId={
                     participantCount === 1
@@ -486,5 +526,6 @@ export function ChatConversation({
           </>
         )}
       </main>
+    </QuestionToolProvider>
   )
 }

@@ -16,6 +16,10 @@ export function useSharedHostForm(owner: SharedWorkspaceStateOwner) {
     return () => { generation.current++ }
   }, [owner])
   const current = (epoch: number) => mounted.current && owner.isCurrent() && epoch === generation.current
+  const selectAuthType = (value: 'password' | 'key') => {
+    if (pending || owner.state.deployment?.state === 'running' || value === authType) return
+    setAuthType(value); setPassword(''); setPrivateKey(''); setPassphrase(''); setError('')
+  }
   const setField = (key: keyof typeof fields, value: string) => {
     if (key === 'host' || key === 'port' || key === 'username') {
       generation.current++; setFingerprint(''); setTrusted(false)
@@ -32,7 +36,10 @@ export function useSharedHostForm(owner: SharedWorkspaceStateOwner) {
     finally { if (current(epoch)) setPending(false) }
   }
   const deploy = async () => {
-    if (!fingerprint || !trusted || pending) return
+    if (!owner.isCurrent() || !fingerprint || !trusted || pending || owner.state.deployment?.state === 'running') return
+    if (!(authType === 'password' ? password.trim() : privateKey.trim())) {
+      setError(authType === 'password' ? '请输入 SSH 密码' : '请输入 SSH 私钥内容'); return
+    }
     const epoch = generation.current
     setPending(true); setError('')
     const request = owner.deployHost({ ...fields, host: fields.host.trim(), username: fields.username.trim(),
@@ -52,6 +59,6 @@ export function useSharedHostForm(owner: SharedWorkspaceStateOwner) {
     try { await owner.cancelDeployment(id) }
     catch (reason) { if (mounted.current && owner.isCurrent()) setError(reason instanceof Error ? reason.message : '取消部署失败') }
   }
-  return { fields, setField, authType, setAuthType, password, setPassword, privateKey, setPrivateKey, passphrase, setPassphrase,
+  return { fields, setField, authType, selectAuthType, password, setPassword, privateKey, setPrivateKey, passphrase, setPassphrase,
     fingerprint, trusted, setTrusted, installService, setInstallService, pending, error, probe, deploy, cancel }
 }

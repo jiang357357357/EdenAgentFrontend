@@ -30,7 +30,7 @@ test("assistant switcher loads first, then removes the current preview before en
   assert.match(pageSource, /setDisplayedVisualKey\(transitionTargetKey\)[\s\S]*?setVisualTransitionPhase\("entering"\)/)
   assert.match(pageSource, /const isLeaving = isDisplayed && visualTransitionPhase === "leaving"/)
   assert.match(pageSource, /onReady=\{\(\) => handleVisualReady\(preview\.key\)\}/)
-  assert.match(pageSource, /\(selectedIsCurrent && !appearanceDirty\) \|\| !selectedVisualReady/)
+  assert.match(pageSource, /!onParticipantsChanged \|\| selectedIsCurrent \|\| !selectedVisualReady/)
   assert.match(pageSource, /strictSpineSelection/)
   assert.match(pageSource, /正在准备…/)
 })

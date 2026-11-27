@@ -232,6 +232,39 @@ test("a late deployment status cannot publish completion into another account or
   assert.equal(f.owner.state.deployment, null)
 })
 
+test("registered deployments remain selectable after connection verification fails without reusing invitations", async () => {
+  const cloud = { deviceId: 'cloud', name: '云主机', addresses: ['http://203.0.113.10:40195'], local: false,
+    dedicated: true, reachable: false, canManage: true, canPublish: true, error: '端口不可达' }
+  const job = { id: 'registered-job', state: 'failed', deviceId: 'cloud', phase: 'pairing' }
+  const f = fixture({ posture: async () => ({ mode: 'cloud', revision: '1' }), hosts: async () => [cloud],
+    spaces: async () => [], deploymentStatus: async () => job })
+  await f.owner.refresh()
+  await f.owner.pollDeployment()
+  assert.equal(f.owner.state.managementHostId, 'cloud')
+  assert.equal(f.owner.state.deployment, job)
+  assert.equal(f.owner.state.hosts[0].reachable, false)
+  assert.equal(f.owner.state.invitation, null)
+  assert.deepEqual(f.calls.filter(call => ['invite', 'pair'].includes(call[0])), [])
+})
+
+test('cloud connection notices reflect the confirmed server role and preserve offline pairings', async () => {
+  for (const outcome of [
+    { reachable: true, canManage: true, notice: '本机已确认具有管理员权限' },
+    { reachable: true, canManage: false, notice: '本机为普通成员' },
+    { reachable: false, canManage: false, notice: '主机配对已保存，但连接尚未确认' },
+  ]) {
+    const cloud = { deviceId: 'cloud', name: '云主机', addresses: [], local: false, dedicated: true,
+      canPublish: true, error: null, reachable: outcome.reachable, canManage: outcome.canManage }
+    const f = fixture({ posture: async () => ({ mode: 'cloud', revision: '1' }), spaces: async () => [],
+      hosts: async () => [cloud], connectHost: async () => ({ paired: true, deviceId: 'cloud' }) })
+    await f.owner.refresh()
+    await f.owner.connectHost(' invitation ', ' host ')
+    assert.equal(f.owner.state.managementHostId, 'cloud')
+    assert.ok(f.owner.state.notice.includes(outcome.notice))
+    assert.equal(f.owner.state.hosts[0].reachable, outcome.reachable)
+  }
+})
+
 test("without publisher DLC the receiver can pair and bind a granted library but cannot create one", async () => {
   const f = fixture({}, ready({ canPublish: false, publishReason: "DLC 未安装" }))
   await f.owner.refresh(true)

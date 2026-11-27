@@ -147,8 +147,8 @@ export async function runHistorySidebarTests() {
   const noop = () => {}
   const props = { sessions, activeId: "session-0", activity: "sessions" as const,
     onSelect: (id: string) => { selected = id }, onDelete: (id: string) => { deleted = id },
-    onRename: async (id: string) => { renamed = id }, onArchive: async () => {}, onPin: async () => {}, onNewSession: noop, onOpenParticipants: noop,
-    onOpenDutyAssistant: noop, onOpenSelfAwake: noop, onOpenAllSessions: noop, onOpenMemo: noop,
+    onRename: async (id: string) => { renamed = id }, onArchive: async () => {}, onPin: async () => {}, onNewSession: noop, onOpenRoles: noop,
+    onOpenSelfAwake: noop, onOpenAllSessions: noop, onOpenMemo: noop,
     onOpenSkills: noop, onOpenConnectors: noop, onOpenConfiguration: noop, onOpenSettings: noop,
     onOpenFile: noop, onWorkspaceChanged: noop, onOpenSharedWorkspace: noop, onActivityChange: noop }
   render(<Sidebar {...props} />)

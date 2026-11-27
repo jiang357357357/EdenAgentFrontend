@@ -17,7 +17,7 @@ test('original Spine entrance effects, ordered stages, login and return run in a
   const scratch = await mkdtemp(path.join(tmpdir(), 'eden-startup-scene-'))
   const evidence = path.resolve(process.env.EDEN_STARTUP_EVIDENCE_DIR ?? path.join(scratch, 'evidence'))
   await mkdir(evidence, { recursive: true })
-  let application, page, loginCalls = 0, coreLoginCalls = 0
+  let application, page, loginCalls = 0, coreLoginCalls = 0, serveOpening = false
   const assetRequests = [], traces = [], captures = []
   const runtimeLogs = []
   const cssName = (await readdir(path.join(web, 'dist/assets'))).find(name => name.endsWith('.css'))
@@ -25,6 +25,11 @@ test('original Spine entrance effects, ordered stages, login and return run in a
   const http = createServer(async (request, response) => {
     try {
       const pathname = new URL(request.url, 'http://fixture').pathname
+      if (pathname === '/startup-opening/eden-opening.html') {
+        if (!serveOpening) { response.writeHead(404).end(); return }
+        response.setHeader('content-type', 'text/html; charset=utf-8')
+        response.end(await readFile(path.join(web, 'public/startup-opening/eden-opening.html'))); return
+      }
       if (pathname === '/core-api/api/users/login/') {
         let body = ''; for await (const chunk of request) body += chunk
         const value = JSON.parse(body); coreLoginCalls++
@@ -356,11 +361,17 @@ test('original Spine entrance effects, ordered stages, login and return run in a
     await page.getByText('请在 Eden Agent 主窗口选择运行方式，此窗口会自动同步状态。').waitFor()
     assert.equal(await page.locator('[data-startup-phase]').count(), 0)
     checks.push('actual-app-auxiliary-window-bypasses-entrance')
+    serveOpening = true
     await page.goto(origin + '/?fullApp=1')
-    await phase('room').waitFor(); await page.getByRole('button', { name: /呼唤.*打开登录/ }).waitFor()
-    checks.push('actual-app-main-window-starts-in-character-scene')
-    await mode.selectOption('local')
+    await page.getByRole('heading', { name: '你来自哪里？' }).waitFor()
+    const opening = page.locator('[data-startup-opening-overlay]')
+    assert.equal(await opening.count(), 0)
+    await page.locator('button[data-origin="local"]').click()
+    await opening.frameLocator('iframe').locator('#halo-stage[style*="scale("]').waitFor()
     assert.equal(await page.evaluate(() => localStorage.getItem('agent.runtime_origin')), 'local')
+    await opening.waitFor({ state: 'detached' })
+    await phase('room').waitFor(); await page.getByRole('button', { name: /呼唤.*打开登录/ }).waitFor()
+    checks.push('actual-app-plays-opening-after-origin-choice-and-before-character-scene')
     assert.equal(await page.getByRole('dialog').count(), 0)
     await mode.selectOption('mon')
     assert.equal(await page.evaluate(() => localStorage.getItem('agent.runtime_origin')), 'mon')

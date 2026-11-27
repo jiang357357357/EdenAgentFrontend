@@ -109,3 +109,20 @@ test('a pending snapshot from a reset world cannot repopulate questions or error
     assert.equal(host.value.questionSyncError, undefined)
   } finally { host.dispose() }
 })
+
+test('an independent chat editor hydrates its own durable decisions and excludes foreign session requests', async () => {
+  const f = fixture(), { host } = f, queries = [], calls = []
+  host.options = { initialSessionID: 'A', sessionOnly: true, manageGlobalRequests: false, autoSelectFirst: false }
+  const own = { ...question, toolCallID: 'call-A', turnID: 'turn-A' }
+  f.rpc.listQuestionsRaw = async sessionID => { queries.push(sessionID); return [own, { ...question, id: 'foreign', sessionID: 'B' }] }
+  f.rpc.replyQuestion = async (...args) => { calls.push(args) }
+  try {
+    await host.settle(); await f.open()
+    assert.ok(queries.length > 0 && queries.every(id => id === 'A'), 'each editor queries only its pinned session')
+    assert.deepEqual(host.value.pendingQuestions, [own])
+    assert.deepEqual(host.value.allPendingQuestions, [own])
+    await host.value.answerQuestion(own.id, [['继续']]); await host.settle()
+    assert.equal(host.value.pendingQuestions.length, 0)
+    assert.deepEqual(calls, [[own.id, [['继续']], undefined]])
+  } finally { host.dispose() }
+})

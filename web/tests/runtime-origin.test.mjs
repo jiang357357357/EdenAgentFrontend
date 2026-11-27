@@ -25,6 +25,8 @@ test("main windows choose an origin before Core authentication", () => {
   assert.match(appSource, /useSessionRuntime\(runtimeReady,/)
   assert.match(renderSource, /if \(runtimeOrigin === null\)/)
   assert.match(renderSource, /<OriginSelectionPage key="runtime-origin" onSelect=\{handleRuntimeOriginSelect\}/)
+  assert.ok(renderSource.indexOf('<OriginSelectionPage') < renderSource.indexOf('<StartupEntrance'))
+  assert.match(appSource, /const handleRuntimeOriginSelect = \(origin: RuntimeOrigin\) => \{\s*if \(runtimeOrigin === null\) setEntranceFinished\(false\)/)
   assert.ok(renderSource.indexOf("if (runtimeOrigin === null)") < renderSource.indexOf('if (authStatus === "checking")'))
   assert.ok(renderSource.indexOf('if (authStatus === "checking")') < renderSource.indexOf('if (authStatus !== "authenticated")'))
 })
@@ -34,6 +36,7 @@ test("origin choice presents the two explicit runtime destinations", () => {
   assert.match(pageSource, /name: "伊甸园"[\s\S]*?action: "连接 Mon"/)
   assert.match(pageSource, /name: "尘世"[\s\S]*?action: "本地部署"/)
   assert.match(pageSource, /aria-pressed=\{isSelected\}/)
+  assert.match(pageSource, /onClick=\{\(\) => onSelect\(choice\.origin\)\}/)
   assert.match(pageSource, /event\.key === "Enter" && selected/)
 })
 

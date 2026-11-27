@@ -36,7 +36,9 @@ export function SharedWorkspaceNetwork({ owner, busy, mode = 'lan', showConnect 
         </select></label>
         : <p className="text-sm text-text-muted">{lan ? '尚未发现可管理的局域网主机。' : '尚未连接云主机。'}</p>}
       {host && !host.local ? <div className="space-y-1 text-xs text-text-muted">{host.addresses.map(value => <p className="break-all font-mono" key={value}>{value}</p>)}
-        {!host.canManage ? <p>当前子机没有此主机的管理权限，请联系其管理员创建邀请和授权。</p> : null}
+        {!host.reachable ? <p>已保存此主机连接，当前无法确认在线状态与管理权限。请检查地址和端口后刷新。</p>
+          : host.canManage ? <p>本机已确认具有此主机的管理员权限。</p>
+            : <p>本机为普通成员，资料库访问权限由此主机的管理员授予。</p>}
         {host.error ? <p className="text-warning">{host.error}</p> : null}</div> : null}
       {network.peers.filter(peer => peer.paired && peer.error && hosts.some(value => value.deviceId === peer.deviceId)).map(peer => <p key={peer.deviceId} role="status" className="break-words text-xs text-warning">{peer.name}：{peer.error}</p>)}
       {host ? <div className="space-y-3">

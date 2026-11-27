@@ -19,7 +19,12 @@ const vite = await createServer({ configFile: false, optimizeDeps: { noDiscovery
       if (/\/hooks\/useSession(?:Runtime|ConnectionFeedback)\.ts$/.test(id.replaceAll('\\', '/'))) return source.replace("from 'react'", "from 'virtual:recovery-hooks'")
     },
     resolveId(source, importer) {
-      if (!/\/hooks\/useSession(?:Runtime|ConnectionFeedback)\.ts$/.test(importer?.replaceAll('\\', '/') ?? '')) return
+      const file = importer?.replaceAll('\\', '/') ?? ''
+      if (file.endsWith('/lib/session-snapshot-requests.ts')) {
+        if (source === './auth') return '\0recovery:auth'
+        if (source === './runtime-origin') return '\0recovery:origin'
+      }
+      if (!/\/hooks\/useSession(?:Runtime|ConnectionFeedback)\.ts$/.test(file)) return
       // History maintenance is covered by its own renderer acceptance; this fixture controls recovery only.
       if (source === './useSessionHistoryMaintenance') return '\0recovery:history'
       const names = { 'virtual:recovery-hooks': 'hooks', '../lib/agent-client': 'rpc', '../lib/runtime-origin': 'origin',
@@ -27,12 +32,13 @@ const vite = await createServer({ configFile: false, optimizeDeps: { noDiscovery
       if (names[source]) return `\0recovery:${names[source]}`
     },
     load(id) {
+      if (id === '\0recovery:auth') return 'export const getStoredToken=()=>"fixture-account";'
       if (id === '\0recovery:history') return 'export const useSessionHistoryMaintenance=()=>{};'
       const call = (name, group) => `export const ${name}=(...args)=>globalThis.${key}.${group}.${name}(...args);`
       if (id === '\0recovery:hooks') return hooks.map(name => call(name, 'host')).join('\n')
       if (id === '\0recovery:transport') return `export const subscribeSessionChannelStatus=fn=>{globalThis.${key}.channelListeners.push(fn);return ()=>{} }; export const retainSessionChannels=()=>{}; export const forgetSessionChannel=()=>{}; export const pinSessionChannel=id=>{const pins=globalThis.${key}.pins,owner=Symbol();if(id)pins.set(owner,id);return ()=>pins.delete(owner)};`
       if (id === '\0recovery:rpc') return rpcNames.map(name => call(name, 'rpc')).join('\n')
-      if (id === '\0recovery:origin') return `export const getRuntimeOriginRevision=()=>globalThis.${key}.origin; export const getStoredRuntimeOrigin=()=>globalThis.${key}.realm;`
+      if (id === '\0recovery:origin') return `export const RUNTIME_ORIGIN_STORAGE_KEY='fixture-origin'; export const getRuntimeOriginRevision=()=>globalThis.${key}.origin; export const getStoredRuntimeOrigin=()=>globalThis.${key}.realm;`
       if (id === '\0recovery:screen') return call('handleScreenCaptureRequest', 'rpc')
       if (id === '\0recovery:camera') return call('handleCameraCaptureRequest', 'rpc')
     },
@@ -194,7 +200,7 @@ test('recovery refreshes models, surfaces auth failure, and keeps business error
     f.rpc.getRuntimeModelConfig = async id => { f.modelCalls.push(id); throw new Error('Mon authentication rejected: 401') }
     await f.reconnect()
     assert.ok(f.modelCalls.length > before, 'reconnect must request the active model configuration')
-    assert.equal(host.value.connectionFeedback.phase, 'sync-error')
+    assert.equal(host.value.connectionFeedback.phase, 'restored', 'history restores independently of model authentication')
     assert.match(host.value.runtimeError, /authentication rejected/)
     f.rpc.getRuntimeModelConfig = async () => ({})
     host.value.retryConnectionSync(); await host.settle()

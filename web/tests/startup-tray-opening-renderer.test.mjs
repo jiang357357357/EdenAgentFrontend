@@ -24,6 +24,10 @@ test('native tray reopening replays the opening over retained room and login sta
   const http = createServer(async (request, response) => {
     try {
       const pathname = new URL(request.url, 'http://fixture').pathname
+      if (pathname === '/startup-opening/eden-opening.html') {
+        response.setHeader('content-type', 'text/html; charset=utf-8')
+        response.end(await readFile(path.join(web, 'public', '.' + pathname))); return
+      }
       if (pathname === '/fixture/login') { loginCalls++; response.writeHead(401).end('{}'); return }
       if (pathname.startsWith('/startup-scene/')) {
         requests.push(pathname)
@@ -95,13 +99,13 @@ app.whenReady().then(()=>{
     const skip = () => page.getByRole('button', { name: '跳过开场动画' }).click()
     await page.emulateMedia({ reducedMotion: 'no-preference' }); await page.goto(origin)
     await active(false)
-    const initial = await page.locator('.startup-opening-emblem').evaluate(element => getComputedStyle(element).transform)
     // Loading may finish while native-hidden; GPU warm-up must wait without
     // falling through the 12-second asset-loading timeout.
     await page.waitForTimeout(13000)
-    assert.equal(await page.locator('.startup-opening-emblem').evaluate(element => getComputedStyle(element).transform), initial)
+    assert.equal(await overlay.locator('iframe').count(), 0)
     assert.equal(await overlay.getAttribute('data-opening-phase'), 'playing')
-    await show(); await page.waitForTimeout(1450); await capture('initial-tray-opening')
+    await show(); await overlay.frameLocator('iframe').locator('#halo-stage[style*="scale("]').waitFor()
+    await capture('initial-tray-opening')
     assert.equal(await overlay.count(), 1); await actor.waitFor()
     await application.evaluate(() => globalThis.primary.webContents.setBackgroundThrottling(false))
     checks.push('hidden-startup-pauses-until-real-tray-show-and-then-plays-the-opening')

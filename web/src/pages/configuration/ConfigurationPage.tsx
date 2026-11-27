@@ -65,8 +65,7 @@ type CharacterSaveState = "idle" | "pending" | "saving" | "saved" | "invalid" | 
 interface ConfigurationPageProps {
   onBack: () => void
   onChangeOrigin: () => void
-  onOpenParticipants: () => void
-  onOpenDutyAssistant: () => void
+  onOpenRoles: () => void
   onOpenSelfAwake: () => void
   onOpenAllSessions: () => void
   onOpenMemo: () => void
@@ -237,8 +236,7 @@ function NumberField({ label, value, min, max, step = 1, onChange }: { label: st
 export function ConfigurationPage({
   onBack,
   onChangeOrigin,
-  onOpenParticipants,
-  onOpenDutyAssistant,
+  onOpenRoles,
   onOpenSelfAwake,
   onOpenAllSessions,
   onOpenMemo,
@@ -781,8 +779,7 @@ export function ConfigurationPage({
         active="configuration"
         onOpenFiles={onBack}
         onOpenSessions={onBack}
-        onOpenParticipants={onOpenParticipants}
-        onOpenDutyAssistant={onOpenDutyAssistant}
+        onOpenRoles={onOpenRoles}
         onOpenSelfAwake={onOpenSelfAwake}
         onOpenAllSessions={onOpenAllSessions}
         onOpenMemo={onOpenMemo}

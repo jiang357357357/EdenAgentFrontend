@@ -10,7 +10,6 @@ import { AnimatePresence, motion } from "motion/react"
 import { QuestionDecisionOverlay } from "./components/requests"
 import { setDesktopQuestionWindowVisible } from "./lib/desktop-window"
 import { reportPerformanceDiagnostic } from "./lib/desktop-window"
-import { QuestionFallback } from "./components/requests/QuestionFallback"
 import { QuestionWindowStatus } from "./components/requests/QuestionWindowStatus"
 import { useQuestionWindowVisibility } from "./hooks/useQuestionWindowVisibility"
 import { PetSurfaceErrorBoundary } from "./components/desktop-pet"
@@ -18,6 +17,7 @@ import { ChatPage } from "./pages/chat"
 import { AllSessionsPage } from "./pages/all-sessions"
 import { CharacterPage } from "./pages/character"
 import { AssistantSwitcherPage } from "./pages/assistant-switcher"
+import type { ChatParticipantSelection } from "./components/workbench/application-pages"
 import { LoginPage } from "./pages/login"
 import { StartupEntrance } from "./pages/startup/StartupEntrance"
 import { OriginSelectionPage } from "./pages/origin"
@@ -200,9 +200,7 @@ export default function App() {
   const [sharedWorkspaceScope, setSharedWorkspaceScope] = useState<SharedWorkspaceScope | null>(null)
   const [sharedWorkspaceRevision, setSharedWorkspaceRevision] = useState(0)
   const [sidebarActivity, setSidebarActivity] = useState<"sessions" | "files">("sessions")
-  const [assistantSwitcherMode, setAssistantSwitcherMode] = useState<"default" | "session" | "participants">(
-    initialPage === "settings" ? "default" : "participants",
-  )
+  const [assistantSwitcherMode, setAssistantSwitcherMode] = useState<"duty" | "session">("duty")
   const [modeContentVisible, setModeContentVisible] = useState(true)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyView, setHistoryView] = useState<"messages" | "sessions">("messages")
@@ -885,12 +883,14 @@ export default function App() {
     setAuthError(undefined)
 
     try {
-      const response = await loginWithCore(username, password)
-      setCurrentUser(response.user)
-      setAuthStatus("authenticated")
+      // Desktop authentication can publish and load the assistant before the profile request finishes.
+      // Clear the previous login state before starting that flow, never after it completes.
       resetSessionRuntime()
       setCurrentAssistant(null)
       setCurrentAssistantError(undefined)
+      const response = await loginWithCore(username, password)
+      setCurrentUser(response.user)
+      setAuthStatus("authenticated")
     } catch (error) {
       setAuthStatus("unauthenticated")
       setAuthError(reportAuthError("login", error, "登录失败"))
@@ -920,6 +920,7 @@ export default function App() {
   }
 
   const handleRuntimeOriginSelect = (origin: RuntimeOrigin) => {
+    if (runtimeOrigin === null) setEntranceFinished(false)
     saveRuntimeOrigin(origin)
     setRuntimeOriginState(origin)
     setAuthError(undefined)
@@ -950,9 +951,9 @@ export default function App() {
     }
   }
 
-  const handleSendMessage = async (content: string, attachments: PromptAttachment[]) => {
+  const handleSendMessage = async (...input: Parameters<typeof sendRuntimeMessage>) => {
     try {
-      await sendRuntimeMessage(content, attachments)
+      await sendRuntimeMessage(...input)
     } catch (error) {
       console.error("[Runtime] send message failed", error)
       throw error
@@ -1035,16 +1036,6 @@ export default function App() {
     await dismissQuestion(requestID)
   }
 
-  if (!isAuxiliaryWindow && !entranceFinished) {
-    return <StartupEntrance origin={runtimeOrigin} authStatus={authStatus} isSubmitting={isAuthenticating}
-      error={authError} userName={currentUser?.display_name || currentUser?.username}
-      onChooseOrigin={handleRuntimeOriginSelect} onContinue={() => setEntranceFinished(true)}
-      onLogin={async (username, password) => {
-        if (runtimeOrigin !== "mon") handleRuntimeOriginSelect("mon")
-        await handleLogin(username, password)
-      }} />
-  }
-
   if (runtimeOrigin === null) {
     if (isAuxiliaryWindow) {
       return (
@@ -1058,6 +1049,16 @@ export default function App() {
         <OriginSelectionPage key="runtime-origin" onSelect={handleRuntimeOriginSelect} />
       </AnimatePresence>
     )
+  }
+
+  if (!isAuxiliaryWindow && !entranceFinished) {
+    return <StartupEntrance origin={runtimeOrigin} authStatus={authStatus} isSubmitting={isAuthenticating}
+      error={authError} userName={currentUser?.display_name || currentUser?.username}
+      onChooseOrigin={handleRuntimeOriginSelect} onContinue={() => setEntranceFinished(true)}
+      onLogin={async (username, password) => {
+        if (runtimeOrigin !== "mon") handleRuntimeOriginSelect("mon")
+        await handleLogin(username, password)
+      }} />
   }
 
   if (authStatus === "checking") {
@@ -1082,15 +1083,18 @@ export default function App() {
     return <LoginPage onLogin={handleLogin} isSubmitting={isAuthenticating} error={authError} />
   }
 
-  const renderApplicationPage = (pageId: string, documentSessionId?: string) => pageId === "allSessions" ? (
+  const openDutyRoster = () => {
+    setAssistantSwitcherMode("duty")
+    setActivePage("assistant-switcher")
+  }
+  const renderApplicationPage = (pageId: string, documentSessionId?: string, chat?: ChatParticipantSelection) => pageId === "allSessions" ? (
           <AllSessionsPage
             key={runtimeOrigin}
             origin={runtimeOrigin ?? "mon"}
             onArchive={setRuntimeSessionArchived}
             onBack={() => setActivePage("chat")}
             navigation={{
-              onOpenParticipants: () => { setAssistantSwitcherMode("participants"); setActivePage("assistant-switcher") },
-              onOpenDutyAssistant: () => { setAssistantSwitcherMode("default"); setActivePage("assistant-switcher") },
+              onOpenRoles: openDutyRoster,
               onOpenSelfAwake: () => setActivePage("selfAwake"),
               onOpenMemo: () => setActivePage("memo"),
               onOpenSkills: () => setActivePage("skills"),
@@ -1127,14 +1131,7 @@ export default function App() {
             characterNavigation={characterConfigurationNavigation}
             onBack={() => setActivePage("chat")}
             onChangeOrigin={handleChangeRuntimeOrigin}
-            onOpenParticipants={() => {
-              setAssistantSwitcherMode("participants")
-              setActivePage("assistant-switcher")
-            }}
-            onOpenDutyAssistant={() => {
-              setAssistantSwitcherMode("default")
-              setActivePage("assistant-switcher")
-            }}
+            onOpenRoles={openDutyRoster}
             onOpenSelfAwake={() => setActivePage("selfAwake")}
             onOpenAllSessions={() => setActivePage("allSessions")}
             onOpenMemo={() => setActivePage("memo")}
@@ -1145,15 +1142,13 @@ export default function App() {
           />
         ) : pageId === "assistant-switcher" ? (
           <AssistantSwitcherPage
-            currentAssistant={assistantSwitcherMode === "default" ? currentAssistant : conversationAssistant}
+            key={`${runtimeOrigin}:${chat?.documentId ?? (isSettingsWindow ? activeSessionId : "")}:${assistantSwitcherMode}`}
+            currentAssistant={assistantSwitcherMode === "duty" ? currentAssistant : conversationAssistant}
             mode={assistantSwitcherMode}
-            sessionParticipantIDs={
-              activeSession?.participants?.map((participant) => participant.assistantID) ??
-              (draftParticipantIDs.length ? draftParticipantIDs : currentAssistant?.id ? [currentAssistant.id] : [])
-            }
-            onParticipantsChanged={async (assistantIds) => {
-              await updateSessionParticipants(assistantIds)
-            }}
+            sessionLabel={chat?.title ?? (isSettingsWindow ? activeSession?.title : undefined)}
+            sessionParticipantIDs={chat?.participantIDs ?? (isSettingsWindow
+              ? activeSession?.participants?.map((participant) => participant.assistantID) : undefined)}
+            onParticipantsChanged={chat?.updateParticipants ?? (isSettingsWindow && activeSession ? updateSessionParticipants : undefined)}
             onAssistantChanged={(assistant) => {
               setCurrentAssistant(assistant)
               setCurrentAssistantError(undefined)
@@ -1244,6 +1239,7 @@ export default function App() {
             sessions={sessions}
             activeSessionId={activeSessionId}
             activeSession={activeSession}
+            defaultParticipantID={currentAssistant?.id}
             currentUser={currentUser}
             assistant={conversationAssistant}
             assistantError={currentAssistantError}
@@ -1254,6 +1250,10 @@ export default function App() {
             onRetryConnectionSync={retryConnectionSync}
             runtimeError={[...new Set([runtimeError, autoScrollError, backgroundError, appearanceError].filter(Boolean))].join("；") || undefined}
             activePendingPermissions={allPendingPermissions}
+            activePendingQuestions={allPendingQuestions}
+            onQuestionReply={handleQuestionReply}
+            onQuestionReject={handleQuestionReject}
+            onOpenQuestionWindow={window.edenAgentDesktop ? () => setDesktopQuestionWindowVisible(true) : undefined}
             messagesScrollRef={messagesScrollRef}
             messagesEndRef={messagesEndRef}
             autoScrollEnabled={autoScrollEnabled}
@@ -1292,14 +1292,7 @@ export default function App() {
             onPermissionModeChange={updatePermissionMode}
             onPreviewImage={(src, alt) => setPreviewImage({ src, alt: alt ?? "图片预览" })}
             onLogout={handleLogout}
-            onOpenAssistantSwitcher={() => {
-              setAssistantSwitcherMode("participants")
-              setActivePage("assistant-switcher")
-            }}
-            onOpenDutyAssistantSwitcher={() => {
-              setAssistantSwitcherMode("default")
-              setActivePage("assistant-switcher")
-            }}
+            onOpenAssistantSwitcher={openDutyRoster}
             onOpenSessionAssistantSwitcher={() => {
               setAssistantSwitcherMode("session")
               setActivePage("assistant-switcher")
@@ -1366,17 +1359,6 @@ export default function App() {
         )}
       </AnimatePresence>
       <AnimatePresence>
-        {!isAuxiliaryWindow && window.edenAgentDesktop && allPendingQuestions[0] && <QuestionFallback
-          key={allPendingQuestions[0].id} request={allPendingQuestions[0]} count={allPendingQuestions.length}
-          onOpenWindow={() => setDesktopQuestionWindowVisible(true)} onReply={handleQuestionReply} onReject={handleQuestionReject} />}
-        {!window.edenAgentDesktop && !isPetWindow && activePage !== "pet" && activePendingQuestions[0] && (
-          <QuestionDecisionOverlay
-            key={activePendingQuestions[0].id}
-            request={activePendingQuestions[0]}
-            onReply={handleQuestionReply}
-            onReject={handleQuestionReject}
-          />
-        )}
       </AnimatePresence>
     </PluginUiProvider>
   )

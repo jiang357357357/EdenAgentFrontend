@@ -43,7 +43,7 @@ const callbacks = Object.fromEntries([
   'onBackgroundImageSelect', 'onAppearanceChange', 'onLoadOlderMessages', 'onSelectSession', 'onDeleteSession',
   'onRenameSession', 'onNewSession', 'onSendMessage', 'onCompact', 'onAbort', 'onFollowupSubagent',
   'onGetSubagentDetails', 'onInterruptSubagent', 'onPermissionReply', 'onPermissionModeChange', 'onPreviewImage',
-  'onLogout', 'onOpenAssistantSwitcher', 'onOpenDutyAssistantSwitcher', 'onOpenSessionAssistantSwitcher',
+  'onLogout', 'onOpenAssistantSwitcher', 'onOpenSessionAssistantSwitcher',
   'onOpenSettings', 'onOpenSelfAwake', 'onOpenAllSessions', 'onOpenMemo', 'onOpenSkills', 'onOpenConnectors', 'onOpenConfiguration',
 ].map(name => [name, async () => { assert.fail(`SSR must not invoke ${name}`) }]))
 const sessions = ['A', 'B'].map(label => ({ id: `session-${label}`, title: `会话${label}`, date: '今天',

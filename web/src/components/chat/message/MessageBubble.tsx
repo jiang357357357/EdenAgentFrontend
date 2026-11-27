@@ -222,6 +222,8 @@ export function MessageBubble({
                 return <ToolCard
                   key={segment.id}
                   tool={segment.tool}
+                  messageID={message.id}
+                  turnID={message.runID}
                   subagentThreads={subagentThreads}
                   coordinationBatches={coordinationBatches}
                   onFollowupSubagent={onFollowupSubagent}
@@ -294,6 +296,8 @@ export function MessageBubble({
           message.toolCalls.map((tool) => <ToolCard
             key={tool.id}
             tool={tool}
+            messageID={message.id}
+            turnID={message.runID}
             subagentThreads={subagentThreads}
             coordinationBatches={coordinationBatches}
             onFollowupSubagent={onFollowupSubagent}

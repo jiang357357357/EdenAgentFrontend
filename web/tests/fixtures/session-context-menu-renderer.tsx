@@ -30,7 +30,7 @@ window.sessionMenuStore = new Map(["first", "second", "third"].map((id, index) =
   { id, title: `会话 ${index + 1}`, archived: false, status: "active", purpose: "user_chat", sourceChannel: "app", createdAt: 1000, updatedAt: 2000 }]))
 let renamed = "", deleted = "", selected = "", failArchive = false
 const noop = () => {}
-const navigation = { onOpenParticipants: noop, onOpenDutyAssistant: noop, onOpenSelfAwake: noop,
+const navigation = { onOpenRoles: noop, onOpenSelfAwake: noop,
   onOpenMemo: noop, onOpenSkills: noop, onOpenConnectors: noop, onOpenConfiguration: noop, onOpenSettings: noop }
 const sessions = (): Session[] => [...window.sessionMenuStore.values()].map(item => ({ ...item, date: "今天", messages: [] }))
 const archive = async (id: string, value: boolean) => {

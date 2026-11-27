@@ -13,7 +13,6 @@ import {
   SlidersHorizontal,
   Sparkles,
   UserRoundCheck,
-  UsersRound,
   X,
 } from "lucide-react"
 import { useContext, useEffect, useMemo, useRef, useState } from "react"
@@ -34,8 +33,7 @@ interface SidebarProps {
   onArchive: (id: string, archived: boolean) => Promise<void> | void
   onPin: (id: string, pinned: boolean) => Promise<void> | void
   onNewSession: () => void
-  onOpenParticipants: () => void
-  onOpenDutyAssistant: () => void
+  onOpenRoles: () => void
   onOpenSelfAwake: () => void
   onOpenAllSessions: () => void
   onOpenMemo: () => void
@@ -64,8 +62,7 @@ export interface ActivityRailProps {
   onOpenFiles: () => void
   onOpenSessions: () => void
   onOpenAllSessions: () => void
-  onOpenParticipants: () => void
-  onOpenDutyAssistant: () => void
+  onOpenRoles: () => void
   onOpenSelfAwake: () => void
   onOpenMemo: () => void
   onOpenSkills: () => void
@@ -101,8 +98,7 @@ export function ActivityRail({
   onOpenFiles,
   onOpenSessions,
   onOpenAllSessions,
-  onOpenParticipants,
-  onOpenDutyAssistant,
+  onOpenRoles,
   onOpenSelfAwake,
   onOpenMemo,
   onOpenSkills,
@@ -119,8 +115,7 @@ export function ActivityRail({
         <ActivityButton label="文件" icon={FolderOpen} active={active === "files"} onClick={onOpenFiles} />
         <ActivityButton label="会话" icon={MessageSquare} active={active === "sessions"} onClick={onOpenSessions} />
         <ActivityButton label="所有会话" icon={List} active={active === "allSessions"} onClick={onOpenAllSessions} />
-        <ActivityButton label="参与者" icon={UsersRound} onClick={onOpenParticipants} />
-        <ActivityButton label="值日生" icon={UserRoundCheck} onClick={onOpenDutyAssistant} />
+        <ActivityButton label="值日生" icon={UserRoundCheck} onClick={onOpenRoles} />
         <ActivityButton label="自醒" icon={Sparkles} onClick={onOpenSelfAwake} />
         <ActivityButton label="备忘" icon={FileText} onClick={onOpenMemo} />
         <ActivityButton label="技能" icon={Brain} onClick={onOpenSkills} />
@@ -143,8 +138,7 @@ export function Sidebar({
   onArchive,
   onPin,
   onNewSession,
-  onOpenParticipants,
-  onOpenDutyAssistant,
+  onOpenRoles,
   onOpenSelfAwake,
   onOpenAllSessions,
   onOpenMemo,
@@ -166,9 +160,11 @@ export function Sidebar({
     if (!panelOpen) return
     const outside = (event: PointerEvent) => { if (!sidebarRef.current?.contains(event.target as Node)) setPanelOpen(false) }
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setPanelOpen(false) }
+    const resize = () => setPanelOpen(false)
     document.addEventListener('pointerdown', outside)
     window.addEventListener('keydown', escape)
-    return () => { document.removeEventListener('pointerdown', outside); window.removeEventListener('keydown', escape) }
+    window.addEventListener('resize', resize)
+    return () => { document.removeEventListener('pointerdown', outside); window.removeEventListener('keydown', escape); window.removeEventListener('resize', resize) }
   }, [panelOpen])
   const [query, setQuery] = useState("")
   const [renamingSession, setRenamingSession] = useState<{ id: string; title: string } | null>(null)
@@ -181,11 +177,10 @@ export function Sidebar({
     <aside ref={sidebarRef} data-panel-open={panelOpen} aria-label="会话与文件导航" className="chat-sidebar relative z-20 flex h-full w-[20vw] min-w-[280px] max-w-[360px] shrink-0 border-r border-border bg-bg/72 backdrop-blur-xl">
         <ActivityRail
           active={activity}
-          onOpenFiles={() => { onActivityChange("files"); setPanelOpen(true) }}
-          onOpenSessions={() => { onActivityChange("sessions"); setPanelOpen(true) }}
+          onOpenFiles={() => { onActivityChange("files"); setPanelOpen(!sidebarRef.current?.closest('.workbench-sidebar[data-collapsed=false]')) }}
+          onOpenSessions={() => { onActivityChange("sessions"); setPanelOpen(!sidebarRef.current?.closest('.workbench-sidebar[data-collapsed=false]')) }}
           onOpenAllSessions={onOpenAllSessions}
-          onOpenParticipants={onOpenParticipants}
-          onOpenDutyAssistant={onOpenDutyAssistant}
+          onOpenRoles={onOpenRoles}
           onOpenSelfAwake={onOpenSelfAwake}
           onOpenMemo={onOpenMemo}
           onOpenSkills={onOpenSkills}

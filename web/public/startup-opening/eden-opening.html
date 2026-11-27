@@ -1,0 +1,757 @@
+<!doctype html>
+<!-- EDEN 桌面开场，视觉与三幕时序来自用户提供的《什亭之匣 · 极简开机动画》。 -->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-yqriKd+1zs4k7BQNqgdq7pzfJu2E+W52Ck2+P1WqjAE='; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <title>什亭之匣 · 开机动画</title>
+  <style>
+    /* ==========================================================================
+       极简色彩与光学变量：阿罗娜（晨光清透） / 普拉娜（静谧星雾）
+       ========================================================================== */
+    :root {
+      --bg-void: #05080f;
+      --ink-primary: #82e2ff;
+      --ink-primary-rgb: 130, 226, 255;
+      --ink-bright: #f5fbff;
+      --ink-bright-rgb: 245, 251, 255;
+      --ink-soft: #d7f2ff;
+
+      /* 4.2s 锁定瞬间的克制水平镜头光晕 */
+      --flare-core: linear-gradient(90deg, transparent 0%, rgba(130, 226, 255, 0.22) 22%, rgba(245, 251, 255, 0.96) 50%, rgba(130, 226, 255, 0.22) 78%, transparent 100%);
+      --flare-bloom: radial-gradient(ellipse 46% 100% at 50% 50%, rgba(130, 226, 255, 0.30) 0%, rgba(130, 226, 255, 0.08) 48%, transparent 78%);
+
+      /* 第三幕：阿罗娜晨光 / 水下晴空氛围 */
+      --reveal-bg: linear-gradient(155deg, #f8fcff 0%, #ebf7ff 38%, #d2eeff 74%, #b4e2fc 100%);
+      --reveal-glow-a: radial-gradient(ellipse 64% 56% at 24% 22%, rgba(255, 255, 255, 0.92) 0%, rgba(235, 247, 255, 0.35) 50%, transparent 78%);
+      --reveal-glow-b: radial-gradient(ellipse 58% 60% at 78% 76%, rgba(130, 226, 255, 0.28) 0%, rgba(255, 255, 255, 0.16) 50%, transparent 78%);
+
+      /* 第三幕高对比清晰字色 */
+      --final-title: #0f2d46;
+      --final-sub: rgba(15, 45, 70, 0.58);
+      --final-rule: linear-gradient(90deg, transparent 0%, rgba(15, 45, 70, 0.34) 50%, transparent 100%);
+    }
+
+    [data-theme="plana"] {
+      --bg-void: #05080f;
+      --ink-primary: #bcb0ff;
+      --ink-primary-rgb: 188, 176, 255;
+      --ink-bright: #f2f0ff;
+      --ink-bright-rgb: 242, 240, 255;
+      --ink-soft: #dcd6ff;
+
+      --flare-core: linear-gradient(90deg, transparent 0%, rgba(188, 176, 255, 0.24) 22%, rgba(242, 240, 255, 0.94) 50%, rgba(188, 176, 255, 0.24) 78%, transparent 100%);
+      --flare-bloom: radial-gradient(ellipse 46% 100% at 50% 50%, rgba(188, 176, 255, 0.28) 0%, rgba(139, 92, 246, 0.08) 48%, transparent 78%);
+
+      /* 第三幕：普拉娜暮色星雾 / 深靛黑曜 */
+      --reveal-bg: linear-gradient(155deg, #070812 0%, #0e0e22 40%, #191633 76%, #0c0d1b 100%);
+      --reveal-glow-a: radial-gradient(ellipse 62% 54% at 26% 24%, rgba(188, 176, 255, 0.19) 0%, rgba(124, 58, 237, 0.06) 50%, transparent 78%);
+      --reveal-glow-b: radial-gradient(ellipse 56% 58% at 76% 74%, rgba(147, 197, 253, 0.13) 0%, rgba(188, 176, 255, 0.05) 50%, transparent 76%);
+
+      --final-title: #f3f1ff;
+      --final-sub: rgba(220, 214, 255, 0.68);
+      --final-rule: linear-gradient(90deg, transparent 0%, rgba(243, 241, 255, 0.42) 50%, transparent 100%);
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-void);
+      font-family: 'Noto Sans SC', "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      font-feature-settings: "tnum";
+    }
+
+    /* ==========================================================================
+       主舞台：纯粹 16:9 宽屏画布，80%+ 干净留白
+       ========================================================================== */
+    #stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: var(--bg-void);
+      cursor: default;
+    }
+
+    /* 第三幕：静谧流动晨光 / 星雾背景层 */
+    #atmosphere-layer {
+      position: absolute;
+      inset: -4%;
+      background: var(--reveal-bg);
+      opacity: 0;
+      z-index: 4;
+      pointer-events: none;
+      will-change: opacity, transform;
+    }
+
+    .atmo-glow {
+      position: absolute;
+      inset: -8%;
+      pointer-events: none;
+      will-change: transform;
+    }
+
+    .atmo-glow-a {
+      background: var(--reveal-glow-a);
+      animation: drift-a 16s ease-in-out infinite alternate;
+    }
+
+    .atmo-glow-b {
+      background: var(--reveal-glow-b);
+      animation: drift-b 20s ease-in-out infinite alternate;
+    }
+
+    @keyframes drift-a {
+      0%   { transform: translate3d(-2%, -1%, 0) scale(1); }
+      100% { transform: translate3d(2.5%, 2%, 0) scale(1.06); }
+    }
+
+    @keyframes drift-b {
+      0%   { transform: translate3d(2%, 1.5%, 0) scale(1.04); }
+      100% { transform: translate3d(-2.5%, -1.5%, 0) scale(0.97); }
+    }
+
+    /* 轻量级 Canvas：渲染第一幕 1px 水平光丝、微尘与 4.2s 单层细波纹 */
+    #fx-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* ==========================================================================
+       第二幕：极简双层矢量光环舞台（2.2s – 5.2s）
+       ========================================================================== */
+    #halo-stage {
+      position: absolute;
+      top: 48%;
+      left: 50%;
+      width: 280px;
+      height: 280px;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 16;
+      opacity: 0;
+      will-change: transform, opacity, filter;
+    }
+
+    #halo-stage svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    /* 4.2s 锁定瞬间的克制水平镜头光晕 */
+    #anamorphic-flare {
+      position: absolute;
+      top: 48%;
+      left: 50%;
+      width: 100vw;
+      height: 120px;
+      transform: translate(-50%, -50%) scaleX(0);
+      pointer-events: none;
+      z-index: 20;
+      opacity: 0;
+      will-change: transform, opacity;
+    }
+
+    .flare-bloom {
+      position: absolute;
+      inset: 0;
+      background: var(--flare-bloom);
+      filter: blur(16px);
+    }
+
+    .flare-line {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      height: 1px;
+      transform: translateY(-50%);
+      background: var(--flare-core);
+      box-shadow: 0 0 14px rgba(var(--ink-primary-rgb), 0.72);
+    }
+
+    /* 第二幕光环下方：单行纯中文状态 + 1px 极细进度线 */
+    #status-hud {
+      position: absolute;
+      top: calc(48% + 166px);
+      left: 50%;
+      transform: translateX(-50%);
+      width: 240px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      pointer-events: none;
+      z-index: 18;
+      opacity: 0;
+      will-change: opacity;
+    }
+
+    .status-stack {
+      position: relative;
+      width: 100%;
+      height: 22px;
+    }
+
+    .status-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 300;
+      letter-spacing: 0.34em;
+      padding-left: 0.34em;
+      color: var(--ink-soft);
+      opacity: 0;
+      transform: translate3d(0, 6px, 0);
+      will-change: opacity, transform;
+    }
+
+    .hairline-track {
+      position: relative;
+      margin-top: 16px;
+      width: 168px;
+      height: 1px;
+      background: rgba(var(--ink-primary-rgb), 0.16);
+      overflow: hidden;
+    }
+
+    .hairline-fill {
+      position: absolute;
+      inset: 0;
+      transform-origin: left center;
+      transform: scaleX(0);
+      background: linear-gradient(90deg, rgba(var(--ink-primary-rgb), 0.25) 0%, var(--ink-bright) 100%);
+      will-change: transform;
+    }
+
+    /* ==========================================================================
+       第三幕：晨光启幕 — 纯 GPU 合成逐字浮现（严格无重排、零挤兑）
+       ========================================================================== */
+    #reveal-layer {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      pointer-events: none;
+      z-index: 22;
+      opacity: 0;
+      padding: 24px;
+      will-change: opacity, transform;
+    }
+
+    .reveal-title {
+      display: inline-flex;
+      align-items: baseline;
+      justify-content: center;
+      white-space: nowrap;
+      font-size: clamp(28px, 3.6vw, 46px);
+      font-weight: 200;
+      letter-spacing: 0.28em;
+      padding-left: 0.28em;
+      color: var(--final-title);
+      line-height: 1.35;
+    }
+
+    .reveal-char {
+      display: inline-block;
+      opacity: 0;
+      transform: translate3d(0, 12px, 0);
+      will-change: opacity, transform, filter;
+    }
+
+    .reveal-rule {
+      width: 96px;
+      height: 1px;
+      margin: 26px 0 20px 0;
+      background: var(--final-rule);
+      transform-origin: center center;
+      transform: scaleX(0);
+      opacity: 0;
+      will-change: transform, opacity;
+    }
+
+    .reveal-sub {
+      white-space: nowrap;
+      font-size: clamp(12px, 1.1vw, 13.5px);
+      font-weight: 300;
+      letter-spacing: 0.42em;
+      padding-left: 0.42em;
+      color: var(--final-sub);
+      opacity: 0;
+      transform: translate3d(0, 8px, 0);
+      will-change: opacity, transform;
+    }
+
+
+    body { line-height: 1.5; }
+    #halo-stage svg { display: block; }
+
+    @media (max-width: 680px), (max-height: 480px) {
+      #halo-stage { width: 230px; height: 230px; }
+      #status-hud { top: calc(48% + 140px); }
+    }
+  </style>
+</head>
+<body data-theme="arona">
+  <!-- 16:9 极简宽屏舞台 -->
+  <div id="stage">
+
+    <!-- 第三幕：纯净晨光 / 暮色星雾底景 -->
+    <div id="atmosphere-layer">
+      <div class="atmo-glow atmo-glow-a"></div>
+      <div class="atmo-glow atmo-glow-b"></div>
+    </div>
+
+    <!-- 轻量级 Canvas：1px 破晓水平光丝、极淡光尘与 4.2s 细波纹 -->
+    <canvas id="fx-canvas"></canvas>
+
+    <!-- 第二幕：极简双层矢量光环 -->
+    <div id="halo-stage">
+      <svg viewBox="0 0 280 280">
+        <defs>
+          <linearGradient id="halo-grad-outer" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="var(--ink-bright)" stop-opacity="0.96" />
+            <stop offset="55%" stop-color="var(--ink-primary)" stop-opacity="0.82" />
+            <stop offset="100%" stop-color="var(--ink-soft)" stop-opacity="0.58" />
+          </linearGradient>
+          <linearGradient id="halo-grad-inner" x1="100%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="var(--ink-bright)" stop-opacity="1" />
+            <stop offset="100%" stop-color="var(--ink-primary)" stop-opacity="0.72" />
+          </linearGradient>
+          <filter id="halo-glow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="2.6" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        <!-- 外层：极细 1px 分段几何弧环（初始带轻微偏置，4.2s 磁吸对齐） -->
+        <g id="halo-outer" filter="url(#halo-glow)">
+          <circle cx="140" cy="140" r="106" fill="none" stroke="url(#halo-grad-outer)" stroke-width="1.15" stroke-dasharray="154 28 84 28 154 28" stroke-linecap="round" />
+          <circle cx="140" cy="140" r="118" fill="none" stroke="var(--ink-primary)" stroke-opacity="0.24" stroke-width="0.7" stroke-dasharray="1.5 11" />
+          <circle cx="140" cy="34" r="1.8" fill="var(--ink-bright)" />
+          <circle cx="140" cy="246" r="1.6" fill="var(--ink-primary)" />
+        </g>
+
+        <!-- 内层：纤细光环主体 + 微妙定位节点 -->
+        <g id="halo-inner" filter="url(#halo-glow)">
+          <circle cx="140" cy="140" r="72" fill="none" stroke="url(#halo-grad-inner)" stroke-width="1.65" />
+          <circle cx="140" cy="140" r="62" fill="none" stroke="var(--ink-primary)" stroke-opacity="0.32" stroke-width="0.75" stroke-dasharray="68 24 24 24" />
+          <!-- 普拉娜主题微弱十字星芒点缀 -->
+          <g id="plana-accent" opacity="0">
+            <line x1="140" y1="84" x2="140" y2="96" stroke="var(--ink-soft)" stroke-width="1" />
+            <line x1="140" y1="184" x2="140" y2="196" stroke="var(--ink-soft)" stroke-width="1" />
+            <line x1="84" y1="140" x2="96" y2="140" stroke="var(--ink-soft)" stroke-width="1" />
+            <line x1="184" y1="140" x2="196" y2="140" stroke="var(--ink-soft)" stroke-width="1" />
+          </g>
+        </g>
+
+        <!-- 中心极微光点 -->
+        <circle id="halo-core-dot" cx="140" cy="140" r="2.4" fill="var(--ink-bright)" opacity="0.88" />
+      </svg>
+    </div>
+
+    <!-- 4.2s 光环锁定：贯穿宽屏的克制水平镜头光晕 -->
+    <div id="anamorphic-flare">
+      <div class="flare-bloom"></div>
+      <div class="flare-line"></div>
+    </div>
+
+    <!-- 第二幕底部：单行中文状态 + 1px 进度细线 -->
+    <div id="status-hud">
+      <div class="status-stack">
+        <div id="status-sync" class="status-text">正在同调光环</div>
+        <div id="status-ok" class="status-text">权限已确认</div>
+      </div>
+      <div class="hairline-track">
+        <div id="hairline-fill" class="hairline-fill"></div>
+      </div>
+    </div>
+
+    <!-- 第三幕：晨光启幕 — 纯 GPU 逐字浮现，定格完成态 -->
+    <div id="reveal-layer">
+      <div class="reveal-title" aria-label="欢迎回来，老师">
+        <span class="reveal-char">欢</span><span class="reveal-char">迎</span><span class="reveal-char">回</span><span class="reveal-char">来</span><span class="reveal-char">，</span><span class="reveal-char">老</span><span class="reveal-char">师</span>
+      </div>
+      <div id="reveal-rule" class="reveal-rule"></div>
+      <div id="reveal-sub" class="reveal-sub">夏莱终端已就绪</div>
+    </div>
+  </div>
+  <script>
+    "use strict";
+
+    const DURATION = 8.0;
+
+    const Ease = {
+      clamp: (v, min = 0, max = 1) => Math.max(min, Math.min(max, v)),
+      lerp: (a, b, t) => a + (b - a) * t,
+      outExpo: (t) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t)),
+      outQuart: (t) => 1 - Math.pow(1 - t, 4),
+      outCubic: (t) => 1 - Math.pow(1 - t, 3),
+      inOutCubic: (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
+    };
+
+    class MinimalCanvas {
+      constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.width = 0;
+        this.height = 0;
+        this.motes = [];
+        this.resize();
+        this.initMotes();
+      }
+
+      resize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        this.width = Math.max(1, window.innerWidth);
+        this.height = Math.max(1, window.innerHeight);
+        this.canvas.width = Math.floor(this.width * dpr);
+        this.canvas.height = Math.floor(this.height * dpr);
+        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      initMotes() {
+        this.motes = [];
+        for (let i = 0; i < 28; i++) {
+          this.motes.push({
+            x: Math.random(),
+            y: Math.random(),
+            r: Math.random() * 1.4 + 0.5,
+            vx: (Math.random() - 0.5) * 0.006,
+            vy: -(Math.random() * 0.009 + 0.003),
+            depth: Math.random() * 0.7 + 0.3,
+            phase: Math.random() * Math.PI * 2,
+          });
+        }
+      }
+
+      render(t, dt, isPlana, px, py) {
+        const ctx = this.ctx;
+        const W = this.width;
+        const H = this.height;
+        const cx = W * 0.5;
+        const cy = H * 0.48;
+        const now = performance.now() * 0.001;
+
+        ctx.clearRect(0, 0, W, H);
+
+        const primaryRGB = isPlana ? '188, 176, 255' : '130, 226, 255';
+        const brightRGB = isPlana ? '242, 240, 255' : '245, 251, 255';
+
+        // --- 第一幕 (0.0s – 2.2s)：1px 水平地平线光丝自中心展开并向内收束 ---
+        if (t >= 0 && t <= 2.35) {
+          const drawP = Ease.outExpo(Ease.clamp(t / 1.15));
+          const contractP = t > 1.55 ? Ease.inOutCubic(Ease.clamp((t - 1.55) / 0.75)) : 0;
+          const halfSpan = Ease.lerp(W * 0.48 * drawP, 0, contractP);
+          const alpha = (t < 0.12 ? t / 0.12 : 1) * (1 - contractP * 0.92);
+
+          if (halfSpan > 1 && alpha > 0.002) {
+            // 克制的柔光底晕
+            const bloomGrad = ctx.createLinearGradient(cx - halfSpan, cy, cx + halfSpan, cy);
+            bloomGrad.addColorStop(0, `rgba(${primaryRGB}, 0)`);
+            bloomGrad.addColorStop(0.25, `rgba(${primaryRGB}, ${(0.16 * alpha).toFixed(4)})`);
+            bloomGrad.addColorStop(0.5, `rgba(${brightRGB}, ${(0.36 * alpha).toFixed(4)})`);
+            bloomGrad.addColorStop(0.75, `rgba(${primaryRGB}, ${(0.16 * alpha).toFixed(4)})`);
+            bloomGrad.addColorStop(1, `rgba(${primaryRGB}, 0)`);
+
+            ctx.beginPath();
+            ctx.moveTo(cx - halfSpan, cy);
+            ctx.lineTo(cx + halfSpan, cy);
+            ctx.strokeStyle = bloomGrad;
+            ctx.lineWidth = 7;
+            ctx.stroke();
+
+            // 1px 极锐利水平光丝
+            const coreGrad = ctx.createLinearGradient(cx - halfSpan, cy, cx + halfSpan, cy);
+            coreGrad.addColorStop(0, `rgba(${primaryRGB}, 0)`);
+            coreGrad.addColorStop(0.14, `rgba(${primaryRGB}, ${(0.55 * alpha).toFixed(4)})`);
+            coreGrad.addColorStop(0.5, `rgba(${brightRGB}, ${(0.98 * alpha).toFixed(4)})`);
+            coreGrad.addColorStop(0.86, `rgba(${primaryRGB}, ${(0.55 * alpha).toFixed(4)})`);
+            coreGrad.addColorStop(1, `rgba(${primaryRGB}, 0)`);
+
+            ctx.beginPath();
+            ctx.moveTo(cx - halfSpan, cy);
+            ctx.lineTo(cx + halfSpan, cy);
+            ctx.strokeStyle = coreGrad;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // 中心初生光核
+            const dotR = 16 * alpha;
+            if (dotR > 0.5) {
+              const dotGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, dotR);
+              dotGrad.addColorStop(0, `rgba(${brightRGB}, ${(0.72 * alpha).toFixed(4)})`);
+              dotGrad.addColorStop(1, `rgba(${primaryRGB}, 0)`);
+              ctx.beginPath();
+              ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
+              ctx.fillStyle = dotGrad;
+              ctx.fill();
+            }
+          }
+        }
+
+        // --- 第二幕 4.2s 锁定瞬间：单层极细光环波纹向外扩散 ---
+        if (t >= 4.2 && t <= 5.25) {
+          const rp = Ease.clamp((t - 4.2) / 1.0);
+          const radius = 106 + Ease.outExpo(rp) * Math.min(W * 0.28, 320);
+          const rippleAlpha = Math.pow(1 - rp, 1.8) * 0.58;
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(${brightRGB}, ${rippleAlpha.toFixed(4)})`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+
+        // --- 全程极克制漂浮微尘 ---
+        const dustMaster = t < 0.35
+          ? Ease.clamp(t / 0.35) * 0.32
+          : (t >= 5.2 ? Ease.lerp(0.32, 0.65, Ease.clamp((t - 5.2) / 1.2)) : 0.32);
+
+        const isRevealed = t >= 5.3;
+        for (const m of this.motes) {
+          m.x += m.vx * dt;
+          m.y += m.vy * dt;
+          if (m.y < -0.04) { m.y = 1.04; m.x = Math.random(); }
+          if (m.x < -0.04) m.x = 1.04;
+          if (m.x > 1.04) m.x = -0.04;
+
+          const x = m.x * W + px * 16 * m.depth;
+          const y = m.y * H + py * 10 * m.depth;
+          const twinkle = 0.45 + 0.55 * Math.sin(now * 1.15 + m.phase);
+          const a = dustMaster * twinkle * m.depth;
+
+          ctx.beginPath();
+          ctx.arc(x, y, m.r, 0, Math.PI * 2);
+          if (isRevealed && !isPlana) {
+            ctx.fillStyle = `rgba(255, 255, 255, ${(a * 0.82).toFixed(4)})`;
+          } else {
+            ctx.fillStyle = `rgba(${brightRGB}, ${(a * 0.52).toFixed(4)})`;
+          }
+          ctx.fill();
+        }
+      }
+    }
+
+    const el = {
+      atmosphere: document.getElementById('atmosphere-layer'),
+      haloStage: document.getElementById('halo-stage'),
+      haloOuter: document.getElementById('halo-outer'),
+      haloInner: document.getElementById('halo-inner'),
+      planaAccent: document.getElementById('plana-accent'),
+      flare: document.getElementById('anamorphic-flare'),
+      statusHud: document.getElementById('status-hud'),
+      statusSync: document.getElementById('status-sync'),
+      statusOk: document.getElementById('status-ok'),
+      hairlineFill: document.getElementById('hairline-fill'),
+      revealLayer: document.getElementById('reveal-layer'),
+      revealChars: document.querySelectorAll('.reveal-char'),
+      revealRule: document.getElementById('reveal-rule'),
+      revealSub: document.getElementById('reveal-sub'),
+    };
+
+    const isPlana = document.body.dataset.theme === 'plana';
+    const canvasFX = new MinimalCanvas(document.getElementById('fx-canvas'));
+    if (isPlana) el.planaAccent.setAttribute('opacity', '0.78');
+
+    let targetX = 0;
+    let targetY = 0;
+    let pointerX = 0;
+    let pointerY = 0;
+    let startedAt;
+    let previousFrame;
+
+    function resetPointer() {
+      targetX = 0;
+      targetY = 0;
+    }
+
+    function setStatusLine(node, opacity, yPx) {
+      node.style.opacity = opacity.toFixed(4);
+      node.style.transform = `translate3d(0, ${yPx.toFixed(2)}px, 0)`;
+    }
+
+    // =========================================================================
+    // 4. 8.0 秒三幕核心逐帧渲染引擎 (60fps)
+    // =========================================================================
+    function renderFrame(t, dt) {
+      pointerX = Ease.lerp(pointerX, targetX, Math.min(1, dt * 3.5));
+      pointerY = Ease.lerp(pointerY, targetY, Math.min(1, dt * 3.5));
+      const px = pointerX;
+      const py = pointerY;
+
+      // =======================================================================
+      // 第二幕：光环同调 (2.2s – 5.2s) 及向第三幕的羽化放大转场 (5.2s – 6.2s)
+      // =======================================================================
+      if (t >= 2.0 && t < 6.25) {
+        const enterP = Ease.outQuart(Ease.clamp((t - 2.0) / 0.55));
+        const expandP = t > 5.2 ? Ease.outQuart(Ease.clamp((t - 5.2) / 1.0)) : 0;
+
+        // 光环缩放：平滑浮现 -> 5.2s 后优雅放大至视口外并柔化消散
+        const baseScale = Ease.lerp(0.84, 1.0, enterP) + expandP * 5.2;
+        const haloOpacity = enterP * (1 - expandP);
+        const haloBlur = expandP * 14;
+
+        el.haloStage.style.opacity = haloOpacity.toFixed(4);
+        el.haloStage.style.transform = `translate(-50%, -50%) scale(${baseScale.toFixed(4)})`;
+        el.haloStage.style.filter = haloBlur > 0.1 ? `blur(${haloBlur.toFixed(2)}px)` : 'none';
+
+        // 双层光环的相位对齐动画 (2.2s -> 4.2s 磁吸归零锁定)
+        const alignP = Ease.inOutCubic(Ease.clamp((t - 2.2) / 2.0));
+
+        // 外环从 -48° 减速收敛到 0°（并在锁定后保持极缓慢的优雅漂移）
+        const postLockDrift = t > 4.2 ? (t - 4.2) * 6 : 0;
+        const outerDeg = Ease.lerp(-48, 0, alignP) - postLockDrift;
+        const outerShiftX = Ease.lerp(-18, 0, alignP);
+
+        // 内环从 +36° 减速收敛到 0°
+        const innerDeg = Ease.lerp(36, 0, alignP) + postLockDrift * 1.4;
+        const innerShiftX = Ease.lerp(14, 0, alignP);
+
+        el.haloOuter.setAttribute(
+          'transform',
+          `translate(${outerShiftX.toFixed(2)} 0) rotate(${outerDeg.toFixed(2)} 140 140)`
+        );
+        el.haloInner.setAttribute(
+          'transform',
+          `translate(${innerShiftX.toFixed(2)} 0) rotate(${innerDeg.toFixed(2)} 140 140)`
+        );
+
+        // 底部单行状态与 1px 极细进度线 (2.25s – 5.2s)
+        if (t < 5.3) {
+          const hudIn = Ease.outCubic(Ease.clamp((t - 2.25) / 0.42));
+          const hudOut = t > 4.95 ? Ease.outCubic(Ease.clamp((t - 4.95) / 0.30)) : 0;
+          el.statusHud.style.opacity = (hudIn * (1 - hudOut)).toFixed(4);
+
+          // 正在同调光环 (2.25s – 4.20s) -> 权限已确认 (4.20s – 5.20s)
+          const syncOut = t > 4.08 ? Ease.outCubic(Ease.clamp((t - 4.08) / 0.16)) : 0;
+          setStatusLine(el.statusSync, hudIn * (1 - syncOut), (1 - hudIn) * 6 - syncOut * 5);
+
+          const okIn = t >= 4.20 ? Ease.outCubic(Ease.clamp((t - 4.20) / 0.22)) : 0;
+          setStatusLine(el.statusOk, okIn * (1 - hudOut), (1 - okIn) * 6);
+
+          // 1px 进度线纯 scaleX 驱动
+          const prog = Ease.clamp((t - 2.25) / 1.95);
+          el.hairlineFill.style.transform = `scaleX(${Ease.outCubic(prog).toFixed(4)})`;
+        } else {
+          el.statusHud.style.opacity = '0';
+        }
+      } else {
+        el.haloStage.style.opacity = '0';
+        el.statusHud.style.opacity = '0';
+      }
+
+      // =======================================================================
+      // 4.2s 锁定瞬间：克制水平镜头光晕扫过宽屏
+      // =======================================================================
+      if (t >= 4.18 && t <= 5.15) {
+        const fp = Ease.clamp((t - 4.18) / 0.95);
+        const flareScaleX = Ease.lerp(0.15, 1.08, Ease.outExpo(Ease.clamp(fp * 2.2)));
+        const flareAlpha = fp < 0.14
+          ? Ease.outCubic(fp / 0.14)
+          : Math.pow(1 - (fp - 0.14) / 0.86, 1.9);
+        el.flare.style.opacity = (flareAlpha * 0.92).toFixed(4);
+        el.flare.style.transform = `translate(-50%, -50%) scaleX(${flareScaleX.toFixed(4)})`;
+      } else {
+        el.flare.style.opacity = '0';
+      }
+
+      // =======================================================================
+      // 第三幕：晨光启幕 (5.2s – 8.0s，定格完成态，无待机页/时钟)
+      // =======================================================================
+      if (t >= 5.2) {
+        // 氛围背景平滑铺开
+        const atmoP = Ease.inOutCubic(Ease.clamp((t - 5.2) / 0.95));
+        el.atmosphere.style.opacity = atmoP.toFixed(4);
+        el.atmosphere.style.transform = `translate3d(${(px * 12).toFixed(2)}px, ${(py * 8).toFixed(2)}px, 0)`;
+
+        // 居中中文欢迎语：纯 GPU 逐字浮现（仅 opacity / translate3d / blur，零挤兑）
+        el.revealLayer.style.opacity = '1';
+        el.revealLayer.style.transform = `translate3d(${(-px * 5).toFixed(2)}px, ${(-py * 3.5).toFixed(2)}px, 0)`;
+
+        const charStart = 5.45;
+        const stagger = 0.065;
+        const charDur = 0.62;
+
+        el.revealChars.forEach((span, idx) => {
+          const cp = Ease.outQuart(Ease.clamp((t - (charStart + idx * stagger)) / charDur));
+          const ty = (1 - cp) * 12;
+          const blur = (1 - cp) * 5;
+          span.style.opacity = cp.toFixed(4);
+          span.style.transform = `translate3d(0, ${ty.toFixed(2)}px, 0)`;
+          span.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : 'none';
+        });
+
+        // 1px 水平光带自中心 scaleX(0 -> 1) 展开
+        const ruleP = Ease.outQuart(Ease.clamp((t - 5.75) / 0.68));
+        el.revealRule.style.opacity = (ruleP * 0.92).toFixed(4);
+        el.revealRule.style.transform = `scaleX(${ruleP.toFixed(4)})`;
+
+        // 副标题柔和浮现
+        const subP = Ease.outQuart(Ease.clamp((t - 6.02) / 0.72));
+        el.revealSub.style.opacity = subP.toFixed(4);
+        el.revealSub.style.transform = `translate3d(0, ${((1 - subP) * 8).toFixed(2)}px, 0)`;
+      } else {
+        el.atmosphere.style.opacity = '0';
+        el.revealLayer.style.opacity = '0';
+        el.revealRule.style.opacity = '0';
+        el.revealRule.style.transform = 'scaleX(0)';
+        el.revealSub.style.opacity = '0';
+        el.revealChars.forEach((span) => {
+          span.style.opacity = '0';
+          span.style.transform = 'translate3d(0, 12px, 0)';
+          span.style.filter = 'blur(5px)';
+        });
+      }
+
+      canvasFX.render(t, dt, isPlana, px, py);
+    }
+
+
+    function tick(now) {
+      if (startedAt === undefined) {
+        startedAt = now;
+        parent.postMessage('eden-startup-opening:playing', '*');
+      }
+      const dt = Math.min((now - (previousFrame ?? now)) / 1000, 0.05);
+      previousFrame = now;
+      const time = Math.min(DURATION, (now - startedAt) / 1000);
+      renderFrame(time, dt);
+      if (time < DURATION) requestAnimationFrame(tick);
+      else parent.postMessage('eden-startup-opening:complete', '*');
+    }
+
+    window.addEventListener('pointermove', event => {
+      targetX = (event.clientX / innerWidth - 0.5) * 2;
+      targetY = (event.clientY / innerHeight - 0.5) * 2;
+    }, { passive: true });
+    document.documentElement.addEventListener('pointerleave', resetPointer);
+    window.addEventListener('resize', () => canvasFX.resize());
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>

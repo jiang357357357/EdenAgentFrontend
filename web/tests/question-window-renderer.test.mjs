@@ -7,6 +7,7 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { extensionFrameEsbuild } from './fixtures/extension-frame-esbuild.mjs'
 
 test('hidden Electron verifies primary wakeup, auxiliary sync retry and an answerable primary fallback over IPC', { timeout: 60000, skip: process.platform !== 'win32' }, async () => {
   const webRoot = fileURLToPath(new URL('../', import.meta.url)), root = resolve(webRoot, '../..')
@@ -15,15 +16,16 @@ test('hidden Electron verifies primary wakeup, auxiliary sync retry and an answe
   try {
     await build({ absWorkingDir: webRoot, entryPoints: ['tests/fixtures/question-window-renderer.tsx'], outfile: join(scratch, 'renderer.js'),
       bundle: true, platform: 'browser', format: 'iife', jsx: 'automatic',
-      define: { 'process.env.NODE_ENV': '"development"', 'import.meta': '{}' }, logOverride: { 'import-is-undefined': 'silent' } })
-    const built = await readFile(join(webRoot, 'dist/index.html'), 'utf8')
+      define: { 'process.env.NODE_ENV': '"development"', 'import.meta': '{}' }, logOverride: { 'import-is-undefined': 'silent' }, plugins: [extensionFrameEsbuild()] })
+    const dist = process.env.EDEN_AGENT_WEB_TEST_DIST ?? join(webRoot, 'dist')
+    const built = await readFile(join(dist, 'index.html'), 'utf8')
     const css = /href="(?:\.?\/)?(assets\/[^"<>]+\.css)"/.exec(built)?.[1]
     assert.ok(css, 'build the frontend before renderer acceptance')
-    await writeFile(join(scratch, 'index.html'), `<!doctype html><html data-base-theme="cream"><meta charset="utf-8"><link rel="stylesheet" href="${pathToFileURL(join(webRoot, 'dist', css)).href}"><body class="bg-bg text-text"><div id="root"></div><script src="renderer.js"></script></body></html>`)
+    await writeFile(join(scratch, 'index.html'), `<!doctype html><html data-base-theme="cream"><meta charset="utf-8"><link rel="stylesheet" href="${pathToFileURL(join(dist, css)).href}"><body class="bg-bg text-text"><div id="root"></div><script src="renderer.js"></script></body></html>`)
     await writeFile(join(scratch, 'preload.cjs'), `const {contextBridge,ipcRenderer}=require('electron');
 contextBridge.exposeInMainWorld('edenAgentDesktop',{invoke:(command,args)=>ipcRenderer.invoke('eden-agent:invoke',command,args),rendererReady:()=>ipcRenderer.send('eden-agent:renderer-ready')});
 contextBridge.exposeInMainWorld('questionFixture',{request:(command,args)=>ipcRenderer.invoke('question-fixture',command,args),
-onAnswered:callback=>{const fn=(_event,id)=>callback(id);ipcRenderer.on('fixture-answered',fn);return()=>ipcRenderer.removeListener('fixture-answered',fn)}});`)
+onAnswered:callback=>{const fn=(_event,id,answers)=>callback(id,answers);ipcRenderer.on('fixture-answered',fn);return()=>ipcRenderer.removeListener('fixture-answered',fn)}});`)
     const electron = createRequire(new URL('../../desktop/package.json', import.meta.url))('electron')
     const result = await new Promise((fulfill, reject) => {
       const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.NODE_OPTIONS
@@ -43,6 +45,10 @@ onAnswered:callback=>{const fn=(_event,id)=>callback(id);ipcRenderer.on('fixture
     assert.equal(result.hiddenNativeWindows, true)
     assert.equal(result.fallbackAnswerAfterNativeHide, true)
     assert.equal(result.nativeInputPerformed, false)
+    assert.equal(result.toolQuestionInline, true)
+    assert.equal(result.noGlobalFloatingCard, true)
+    assert.equal(result.answerSummaryVisible, true)
+    assert.equal(result.inlineReplyFailureRecoverable, true)
   } finally {
     assert.equal(dirname(resolve(scratch)), resolve(tmpdir()))
     assert.ok(scratch.startsWith(join(resolve(tmpdir()), 'eden-question-window-')))

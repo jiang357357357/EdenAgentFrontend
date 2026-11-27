@@ -153,7 +153,7 @@ const questionWindowController = createQuestionWindowController({ BrowserWindow,
   preload: path.join(__dirname, 'preload.cjs'), resolveIcon: () => resolveWindowIcon(),
   load: target => loadWebApp(target, 'question'),
   attach: target => { attachRendererDiagnostics(target, 'question'); attachWindowActivityEvents(target, 'question') },
-  quitting: () => isQuitting || hasQuitFlag(), owner: () => mainWindow?.webContents,
+  quitting: () => isQuitting || quitFlagController.hasQuitFlag(), owner: () => mainWindow?.webContents,
 })
 let isQuitting = false
 let currentViewMode = "chatWithCharacter"
@@ -1223,7 +1223,6 @@ registerDesktopIpc({
 })
 
 const allowMultipleInstances = process.env.EDEN_AGENT_ALLOW_MULTIPLE_INSTANCES === "true"
-
 if (!allowMultipleInstances && !app.requestSingleInstanceLock()) {
   app.quit()
 } else {

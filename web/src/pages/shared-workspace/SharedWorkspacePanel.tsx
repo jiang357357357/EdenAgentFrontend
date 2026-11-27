@@ -12,7 +12,7 @@ import { SharedWorkspaceConnections } from './SharedWorkspaceConnections'
 import { CloudMembersPanel } from '../../components/shared-workspace/CloudMembersPanel'
 import { CloudLibraries } from './CloudLibraries'
 
-export function SharedWorkspacePanel({ mode = 'lan', section, owner, selected: selection, root, busy, onSelect, onChooseWorkspace, onShowLibraries, onManageHost }: {
+export function SharedWorkspacePanel({ mode = 'lan', section, owner, selected: selection, root, busy, onSelect, onChooseWorkspace, onShowLibraries }: {
   mode?: SharedWorkspaceMode
   section: SharedWorkspaceSection
   owner: SharedWorkspaceStateOwner
@@ -22,7 +22,6 @@ export function SharedWorkspacePanel({ mode = 'lan', section, owner, selected: s
   onSelect(id: string): void
   onChooseWorkspace(): void
   onShowLibraries(): void
-  onManageHost?(): void
 }) {
   const state = owner.state
   const status = state.status
@@ -31,7 +30,7 @@ export function SharedWorkspacePanel({ mode = 'lan', section, owner, selected: s
   const selected = spaces.find(space => space.id === selection?.id)
   if (!status) return null
   if (section === 'libraries' && mode === 'cloud') return <CloudLibraries owner={owner} selected={selected} root={root} busy={busy}
-    onSelect={onSelect} onChooseWorkspace={onChooseWorkspace} onManageHost={onManageHost ?? onShowLibraries} />
+    onSelect={onSelect} onChooseWorkspace={onChooseWorkspace} />
   if (section === "libraries") return <div className="grid items-start gap-5 xl:grid-cols-[16rem_minmax(0,1fr)]">
     <SharedWorkspaceLibraries spaces={spaces} selectedId={selected?.id || ""} boundId={status.spaceId}
       busy={busy || state.loading} canPublish={status.canPublish} hosts={hosts} onSelect={onSelect} onCreate={(name, hostId) => owner.create(name, hostId)} />
@@ -42,7 +41,7 @@ export function SharedWorkspacePanel({ mode = 'lan', section, owner, selected: s
       <SharedWorkspaceDetail mode={mode} owner={owner} space={selected} busy={busy} root={root} onChooseWorkspace={onChooseWorkspace} />
     </div>
   </div>
-  if (section === "network") return <SharedWorkspaceConnections mode={mode} owner={owner} busy={busy} />
+  if (section === "network") return mode === "lan" ? <SharedWorkspaceConnections owner={owner} busy={busy} /> : null
   if (mode === 'cloud' && section === 'members' && selected && hosts.some(host => host.deviceId === selected.hostDeviceId && host.canManage))
     return <CloudMembersPanel key={selected.id} owner={owner} space={selected} busy={busy} />
   const current = Boolean(selected && status.bound && status.spaceId === selected.id)

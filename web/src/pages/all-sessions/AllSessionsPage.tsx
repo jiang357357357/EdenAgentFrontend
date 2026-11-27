@@ -12,15 +12,16 @@ import type { MessageData } from "../../types"
 type SessionSummary = RpcMethodMap["session.list"]["result"][number]
 type Origin = "mon" | "local"
 type Navigation = Omit<ActivityRailProps, "active" | "onOpenFiles" | "onOpenSessions" | "onOpenAllSessions">
-type Category = "all" | "app" | "qq" | "self_awake" | "subagent"
+type Category = "all" | "app" | "qq" | "douyin" | "self_awake" | "subagent"
 
 const categoryLabels: Record<Category, string> = {
-  all: "全部类型", app: "应用聊天", qq: "QQ 私聊", self_awake: "后台自醒", subagent: "子智能体",
+  all: "全部类型", app: "应用聊天", qq: "QQ 私聊", douyin: "抖音聊天", self_awake: "后台自醒", subagent: "子智能体",
 }
 
 function categoryOf(session: SessionSummary): Category {
   if (session.purpose === "self_awake") return "self_awake"
   if (session.purpose === "subagent") return "subagent"
+  if (session.sourceChannel === "douyin") return "douyin"
   return session.sourceChannel === "qq" ? "qq" : "app"
 }
 

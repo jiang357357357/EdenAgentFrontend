@@ -206,7 +206,22 @@ export class SharedWorkspaceStateOwner {
     if (result && this.isCurrent()) this.update({ invitation: result })
   }
   pairDevice(code: string, address?: string) { return this.change(() => this.client.pairDevice(code.trim(), address?.trim()), "设备已配对，请由资料库发布方授权共享权限") }
-  connectHost(code: string, address?: string) { return this.change(() => this.client.connectHost(code.trim(), address?.trim()), "主机已连接，请由主机管理员授予资料库权限") }
+  async connectHost(code: string, address?: string) {
+    const current = this.capture()
+    const result = await this.change(async () => {
+      const paired = await this.client.connectHost(code.trim(), address?.trim())
+      if (current()) this.update({ managementHostId: paired.deviceId, invitation: null })
+      return paired
+    }, '主机配对已保存，正在读取连接状态')
+    if (result && current()) {
+      const host = this.state.hosts.find(value => value.deviceId === result.deviceId)
+      const notice = !host || !host.reachable ? '主机配对已保存，但连接尚未确认，请检查地址、端口和主机状态后刷新'
+        : host.canManage ? '云主机已连接，本机已确认具有管理员权限'
+          : '云主机已连接，本机为普通成员；资料库访问权限由管理员授予'
+      this.update({ notice })
+    }
+    return result
+  }
   async selectHost(deviceId: string) {
     if (!this.isCurrent() || this.state.busy) return
     this.readSequence++
@@ -229,7 +244,7 @@ export class SharedWorkspaceStateOwner {
       const before = this.state.deployment, result = await this.client.deploymentStatus()
       if (!current()) return
       this.update({ deployment: result })
-      if (result?.state === "succeeded" && before?.state !== "succeeded") {
+      if (result?.deviceId && result.state !== "running" && (before?.id !== result.id || before.state !== result.state)) {
         this.update({ managementHostId: result.deviceId ?? this.state.managementHostId })
         await this.refresh(true)
       }

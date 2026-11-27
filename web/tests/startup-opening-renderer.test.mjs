@@ -8,11 +8,8 @@ import { createServer } from 'node:http'
 import { build } from 'esbuild'
 import { _electron } from 'playwright-core'
 
-test('opening animation covers cold loading, supports skipping and reduced motion, then reveals the ready room', { timeout: 180000, skip: process.platform !== 'win32' }, async t => {
+test('the bundled opening animation reveals the classroom and can be bypassed during cold loading', { timeout: 180000, skip: process.platform !== 'win32' }, async t => {
   const web = fileURLToPath(new URL('../', import.meta.url)), agent = path.resolve(web, '../..')
-  const readme = await readFile(path.join(agent, 'README.md'), 'utf8')
-  const quote = readme.match(/^> “([^”]*与你相会[^”]*)”\r?$/m)?.[1]
-  assert.ok(quote, 'The scripture quote must come from the project README')
   const assets = path.join(web, 'public/startup-scene')
   try { await access(path.join(assets, 'manifest.json')) } catch { t.skip('Local startup assets are required'); return }
   const scratch = await mkdtemp(path.join(tmpdir(), 'eden-startup-opening-'))
@@ -27,6 +24,10 @@ test('opening animation covers cold loading, supports skipping and reduced motio
   const http = createServer(async (request, response) => {
     try {
       const pathname = new URL(request.url, 'http://fixture').pathname
+      if (pathname === '/startup-opening/eden-opening.html') {
+        response.setHeader('content-type', 'text/html; charset=utf-8')
+        response.end(await readFile(path.join(web, 'public', '.' + pathname))); return
+      }
       if (pathname.startsWith('/startup-scene/')) {
         const name = pathname.slice('/startup-scene/'.length)
         if (name.includes('/') || name.includes('..')) { response.writeHead(404).end(); return }
@@ -55,22 +56,18 @@ test('opening animation covers cold loading, supports skipping and reduced motio
     const session = await page.context().newCDPSession(page)
     await page.addInitScript(() => {
       window.openingStates = []
-      window.openingCaptionReadyAt = null
-      document.addEventListener('animationend', event => {
-        if (event.animationName === 'startup-caption-in' && event.target?.classList?.contains('startup-opening-caption'))
-          window.openingCaptionReadyAt = performance.now()
-      })
       const inspect = () => {
         const overlay = document.querySelector('[data-startup-opening-overlay]')
-        const next = { present: !!overlay, phase: overlay?.getAttribute('data-opening-phase'), reduced: overlay?.getAttribute('data-reduced-motion') }
+        const next = { present: !!overlay, phase: overlay?.getAttribute('data-opening-phase'), playing: overlay?.getAttribute('data-animation-playing') }
         const previous = window.openingStates.at(-1)
-        if (!previous || previous.present !== next.present || previous.phase !== next.phase || previous.reduced !== next.reduced)
+        if (!previous || previous.present !== next.present || previous.phase !== next.phase || previous.playing !== next.playing)
           window.openingStates.push({ ...next, at: performance.now() })
       }
-      new MutationObserver(inspect).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-opening-phase', 'data-reduced-motion'] })
+      new MutationObserver(inspect).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-opening-phase', 'data-animation-playing'] })
     })
     const origin = `http://127.0.0.1:${http.address().port}/`
     const overlay = page.locator('[data-startup-opening-overlay]')
+    const animation = overlay.frameLocator('iframe')
     const actor = page.getByRole('button', { name: '呼唤阿罗娜，打开登录' })
     const capture = async name => {
       const shot = await session.send('Page.captureScreenshot', { format: 'png', fromSurface: true, captureBeyondViewport: true })
@@ -81,90 +78,78 @@ test('opening animation covers cold loading, supports skipping and reduced motio
     await page.emulateMedia({ reducedMotion: 'no-preference' }); await page.goto(origin)
     await overlay.waitFor()
     assert.equal(await overlay.getAttribute('data-reduced-motion'), 'false')
-    assert.equal(await page.locator('.startup-opening-caption').textContent(), quote)
     assert.equal(await page.getByRole('combobox', { name: '运行模式' }).count(), 0)
     assert.equal(await actor.count(), 0)
-    const before = await page.locator('.startup-opening-emblem').evaluate(element => getComputedStyle(element).transform)
-    await capture('opening-cold-start'); await page.waitForTimeout(280)
-    const after = await page.locator('.startup-opening-emblem').evaluate(element => getComputedStyle(element).transform)
-    assert.notEqual(before, after)
+    await capture('opening-cold-start')
+    await animation.locator('#halo-stage[style*="scale("]').waitFor()
     await capture('opening-cold-midpoint')
-    checks.push('real-css-opening-animates-while-assets-load-and-blocks-underlying-controls')
+    checks.push('the-animation-plays-while-the-classroom-assets-are-cold')
     await page.getByRole('button', { name: '跳过开场动画' }).click()
-    assert.equal(await page.getByRole('button', { name: '跳过开场动画' }).isDisabled(), true)
-    assert.equal(await overlay.isVisible(), true)
+    await overlay.waitFor({ state: 'detached' })
+    await page.getByRole('dialog').waitFor()
     assert.equal(await actor.count(), 0)
-    await page.waitForTimeout(600)
-    await capture('opening-ready-to-reveal')
-    checks.push('skip-shortens-opening-but-retains-opaque-cover-until-native-scene-is-ready')
+    await capture('opening-skipped-to-login')
+    checks.push('skip-unlocks-login-without-waiting-for-the-classroom')
     hold = false; releaseAssets()
-    await page.waitForFunction(() => document.querySelector('[data-startup-opening-overlay]')?.getAttribute('data-opening-phase') === 'revealing')
-    await capture('opening-revealing')
-    await actor.waitFor(); assert.equal(await overlay.count(), 0)
+    await page.getByRole('button', { name: '返回教室' }).click()
+    await actor.waitFor()
     assert.equal(await page.locator('[data-startup-renderer]').getAttribute('data-scene-prewarm-frames'), '3')
     await capture('opening-complete'); await states('cold-skip')
-    checks.push('reveals-only-prewarmed-scene-and-restores-room-interaction')
+    checks.push('return-to-the-prewarmed-room-restores-interaction')
     await page.getByRole('button', { name: '切换为夜晚' }).click()
     await page.getByRole('button', { name: '呼唤普拉娜，打开登录' }).waitFor()
     assert.equal(await overlay.count(), 0)
     checks.push('lighting-switch-does-not-replay-opening')
-    await page.goto(origin); await overlay.waitFor(); await page.waitForTimeout(1450)
-    const readableAt = await page.locator('.startup-opening-caption').evaluate(element => {
-      if (getComputedStyle(element).opacity !== '1') throw new Error('Opening quote is still hidden')
-      if (window.openingCaptionReadyAt === null) throw new Error('Opening caption animation completion was not observed')
-      return window.openingCaptionReadyAt
-    })
-    await capture('opening-quote-reading')
+    await page.goto(origin); await overlay.waitFor()
+    await animation.locator('#reveal-sub[style*="opacity: 1;"]').waitFor()
+    assert.equal(await animation.locator('.reveal-title').textContent(), '欢迎回来，老师')
+    assert.equal(await animation.locator('#reveal-sub').textContent(), '夏莱终端已就绪')
+    await capture('opening-welcome')
     await actor.waitFor(); await states('normal-opening')
-    const normal = observations.at(-1).states, start = normal.find(value => value.present)
+    const normal = observations.at(-1).states, start = normal.find(value => value.playing === 'true')
     const reveal = normal.find(value => value.phase === 'revealing')
     assert.ok(reveal)
-    assert.ok(reveal.at - start.at >= 2350)
-    assert.ok(normal.at(-1).at - reveal.at >= 750)
-    assert.ok(reveal.at - readableAt >= 600)
+    assert.ok(start)
+    assert.ok(reveal.at - start.at >= 7900)
+    assert.ok(reveal.at - start.at < 10500)
+    assert.ok(normal.at(-1).at - reveal.at >= 300)
     checks.push('unskipped-opening-plays-before-revealing-room')
-    checks.push('scripture-matches-readme-and-stays-fully-visible-before-the-room-reveal')
-    hold = true; gate = new Promise(resolve => { releaseAssets = resolve })
-    await session.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false })
-    await page.emulateMedia({ reducedMotion: 'reduce' }); await page.goto(origin)
-    await overlay.waitFor()
-    assert.equal(await overlay.getAttribute('data-reduced-motion'), 'true')
-    assert.equal(await page.locator('.startup-opening-emblem').evaluate(element => getComputedStyle(element).animationName), 'none')
-    await capture('opening-reduced-motion-phone')
-    assert.equal(await overlay.evaluate(element => [...element.querySelectorAll('*')].every(child =>
-      getComputedStyle(child).animationName === 'none')), true)
+    checks.push('the-welcome-text-finishes-before-the-room-reveal')
     for (const [width, height] of [[320, 568], [390, 844], [844, 390], [1366, 768]]) {
       await session.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+      await page.goto(origin)
+      await overlay.locator('iframe').waitFor()
       assert.equal(await overlay.evaluate(element => {
         const within = selector => {
           const box = element.querySelector(selector).getBoundingClientRect()
           return box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight
         }
-        const caption = element.querySelector('.startup-opening-caption').getBoundingClientRect()
-        const button = element.querySelector('button').getBoundingClientRect()
-        return within('.startup-opening-emblem') && within('.startup-opening-caption') && within('button') &&
-          (caption.bottom < button.top || caption.right < button.left)
+        return within('iframe') && within('button')
       }), true, `Opening content fits ${width}x${height}`)
-      await capture(`opening-static-${width}x${height}`)
+      assert.equal(await animation.locator('.reveal-title').evaluate(element => {
+        const bounds = element.getBoundingClientRect()
+        return bounds.left >= 0 && bounds.right <= innerWidth
+      }), true, `Welcome text fits ${width}x${height}`)
+      await capture(`opening-animation-${width}x${height}`)
     }
-    checks.push('all-decoration-stops-in-reduced-motion-and-content-fits-phone-landscape-and-laptop')
+    checks.push('animation-and-controls-fit-phone-landscape-and-laptop')
+    await page.goto(origin); await overlay.waitFor()
     const palettes = []
     for (const theme of ['cream', 'night', 'navy', 'forest']) {
-      palettes.push(await page.evaluate(theme => {
-        document.documentElement.dataset.baseTheme = theme
-        return {
-          sky: getComputedStyle(document.querySelector('.startup-opening-sky')).backgroundImage,
-          orbit: getComputedStyle(document.querySelector('.startup-opening-ring-line')).stroke,
-          text: getComputedStyle(document.querySelector('.startup-opening-caption')).color,
-        }
-      }, theme))
+      await page.evaluate(theme => { document.documentElement.dataset.baseTheme = theme }, theme)
+      palettes.push(await animation.locator('.reveal-title').evaluate(element => getComputedStyle(element).color))
     }
-    assert.ok(palettes.every(palette => JSON.stringify(palette) === JSON.stringify(palettes[0])))
-    checks.push('opening-lighting-and-quote-contrast-stay-consistent-across-light-and-dark-themes')
+    assert.ok(palettes.every(palette => palette === palettes[0]))
+    checks.push('opening-welcome-contrast-stays-consistent-across-app-themes')
+    hold = true; gate = new Promise(resolve => { releaseAssets = resolve })
+    await page.emulateMedia({ reducedMotion: 'reduce' }); await page.goto(origin)
+    await page.getByRole('button', { name: '继续', exact: true }).waitFor()
+    assert.equal(await overlay.locator('iframe').count(), 0)
+    await capture('opening-reduced-motion')
     hold = false; releaseAssets(); await actor.waitFor(); await states('reduced-motion')
     assert.equal(observations.at(-1).states.some(value => value.phase === 'revealing'), false)
     assert.equal(await page.locator('[data-startup-phase]').getAttribute('data-startup-opening'), 'false')
-    checks.push('reduced-motion-uses-static-cover-without-minimum-playback-or-fade')
+    checks.push('reduced-motion-exposes-the-classroom-controls-without-playing-the-animation')
     assert.deepEqual(errors, [])
     const result = { passed: true, verifiedAt: new Date().toISOString(), checks, errors, images, observations, realPrivateAssets: true }
     await writeFile(path.join(evidence, 'opening-result.json'), JSON.stringify(result, null, 2)); t.diagnostic(JSON.stringify(result))

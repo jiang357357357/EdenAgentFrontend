@@ -11,7 +11,7 @@ export function SharedHostDeployment({ owner, busy }: { owner: SharedWorkspaceSt
       onChange={event => form.setField(key, event.target.value)} placeholder={placeholder} autoComplete="off" /></label>
   return <section aria-label="SSH 部署共享主机" className="space-y-4 rounded-xl border border-border/70 bg-library-card p-5 sm:p-6">
     <div><h2 className="flex items-center gap-2 text-base font-semibold"><CloudUpload className="h-5 w-5 text-accent" />部署到云服务器</h2>
-      <p className="mt-2 text-sm text-text-muted">通过 SSH 上传并启动独立共享服务，部署后自动连接。本机成为管理员，其他子机通过主机地址和邀请连接。</p></div>
+      <p className="mt-2 text-sm text-text-muted">通过 SSH 部署后，本机直接成为该主机唯一的管理员子机；重新部署会替换原管理员，保留资料库和普通成员授权。其他子机通过主机地址和邀请连接。</p></div>
     <p className="text-xs leading-relaxed text-text-muted">支持可通过 SSH 登录的 x64 / ARM64 Linux。程序自动上传并安装 Node.js 和 MonPM，无需预装依赖或在云端联网下载。请放行共享端口，默认 TCP 40195。SSH 凭据仅用于本次部署。</p>
     <form className="space-y-4" onSubmit={event => { event.preventDefault(); void form.deploy() }}>
       <div className="grid gap-3 sm:grid-cols-3">
@@ -23,10 +23,13 @@ export function SharedHostDeployment({ owner, busy }: { owner: SharedWorkspaceSt
       </div>
       {form.fingerprint ? <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={form.trusted} disabled={disabled} onChange={event => form.setTrusted(event.target.checked)} />
         <span>已与云服务器控制台中的 SSH 主机指纹核对，信任此主机。</span></label> : null}
-      <label className="block space-y-1 text-sm"><span>SSH 认证方式</span>
-        <select aria-label="SSH 认证方式" value={form.authType} disabled={disabled} className={sharedInputClass} onChange={event => form.setAuthType(event.target.value as 'password' | 'key')}>
-          <option value="password">密码</option><option value="key">私钥</option>
-        </select></label>
+      <fieldset className="space-y-2" disabled={disabled}><legend className="text-sm">SSH 认证方式</legend>
+        <div role="group" aria-label="SSH 认证方式" className="flex gap-2">
+          <button type="button" aria-pressed={form.authType === 'password'} className={form.authType === 'password' ? sharedPrimaryButtonClass : sharedButtonClass}
+            onClick={() => form.selectAuthType('password')}>密码</button>
+          <button type="button" aria-pressed={form.authType === 'key'} className={form.authType === 'key' ? sharedPrimaryButtonClass : sharedButtonClass}
+            onClick={() => form.selectAuthType('key')}>私钥</button>
+        </div></fieldset>
       {form.authType === 'password' ? <label className="block space-y-1 text-sm"><span>SSH 密码</span>
         <input aria-label="SSH 密码" type="password" autoComplete="new-password" value={form.password} disabled={disabled} className={sharedInputClass} onChange={event => form.setPassword(event.target.value)} /></label>
         : <div className="grid gap-3 sm:grid-cols-2">
@@ -54,6 +57,8 @@ export function SharedHostDeployment({ owner, busy }: { owner: SharedWorkspaceSt
       {job.hostStarted && job.state !== 'succeeded' ? <p className="text-xs text-warning">远端可能仍在运行。请检查云端 MonPM；连接失败时也请检查安全组、端口和访问地址。</p> : null}
       {job.pairingCode && job.address && job.state === 'failed' ? <button type="button" className={sharedButtonClass} disabled={busy}
         onClick={() => void owner.connectHost(job.pairingCode!, job.address)}>重新连接已启动的主机</button> : null}
+      {job.deviceId && job.state === 'failed' && !job.pairingCode ? <button type="button" className={sharedButtonClass} disabled={busy}
+        onClick={() => void owner.selectHost(job.deviceId!)}>刷新已登记的主机连接</button> : null}
     </div> : null}
   </section>
 }

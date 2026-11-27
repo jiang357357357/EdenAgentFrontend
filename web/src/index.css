@@ -2,6 +2,7 @@
 @import "./theme.css";
 @import "./chat-workspace.css";
 @import "./workbench.css";
+@import "./question-form.css";
 @plugin "@tailwindcss/typography";
 
 @layer base {
@@ -46,14 +47,6 @@
   .desktop-drag-region button,
   .desktop-drag-region input {
     -webkit-app-region: no-drag;
-  }
-
-  .question-decision-body-single {
-    scrollbar-width: none;
-  }
-
-  .question-decision-body-single::-webkit-scrollbar {
-    display: none;
   }
 
   .settings-range {

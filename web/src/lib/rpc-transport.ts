@@ -1253,6 +1253,8 @@ export function projectSessionEvent(event: SessionEvent, messageID?: string): Js
         properties: {
           id: value.id,
           sessionID,
+          ...(typeof value.turnId === 'string' ? { turnID: value.turnId } : {}),
+          ...(typeof value.toolCallId === 'string' ? { toolCallID: value.toolCallId } : {}),
           questions: value.questions,
         },
       },

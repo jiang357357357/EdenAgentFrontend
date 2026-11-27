@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
-import { MessageSquare, PanelBottom, PanelLeft, PanelRight, Search } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { MessageSquare, PanelBottom, PanelLeft, PanelRight, Phone, PhoneCall, Search } from 'lucide-react'
 import { PluginUiView } from '../plugin-ui/PluginUiSlot'
 import { usePluginUi, PluginUiSession } from '../plugin-ui/PluginUiProvider'
 import { WorkbenchSurface } from './WorkbenchSurface'
 import { WorkbenchSeparator } from './WorkbenchSeparator'
 import { WorkbenchDiagnostics } from './WorkbenchDiagnostics'
-import { WorkbenchPluginMenu } from './WorkbenchPluginMenu'
+import { WorkbenchPluginMenu, type PluginMenuMode } from './WorkbenchPluginMenu'
 import { WorkbenchCharacterMenu, type WorkbenchCharacterActions } from './WorkbenchCharacterMenu'
 import { WorkbenchGroup } from './WorkbenchGroup'
 import { WorkspaceFileView } from './WorkspaceFileView'
 import { EditorGrid } from './EditorGrid'
-import { editorGroups, minimumEditorExtent } from './editor-layout'
+import { editorGroups } from './editor-layout'
+import { workbenchGeometry } from './workbench-geometry'
 import { DocumentLifecycle, DocumentScope, useLifecycleRevision } from './document-lifecycle'
 import { CommandPalette, CloseDocumentDialog } from './WorkbenchDialogs'
 import { buildWorkbenchCommands } from './workbench-commands'
@@ -24,6 +25,7 @@ import { ExtensionDiagnostics } from '../plugin-ui/ExtensionDiagnostics'
 import { createPortal } from 'react-dom'
 import { FullPagePluginSurface, FloatingPluginSurface } from './PluginSurfaceHost'
 import { movableDocument } from './plugin-placement'
+import { WorkbenchPhoneSlot, type WorkbenchPhone } from './workbench-phone'
 
 export function Workbench({state,dispatch,sidebar,children,sessionId,running,onSelect,onNewChat,portrait,onManagePlugins,onOpenPlugin,
   error,onRetry,hydrated=true,storageKey='standalone-workbench',renderChat,characterMenu,onOpenPage,active=true}: {
@@ -40,9 +42,15 @@ export function Workbench({state,dispatch,sidebar,children,sessionId,running,onS
   const [targets,setTargets]=useState<Record<string,HTMLDivElement|null>>({})
   const [toolbarTargets,setToolbarTargets]=useState<Record<string,HTMLDivElement|null>>({})
   const [palette,setPalette]=useState(false),[closing,setClosing]=useState<string>(),[notice,setNotice]=useState('')
+  const [pluginMenu,setPluginMenu]=useState<PluginMenuMode>(null)
   const [showRun,setShowRun]=useState(true)
   const [extensionSettings,setExtensionSettings]=useState(false),[contextMenu,setContextMenu]=useState<{path:string;x:number;y:number}>()
   const [extensionDiagnostics,setExtensionDiagnostics]=useState(false)
+  const [phone,setPhone]=useState<WorkbenchPhone>()
+  const registerPhone=useCallback((control:WorkbenchPhone)=>{
+    setPhone(control)
+    return ()=>setPhone(current=>current===control?undefined:current)
+  },[])
   const store=useMemo(()=>new DocumentLifecycle(storageKey),[storageKey]); useLifecycleRevision(store)
   useEffect(()=>{
     if(!hydrated||!catalogReady)return
@@ -52,31 +60,46 @@ export function Workbench({state,dispatch,sidebar,children,sessionId,running,onS
       else if(!view&&(tab.group==='application'||tab.group==='floating')){store.releaseDocument(tab.id);dispatch({type:'close',id:tab.id})}
     }
   },[views,catalogReady,hydrated,dispatch])
-  const groups=editorGroups(state.layout),primary=groups[0],minimum=minimumEditorExtent(state.layout)
-  const auxiliary=state.sideOpen&&state.tabs.some(tab=>tab.group==='auxiliary')
-  const sidebarWidth=state.sidebarOpen&&width>=1200?Math.min(state.sidebarWidth,width*.25):64
-  const desiredPanelSide=state.bottomOpen&&(state.panelPosition==='left'||state.panelPosition==='right')
-  const panelSpace=desiredPanelSide?Math.min(state.panelWidth,width*.4):0
-  const availableHeight=height-64-(state.bottomOpen&&!desiredPanelSide?state.bottomHeight+4:0)
-  const compact=width<1000||width-sidebarWidth-panelSpace-(auxiliary?264:0)<minimum.width||availableHeight<minimum.height
-  const sideWidth=Math.min(state.sideWidth,Math.max(260,width-sidebarWidth-panelSpace-minimum.width-8))
-  const panelSide=!compact&&(state.panelPosition==='left'||state.panelPosition==='right')
+  const groups=editorGroups(state.layout),primary=groups[0]
+  const lastEditorGroup=useRef(primary)
+  useLayoutEffect(()=>{
+    if(editorGroups(state.layout).includes(state.focused))lastEditorGroup.current=state.focused
+  },[state.layout,state.focused])
+  const previousEditorGroup=groups.includes(lastEditorGroup.current)?lastEditorGroup.current:primary
+  const hasAuxiliaryTabs=state.tabs.some(tab=>tab.group==='auxiliary')
+  const auxiliary=state.sideOpen&&hasAuxiliaryTabs
+  const {sidebarWidth,sidebarMax,sideWidth,sideMax,sideOverlay,compact,panelSide}=workbenchGeometry(state,width,height,auxiliary)
   const fullPage=state.tabs.find(tab=>tab.group==='application'&&tab.id===state.active.application)
   const focused=fullPage??state.tabs.find(tab=>tab.id===state.active[state.focused])
+  const editorTab=state.tabs.find(tab=>tab.id===state.active[previousEditorGroup])
+  const phoneTab=active&&!fullPage&&(focused?.kind==='chat'?focused:!groups.includes(state.focused)&&editorTab?.kind==='chat'?editorTab:null)
+  const phoneControl=phoneTab&&phone?.documentId===phoneTab.id?phone:undefined
+  const phoneTitle=phoneControl?.unavailable||(!phoneControl?'请先打开一个会话':phoneControl.state==='idle'?'拨打电话':'打开通话界面')
   const layoutTabs=state.tabs.filter(tab=>tab.group!=='application'&&tab.group!=='floating')
+  const compactTabs=layoutTabs.filter(tab=>groups.includes(tab.group))
   const extensionSessionId=focused?.sessionId??sessionId
   const extensions=useExtensionWorkbench({sessionId:extensionSessionId,running,activeView:focused?.kind==='plugin'?focused.viewKey:undefined,onOpenView:onOpenPlugin,notice:setNotice,active})
-  const single=state.active[state.focused]??state.active[primary]??state.active.auxiliary??state.active.panel
+  const single=[state.active[state.focused],state.active[previousEditorGroup],state.active[primary]]
+    .find(id=>compactTabs.some(tab=>tab.id===id))??compactTabs[0]?.id
   const bind=useCallback((id:string,element:HTMLDivElement|null)=>setTargets(current=>current[id]===element?current:{...current,[id]:element}),[])
   const bindToolbar=useCallback((id:string,element:HTMLDivElement|null)=>setToolbarTargets(current=>current[id]===element?current:{...current,[id]:element}),[])
   const focus=useCallback((group:string)=>dispatch({type:'focus',group}),[dispatch])
+  const toggleAuxiliary=()=>{
+    if(!hasAuxiliaryTabs){
+      setPluginMenu(current=>current==='sidebar'?null:'sidebar')
+      return
+    }
+    dispatch({type:'layout',patch:{sideOpen:!state.sideOpen}})
+    if(!state.sideOpen)focus('auxiliary')
+    else if(state.focused==='auxiliary')focus(previousEditorGroup)
+  }
   const move=(id:string,group:string,before?:string)=>dispatch({type:'move',id,group,before})
   const close=(id:string)=>{
     if(store.entry(id).dirty){setClosing(id);return}
     try { const tab=state.tabs.find(tab=>tab.id===id);if(tab)store.remember(tab);store.releaseDocument(id);dispatch({type:'close',id}) }
     catch(reason){setNotice(String(reason))}
   }
-  const commands=[...buildWorkbenchCommands({state,dispatch,store,onSelect,onClose:close,onNewChat,sessionId,onOpenPage}),...extensions.commands,
+  const commands=[...buildWorkbenchCommands({state,dispatch,store,onSelect,onClose:close,onNewChat,sessionId,onOpenPage,toggleAuxiliary}),...extensions.commands,
     {id:'extensions.settings',title:'打开扩展设置',run:()=>setExtensionSettings(true)},
     {id:'extensions.diagnostics',title:'查看扩展诊断',run:()=>setExtensionDiagnostics(true)}]
   const run=async(id:string)=>{try{await commands.find(command=>command.id===id)?.run()}catch(reason){setNotice(String(reason))}}
@@ -84,7 +107,7 @@ export function Workbench({state,dispatch,sidebar,children,sessionId,running,onS
   useEffect(()=>{setShowRun(!state.active.panel)},[state.active.panel])
   useEffect(()=>{
     if(active)return
-    setPalette(false);setClosing(undefined);setExtensionSettings(false);setExtensionDiagnostics(false);setContextMenu(undefined)
+    setPalette(false);setClosing(undefined);setExtensionSettings(false);setExtensionDiagnostics(false);setContextMenu(undefined);setPluginMenu(null)
     document.querySelectorAll<HTMLElement>('.workbench-shell :popover-open').forEach(element=>element.hidePopover())
   },[active])
   useEffect(()=>{
@@ -104,12 +127,16 @@ export function Workbench({state,dispatch,sidebar,children,sessionId,running,onS
     window.addEventListener('keydown',keyboard);window.addEventListener('beforeunload',unload)
     return()=>{window.removeEventListener('keydown',keyboard);window.removeEventListener('beforeunload',unload)}
   },[state,store,commands,active,fullPage])
-  const group=(id:string,title:string,tabs=state.tabs.filter(tab=>tab.group===id),active=state.active[id],editable=false)=><WorkbenchGroup key={id} id={id} title={title} tabs={tabs} active={active??null} onTarget={bind} onToolbarTarget={bindToolbar} onFocus={focus} onSelect={onSelect} onClose={close} onMove={move}
+  const group=(id:string,title:string,tabs=state.tabs.filter(tab=>tab.group===id),active=state.active[id],editable=false)=><WorkbenchGroup key={id} id={id} title={title} tabs={tabs} active={active??null} onTarget={bind} onToolbarTarget={bindToolbar} onFocus={id==='compact'?()=>focus(tabs.find(tab=>tab.id===active)?.group??primary):focus} onSelect={onSelect} onClose={close} onMove={move}
     mainGroup={primary} onMenu={()=>setPalette(true)} dirty={id=>store.entry(id).dirty}
     onSplit={editable&&(!tabs.find(tab=>tab.id===active)||movableDocument(tabs.find(tab=>tab.id===active)!))?axis=>dispatch({type:'split',group:id,axis,id:state.active[id]??undefined}):undefined}
     onMerge={editable&&groups.length>1?()=>dispatch({type:'merge',group:id}):undefined}/>
-  const target=(tab:WorkbenchTab)=>targets[compact?'compact':tab.group]??null
-  const visible=(tab:WorkbenchTab)=>compact?single===tab.id:state.active[tab.group]===tab.id&&(tab.group!=='auxiliary'||auxiliary)&&(tab.group!=='panel'||state.bottomOpen&&!showRun)
+  const targetGroup=(tab:WorkbenchTab)=>compact&&groups.includes(tab.group)?'compact':tab.group
+  const visible=(tab:WorkbenchTab)=>{
+    if(tab.group==='auxiliary')return auxiliary&&state.active.auxiliary===tab.id
+    if(tab.group==='panel')return state.bottomOpen&&!showRun&&state.active.panel===tab.id
+    return compact?single===tab.id:state.active[tab.group]===tab.id
+  }
   const portraitTab=state.tabs.find(tab=>tab.kind==='page'&&tab.page==='character')
   const portraitVisible=Boolean(portraitTab&&visible(portraitTab))
   const content=(tab:WorkbenchTab)=>{
@@ -146,25 +173,36 @@ export function Workbench({state,dispatch,sidebar,children,sessionId,running,onS
   return <ExtensionWorkbenchContext.Provider value={extensions.actions}><ExtensionContributionContext.Provider value={{sessionAvailable:Boolean(extensionSessionId),sessionRunning:running,activeView:focused?.kind==='plugin'?focused.viewKey:undefined}}><ExtensionActivityContext.Provider value={extensionActivity}><><div hidden={Boolean(fullPage)} inert={Boolean(fullPage)} className="h-full w-full"><div className="workbench-shell" data-compact={compact} style={{'--workbench-sidebar-width':sidebarWidth+'px','--workbench-side-width':sideWidth+'px'} as CSSProperties}>
     <header className="workbench-titlebar"><strong>Eden <span>工作台</span></strong><div className="flex items-center gap-1">
       <button className="workbench-command" aria-label="打开工作台命令" onClick={()=>setPalette(true)}><Search size={15}/><span>命令</span></button>
-      <WorkbenchPluginMenu onOpen={onOpenPlugin} onManage={onManagePlugins}/><button className="workbench-command" aria-label="新建聊天页面" onClick={onNewChat}><MessageSquare size={16}/><span>新聊天</span></button>
+      <WorkbenchPluginMenu mode={pluginMenu} onModeChange={setPluginMenu} onOpen={onOpenPlugin} onManage={onManagePlugins}/><button className="workbench-command" aria-label="新建聊天页面" onClick={onNewChat}><MessageSquare size={16}/><span>新聊天</span></button>
+      {renderChat&&<button type="button" className="workbench-command workbench-phone" data-call-state={phoneControl?.state}
+        aria-label="电话" title={phoneTitle} aria-haspopup="dialog" disabled={!phoneControl||Boolean(phoneControl.unavailable)} onClick={phoneControl?.open}>
+        {phoneControl?.state==='connected'||phoneControl?.state==='dialing'?<PhoneCall size={16}/>:<Phone size={16}/>}<span>电话</span>
+      </button>}
       <WorkbenchExtensionActions menus={extensions.menus} location="toolbar" onError={setNotice}/>
       {characterMenu&&<WorkbenchCharacterMenu {...characterMenu} portraitVisible={portraitVisible} onToggleEditing={()=>{characterMenu.onToggleEditing();if(!characterMenu.editing&&portraitTab?.group==='panel')setShowRun(false)}} onTogglePortrait={()=>{if(portraitVisible&&portraitTab)close(portraitTab.id);else {characterMenu.onShowPortrait();if(portraitTab?.group==='panel')setShowRun(false)}}}/>}
-      <button className="workbench-icon" aria-label="切换主侧栏" onClick={()=>void run('sidebar.toggle')}><PanelLeft size={16}/></button>
-      <button className="workbench-icon" aria-label="切换工具侧栏" onClick={()=>void run('auxiliary.toggle')}><PanelRight size={16}/></button>
+      <button className="workbench-icon" aria-label="切换主侧栏" aria-pressed={state.sidebarOpen} onClick={()=>void run('sidebar.toggle')}><PanelLeft size={16}/></button>
+      <button type="button" className="workbench-icon" aria-label="切换工具侧栏"
+        aria-controls={hasAuxiliaryTabs?'workbench-tool-sidebar':'workbench-extension-menu'}
+        aria-expanded={hasAuxiliaryTabs?auxiliary:pluginMenu==='sidebar'}
+        onClick={()=>void run('auxiliary.toggle')}><PanelRight size={16}/></button>
       <button className="workbench-icon" aria-label="切换运行面板" onClick={()=>void run('panel.toggle')}><PanelBottom size={16}/></button>
     </div></header>
     <div className="workbench-body">
       {!sidebar&&extensions.menus.some(menu=>menu.location==='activity')&&<nav aria-label="扩展导航" className="flex w-16 shrink-0 flex-col border-r border-border">{extensionActivity}</nav>}
       <div className="workbench-sidebar" data-collapsed={sidebarWidth===64}>{sidebar}</div>
-      {sidebarWidth>64&&<WorkbenchSeparator label="主侧栏宽度" value={sidebarWidth} min={220} max={440} onChange={sidebarWidth=>dispatch({type:'layout',patch:{sidebarWidth}})}/>}
+      {sidebarWidth>64&&<WorkbenchSeparator label="主侧栏宽度" value={sidebarWidth} min={Math.min(220,sidebarMax)} max={sidebarMax} onChange={sidebarWidth=>dispatch({type:'layout',patch:{sidebarWidth}})}/>}
       <div className="workbench-editors workbench-panel-layout" data-position={compact?'bottom':state.panelPosition}>
-        <div className="workbench-groups">{compact?group('compact','编辑器',layoutTabs,single??null):<EditorGrid layout={state.layout} onResize={(id,ratio)=>dispatch({type:'resize',id,ratio})} renderGroup={id=>group(id,'编辑组 '+(groups.indexOf(id)+1),undefined,undefined,true)}/>}</div>
+        <div className="workbench-groups">{compact?group('compact','编辑器',compactTabs,single??null):<EditorGrid layout={state.layout} onResize={(id,ratio)=>dispatch({type:'resize',id,ratio})} renderGroup={id=>group(id,'编辑组 '+(groups.indexOf(id)+1),undefined,undefined,true)}/>}</div>
         {state.bottomOpen&&<><WorkbenchSeparator label={panelSide?'运行面板宽度':'运行面板高度'} value={panelSide?state.panelWidth:state.bottomHeight} min={120} max={panelSide?width*.4:500} horizontal={!panelSide} reverse={state.panelPosition==='right'||state.panelPosition==='bottom'} onChange={value=>dispatch({type:'layout',patch:panelSide?{panelWidth:value}:{bottomHeight:value}})}/>{panel}</>}
       </div>
-      {!compact&&auxiliary&&<><WorkbenchSeparator label="工具侧栏宽度" value={sideWidth} min={260} max={Math.max(260,width-sidebarWidth-420)} reverse onChange={sideWidth=>dispatch({type:'layout',patch:{sideWidth}})}/><aside className="workbench-tool-sidebar" aria-label="工具侧栏" style={{width:sideWidth}}>{group('auxiliary','工具侧栏内容')}</aside></>}
+      {auxiliary&&!sideOverlay&&<WorkbenchSeparator label="工具侧栏宽度" value={sideWidth} min={260} max={sideMax} reverse onChange={sideWidth=>dispatch({type:'layout',patch:{sideWidth}})}/>}
+      <aside id="workbench-tool-sidebar" className="workbench-tool-sidebar" aria-label="工具侧栏" hidden={!auxiliary} inert={!auxiliary} data-overlay={sideOverlay}>{group('auxiliary','工具侧栏内容')}</aside>
     </div>
     <footer className="workbench-status"><span>{running?'● 任务执行中':'就绪'}</span>{extensions.statusItems.filter(item=>item.alignment==='left').map(item=><button key={item.key} disabled={!item.command} onClick={()=>void Promise.resolve(item.command?.run()).catch(reason=>setNotice(String(reason)))}>{item.text}</button>)}<span role={error||notice?'alert':undefined}>{error||notice||store.notice||'Ctrl+Shift+P 打开命令 · 拖动标签或分隔线调整布局'}</span>{error&&onRetry&&<button onClick={onRetry}>重新连接工作台</button>}{extensions.operations.map(item=><button key={item.id} data-extension-running={item.execution.status().runningOperations>0} onClick={()=>item.controller.abort()}>{item.title} · 取消</button>)}{extensions.statusItems.filter(item=>item.alignment==='right').map(item=><button key={item.key} disabled={!item.command} onClick={()=>void Promise.resolve(item.command?.run()).catch(reason=>setNotice(String(reason)))}>{item.text}</button>)}<button onClick={()=>void run('panel.toggle')}>运行记录</button></footer>
-    {layoutTabs.map(tab=><WorkbenchSurface key={tab.id} target={target(tab)} toolbarTarget={toolbarTargets[compact?'compact':tab.group]} visible={active&&!fullPage&&visible(tab)} name={tab.id} onActivate={()=>focus(tab.group)}><DocumentScope store={store} id={tab.id}>{content(tab)}</DocumentScope></WorkbenchSurface>)}
+    {layoutTabs.map(tab=>{
+      const groupId=targetGroup(tab)
+      return <WorkbenchSurface key={tab.id} target={targets[groupId]??null} toolbarTarget={toolbarTargets[groupId]} visible={active&&!fullPage&&visible(tab)} name={tab.id} onActivate={()=>focus(tab.group)}><DocumentScope store={store} id={tab.id}><WorkbenchPhoneSlot.Provider value={phoneTab&&phoneTab.id===tab.id?registerPhone:null}>{content(tab)}</WorkbenchPhoneSlot.Provider></DocumentScope></WorkbenchSurface>
+    })}
     {typeof document==='undefined'&&children}
     {contextMenu&&<div role="menu" aria-label="文件扩展操作" className="fixed z-50 rounded border border-border bg-surface p-2 shadow-lg" style={{left:contextMenu.x,top:contextMenu.y}}>{extensions.menus.filter(menu=>menu.location==='editor/context').map(menu=><button key={menu.command.id} role="menuitem" className="block p-2" onClick={()=>{setContextMenu(undefined);void Promise.resolve(menu.command.run([contextMenu.path])).catch(reason=>setNotice(String(reason)))}}>{menu.command.title}</button>)}<button role="menuitem" onClick={()=>setContextMenu(undefined)}>关闭</button></div>}
   </div></div>

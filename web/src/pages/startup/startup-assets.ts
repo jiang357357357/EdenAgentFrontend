@@ -1,7 +1,11 @@
 import type { CoreCharacterSpineAsset } from '../../lib/auth'
 
+export function isStartupNight(hour = new Date().getHours()) {
+  return hour < 6 || hour >= 18
+}
+
 export function startupScene(hour = new Date().getHours(), base = document.baseURI) {
-  const night = hour < 6 || hour >= 18
+  const night = isStartupNight(hour)
   const root = new URL('startup-scene/', base)
   const asset = (name: string, room: boolean): CoreCharacterSpineAsset => ({
     skeleton_url: new URL(`${name}.skel`, root).href,

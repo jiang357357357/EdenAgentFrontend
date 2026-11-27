@@ -7,9 +7,9 @@ import { sharedPrimaryButtonClass, sharedSpaceRole } from '../../components/shar
 import { SharedWorkspaceDetail } from './SharedWorkspaceDetail'
 import { CloudLibraryCreate } from './CloudLibraryCreate'
 
-export function CloudLibraries({ owner, selected, root, busy, onSelect, onChooseWorkspace, onManageHost }: {
+export function CloudLibraries({ owner, selected, root, busy, onSelect, onChooseWorkspace }: {
   owner: SharedWorkspaceStateOwner; selected?: SharedSpace; root: string; busy: boolean
-  onSelect(id: string): void; onChooseWorkspace(): void; onManageHost(): void
+  onSelect(id: string): void; onChooseWorkspace(): void
 }) {
   const [creating, setCreating] = useState(false)
   const [query, setQuery] = useState('')
@@ -23,7 +23,7 @@ export function CloudLibraries({ owner, selected, root, busy, onSelect, onChoose
   useEffect(() => { setCreating(false); setQuery('') }, [owner])
   const begin = () => { owner.clearFeedback(); setCreating(true) }
   const back = () => { owner.clearFeedback(); setCreating(false) }
-  if (creating) return <CloudLibraryCreate owner={owner} hosts={publishers} busy={busy} onCancel={back} onManageHost={onManageHost}
+  if (creating) return <CloudLibraryCreate owner={owner} hosts={publishers} busy={busy} onCancel={back}
     onCreated={id => { setCreating(false); onSelect(id) }} />
   if (selected) return <div className="space-y-5">
     <button type="button" className="inline-flex items-center gap-2 text-sm text-accent hover:underline disabled:opacity-40" disabled={busy} onClick={() => { owner.clearFeedback(); onSelect('') }}><ArrowLeft className="h-4 w-4" />返回资料库</button>
@@ -43,8 +43,8 @@ export function CloudLibraries({ owner, selected, root, busy, onSelect, onChoose
       </nav>
     </> : <div className="mx-auto flex max-w-lg flex-col items-center px-3 py-12 text-center sm:py-20">
       <FolderPlus className="mb-5 h-14 w-14 text-accent/60" strokeWidth={1.3} /><h3 className="text-xl font-semibold">还没有云端资料库</h3>
-      <p className="mt-3 text-sm leading-relaxed text-text-muted">{canCreate ? '选择云主机上的文件夹，创建共享资料库。' : canPublish ? '先连接可管理的云主机，再选择共享文件夹。' : '连接云主机并获得授权后，即可接收共享资料。'}</p>
-      <button type="button" className={`${sharedPrimaryButtonClass} mt-6 inline-flex items-center gap-2`} disabled={busy} onClick={canCreate ? begin : onManageHost}>{canCreate ? <Folder className="h-4 w-4" /> : <Cloud className="h-4 w-4" />}{canCreate ? '选择云端文件夹' : '连接云主机'}</button>
+      <p className="mt-3 text-sm leading-relaxed text-text-muted">{canCreate ? '选择云主机上的文件夹，创建共享资料库。' : '可在 Eden Web 的「外接设备 → 云服务器配置」连接和配置云主机。'}</p>
+      {canCreate && <button type="button" className={`${sharedPrimaryButtonClass} mt-6 inline-flex items-center gap-2`} disabled={busy} onClick={begin}><Folder className="h-4 w-4" />选择云端文件夹</button>}
     </div>}
   </section>
 }

@@ -22,7 +22,7 @@ interface PageProps {
 export function SharedWorkspacePageView({ owner, root, choosing = false, directoryError, onBack, onChooseWorkspace }: PageProps) {
   const mode: SharedWorkspaceMode = owner.state.posture?.mode ?? 'lan'
   const [selections, setSelections] = useState<Record<SharedWorkspaceMode, string | null>>({ lan: null, cloud: null })
-  const [sections, setSections] = useState<Record<SharedWorkspaceMode, SharedWorkspaceSection>>({ lan: 'libraries', cloud: 'network' })
+  const [sections, setSections] = useState<Record<SharedWorkspaceMode, SharedWorkspaceSection>>({ lan: 'libraries', cloud: 'libraries' })
   const section = sections[mode]
   const setSection = (value: SharedWorkspaceSection) => setSections(before => ({ ...before, [mode]: value }))
   const setSelection = (value: string) => setSelections(before => ({ ...before, [mode]: value }))
@@ -73,11 +73,11 @@ export function SharedWorkspacePageView({ owner, root, choosing = false, directo
           : !status.available ? <div className="p-4 sm:p-8">
               <NoticeCard tone="neutral" title="共享资料库暂不可用" description={status.reason || "请检查共享资料库服务是否已启用。"} />
             </div>
-          : sharedWorkspaceSections.map(({ id }) => <section key={id} id={`${prefix}-panel-${id}`} aria-labelledby={`${prefix}-navigation-${id}`}
+          : sharedWorkspaceSections.filter(({ id }) => mode === 'lan' || id !== 'network').map(({ id }) => <section key={id} id={`${prefix}-panel-${id}`} aria-labelledby={`${prefix}-navigation-${id}`}
               hidden={section !== id} data-shared-workspace-section={id} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
             <div className="mx-auto max-w-7xl px-4 py-5 sm:px-8 sm:py-6">
               <SharedWorkspacePanel key={`${mode}-${id}`} mode={mode} section={id} owner={owner} selected={selected} root={root} busy={busy}
-                onSelect={setSelection} onChooseWorkspace={chooseWorkspace} onShowLibraries={() => setSection("libraries")} onManageHost={() => setSection('network')} />
+                onSelect={setSelection} onChooseWorkspace={chooseWorkspace} onShowLibraries={() => setSection("libraries")} />
             </div>
           </section>)}
       </div>

@@ -2,7 +2,7 @@ import { ContextWindowDialog } from "./ContextWindowDialog"
 import { useContextLimit } from "./hooks/useContextLimit"
 import { ArrowUp, Circle, Square } from "lucide-react"
 import { motion } from "motion/react"
-import { useEffect, useId, useRef, useState } from "react"
+import { useId, useState } from "react"
 
 import { formatPromptCacheState, formatTokenCount } from "../../../lib/token-usage"
 import { cn } from "../../../lib/utils"
@@ -191,88 +191,4 @@ export function TokenMeter({
       </div>
     </div>
   )
-}
-
-export function VoiceLevelWaveform({ level, active }: { level: number; active: boolean }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const targetLevelRef = useRef(0)
-  const activeRef = useRef(active)
-  const startDrawingRef = useRef<(() => void) | null>(null)
-
-  useEffect(() => {
-    activeRef.current = active
-    targetLevelRef.current = active ? Math.max(0, Math.min(1, level)) : 0
-    startDrawingRef.current?.()
-  }, [active, level])
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const history = Array.from<number>({ length: 72 }).fill(0)
-    let currentLevel = 0
-    let lastSampleAt = performance.now()
-    let animationFrame = 0
-
-    const shouldContinue = () => activeRef.current || targetLevelRef.current > 0.001 || currentLevel > 0.001 || history.some((sample) => sample > 0.001)
-
-    const draw = (now: number) => {
-      const ratio = window.devicePixelRatio || 1
-      const width = Math.max(1, Math.round(canvas.clientWidth * ratio))
-      const height = Math.max(1, Math.round(canvas.clientHeight * ratio))
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width
-        canvas.height = height
-      }
-
-      currentLevel += (targetLevelRef.current - currentLevel) * (targetLevelRef.current > currentLevel ? 0.3 : 0.12)
-      if (now - lastSampleAt >= 48) {
-        history.shift()
-        history.push(currentLevel < 0.025 ? 0 : Math.pow(currentLevel, 0.72))
-        lastSampleAt = now
-      }
-
-      const context = canvas.getContext("2d")
-      if (context) {
-        context.clearRect(0, 0, width, height)
-        const centerY = height / 2
-        context.beginPath()
-        context.moveTo(0, centerY)
-        context.lineTo(width, centerY)
-        context.strokeStyle = getComputedStyle(canvas).getPropertyValue("--color-accent").trim()
-        context.globalAlpha = 0.28
-        context.lineWidth = Math.max(1, ratio * 0.8)
-        context.stroke()
-
-        const slot = width / history.length
-        context.globalAlpha = 0.92
-        context.lineWidth = Math.max(1, slot * 0.32)
-        context.lineCap = "round"
-        history.forEach((sample, index) => {
-          if (sample <= 0) return
-          const x = slot * index + slot / 2
-          const halfHeight = Math.max(ratio, sample * height * 0.43)
-          context.beginPath()
-          context.moveTo(x, centerY - halfHeight)
-          context.lineTo(x, centerY + halfHeight)
-          context.stroke()
-        })
-        context.globalAlpha = 1
-      }
-      if (shouldContinue()) animationFrame = window.requestAnimationFrame(draw)
-      else animationFrame = 0
-    }
-
-    const startDrawing = () => {
-      if (!animationFrame) animationFrame = window.requestAnimationFrame(draw)
-    }
-    startDrawingRef.current = startDrawing
-    startDrawing()
-    return () => {
-      startDrawingRef.current = null
-      if (animationFrame) window.cancelAnimationFrame(animationFrame)
-    }
-  }, [])
-
-  return <canvas ref={canvasRef} className="h-[2.6vh] w-[54%]" aria-hidden="true" />
 }

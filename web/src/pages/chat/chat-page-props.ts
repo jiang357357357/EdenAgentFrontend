@@ -5,12 +5,15 @@ import type { ConnectionFeedbackState } from '../../lib/connection-feedback'
 import type { CharacterConfigurationView } from '../../lib/character-navigation'
 import type { BackgroundPreference } from '../../lib/use-background-preference'
 import type { AppearancePreference } from '../../lib/use-appearance-preference'
-import type { PendingPermission, MessageData, PermissionMode, PromptAttachment, Session, SubagentThreadDetails } from '../../types'
+import type { PendingPermission, PendingQuestion, MessageData, PermissionMode, PromptAttachment, Session, SubagentThreadDetails } from '../../types'
+import type { QuestionActions } from '../../components/requests/QuestionToolContext'
 import type { RefObject } from 'react'
-export interface ChatPageProps {
+import type { DesktopVoiceDestination, DesktopVoiceTurn } from '../../lib/agent-voice-call'
+export interface ChatPageProps extends QuestionActions {
   sessions: Session[]
   activeSessionId: string
   activeSession?: Session
+  defaultParticipantID?: number
   currentUser?: AuthUser | null
   assistant?: CoreAssistant | null
   assistantError?: string
@@ -21,6 +24,7 @@ export interface ChatPageProps {
   onRetryConnectionSync: () => void
   runtimeError?: string
   activePendingPermissions: PendingPermission[]
+  activePendingQuestions?: PendingQuestion[]
   messagesScrollRef: RefObject<HTMLDivElement | null>
   messagesEndRef: RefObject<HTMLDivElement | null>
   autoScrollReady?: boolean
@@ -48,7 +52,8 @@ export interface ChatPageProps {
   onArchiveSession: (id: string, archived: boolean) => Promise<void>
   onPinSession: (id: string, pinned: boolean) => Promise<void>
   onNewSession: () => void
-  onSendMessage: (content: string, attachments: PromptAttachment[]) => Promise<void>
+  onPrepareDraftVoiceCall?: () => Promise<DesktopVoiceDestination>
+  onSendMessage: (content: string, attachments: PromptAttachment[], voice?: DesktopVoiceTurn) => Promise<void>
   onCompact: (instructions?: string) => Promise<void>
   onAbort: () => Promise<void>
   onFollowupSubagent: (target: string, message: string) => Promise<unknown>
@@ -60,7 +65,6 @@ export interface ChatPageProps {
   onPreviewImage: (src: string, alt?: string) => void
   onLogout: () => Promise<void> | void
   onOpenAssistantSwitcher: () => void
-  onOpenDutyAssistantSwitcher: () => void
   onOpenSessionAssistantSwitcher: () => void
   onOpenSettings: () => void
   onOpenPlugins?: () => void

@@ -1,4 +1,4 @@
-import { rpcNotifications } from '@eden/api'
+import { rpcNotifications, streamCompactedEvent, streamCompactedPayloadSchema } from '@eden/api'
 import { EdenAgentRpcClient, type RpcCloseInfo } from './rpc-client'
 import { connectionCloseMessage } from './connection-diagnostics'
 import type { SessionEventInput } from './session-event'
@@ -106,14 +106,21 @@ export class SessionRpcChannels {
         client.close({ code: 1000, reason: 'invalid session event' }); return
       }
       const event = parsed.data
+      const isCompacted = event.eventType === streamCompactedEvent
+      const compacted = isCompacted ? streamCompactedPayloadSchema.safeParse(event.payload) : undefined
+      if (compacted && (!compacted.success || BigInt(compacted.data.firstSeq) > BigInt(event.seq))) {
+        client.close({ code: 1000, reason: 'invalid compacted event range' }); return
+      }
       if (channel.sequence !== undefined) {
         if (BigInt(event.seq) <= BigInt(channel.sequence)) return
-        if (BigInt(event.seq) !== BigInt(channel.sequence) + 1n) {
+        const firstSeq = compacted?.success ? compacted.data.firstSeq : event.seq
+        if (BigInt(firstSeq) !== BigInt(channel.sequence) + 1n) {
           client.close({ code: 1000, reason: 'event sequence gap' }); return
         }
       }
       channel.sequence = event.seq
       channel.lastUsed = Date.now()
+      if (isCompacted) return
       if (event.eventType === 'turn.started' || event.eventType === 'input.queued') channel.busy = true
       if (['turn.completed', 'turn.failed', 'session.closed', 'session.deleted'].includes(event.eventType)) channel.busy = false
       this.access.event(event)

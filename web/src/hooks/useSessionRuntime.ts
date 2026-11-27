@@ -65,6 +65,8 @@ import { getRuntimeOriginRevision, getStoredRuntimeOrigin } from '../lib/runtime
 import { useSessionConnectionFeedback } from './useSessionConnectionFeedback';
 import { forgetSessionChannel } from '../lib/rpc-transport';
 import { PendingQuestionSync } from '../lib/pending-question-sync';
+import { coalesceSessionSnapshot } from '../lib/session-snapshot-requests';
+import type { DesktopVoiceTurn } from '../lib/agent-voice-call';
 
 type RefreshGuard = () => boolean;
 const authenticationError = /authentication_expired|not_authenticated|core_authentication_expired|Mon authentication rejected/i;
@@ -98,6 +100,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     setConnectionFeedback(next);
   }), []);
   const activeSessionIdRef = useRef<string | undefined>(state.activeSessionId);
+  const draftCreationRef = useRef<{ epoch: number; selection: number; request: ReturnType<typeof createSessionRaw> } | undefined>(undefined);
   const cachedSessionIdsRef = useRef<string[]>([]);
   cachedSessionIdsRef.current = Object.keys(state.sessions);
   const eventErrorTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -157,6 +160,35 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     }
   }, [state.sessions]);
 
+  const selectedRuntimeSession = state.activeSessionId ? state.sessions[state.activeSessionId] : undefined;
+  useEffect(() => {
+    const session = selectedRuntimeSession;
+    if (!isRuntimeReady() || !session?.hydrated || session.status !== 'busy') return;
+    const latestTurn = Object.values(session.turnTimings ?? {}).at(-1);
+    if (latestTurn?.startedAt !== undefined && latestTurn.completedAt === undefined) return;
+    if (Object.values(session.messages).some(message => message.localOnly && message.deliveryState === 'sending')) return;
+
+    // A snapshot may have been taken during an idle action, which has no turn-completion event.
+    const inScope = captureRefreshGuard();
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const reconcile = async () => {
+      try {
+        const snapshot = await readSessionRaw(session.id);
+        if (disposed || !inScope()) return;
+        if (snapshot.runtimeStatus === 'idle') {
+          dispatch(setSessionStatus(session.id, 'idle', session));
+          return;
+        }
+      } catch {
+        // Channel recovery handles connection errors. Read again when the channel is available.
+      }
+      if (!disposed && inScope()) timer = setTimeout(reconcile, 2_500);
+    };
+    timer = setTimeout(reconcile, 1_000);
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [captureRefreshGuard, isRuntimeReady, selectedRuntimeSession]);
+
   useEffect(() => {
     connectionFeedbackController.reset(enabled);
     setQuestionsLoading(false);
@@ -197,10 +229,11 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     const snapshot = questionSync.begin();
     setQuestionsLoading(true);
     try {
-      const questions = await listQuestionsRaw();
+      const questions = await listQuestionsRaw(options.sessionOnly ? activeSessionIdRef.current : undefined);
       if (!current()) return;
       const merged = questionSync.finish(snapshot, questions);
-      if (merged) dispatch(hydratePendingQuestions(merged.filter(item => !deletedSessionIdsRef.current.has(item.sessionID))));
+      if (merged) dispatch(hydratePendingQuestions(merged.filter(item => !deletedSessionIdsRef.current.has(item.sessionID)
+        && (!options.sessionOnly || item.sessionID === activeSessionIdRef.current))));
       if (questionSync.isLatest(snapshot)) setQuestionSyncError(undefined);
     } catch (error) {
       if (current() && questionSync.isLatest(snapshot)) setQuestionSyncError(error instanceof Error ? error.message : String(error));
@@ -209,7 +242,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
       questionSync.cancel(snapshot);
       if (current() && questionSync.isLatest(snapshot)) setQuestionsLoading(false);
     }
-  }, [captureRefreshGuard, questionSync]);
+  }, [captureRefreshGuard, questionSync, options.sessionOnly]);
 
   const channels = useSessionConnectionFeedback(enabled, scopeEpoch, state.activeSessionId, async (sessionID, live) => {
     const epoch = scopeRef.current.epoch;
@@ -226,7 +259,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
   const refreshSessionModel = useCallback(async (sessionID: string, current: RefreshGuard = captureRefreshGuard(), propagateAuthentication = false) => {
     if (!current()) return;
     try {
-      await refreshModelWhenIdle(sessionID);
+      await coalesceSessionSnapshot(JSON.stringify(['session.model', sessionID]), () => refreshModelWhenIdle(sessionID));
       if (!current() || deletedSessionIdsRef.current.has(sessionID)) return;
       setModelErrors((current) => {
         if (!current[sessionID]) return current;
@@ -248,47 +281,19 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
 
   const refreshBlockers = useCallback(async (current: RefreshGuard = captureRefreshGuard()) => {
     if (!current()) return;
-    if (options.manageGlobalRequests === false) {
-      const response = await getPermissionMode();
-      if (current()) setPermissionModeState(response.mode);
-      return;
-    }
-    const results = await Promise.allSettled([
+    const requests: Promise<unknown>[] = [
       refreshQuestions(current),
-      listPermissionsRaw().then(permissions => { if (current()) dispatch(hydratePendingPermissions(permissions.filter(item => !deletedSessionIdsRef.current.has(item.sessionID)))); }),
       getPermissionMode().then(response => { if (current()) setPermissionModeState(response.mode); }),
+    ];
+    if (options.manageGlobalRequests !== false) requests.push(
+      listPermissionsRaw().then(permissions => { if (current()) dispatch(hydratePendingPermissions(permissions.filter(item => !deletedSessionIdsRef.current.has(item.sessionID)))); }),
       listScreenCaptureRequests().then(requests => { if (current()) for (const request of requests) if (!deletedSessionIdsRef.current.has(request.sessionID)) void handleScreenCaptureRequest(request); }),
       listCameraCaptureRequests().then(requests => { if (current()) for (const request of requests) if (!deletedSessionIdsRef.current.has(request.sessionID)) void handleCameraCaptureRequest(request); }),
-    ]);
+    );
+    const results = await Promise.allSettled(requests);
     const errors = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
     if (errors.length) throw (errors.find(result => authenticationError.test(String(result.reason))) ?? errors[0])!.reason;
   }, [captureRefreshGuard, refreshQuestions, options.manageGlobalRequests]);
-
-  useEffect(() => {
-    if (!isRuntimeReady()) return;
-    let cancelled = false;
-    const inScope = captureRefreshGuard();
-    const current = () => !cancelled && inScope();
-
-    async function load() {
-      try {
-        const [sessions] = await Promise.all([refreshSessions(current), refreshBlockers(current)]);
-        if (!current()) return;
-        const firstSessionID = activeSessionIdRef.current ?? (options.autoSelectFirst === false ? undefined : sessions[0]?.id);
-        if (firstSessionID) {
-          await refreshSessionMessages(firstSessionID, current);
-        }
-      } catch (error) {
-        if (!current()) return;
-        dispatch(setConnectionError(error instanceof Error ? error.message : String(error)));
-      }
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [captureRefreshGuard, isRuntimeReady, refreshBlockers, refreshSessionMessages, refreshSessions]);
 
   useEffect(() => {
     if (!isRuntimeReady() || !state.activeSessionId) return;
@@ -335,21 +340,24 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     const current = captureRefreshGuard(revision);
     if (!current()) return;
     try {
-      const [sessions] = await Promise.all([refreshSessions(current), refreshBlockers(current)]);
-      while (current()) {
-        const selectedSessionID = activeSessionIdRef.current;
-        const sessionID = selectedSessionID ?? (options.autoSelectFirst === false ? undefined : sessions[0]?.id);
-        if (sessionID) {
-          await refreshSessionModel(sessionID, current, true);
-          if (!current()) return;
-          await refreshSessionMessages(sessionID, current);
-          if (!current()) return;
+      const restoreHistory = async () => {
+        const sessions = await refreshSessions(current);
+        while (current()) {
+          const selectedSessionID = activeSessionIdRef.current;
+          const sessionID = selectedSessionID ?? (options.autoSelectFirst === false ? undefined : sessions[0]?.id);
+          if (sessionID) {
+            await refreshSessionMessages(sessionID, current);
+            if (!current()) return;
+            // Model rebinding has its own error state and must not delay reading durable history.
+            void refreshSessionModel(sessionID, current);
+          }
+          if (activeSessionIdRef.current !== selectedSessionID && activeSessionIdRef.current !== sessionID) continue;
+          return;
         }
-        // A selection made during either request needs its own snapshot.
-        if (activeSessionIdRef.current !== selectedSessionID && activeSessionIdRef.current !== sessionID) continue;
-        connectionFeedbackController.synchronized(revision);
-        return;
-      }
+      };
+      // Approval synchronization still gates restored feedback, but not the first message paint.
+      await Promise.all([restoreHistory(), refreshBlockers(current)]);
+      if (current()) connectionFeedbackController.synchronized(revision);
     } catch (error) {
       if (!current()) return;
       const reason = error instanceof Error ? error.message : String(error);
@@ -494,40 +502,52 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     }
   }, [defaultParticipantID, draftParticipantIDs, isRuntimeReady]);
 
+  const materializeDraftSession = useCallback(async () => {
+    if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
+    const { epoch } = scopeRef.current;
+    const selection = historySelectionRevisionRef.current;
+    const pending = draftCreationRef.current;
+    if (pending?.epoch === epoch && pending.selection === selection) return pending.request;
+    const participantIDs = draftParticipantIDs.length ? draftParticipantIDs : defaultParticipantID == null ? [] : [defaultParticipantID];
+    const request = createSessionRaw(participantIDs).then(session => {
+      if (!isRuntimeReady() || scopeRef.current.epoch !== epoch || historySelectionRevisionRef.current !== selection) {
+        throw new Error('当前会话已切换，请重新操作');
+      }
+      activeSessionIdRef.current = session.id;
+      setDraftParticipantIDs([]);
+      dispatch(hydrateSessionList([session], options.autoSelectFirst !== false));
+      dispatch(setActiveSession(session.id));
+      return session;
+    });
+    draftCreationRef.current = { epoch, selection, request };
+    try { return await request; }
+    finally { if (draftCreationRef.current?.request === request) draftCreationRef.current = undefined; }
+  }, [defaultParticipantID, draftParticipantIDs, isRuntimeReady, options.autoSelectFirst]);
+
+  const prepareDraftVoiceCall = useCallback(async () => {
+    const origin = getStoredRuntimeOrigin() ?? 'mon';
+    const selected = activeSessionIdRef.current;
+    if (!selected && origin === 'mon' && !draftParticipantIDs.length && defaultParticipantID == null) {
+      throw new Error('请先选择通话角色');
+    }
+    const session = selected ? await readSessionRaw(selected) : await materializeDraftSession();
+    if (!isRuntimeReady() || activeSessionIdRef.current !== session.id) throw new Error('当前会话已切换，请重新拨打');
+    const configId = session.participants?.[0]?.sttConfigID ?? (origin === 'local' ? 0 : undefined);
+    if (typeof configId !== 'number') throw new Error('当前角色尚未配置语音识别');
+    return { sessionId: session.id, configId };
+  }, [defaultParticipantID, draftParticipantIDs, isRuntimeReady, materializeDraftSession]);
+
   const sendMessage = useCallback(
-    async (content: string, attachments: PromptAttachment[]) => {
+    async (content: string, attachments: PromptAttachment[], voice?: DesktopVoiceTurn) => {
       let sessionID = activeSessionIdRef.current;
       if (!isRuntimeReady()) {
         throw new Error('Eden Agent runtime is not authenticated');
       }
-      if (!sessionID) {
-        const session = await createSessionRaw(draftParticipantIDs);
-        sessionID = session.id;
-        activeSessionIdRef.current = session.id;
-        setDraftParticipantIDs([]);
-        sendingSessionIdsRef.current.add(session.id);
-        dispatch(hydrateSessionList([session], options.autoSelectFirst !== false));
-        dispatch(setActiveSession(session.id));
-        const optimisticMessage = pushLocalUserMessage(session.id, content, attachments);
-        dispatch(optimisticMessage);
-        try {
-          const accepted = await sendPromptAsync(session.id, content, attachments);
-          if (!deletedSessionIdsRef.current.has(session.id)) dispatch(acceptLocalUserMessage(session.id, optimisticMessage.messageID, accepted.turnId));
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          sendingSessionIdsRef.current.delete(session.id);
-          if (!deletedSessionIdsRef.current.has(session.id)) {
-            dispatch(failLocalUserMessage(session.id, optimisticMessage.messageID, message));
-            dispatch(setConnectionError(message));
-          }
-          throw error;
-        }
-        return;
-      }
-      if (!sessionID) {
-        throw new Error('No active session');
-      }
+      if (voice && voice.sessionId !== sessionID) throw new Error('通话会话已切换，请重新拨打');
+      const fromDraft = !sessionID;
+      if (!sessionID) sessionID = (await materializeDraftSession()).id;
       if (sendingSessionIdsRef.current.has(sessionID)) {
+        if (voice) throw new Error('请等当前回复结束后再说');
         if (attachments.length > 0) {
           throw new Error('运行中的后续消息暂不支持附件，请等待当前回合结束。');
         }
@@ -549,23 +569,25 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         return;
       }
 
-      if (preparingSessionIdsRef.current.has(sessionID)) throw new Error('此会话正在准备助手和模型，请稍后再发送。');
-      const preparation = {};
-      const { epoch, originRevision } = scopeRef.current;
-      preparingSessionIdsRef.current.set(sessionID, preparation);
-      try {
-        await prepareSessionForSend(sessionID);
-        if (!isRuntimeReady() || scopeRef.current.epoch !== epoch || getRuntimeOriginRevision() !== originRevision) {
-          throw new Error('账号或世界已切换，请重新发送');
+      if (!fromDraft) {
+        if (preparingSessionIdsRef.current.has(sessionID)) throw new Error('此会话正在准备助手和模型，请稍后再发送。');
+        const preparation = {};
+        const { epoch, originRevision } = scopeRef.current;
+        preparingSessionIdsRef.current.set(sessionID, preparation);
+        try {
+          await prepareSessionForSend(sessionID);
+          if (!isRuntimeReady() || scopeRef.current.epoch !== epoch || getRuntimeOriginRevision() !== originRevision) {
+            throw new Error('账号或世界已切换，请重新发送');
+          }
+        } finally {
+          if (preparingSessionIdsRef.current.get(sessionID) === preparation) preparingSessionIdsRef.current.delete(sessionID);
         }
-      } finally {
-        if (preparingSessionIdsRef.current.get(sessionID) === preparation) preparingSessionIdsRef.current.delete(sessionID);
       }
       sendingSessionIdsRef.current.add(sessionID);
       const optimisticMessage = pushLocalUserMessage(sessionID, content, attachments);
       dispatch(optimisticMessage);
       try {
-        const accepted = await sendPromptAsync(sessionID, content, attachments);
+        const accepted = await sendPromptAsync(sessionID, content, attachments, voice);
         if (!deletedSessionIdsRef.current.has(sessionID)) dispatch(acceptLocalUserMessage(sessionID, optimisticMessage.messageID, accepted.turnId));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -577,7 +599,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
         throw error;
       }
     },
-    [draftParticipantIDs, isRuntimeReady, prepareSessionForSend],
+    [isRuntimeReady, materializeDraftSession, prepareSessionForSend],
   );
 
   const compactSession = useCallback(async (instructions?: string) => {
@@ -642,6 +664,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     const sessionID = activeSessionIdRef.current;
     if (!isRuntimeReady()) throw new Error('Eden Agent runtime is not authenticated');
     if (!sessionID) {
+      if (draftCreationRef.current) throw new Error('新会话正在创建，请稍后再保存参与者。');
       setDraftParticipantIDs([...assistantIDs]);
       return undefined;
     }
@@ -822,6 +845,7 @@ export function useSessionRuntime(enabled = true, options: UseSessionRuntimeOpti
     runtimeError: channels.feedback ? activeModelError : state.connectionState === 'connected' ? activeModelError ?? state.connectionError : undefined,
     compactSession,
     createSession,
+    prepareDraftVoiceCall,
     deleteSession,
     deleteMessage,
     readReplyText,

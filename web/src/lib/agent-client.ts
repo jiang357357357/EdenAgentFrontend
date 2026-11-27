@@ -13,6 +13,8 @@ import type { ConnectorCapabilityInfo as RpcConnectorCapabilityInfo, ConnectorCa
 import { buildSessionEnvironment } from "./session-environment"
 import { getRuntimeModelConfig } from "./runtime-model-client"
 import { hasConfiguredRuntimeModel } from "./runtime-models"
+import { coalesceSessionSnapshot } from './session-snapshot-requests'
+import type { DesktopVoiceTurn } from './agent-voice-call'
 export { getRuntimeModelConfig, updateRuntimeModel } from "./runtime-model-client"
 export type { RuntimeModelConfig, RuntimeModelOption, ModelSelectionTarget } from "./runtime-models"
 import type {
@@ -69,7 +71,7 @@ export type ApiSession = {
   pinned?: boolean
   pinUpdatedAt?: number
   purpose?: "user_chat" | "self_awake" | "subagent"
-  sourceChannel?: "app" | "qq" | "internal"
+  sourceChannel?: "app" | "qq" | "douyin" | "internal"
   runtimeOrigin?: "mon" | "local"
   runtimeStatus?: import("../types").SessionStatus
   contextTokens?: number
@@ -1144,9 +1146,11 @@ export async function isBackgroundSession(sessionId: string): Promise<boolean> {
   }
 }
 
-export async function listSessionsRaw() {
-  const sessions = await rpcRequest("session.list", { limit: 50, includeClosed: false, archived: false })
-  return sessions.filter(isAppChatSession).map(apiSession)
+export function listSessionsRaw() {
+  return coalesceSessionSnapshot('session.list', async () => {
+    const sessions = await rpcRequest("session.list", { limit: 50, includeClosed: false, archived: false })
+    return sessions.filter(isAppChatSession).map(apiSession)
+  })
 }
 
 export async function listSessions() {
@@ -1325,18 +1329,16 @@ export async function setSessionPinned(sessionID: string, pinned: boolean) {
   return apiSession(await rpcRequest("session.set_pinned", { sessionId: sessionID, pinned }))
 }
 
-export async function listMessagesRaw(sessionID: string, before?: string, limit = 50) {
-  const [page, directorRuns] = await Promise.all([
-    rpcRequest("message.list", { sessionId: sessionID, before, limit }),
-    before ? Promise.resolve(undefined) : rpcRequest("director.list", { sessionId: sessionID }),
-  ])
-  const items = projectMessageEvents(page.items)
-  return {
-    items,
-    hasMore: page.hasMore,
-    nextCursor: page.nextCursor,
-    directorRuns: directorRuns?.map(mapDirectorRunForView),
-  } satisfies MessagePage
+export function listMessagesRaw(sessionID: string, before?: string, limit = 50) {
+  return coalesceSessionSnapshot(JSON.stringify(['message.list', sessionID, before, limit]), async () => {
+    const page = await rpcRequest("message.list", { sessionId: sessionID, before, limit })
+    return {
+      items: projectMessageEvents(page.items),
+      hasMore: page.hasMore,
+      nextCursor: page.nextCursor,
+      directorRuns: page.directorRuns?.map(mapDirectorRunForView),
+    } satisfies MessagePage
+  })
 }
 
 function directorAssistantId(value: JsonValue | null | undefined): number | string | null {
@@ -1398,9 +1400,13 @@ export async function listMessages(sessionID: string) {
   return page.items.map(mapMessage)
 }
 
-export async function sendPrompt(sessionID: string, content: string, attachments: Array<PromptAttachment | string>) {
+export async function sendPrompt(sessionID: string, content: string, attachments: Array<PromptAttachment | string>, voice?: DesktopVoiceTurn) {
   const origin = getStoredRuntimeOrigin() ?? "mon"
   const environment = currentSessionEnvironment()
+  if (voice) {
+    if (voice.sessionId !== sessionID || attachments.length) throw new Error('语音通话与当前会话不匹配')
+    return rpcRequestForOrigin(origin, 'voice.call.submit', { ...voice, text: content, environment })
+  }
   return rpcRequestForOrigin(origin, "turn.start", {
     sessionId: sessionID,
     text: content,
@@ -1409,8 +1415,8 @@ export async function sendPrompt(sessionID: string, content: string, attachments
   })
 }
 
-export async function sendPromptAsync(sessionID: string, content: string, attachments: Array<PromptAttachment | string>) {
-  return sendPrompt(sessionID, content, attachments)
+export async function sendPromptAsync(sessionID: string, content: string, attachments: Array<PromptAttachment | string>, voice?: DesktopVoiceTurn) {
+  return sendPrompt(sessionID, content, attachments, voice)
 }
 
 export async function compactSession(sessionID: string, instructions?: string) {
@@ -1475,10 +1481,12 @@ export async function replyPermission(requestID: string, reply: "once" | "always
     decision: reply === "reject" ? "deny" : reply, ...(message ? { message } : {}) })
 }
 
-export async function listQuestionsRaw() {
-  return (await rpcRequest("question.list", {})).map((item): PendingQuestion => ({
+export async function listQuestionsRaw(sessionID?: string) {
+  return (await rpcRequest("question.list", sessionID ? { sessionId: sessionID } : {})).map((item): PendingQuestion => ({
     id: item.id,
     sessionID: item.sessionId,
+    turnID: item.turnId,
+    ...(item.toolCallId ? { toolCallID: item.toolCallId } : {}),
     questions: item.questions.map((question) => ({
       header: question.header,
       question: question.question,
@@ -1619,8 +1627,9 @@ export async function createWorkspaceSession() {
   return session
 }
 
-export async function readSessionRaw(sessionId: string) {
-  return apiSession(await rpcRequest("session.read", { sessionId }))
+export function readSessionRaw(sessionId: string) {
+  return coalesceSessionSnapshot(JSON.stringify(['session.read', sessionId]),
+    async () => apiSession(await rpcRequest("session.read", { sessionId })))
 }
 
 export async function useDefaultWorkspace(sessionId: string | undefined) {

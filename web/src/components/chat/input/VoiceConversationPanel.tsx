@@ -1,95 +1,111 @@
-import { LoaderCircle, Mic, Pause, Play, X } from "lucide-react"
-
-import type { RealtimeSTTStatus } from "../../../lib/realtime-stt"
-import { VoiceLevelWaveform } from "./ChatInputControls"
+import { Mic, MicOff, Minus, PhoneOff, X } from 'lucide-react'
+import { useId, useLayoutEffect, useRef, type CSSProperties } from 'react'
+import type { CoreAssistant } from '../../../lib/auth'
+import type { RealtimeSTTStatus } from '../../../lib/realtime-stt'
+import type { VoiceCallPhase } from './hooks/useRealtimeVoiceInput'
+import type { VoiceCallCaption } from './voice-call-captions'
+import { VoiceCallPortrait } from './VoiceCallPortrait'
+import './voice-conversation.css'
 
 interface VoiceConversationPanelProps {
   assistantName: string
+  assistant?: CoreAssistant | null | undefined
+  callPhase: VoiceCallPhase
   elapsedLabel: string
   error: string
-  halfDuplexOutputActive: boolean
-  input: string
+  outputActive: boolean
+  replyPlaying: boolean
+  captions: { history: readonly VoiceCallCaption[]; current: VoiceCallCaption | undefined }
   level: number
-  onCancel: () => void
-  onPause: () => void
-  onResume: () => void
-  paused: boolean
+  onHangUp(): void
+  onMinimize(): void
+  onMute(): void
+  onUnmute(): void
+  muted: boolean
   status: RealtimeSTTStatus
   waiting: boolean
 }
 
-export function VoiceConversationPanel({
-  assistantName,
-  elapsedLabel,
-  error,
-  halfDuplexOutputActive,
-  input,
-  level,
-  onCancel,
-  onPause,
-  onResume,
-  paused,
-  status,
-  waiting,
-}: VoiceConversationPanelProps) {
-  const waitingForAssistant = halfDuplexOutputActive || waiting
-  return (
-    <div
-      className="absolute inset-0 grid h-full w-full grid-cols-[26%_1fr_23%] items-center"
-      aria-live="polite"
-      aria-label={paused ? "语音对话已暂停" : waitingForAssistant ? "正在等待助手回复" : status === "recording" ? `正在转写，已录音 ${elapsedLabel}` : "正在连接语音服务"}
-    >
-      <div className="flex h-[58%] items-center justify-center gap-[1.5vh] border-r border-border/75 px-[8%]">
-        <span className="flex h-[6.2vh] w-[6.2vh] flex-shrink-0 items-center justify-center rounded-full bg-accent text-on-accent shadow-[0_0_0_0.9vh_color-mix(in_srgb,var(--color-accent)_10%,transparent)] transition-transform" style={{ transform: `scale(${1 + level * 0.1})` }}>
-          {paused ? <Pause className="h-[3vh] w-[3vh]" /> : status === "recording" ? <Mic className="h-[3vh] w-[3vh]" /> : <LoaderCircle className="h-[3vh] w-[3vh] animate-spin" />}
-        </span>
-        <span className="min-w-0">
-          <span className="flex items-center gap-[0.8vh] whitespace-nowrap text-[1.9vh] text-text-muted">
-            <span className="h-[0.8vh] w-[0.8vh] rounded-full bg-accent" />
-            {paused ? "已暂停" : waitingForAssistant ? "等待回复" : status === "recording" ? "正在聆听" : "正在连接"}
-          </span>
-          <span className="mt-[0.4vh] block text-[1.8vh] tabular-nums text-text-muted/80">{elapsedLabel}</span>
-        </span>
-      </div>
+const waveShape = Array.from({ length: 66 }, (_, index) => {
+  const envelope = Math.sin(index / 65 * Math.PI) ** 1.7
+  return envelope * (.13 + .77 * Math.sin(index * .175) ** 2) * (.8 + .2 * Math.cos(index * .82) ** 2)
+})
 
-      <div className="flex h-[66%] min-w-0 flex-col justify-center px-[5%]">
-        <div className="line-clamp-2 min-h-[5.8vh] text-[2.25vh] leading-[1.55] text-text">
-          {input || (paused ? "语音对话已暂停，点击继续后恢复聆听" : waitingForAssistant ? `已发送，正在等待${assistantName}回复…` : status === "connecting" ? "正在连接语音服务…" : "请开始说话，识别结果会实时显示在这里")}
-        </div>
-        <div className="mt-[1.2vh] flex h-[2.6vh] w-full items-center overflow-hidden">
-          <VoiceLevelWaveform level={level} active={!paused && status === "recording"} />
-        </div>
-        {error ? <div className="mt-[0.6vh] truncate text-[1.45vh] text-danger">{error}</div> : null}
-      </div>
-
-      <div className="flex h-[58%] items-center justify-evenly border-l border-border/75 px-[5%]">
-        <button
-          type="button"
-          onClick={() => void (paused ? onResume() : onPause())}
-          className="group flex min-w-[42%] flex-col items-center gap-[0.7vh] text-accent transition-colors hover:opacity-80 disabled:cursor-wait disabled:opacity-50"
-          disabled={!paused && status === "transcribing"}
-          aria-label={paused ? "继续语音对话" : "暂停语音对话"}
-          title={paused ? "继续语音对话" : "暂停语音对话"}
-        >
-          <span className="flex h-[5.3vh] w-[5.3vh] items-center justify-center rounded-full bg-accent text-on-accent">
-            {paused ? <Play className="h-[2.7vh] w-[2.7vh] fill-current" /> : <Pause className="h-[2.7vh] w-[2.7vh] fill-current" />}
-          </span>
-          <span className="text-[1.55vh]">{paused ? "继续" : "暂停"}</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => void onCancel()}
-          className="group flex min-w-[42%] flex-col items-center gap-[0.7vh] text-text-muted transition-colors hover:text-text disabled:cursor-wait disabled:opacity-50"
-          disabled={status === "transcribing"}
-          aria-label="结束语音对话"
-          title="结束语音对话"
-        >
-          <span className="flex h-[5.3vh] w-[5.3vh] items-center justify-center rounded-full bg-bg transition-colors group-hover:bg-border">
-            <X className="h-[2.7vh] w-[2.7vh]" />
-          </span>
-          <span className="text-[1.55vh]">结束语音</span>
-        </button>
-      </div>
+function CallWaveform({ level, speaking }: { level: number; speaking: boolean }) {
+  const amplitude = Math.max(0, Math.min(1, speaking ? .76 : level))
+  return <div className="voice-call-waveform" aria-hidden="true" data-speaking={speaking}>
+    <div className="voice-call-wave-track" style={{ '--voice-call-level': amplitude } as CSSProperties}>
+      {waveShape.map((height, index) => <i key={index} style={{ '--bar-height': height, '--bar-index': index } as CSSProperties} />)}
     </div>
+  </div>
+}
+
+export function VoiceConversationPanel({ assistantName, assistant, callPhase, elapsedLabel, error, outputActive, replyPlaying,
+  captions, level, onHangUp, onMinimize, onMute, onUnmute, muted, status, waiting }: VoiceConversationPanelProps) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  const nameId = useId()
+  useLayoutEffect(() => {
+    const element = dialog.current
+    element?.showModal()
+    return () => element?.close()
+  }, [])
+
+  const dialing = callPhase === 'dialing', opening = callPhase === 'opening'
+  const speaking = opening || replyPlaying
+  const micLive = !muted && status === 'recording'
+  const state = error ? 'failed' : dialing ? 'dialing' : 'connected'
+  const statusText = error ? (callPhase === 'unanswered' ? '未接通' : '通话中断') : dialing ? '等待接听' : '已接通'
+  const activity = speaking ? '正在说话' : muted ? '麦克风已静音' : status === 'transcribing' ? '正在转写'
+    : waiting || outputActive ? '等待回复' : micLive ? '正在聆听' : '连接语音识别'
+
+  return (
+    <dialog ref={dialog} className="voice-call-dialog" aria-labelledby={nameId} data-state={state}
+      onCancel={event => { event.preventDefault(); if (error) onHangUp(); else onMinimize() }}>
+      <header className="voice-call-header">
+        <div className="voice-call-status">
+          <span role="status"><i aria-hidden="true" />{statusText}</span>
+          {state === 'connected' && <time className="voice-call-time">{elapsedLabel}</time>}
+        </div>
+        {!error && <button type="button" className="voice-call-minimize" title="收起通话" aria-label="收起通话" onClick={onMinimize}>
+          <Minus size={17} /> 收起
+        </button>}
+      </header>
+      <div className="voice-call-body">
+        <section className="voice-call-participant">
+          <div className="voice-call-portrait" aria-hidden="true" data-speaking={speaking}
+            style={{ '--voice-call-level': micLive ? Math.max(0, Math.min(level, 1)) : 0 } as CSSProperties}>
+            <VoiceCallPortrait assistant={assistant} name={assistantName} />
+          </div>
+          <h2 id={nameId}>{assistantName}</h2>
+        </section>
+        <section className="voice-call-dialogue" aria-label="通话字幕">
+          <div className="voice-call-stage">
+            <div className="voice-call-lines">
+              {error ? <p className="voice-call-error" role="alert">{error}</p> : (
+                <>
+                  {captions.history.length > 0 && <ol className="voice-call-history" aria-label="最近字幕">
+                    {captions.history.map(line => <li key={line.id}><b>{line.speaker}</b><span>{line.text}</span></li>)}
+                  </ol>}
+                  {captions.current && <div className="voice-call-caption" key={captions.current.id}>
+                    <span className="voice-call-speaker">{captions.current.speaker}</span>
+                    <p>{captions.current.text}</p>
+                  </div>}
+                  {state === 'connected' && <p className="voice-call-activity" role="status">{activity}</p>}
+                </>
+              )}
+            </div>
+          </div>
+          <CallWaveform level={micLive ? level : 0} speaking={speaking && !error} />
+        </section>
+      </div>
+      <footer className="voice-call-actions">
+        {!error && <button type="button" onClick={muted ? onUnmute : onMute} aria-pressed={muted} disabled={dialing || opening || status === 'transcribing'}>
+          {muted ? <MicOff size={19} /> : <Mic size={19} />}<span>{muted ? '取消静音' : '静音'}</span>
+        </button>}
+        <button type="button" className="voice-call-hangup" onClick={onHangUp}>
+          {error ? <X size={19} /> : <PhoneOff size={19} />}<span>{error ? '关闭' : '挂断'}</span>
+        </button>
+      </footer>
+    </dialog>
   )
 }

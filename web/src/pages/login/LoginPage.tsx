@@ -14,6 +14,6 @@ export function LoginPage(props: LoginFormProps) {
       <LoginForm {...props} />
     </main>
     </motion.div>
-    {opening ? <StartupOpening key={sequence} ready active={visible} onComplete={complete} /> : null}
+    {opening ? <StartupOpening key={sequence} active={visible} onComplete={complete} /> : null}
   </div>
 }

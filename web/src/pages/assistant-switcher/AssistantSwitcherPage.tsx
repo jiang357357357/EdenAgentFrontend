@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   Bot,
   BriefcaseBusiness,
-  Check,
   FileText,
   LoaderCircle,
   Search,
@@ -45,9 +44,10 @@ interface AssistantSwitcherPageProps {
   currentAssistant?: CoreAssistant | null
   onAssistantChanged: (assistant: CoreAssistant) => void
   onBack: () => void
-  mode?: "default" | "session" | "participants"
+  mode?: "duty" | "session"
+  sessionLabel?: string
   sessionParticipantIDs?: Array<number | string>
-  onParticipantsChanged?: (assistantIds: number[]) => Promise<void> | void
+  onParticipantsChanged?: (assistantIds: number[]) => Promise<unknown> | void
 }
 
 function cleanText(value?: unknown): string {
@@ -196,53 +196,50 @@ function AssistantAvatar({ assistant, className }: { assistant: CoreAssistant; c
 function AssistantRow({
   assistant,
   selected,
-  current,
+  badge,
   onSelect,
-  multi = false,
+  onToggleParticipant,
   checked = false,
+  lastParticipant = false,
+  disabled,
 }: {
   assistant: CoreAssistant
   selected: boolean
-  current: boolean
+  badge?: string
   onSelect: () => void
-  multi?: boolean
+  onToggleParticipant?: () => void
   checked?: boolean
+  lastParticipant?: boolean
+  disabled: boolean
 }) {
   return (
-    <button
-      type="button"
-      role="option"
-      aria-selected={selected}
-      onClick={onSelect}
-      className={cn(
-        "group relative flex min-h-[8.8vh] w-full items-center gap-[1.1vw] px-[1.35vw] py-[1.15vh] text-left outline-none transition-colors",
-        selected ? "bg-accent-dim" : "hover:bg-surface-hover focus-visible:bg-surface-hover",
-      )}
-    >
+    <div className={cn("relative flex min-h-[8.8vh] items-center",
+      selected ? "bg-accent-dim" : "hover:bg-surface-hover")}>
       {selected ? <span className="absolute inset-y-0 left-0 w-[0.22vw] min-w-[3px] bg-accent" /> : null}
-      <AssistantAvatar assistant={assistant} className="h-[6.2vh] w-[6.2vh]" />
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-[0.65vw]">
-          <span className="truncate text-[2.1vh] font-medium text-text">{assistantName(assistant)}</span>
-          {current ? (
-            <span className="shrink-0 rounded-[0.35vh] bg-accent-dim px-[0.5vw] py-[0.2vh] text-[1.38vh] text-accent">
-              当前助手
-            </span>
-          ) : null}
+      <button type="button" aria-pressed={selected} onClick={onSelect} disabled={disabled}
+        className="flex min-w-0 flex-1 items-center gap-[1.1vw] px-[1.35vw] py-[1.15vh] text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/45">
+        <AssistantAvatar assistant={assistant} className="h-[6.2vh] w-[6.2vh]" />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-[0.65vw]">
+            <span className="truncate text-[2.1vh] font-medium text-text">{assistantName(assistant)}</span>
+            {badge ? (
+              <span className="shrink-0 rounded-[0.35vh] bg-accent-dim px-[0.5vw] py-[0.2vh] text-[1.38vh] text-accent">
+                {badge}
+              </span>
+            ) : null}
+          </span>
+          <span className="mt-[0.42vh] block truncate text-[1.65vh] text-text-muted">
+            {assistantSignature(assistant)}
+          </span>
         </span>
-        <span className="mt-[0.42vh] block truncate text-[1.65vh] text-text-muted">
-          {assistantSignature(assistant)}
-        </span>
-      </span>
-      {multi ? (
-        <span className={cn(
-          "flex h-[2.7vh] w-[2.7vh] shrink-0 items-center justify-center rounded-full border",
-          checked ? "border-accent bg-accent text-on-accent" : "border-border bg-card/70 text-transparent",
-        )}>
-          <Check className="h-[1.7vh] w-[1.7vh]" strokeWidth={2.3} />
-        </span>
+      </button>
+      {onToggleParticipant ? (
+        <label className="grid min-h-10 min-w-10 shrink-0 cursor-pointer place-items-center" title="参与本会话">
+          <input type="checkbox" aria-label={`${assistantName(assistant)}参与本会话`} checked={checked}
+            disabled={disabled || lastParticipant} onChange={onToggleParticipant} className="h-4 w-4 accent-accent" />
+        </label>
       ) : null}
-    </button>
+    </div>
   )
 }
 
@@ -250,7 +247,8 @@ export function AssistantSwitcherPage({
   currentAssistant,
   onAssistantChanged,
   onBack,
-  mode = "default",
+  mode = "duty",
+  sessionLabel,
   sessionParticipantIDs = [],
   onParticipantsChanged,
 }: AssistantSwitcherPageProps) {
@@ -260,7 +258,8 @@ export function AssistantSwitcherPage({
       ? { [currentAssistant.id]: currentAssistant }
       : {},
   )
-  const [selectedId, setSelectedId] = useState<number | undefined>(currentAssistant?.id)
+  const [selectedId, setSelectedId] = useState(currentAssistant?.id)
+  const [dutyDraft, setDutyDraft] = useState<number>()
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | undefined>()
@@ -273,9 +272,7 @@ export function AssistantSwitcherPage({
   const [selectedCostumeId, setSelectedCostumeId] = useState<number>()
   const [selectedLayout, setSelectedLayout] = useState<SpineLayout>("standee")
   const [appearanceDirty, setAppearanceDirty] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<number[]>(() =>
-    sessionParticipantIDs.map(Number).filter(Number.isFinite),
-  )
+  const [participantDraft, setParticipantDraft] = useState<number[]>()
 
   useEffect(() => {
     const token = getStoredToken()
@@ -287,7 +284,7 @@ export function AssistantSwitcherPage({
 
     let cancelled = false
     async function load() {
-      setLoading(true)
+      setLoading(assistants.length === 0)
       setError(undefined)
       try {
         const items = await fetchAssistants(token, { summary: true })
@@ -296,13 +293,6 @@ export function AssistantSwitcherPage({
         const ordered = [...items].sort((left, right) => Number(right.id === currentId) - Number(left.id === currentId))
         setAssistants(ordered)
         setSelectedId((current) => current ?? currentId ?? ordered[0]?.id)
-        if (mode === "participants") {
-          const available = new Set(ordered.map((item) => item.id))
-          setSelectedIds((current) => {
-            const retained = current.filter((id) => available.has(id))
-            return retained.length ? retained : currentId ? [currentId] : ordered[0]?.id ? [ordered[0].id] : []
-          })
-        }
       } catch (loadError) {
         if (!cancelled) setError(getErrorMessage(loadError, "助手列表加载失败。"))
       } finally {
@@ -314,16 +304,6 @@ export function AssistantSwitcherPage({
       cancelled = true
     }
   }, [mode])
-
-  useEffect(() => {
-    if (mode !== "participants") return
-    const ids = sessionParticipantIDs.map(Number).filter(Number.isFinite)
-    if (ids.length) setSelectedIds(ids)
-  }, [mode, sessionParticipantIDs.join(",")])
-
-  useEffect(() => {
-    if (currentAssistant?.id) setSelectedId((current) => current ?? currentAssistant.id)
-  }, [currentAssistant?.id])
 
   useEffect(() => {
     if (!currentAssistant || !hasAssistantDetail(currentAssistant)) return
@@ -383,14 +363,28 @@ export function AssistantSwitcherPage({
     ? sessionAssistantId
     : currentAssistant?.id ?? hydratedAssistants.find((assistant) => assistant.is_default)?.id
   const selectedIsCurrent = Boolean(selectedAssistant && currentAssistantId === selectedAssistant.id)
+  const roster = mode === "duty"
+  const dutyId = dutyDraft ?? currentAssistantId
+  const dutyAssistant = hydratedAssistants.find((assistant) => assistant.id === dutyId)
+  const dutyChanged = dutyAssistant !== undefined && dutyId !== currentAssistantId
+  const previewingDuty = roster && dutyAssistant !== undefined && selectedAssistant?.id === dutyId
+  const availableParticipants = sessionParticipantIDs.map(Number)
+    .filter((id) => hydratedAssistants.some((assistant) => assistant.id === id))
+  const baselineParticipants = availableParticipants.length ? availableParticipants : currentAssistantId === undefined ? [] : [currentAssistantId]
+  const selectedIds = participantDraft ? [
+    ...baselineParticipants.filter((id) => participantDraft.includes(id)),
+    ...participantDraft.filter((id) => !baselineParticipants.includes(id)),
+  ] : baselineParticipants
+  const participantsChanged = Boolean(onParticipantsChanged && participantDraft?.length &&
+    selectedIds.join(",") !== baselineParticipants.join(","))
+  const dutyAppearance = resolveAssistantAppearance(dutyAssistant, { costumeId: selectedCostumeId, layout: selectedLayout })
+  const appearanceChanged = appearanceDirty && dutyAppearance.costumeId !== undefined
+  const rosterChanged = participantsChanged || dutyChanged || appearanceChanged
   const savedAppearance = resolveAssistantAppearance(selectedAssistant)
-  const selectedAppearance = resolveAssistantAppearance(selectedAssistant, {
-    costumeId: selectedCostumeId,
-    layout: selectedLayout,
-  })
+  const selectedAppearance = previewingDuty ? dutyAppearance : savedAppearance
   const selectedCostumes = enabledCharacterCostumes(selectedAssistant?.character)
   const selectedCostumeLayouts = costumeLayouts(selectedAppearance.costume)
-  const showAppearanceControls = mode === "default" && selectedCostumes.some((costume) => costumeLayouts(costume).length > 0)
+  const showAppearanceControls = previewingDuty && selectedCostumes.some((costume) => costumeLayouts(costume).length > 0)
   const selectedPreview = selectedAssistant
     ? assistantVisualPreview(selectedAssistant, {
       costumeId: selectedAppearance.costumeId,
@@ -422,12 +416,12 @@ export function AssistantSwitcherPage({
   }
 
   useEffect(() => {
-    if (!selectedAssistant) return
-    const appearance = resolveAssistantAppearance(selectedAssistant)
+    if (!roster || !dutyAssistant) return
+    const appearance = resolveAssistantAppearance(dutyAssistant)
     setSelectedCostumeId(appearance.costumeId)
     setSelectedLayout(appearance.layout)
     setAppearanceDirty(false)
-  }, [selectedAssistant?.id, selectedAssistant?.visual_costume_id, selectedAssistant?.visual_layout])
+  }, [roster, dutyAssistant?.id, dutyAssistant?.visual_costume_id, dutyAssistant?.visual_layout])
 
   useEffect(() => {
     if (
@@ -489,72 +483,72 @@ export function AssistantSwitcherPage({
     })
   }
 
-  async function handleSwitch() {
-    if (!selectedAssistant || (selectedIsCurrent && !appearanceDirty) || !selectedVisualReady || switchingId) return
-    const token = getStoredToken()
-    if (!token) {
-      setError("登录状态已失效，请重新登录。")
-      return
-    }
+  async function handleSaveRoster() {
+    if (!selectedAssistant || !rosterChanged || switchingId !== undefined) return
     setSwitchingId(selectedAssistant.id)
     setError(undefined)
     setNotice(undefined)
+    const saved: string[] = [], failures: string[] = []
+    async function save(label: string, operation: () => Promise<void>) {
+      try {
+        await operation()
+        saved.push(label)
+      } catch (reason) {
+        failures.push(`${label}保存失败。 ${getErrorMessage(reason, "请重试。")}`)
+      }
+    }
+    const token = getStoredToken()
+    const requireToken = () => {
+      if (!token) throw new Error("登录状态已失效，请重新登录。")
+      return token
+    }
+    let updatedDuty = dutyAssistant
     try {
-      let appearanceAssistant = selectedAssistant
-      if (appearanceDirty && selectedAppearance.costumeId) {
-        appearanceAssistant = await updateAssistantAppearance(token, selectedAssistant.id, {
-          visual_costume_id: selectedAppearance.costumeId,
-          visual_layout: selectedAppearance.layout,
+      if (participantsChanged && onParticipantsChanged) {
+        await save("参与者", async () => {
+          await onParticipantsChanged(selectedIds)
+          setParticipantDraft(undefined)
         })
       }
-      const updated = selectedIsCurrent
-        ? appearanceAssistant
-        : await setCurrentAssistant(token, selectedAssistant.id)
-      const nextAssistant: CoreAssistant = {
-        ...selectedAssistant,
-        ...appearanceAssistant,
-        ...updated,
-        character: updated.character ?? appearanceAssistant.character ?? selectedAssistant.character,
+      if (dutyAssistant && appearanceChanged && dutyAppearance.costumeId !== undefined) {
+        const costumeId = dutyAppearance.costumeId
+        await save("外观", async () => {
+          const updated = await updateAssistantAppearance(requireToken(), dutyAssistant.id, {
+            visual_costume_id: costumeId,
+            visual_layout: dutyAppearance.layout,
+          })
+          updatedDuty = rememberAssistant(dutyAssistant, updated)
+          if (!dutyChanged) onAssistantChanged(updatedDuty)
+          setAppearanceDirty(false)
+        })
       }
-      setAssistants((items) =>
-        items.map((item) => (item.id === nextAssistant.id ? nextAssistant : item)),
-      )
-      setAssistantDetails((items) => ({ ...items, [nextAssistant.id]: nextAssistant }))
-      onAssistantChanged(nextAssistant)
-      setAppearanceDirty(false)
-      setNotice(
-        selectedIsCurrent
-          ? `已应用${assistantName(nextAssistant)}的外观选择。`
-          : `已应用外观并将${assistantName(nextAssistant)}设为默认助手，仅影响之后创建的新会话。`,
-      )
-    } catch (switchError) {
-      setError(getErrorMessage(switchError, "切换助手失败。"))
+      if (dutyChanged && dutyAssistant) {
+        await save("值日生", async () => {
+          const updated = await setCurrentAssistant(requireToken(), dutyAssistant.id)
+          onAssistantChanged(rememberAssistant(updatedDuty ?? dutyAssistant, updated))
+          setDutyDraft(undefined)
+        })
+      }
     } finally {
       setSwitchingId(undefined)
     }
+    if (saved.length) setNotice(`已保存${saved.join("、")}。`)
+    if (failures.length) setError(failures.join(" "))
   }
 
-  async function handleSaveParticipants() {
-    if (!selectedIds.length || switchingId) return
-    setSwitchingId(selectedAssistant?.id ?? selectedIds[0])
-    setError(undefined)
-    try {
-      await onParticipantsChanged?.(selectedIds)
-      setNotice(`已保存 ${selectedIds.length} 位会话参与者。导演会按每轮内容决定由谁回复。`)
-    } catch (saveError) {
-      setError(getErrorMessage(saveError, "保存会话参与者失败。"))
-    } finally {
-      setSwitchingId(undefined)
-    }
+  function rememberAssistant(previous: CoreAssistant, updated: CoreAssistant) {
+    const assistant = { ...previous, ...updated, character: updated.character ?? previous.character }
+    setAssistants((items) => items.map((item) => item.id === assistant.id ? assistant : item))
+    setAssistantDetails((items) => ({ ...items, [assistant.id]: assistant }))
+    return assistant
   }
 
   async function handleSessionSwitch() {
-    if (!selectedAssistant || selectedIsCurrent || switchingId) return
+    if (!onParticipantsChanged || !selectedAssistant || selectedIsCurrent || switchingId !== undefined) return
     setSwitchingId(selectedAssistant.id)
     setError(undefined)
     try {
-      await onParticipantsChanged?.([selectedAssistant.id])
-      setSelectedIds([selectedAssistant.id])
+      await onParticipantsChanged([selectedAssistant.id])
       setNotice(`已将本会话切换到${assistantName(selectedAssistant)}，聊天历史保持不变。`)
     } catch (switchError) {
       setError(getErrorMessage(switchError, "切换本会话助手失败。"))
@@ -583,13 +577,14 @@ export function AssistantSwitcherPage({
             <button
               type="button"
               onClick={onBack}
+              disabled={switchingId !== undefined}
               className="flex h-[4.7vh] w-[4.7vh] items-center justify-center rounded-[0.65vh] text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text focus-visible:ring-2 focus-visible:ring-accent/45"
               aria-label="返回"
             >
               <ArrowLeft className="h-[2.65vh] w-[2.65vh]" strokeWidth={1.8} />
             </button>
             <h1 className="font-serif text-[3.05vh] font-medium tracking-[-0.02em]">
-              {mode === "participants" ? "会话参与者" : "切换助手"}
+              {roster ? "值日生" : "切换助手"}
             </h1>
           </div>
           <label className="mt-[2.2vh] flex h-[4.9vh] items-center gap-[0.7vw] rounded-[0.7vh] border border-border bg-card/75 px-[1vw] text-text-muted transition-colors focus-within:border-accent/60 focus-within:bg-card focus-within:ring-2 focus-within:ring-accent/10">
@@ -616,29 +611,30 @@ export function AssistantSwitcherPage({
             </div>
           ) : (
             <section aria-labelledby="all-assistants-title">
-              <h2 id="all-assistants-title" className="px-[0.8vw] pb-[0.8vh] text-[1.72vh] font-medium text-text-muted">
-                全部助手
-              </h2>
-              <div role="listbox" aria-label="全部助手" className="overflow-hidden rounded-[0.55vh]">
+              <div className="flex items-center justify-between px-[0.8vw] pb-[0.8vh] text-[1.72vh] font-medium text-text-muted">
+                <h2 id="all-assistants-title" className="shrink-0">全部助手</h2>
+                {roster && onParticipantsChanged && <span className="ml-2 truncate pr-1" title={sessionLabel}>参与「{sessionLabel || "当前会话"}」</span>}
+              </div>
+              <div className="overflow-hidden rounded-[0.55vh]">
                 {filteredAssistants.map((assistant) => (
                   <AssistantRow
                     key={`all-${assistant.id}`}
                     assistant={assistant}
                     selected={assistant.id === selectedAssistant?.id}
-                    current={assistant.id === currentAssistantId}
-                    multi={mode === "participants"}
+                    badge={assistant.id === currentAssistantId ? roster ? "值日生" : "本会话助手"
+                      : roster && assistant.id === dutyId ? "待设值日生" : undefined}
                     checked={selectedIds.includes(assistant.id)}
-                    onSelect={() => {
-                      setSelectedId(assistant.id)
-                      if (mode === "participants") {
-                        setSelectedIds((current) =>
-                          current.includes(assistant.id)
-                            ? current.length > 1 ? current.filter((id) => id !== assistant.id) : current
-                            : [...current, assistant.id],
-                        )
-                      }
+                    lastParticipant={selectedIds.length === 1 && selectedIds[0] === assistant.id}
+                    disabled={switchingId !== undefined}
+                    onSelect={() => setSelectedId(assistant.id)}
+                    onToggleParticipant={roster && onParticipantsChanged ? () => {
+                      setParticipantDraft((draft) => {
+                        const current = draft ?? baselineParticipants
+                        if (!current.includes(assistant.id)) return [...current, assistant.id]
+                        return current.length > 1 ? current.filter((id) => id !== assistant.id) : current
+                      })
                       setNotice(undefined)
-                    }}
+                    } : undefined}
                   />
                 ))}
               </div>
@@ -648,40 +644,47 @@ export function AssistantSwitcherPage({
       </aside>
 
       <main className="relative min-w-0 flex-1 overflow-hidden">
-        <header className="absolute inset-x-0 top-0 z-20 flex h-[8.2vh] items-center justify-end border-b border-border bg-card/72 px-[2.6vw] backdrop-blur-[3px]">
+        <header className="absolute inset-x-0 top-0 z-20 flex h-[8.2vh] items-center justify-end gap-2 border-b border-border bg-card/72 px-[2.6vw] backdrop-blur-[3px]">
+          {roster && selectedAssistant ? (
+            <button type="button" disabled={previewingDuty || switchingId !== undefined}
+              onClick={() => {
+                setDutyDraft(selectedAssistant.id === currentAssistantId ? undefined : selectedAssistant.id)
+                setAppearanceDirty(false)
+                setNotice(undefined)
+              }}
+              className="flex h-[4.8vh] items-center rounded-[0.62vh] border border-border px-[1.35vw] text-[1.62vh] text-text outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-accent/45 disabled:text-text-muted">
+              {previewingDuty ? dutyChanged ? "待设值日生" : "值日生" : "设为值日生"}
+            </button>
+          ) : null}
           {selectedAssistant ? (
             <button
               type="button"
-              onClick={mode === "participants" ? handleSaveParticipants : mode === "session" ? handleSessionSwitch : handleSwitch}
+              onClick={roster ? handleSaveRoster : handleSessionSwitch}
               disabled={
-                (mode === "participants"
-                  ? !selectedIds.length
-                  : (selectedIsCurrent && !appearanceDirty) || !selectedVisualReady) ||
+                (roster ? !rosterChanged : !onParticipantsChanged || selectedIsCurrent || !selectedVisualReady) ||
                 switchingId !== undefined
               }
               className={cn(
                 "flex h-[4.8vh] min-w-[10.5vw] items-center justify-center rounded-[0.62vh] px-[1.35vw] text-[1.62vh] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2",
-                mode !== "participants" && ((selectedIsCurrent && !appearanceDirty) || !selectedVisualReady)
-                  ? "cursor-default border border-border bg-bg text-text-muted"
-                  : "bg-accent text-on-accent shadow-[0_0.25vh_0.7vh_color-mix(in_srgb,var(--color-accent)_16%,transparent)] hover:bg-accent-hover active:bg-accent-active",
+                "bg-accent text-on-accent hover:bg-accent-hover active:bg-accent-active disabled:cursor-default disabled:border disabled:border-border disabled:bg-bg disabled:text-text-muted",
               )}
             >
-              {switchingId === selectedAssistant.id ? (
+              {switchingId !== undefined ? (
                 <>
                   <LoaderCircle className="mr-[0.55vw] h-[2vh] w-[2vh] animate-spin" />
-                  正在切换…
+                  正在保存…
                 </>
-              ) : mode === "participants" ? (
-                `保存 ${selectedIds.length} 位参与者`
+              ) : roster ? (
+                "保存"
               ) : !selectedVisualReady ? (
                 <>
                   <LoaderCircle className="mr-[0.55vw] h-[2vh] w-[2vh] animate-spin" />
                   正在准备…
                 </>
-              ) : selectedIsCurrent && !appearanceDirty ? (
-                mode === "default" ? "当前选择" : "本会话助手"
+              ) : selectedIsCurrent ? (
+                "本会话助手"
               ) : (
-                mode === "default" ? "应用选择" : `切换本会话 · ${assistantName(selectedAssistant)}`
+                `切换本会话 · ${assistantName(selectedAssistant)}`
               )}
             </button>
           ) : null}
@@ -751,6 +754,7 @@ export function AssistantSwitcherPage({
                       服装
                       <select
                         value={String(selectedAppearance.costumeId ?? "")}
+                        disabled={switchingId !== undefined}
                         onChange={(event) => {
                           const costume = selectedCostumes.find((item) => String(item.id) === event.currentTarget.value)
                           if (!costume) return
@@ -780,6 +784,7 @@ export function AssistantSwitcherPage({
                       展示模式
                       <select
                         value={selectedAppearance.layout}
+                        disabled={switchingId !== undefined}
                         onChange={(event) => {
                           const layout = event.currentTarget.value as SpineLayout
                           setSelectedLayout(layout)
@@ -801,9 +806,11 @@ export function AssistantSwitcherPage({
 
               <div className={cn("flex items-center gap-[0.65vw] text-[1.5vh] text-text-muted", showAppearanceControls ? "mt-[2.8vh]" : "mt-[5.2vh]") }>
                 <ShieldCheck className="h-[1.95vh] w-[1.95vh]" strokeWidth={1.7} />
-                {mode === "participants"
-                  ? `已选择 ${selectedIds.length} 位助手；历史消息会保留各自说话人身份`
-                  : `新会话默认从${assistantName(selectedAssistant)}开始，不会清除历史消息`}
+                {roster
+                  ? onParticipantsChanged
+                    ? `已选 ${selectedIds.length} 位参与者 · ${selectedIds.length > 1 ? "导演模式" : "单角色"}${participantsChanged ? "（待保存）" : ""}`
+                    : "打开聊天标签后可调整会话参与者"
+                  : "历史消息保留原有说话人"}
               </div>
 
               {notice ? (

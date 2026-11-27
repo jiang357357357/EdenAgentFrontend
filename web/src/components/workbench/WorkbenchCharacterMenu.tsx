@@ -1,19 +1,18 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react'
-import { BookOpen, ChevronDown, Eye, EyeOff, Images, Move, UserRound, UserRoundCheck, UsersRound } from 'lucide-react'
+import { BookOpen, ChevronDown, Eye, EyeOff, Images, Move, UserRound, UserRoundCheck } from 'lucide-react'
 import type { CharacterConfigurationView } from '../../lib/character-navigation'
 
 export interface WorkbenchCharacterActions {
   origin: 'local' | 'mon'
   name?: string
   onConfigure?(view: CharacterConfigurationView): void
-  onParticipants?(): void
-  onDefault?(): void
+  onOpenRoster?(): void
   onShowPortrait(): void
   editing: boolean
   onToggleEditing(): void
 }
 
-export function WorkbenchCharacterMenu({ origin, name, onConfigure, onParticipants, onDefault, portraitVisible, onTogglePortrait, editing, onToggleEditing }: Omit<WorkbenchCharacterActions, 'onShowPortrait'> & {
+export function WorkbenchCharacterMenu({ origin, name, onConfigure, onOpenRoster, portraitVisible, onTogglePortrait, editing, onToggleEditing }: Omit<WorkbenchCharacterActions, 'onShowPortrait'> & {
   portraitVisible: boolean; onTogglePortrait(): void
 }) {
   const [open, setOpen] = useState(false)
@@ -23,10 +22,7 @@ export function WorkbenchCharacterMenu({ origin, name, onConfigure, onParticipan
     { label: '基本信息', Icon: UserRound, run: () => onConfigure('basic') },
     { label: '完整角色', Icon: BookOpen, run: () => onConfigure('complete') },
     { label: '视觉资源', Icon: Images, run: () => onConfigure('visual') },
-  ] : [
-    ...(onParticipants ? [{ label: '选择会话角色', Icon: UsersRound, run: onParticipants }] : []),
-    ...(onDefault ? [{ label: '设置默认角色', Icon: UserRoundCheck, run: onDefault }] : []),
-  ]
+  ] : onOpenRoster ? [{ label: '值日生', Icon: UserRoundCheck, run: onOpenRoster }] : []
   useLayoutEffect(() => {
     const panel = menu.current
     if (!open || !panel) return

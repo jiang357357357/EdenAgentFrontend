@@ -25,6 +25,7 @@ import {
   completeCompanionDirectorRun,
   directorRunForLocalPrompt,
   latestCompanionDirectorRun,
+  prependCompanionDirectorRuns,
   setCompanionDirectorPlan,
   startCompanionDirectorRun,
 } from "./companion-director-state"
@@ -81,13 +82,13 @@ export type RuntimeAction =
   | { type: "invalidateInactiveSessions" }
   | { type: "hydrateSessions"; sessions: ApiSession[]; autoSelectFirst?: boolean }
   | { type: "hydrateMessages"; sessionID: string; messages: ApiMessage[]; hasMore: boolean; nextCursor?: string | null; directorRuns?: CompanionDirectorRun[] }
-  | { type: "prependMessages"; sessionID: string; messages: ApiMessage[]; hasMore: boolean; nextCursor?: string | null }
+  | { type: "prependMessages"; sessionID: string; messages: ApiMessage[]; hasMore: boolean; nextCursor?: string | null; directorRuns?: CompanionDirectorRun[] }
   | { type: "loadingOlderMessages"; sessionID: string; loading: boolean }
   | { type: "hydratePermissions"; permissions: PendingPermission[] }
   | { type: "hydrateQuestions"; questions: PendingQuestion[] }
   | { type: "resolveQuestion"; requestID: string }
   | { type: "setActiveSession"; sessionID?: string }
-  | { type: "setSessionStatus"; sessionID: string; status: RuntimeSession["status"] }
+  | { type: "setSessionStatus"; sessionID: string; status: RuntimeSession["status"]; expectedSession?: RuntimeSession }
   | { type: "removeSession"; sessionID: string }
   | LocalUserMessageAction
   | { type: "localUserMessageAccepted"; sessionID: string; messageID: string; turnID?: string }
@@ -1103,6 +1104,7 @@ function reduceRuntimeState(state: RuntimeState, action: RuntimeAction): Runtime
     case "prependMessages": {
       const session = ensureSession(next, action.sessionID)
       prependMessagesToSession(session, action.messages)
+      if (action.directorRuns) session.directorRuns = prependCompanionDirectorRuns(session.directorRuns, action.directorRuns)
       session.hasMoreMessages = action.hasMore
       session.messageCursor = action.nextCursor ?? undefined
       session.loadingOlderMessages = false
@@ -1143,6 +1145,7 @@ function reduceRuntimeState(state: RuntimeState, action: RuntimeAction): Runtime
       return next
 
     case "setSessionStatus": {
+      if (action.expectedSession && state.sessions[action.sessionID] !== action.expectedSession) return state
       const session = ensureSession(next, action.sessionID)
       session.status = action.status
       return next
@@ -1525,7 +1528,7 @@ export function hydrateSessionMessages(sessionID: string, page: import("./agent-
 }
 
 export function prependSessionMessages(sessionID: string, page: import("./agent-client").MessagePage): RuntimeAction {
-  return { type: "prependMessages", sessionID, messages: page.items, hasMore: page.hasMore, nextCursor: page.nextCursor }
+  return { type: "prependMessages", sessionID, messages: page.items, hasMore: page.hasMore, nextCursor: page.nextCursor, directorRuns: page.directorRuns }
 }
 
 export function setLoadingOlderMessages(sessionID: string, loading: boolean): RuntimeAction {
@@ -1552,8 +1555,8 @@ export function setActiveSession(sessionID?: string): RuntimeAction {
   return { type: "setActiveSession", sessionID }
 }
 
-export function setSessionStatus(sessionID: string, status: RuntimeSession["status"]): RuntimeAction {
-  return { type: "setSessionStatus", sessionID, status }
+export function setSessionStatus(sessionID: string, status: RuntimeSession["status"], expectedSession?: RuntimeSession): RuntimeAction {
+  return { type: "setSessionStatus", sessionID, status, ...(expectedSession ? { expectedSession } : {}) }
 }
 
 export function removeSession(sessionID: string): RuntimeAction {

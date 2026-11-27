@@ -28,6 +28,10 @@ export function StartupEntrance(props: StartupEntranceProps) {
   const active = phase !== 'room' && phase !== 'reacting'
   const ensureOrigin = () => { if (props.origin === null) props.onChooseOrigin(selectedOrigin) }
   const openDirectly = () => { ensureOrigin(); setCommand('login'); setPhase('login') }
+  const skipOpening = () => {
+    if (!hasRendered && !failed && phase === 'room') openDirectly()
+    complete()
+  }
   const activate = () => { ensureOrigin(); setCommand('wake'); setPhase('reacting') }
   const back = () => { if (!props.isSubmitting) { setCommand('room'); setPhase(ready && !failed ? 'returning' : 'room') } }
   const sceneError = (error: unknown) => { console.warn('[StartupScene] 场景不可用，回退到登录', error); setFailed(true); setForegroundBounds(undefined); setPhase('login') }
@@ -68,6 +72,6 @@ export function StartupEntrance(props: StartupEntranceProps) {
       characterName={scene.name} night={scene.night} characterBounds={foregroundBounds} onBack={back}
       onBounds={bounds => setProtectedAreas(current => JSON.stringify(current[0]) === JSON.stringify(bounds) ? current : [bounds])} />
     </div>
-    {opening ? <StartupOpening key={sequence} active={visible} ready={hasRendered || failed} onComplete={complete} /> : null}
+    {opening ? <StartupOpening key={sequence} active={visible} night={scene.night} onComplete={complete} onSkip={skipOpening} /> : null}
   </main>
 }

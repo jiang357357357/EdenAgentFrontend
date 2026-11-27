@@ -11,6 +11,16 @@ export function latestCompanionDirectorRun(
   return runs?.at(-1)
 }
 
+/** Prepending history must keep recent plans last and retain their newer live state. */
+export function prependCompanionDirectorRuns(current: CompanionDirectorRun[] = [], page: CompanionDirectorRun[]): CompanionDirectorRun[] {
+  const existing = new Set(current.map(run => run.planID))
+  const incoming = new Map(page.map(run => [run.planID, run]))
+  return [...page.filter(run => !existing.has(run.planID)), ...current.map(run => {
+    const snapshot = incoming.get(run.planID)
+    return snapshot && (snapshot.updatedAt ?? 0) > (run.updatedAt ?? 0) ? snapshot : run
+  })]
+}
+
 export function startCompanionDirectorRun(participantCount: number, userMessageID?: string): CompanionDirectorRun {
   return {
     beats: [],

@@ -6,9 +6,9 @@ import type { SharedWorkspaceStateOwner } from '../../components/shared-workspac
 import { CloudDirectoryPicker } from '../../components/shared-workspace/CloudDirectoryPicker'
 import { sharedButtonClass, sharedInputClass, sharedPrimaryButtonClass } from '../../components/shared-workspace/shared-workspace-view'
 
-export function CloudLibraryCreate({ owner, hosts, busy, onCancel, onCreated, onManageHost }: {
+export function CloudLibraryCreate({ owner, hosts, busy, onCancel, onCreated }: {
   owner: SharedWorkspaceStateOwner; hosts: SharedHost[]; busy: boolean
-  onCancel(): void; onCreated(id: string): void; onManageHost(): void
+  onCancel(): void; onCreated(id: string): void
 }) {
   const [hostId, setHostId] = useState(owner.state.managementHostId)
   const [source, setSource] = useState('')
@@ -45,8 +45,7 @@ export function CloudLibraryCreate({ owner, hosts, busy, onCancel, onCreated, on
         onChange={event => { setHostId(event.target.value); setSource(''); setName(''); setConfirmed(false); setStep('folder'); owner.clearFeedback() }}>{hosts.map(host => <option key={host.deviceId} value={host.deviceId}>{host.name}</option>)}</select></label></div>
     {!host || host.directorySources !== true ? <div className="space-y-4 border-y border-border py-7">
       <h3 className="font-medium">{host ? '云主机共享服务需要更新' : '先连接可管理的云主机'}</h3>
-      <p className="text-sm leading-relaxed text-text-muted">{host ? '此主机尚未支持文件夹浏览，请在云主机管理中更新共享服务，已有资料与身份会保留。' : '连接或部署云主机后，再选择文件夹创建资料库。'}</p>
-      <button type="button" className={sharedPrimaryButtonClass} disabled={busy} onClick={onManageHost}>前往云主机管理</button>
+      <p className="text-sm leading-relaxed text-text-muted">{host ? '此主机尚未支持文件夹浏览，请在 Eden Web 的「外接设备 → 云服务器配置」更新共享服务。' : '请先在 Eden Web 的「外接设备 → 云服务器配置」连接或部署云主机。'}</p>
     </div> : step === 'folder' ? <>
       <CloudDirectoryPicker key={host.deviceId} owner={owner} hostId={host.deviceId} disabled={busy} embedded initialPath={chosenSource || undefined} onSelect={selectFolder} />
       <p className="text-xs text-text-muted">下一步确认名称与共享范围，确认前不会创建资料库。</p>

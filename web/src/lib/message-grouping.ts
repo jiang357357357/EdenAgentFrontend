@@ -3,7 +3,11 @@ import { isCompactionMessage } from './compaction-display'
 
 export type MessageGroupPosition = "single" | "first" | "middle" | "last"
 
-function speakerIdentity(message: MessageData): string | undefined {
+export type MessageGroupMember = Pick<MessageData, "id" | "role" | "kind" | "runID"> & {
+  speaker?: Pick<Partial<NonNullable<MessageData["speaker"]>>, "assistantID" | "characterID" | "assistantName" | "characterName">
+}
+
+function speakerIdentity(message: MessageGroupMember): string | undefined {
   const speaker = message.speaker
   if (speaker?.assistantID !== undefined && speaker.assistantID !== null) {
     return `assistant:${String(speaker.assistantID)}`
@@ -15,7 +19,7 @@ function speakerIdentity(message: MessageData): string | undefined {
   return name ? `name:${name}` : undefined
 }
 
-export function messagesShareAssistantGroup(left?: MessageData, right?: MessageData) {
+export function messagesShareAssistantGroup(left?: MessageGroupMember, right?: MessageGroupMember) {
   if (!left || !right || left.role !== "assistant" || right.role !== "assistant") return false
   if ([left, right].some(message => isCompactionMessage(message.id) || message.kind === "slash-command")) return false
   const leftSpeaker = speakerIdentity(left)
@@ -42,7 +46,7 @@ export function shouldShowOrganizingReply(message: MessageData) {
   return true
 }
 
-export function messageGroupPosition(messages: MessageData[], index: number): MessageGroupPosition {
+export function messageGroupPosition(messages: readonly MessageGroupMember[], index: number): MessageGroupPosition {
   const message = messages[index]
   if (!message || message.role !== "assistant") return "single"
   const joinsPrevious = messagesShareAssistantGroup(messages[index - 1], message)

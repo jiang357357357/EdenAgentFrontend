@@ -1,6 +1,5 @@
-import { ChevronDown, ChevronLeft, History, Keyboard, LoaderCircle, MessageSquare, Mic, Move, Plus, ShieldAlert, Square } from "lucide-react"
+import { ChevronDown, ChevronLeft, History, Keyboard, LoaderCircle, MessageSquare, Mic, Move, Plus, ShieldAlert } from "lucide-react"
 
-import type { RealtimeSTTStatus } from "../../../lib/realtime-stt"
 import type { TokenBreakdown } from "../../../types"
 import { cn } from "../../../lib/utils"
 import { SendButton, StopButton, TokenMeter } from "./ChatInputControls"
@@ -42,12 +41,7 @@ interface ChatComposerFooterProps {
   overlay: boolean
   permissionLabel: string
   permissionMenuOpen: boolean
-  voiceBusy: boolean
-  voiceError: string
   voiceInputEnabled: boolean
-  voiceLevel: number
-  voicePanelVisible: boolean
-  voiceStatus: RealtimeSTTStatus
 }
 
 export function ChatComposerFooter({
@@ -86,17 +80,12 @@ export function ChatComposerFooter({
   overlay,
   permissionLabel,
   permissionMenuOpen,
-  voiceError,
   voiceInputEnabled,
-  voiceLevel,
-  voicePanelVisible,
-  voiceStatus,
 }: ChatComposerFooterProps) {
   if (hideComposerFooter) return null
 
   return (
     <>
-      {!voicePanelVisible && (
         <div className={cn("absolute z-20 flex h-[5.4vh] items-center justify-between gap-[1.4vh]", overlay ? "inset-x-[2.4vh] bottom-[1.6vh]" : "workbench-composer-row bottom-[1.7vh] left-[2.4vh] right-[9.1vh]") }>
           <div className="workbench-composer-actions flex min-w-0 items-center gap-[1.6vh]">
             <button type="button" onClick={onFilePick} disabled={isDialogMode || Boolean(disabled)} className={cn("flex h-[4.2vh] w-[4.2vh] flex-shrink-0 items-center justify-center rounded-[1.2vh] transition-colors disabled:cursor-not-allowed disabled:opacity-35", overlay ? "text-text/85 hover:bg-highlight/10 hover:text-text" : "text-text-muted hover:bg-bg hover:text-text")} aria-label="添加附件" title={disabled ? "当前回合中只能排队文字消息" : "添加附件"}>
@@ -117,8 +106,8 @@ export function ChatComposerFooter({
           <div className="workbench-composer-models flex flex-shrink-0 items-center gap-[1.5vh]">
             {outputActive || disabled ? <LoaderCircle className={cn("h-[2.5vh] w-[2.5vh] animate-spin", overlay ? "text-text/80" : "text-text-muted")} aria-label="正在处理" /> : null}
             {voiceInputEnabled && !overlay ? (
-              <button type="button" onClick={onToggleVoiceInput} disabled={Boolean(disabled) || voiceStatus === "connecting" || voiceStatus === "transcribing"} className={cn("flex h-[4.2vh] w-[4.2vh] flex-shrink-0 items-center justify-center rounded-full transition-[color,background-color,transform] disabled:cursor-wait", voiceStatus === "recording" ? "bg-danger/10 text-danger" : voiceError ? "text-danger hover:bg-danger/10" : "text-text-muted hover:bg-bg hover:text-text")} style={{ transform: voiceStatus === "recording" ? `scale(${1 + voiceLevel * 0.12})` : undefined }} aria-label={voiceStatus === "recording" ? "停止录音" : "开始语音输入"} title={voiceError || (voiceStatus === "recording" ? "停止录音" : "语音输入")}>
-                {voiceStatus === "connecting" || voiceStatus === "transcribing" ? <LoaderCircle className="h-[2.4vh] w-[2.4vh] animate-spin" /> : voiceStatus === "recording" ? <Square className="h-[1.8vh] w-[1.8vh] fill-current" /> : <Mic className="h-[2.5vh] w-[2.5vh]" />}
+              <button type="button" onClick={onToggleVoiceInput} className="flex h-[4.2vh] w-[4.2vh] flex-shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-bg hover:text-text" aria-label="开始语音通话" title="开始语音通话">
+                <Mic className="h-[2.5vh] w-[2.5vh]" />
               </button>
             ) : null}
             <button type="button" onClick={onToggleModelMenu} disabled={modelLoading && !modelConfigAvailable} className={cn("flex max-w-[18vh] items-center gap-[0.8vh] rounded-[1.2vh] px-[0.7vh] py-[0.8vh] text-[1.9vh] font-medium transition-colors disabled:cursor-wait disabled:opacity-60", overlay ? "text-text/85 hover:bg-highlight/10 hover:text-text" : "text-text-muted hover:bg-bg hover:text-text")} aria-expanded={modelMenuOpen} aria-haspopup="menu" aria-label={`模型: ${modelLabel}`} title={modelButtonTitle}>
@@ -135,9 +124,7 @@ export function ChatComposerFooter({
             {overlay ? disabled && onAbort ? <><SendButton canSend={canSend} disabled={!allowFollowUp} dialogMode={isDialogMode} overlay onSend={onSend} /><StopButton overlay onStop={() => void onAbort()} /></> : <SendButton canSend={canSend} disabled={disabled} dialogMode={isDialogMode} overlay onSend={onSend} /> : null}
           </div>
         </div>
-      )}
-
-      {!overlay && !voicePanelVisible ? (
+      {!overlay ? (
         <>
         <div className="workbench-composer-send absolute bottom-[1.5vh] right-[2.4vh] z-30">
           <div className="flex flex-col items-center gap-[0.9vh]">

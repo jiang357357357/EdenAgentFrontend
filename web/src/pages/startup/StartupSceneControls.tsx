@@ -28,6 +28,9 @@ export function StartupSceneControls({ phase, night, ready, pose, poseCount, ori
       <StartupSceneToolbar night={night} ready={ready} pose={pose} poseCount={poseCount} disabled={phase !== 'room' || isSubmitting}
         onChooseLighting={onChooseLighting} onNextPose={onNextPose} />
     </header>
-    {phase !== 'room' && phase !== 'login' ? <button type="button" onClick={onSkip} className="absolute bottom-6 right-6 rounded-full border border-highlight/35 bg-scrim/20 px-4 py-2 text-sm">跳过动画</button> : null}
+    {phase !== 'login' && (!ready || phase !== 'room') ? <button type="button" onClick={onSkip}
+      className="absolute bottom-6 right-6 rounded-full border border-highlight/35 bg-scrim/60 px-4 py-2 text-sm">
+      {phase === 'room' ? '继续' : '跳过动画'}
+    </button> : null}
   </>
 }

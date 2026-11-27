@@ -1,9 +1,9 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react'
-import { applicationPageTitles, isApplicationPage, type ApplicationPageRoute } from './application-pages'
+import { applicationPageTitles, isApplicationPage, type ApplicationPageRoute, type ChatParticipantSelection } from './application-pages'
 
 /** Keep editors mounted so navigating an application page never discards drafts or layout. */
-export function ApplicationPageLayout({ page, sessionId, children }: {
-  page?: ApplicationPageRoute; sessionId?: string; children: ReactNode
+export function ApplicationPageLayout({ page, sessionId, chat, children }: {
+  page?: ApplicationPageRoute; sessionId?: string; chat?: ChatParticipantSelection; children: ReactNode
 }) {
   const active = isApplicationPage(page?.id), content = useRef<HTMLDivElement>(null), workbench = useRef<HTMLDivElement>(null)
   const previous = useRef(false)
@@ -16,7 +16,7 @@ export function ApplicationPageLayout({ page, sessionId, children }: {
     <div ref={workbench} hidden={active} inert={active} data-application-workbench="" className="h-full w-full">{children}</div>
     {active && page && <div ref={content} tabIndex={-1} role="region" aria-label={applicationPageTitles[page.id]}
       data-application-page={page.id} className="fixed inset-0 z-20 isolate overflow-hidden outline-none">
-      {page.render(page.id, sessionId)}
+      {page.render(page.id, sessionId, chat)}
     </div>}
   </>
 }

@@ -37,14 +37,6 @@ const choices: Array<{
 export function OriginSelectionPage({ onSelect }: OriginSelectionPageProps) {
   const [selected, setSelected] = useState<RuntimeOrigin | null>(null)
 
-  const handleChoice = (origin: RuntimeOrigin) => {
-    if (selected === origin) {
-      onSelect(origin)
-      return
-    }
-    setSelected(origin)
-  }
-
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
@@ -114,7 +106,7 @@ export function OriginSelectionPage({ onSelect }: OriginSelectionPageProps) {
               aria-pressed={isSelected}
               data-origin={choice.origin}
               data-state={isSelected ? "selected" : "idle"}
-              onClick={() => handleChoice(choice.origin)}
+              onClick={() => onSelect(choice.origin)}
               whileTap={{ scale: 0.995 }}
               className={cn(
                 "group relative grid min-h-[7.25rem] w-full grid-cols-[clamp(4.8rem,14vw,12rem)_1fr_auto] items-center overflow-hidden rounded-[clamp(0.7rem,1.4vw,1.2rem)] border px-[clamp(1rem,2.5vw,2.5rem)] text-left transition-[color,background-color,border-color,box-shadow,transform] duration-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-border/20",
@@ -169,7 +161,7 @@ export function OriginSelectionPage({ onSelect }: OriginSelectionPageProps) {
       </section>
 
       <footer className="relative z-10 mt-[clamp(0.8rem,2vh,1.4rem)] flex items-center justify-between gap-4 text-[clamp(0.72rem,1.1vw,0.9rem)] text-text-muted">
-        <p>{selected ? "再次点击已选项，或按 Enter 确认" : "请选择本次登录的运行方式"}</p>
+        <p>{selected ? "按 Enter 确认" : "请选择本次登录的运行方式"}</p>
         <p className="text-right">伊甸园连接 Mon · 尘世使用本地运行时</p>
       </footer>
     </motion.main>

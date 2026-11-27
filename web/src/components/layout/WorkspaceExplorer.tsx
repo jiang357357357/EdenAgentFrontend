@@ -117,17 +117,19 @@ export function WorkspaceExplorer({ sessionId, onSelect, onOpenFile, onWorkspace
         <div className="px-3 py-2 text-xs text-text-muted">选择项目文件夹后，即可浏览文件。</div>
       </div> : null}
     </div>
-    {sessionId ? <SharedWorkspaceEntry key={`${sessionId}:${revision}`} sessionId={sessionId} onOpen={onOpenSharedWorkspace} /> : null}
-    <div className="min-h-0 flex-1 overflow-y-auto py-2">
-      {state.loading ? <div className="px-4 py-6 text-sm text-text-muted">正在读取工作区…</div> : null}
-      <WorkspaceNotice state={state} onRetry={() => void owner.load()} onChoose={choose} onUseDefault={() => void owner.useDefault(sessionId)} />
-      {!sessionId ? <div className="px-4 py-6 text-sm text-text-muted">
-        <p>为新会话选择文件夹。取消选择会保留空会话，不会发送消息或运行模型。</p>
-        <button type="button" disabled={creating || state.busy} onClick={createAndChoose} className="mt-3 rounded-lg border border-border px-3 py-2 text-text disabled:opacity-50">
-          {creating ? "正在创建或选择…" : "新建会话并选择文件夹"}
-        </button>
-      </div> : null}
-      {!state.loading && sessionId && info?.status === "ready" ? state.entries.map(entry => <WorkspaceFileTree key={`${sessionId}:${entry.path}`} sessionId={sessionId} entry={entry} onOpenFile={onOpenFile} isCurrent={owner.isCurrent} revision={filesRevision} />) : null}
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      {sessionId ? <SharedWorkspaceEntry key={`${sessionId}:${revision}`} sessionId={sessionId} onOpen={onOpenSharedWorkspace} /> : null}
+      <div className="py-2">
+        {state.loading ? <div className="px-4 py-6 text-sm text-text-muted">正在读取工作区…</div> : null}
+        <WorkspaceNotice state={state} onRetry={() => void owner.load()} onChoose={choose} onUseDefault={() => void owner.useDefault(sessionId)} />
+        {!sessionId ? <div className="px-4 py-6 text-sm text-text-muted">
+          <p>为新会话选择文件夹。取消选择会保留空会话，不会发送消息或运行模型。</p>
+          <button type="button" disabled={creating || state.busy} onClick={createAndChoose} className="mt-3 rounded-lg border border-border px-3 py-2 text-text disabled:opacity-50">
+            {creating ? "正在创建或选择…" : "新建会话并选择文件夹"}
+          </button>
+        </div> : null}
+        {!state.loading && sessionId && info?.status === "ready" ? state.entries.map(entry => <WorkspaceFileTree key={`${sessionId}:${entry.path}`} sessionId={sessionId} entry={entry} onOpenFile={onOpenFile} isCurrent={owner.isCurrent} revision={filesRevision} />) : null}
+      </div>
     </div>
   </>
 }

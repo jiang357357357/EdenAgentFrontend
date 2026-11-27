@@ -1,6 +1,6 @@
 import { memo, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { AlertCircle, ChevronRight, LoaderCircle, Wrench } from "lucide-react"
+import { AlertCircle, ChevronRight, HelpCircle, LoaderCircle, Wrench } from "lucide-react"
 import type { CoordinationBatch, SubagentThread, SubagentThreadDetails, ToolCall } from "../../../types"
 import { cn } from "../../../lib/utils"
 import { toolInputPreview } from "../../../lib/tool-input-display"
@@ -11,9 +11,14 @@ import { ToolParameters, toolTextClass } from "./ToolParameters"
 import { ToolCommandOutput } from "./ToolCommandOutput"
 import { ToolOutput } from "./ToolOutput"
 import { NoticeCard, noticeSurface } from "../../feedback"
+import { useToolQuestions } from '../../requests/QuestionToolContext'
+import { ToolQuestionRequests } from '../../requests/ToolQuestionRequests'
+import { questionAnswers } from '../../../lib/question-tool-state'
 
 interface ToolCardProps {
   tool: ToolCall
+  messageID?: string
+  turnID?: string
   subagentThreads?: SubagentThread[]
   coordinationBatches?: CoordinationBatch[]
   onFollowupSubagent?: (target: string, message: string) => Promise<unknown>
@@ -72,6 +77,8 @@ function workspaceDiffDetails(tool: ToolCall): WorkspaceDiffDetails | undefined 
 
 function ToolCardView({
   tool,
+  messageID,
+  turnID,
   subagentThreads = [],
   coordinationBatches = [],
   onFollowupSubagent,
@@ -79,9 +86,13 @@ function ToolCardView({
   onInterruptSubagent,
 }: ToolCardProps) {
   const [expanded, setExpanded] = useState(false)
+  const questionScope = useToolQuestions(tool.id, messageID, turnID)
+  const waiting = questionScope.requests.length > 0
+  const answers = questionAnswers(tool)
+  const label = waiting ? '等待回答' : answers.length ? '已回答' : statusLabel(tool.status)
   const command = toolCommandDisplay(tool)
   const workspaceDiff = workspaceDiffDetails(tool)
-  const preview = toolInputPreview(tool.input)
+  const preview = questionScope.requests[0]?.questions[0]?.question ?? answers[0]?.question ?? toolInputPreview(tool.input)
   const linkedSubagents = subagentsForTool(tool, subagentThreads)
   const linkedBatchIDs = new Set(
     linkedSubagents
@@ -89,11 +100,11 @@ function ToolCardView({
       .filter((value): value is string => typeof value === "string"),
   )
   const linkedBatches = coordinationBatches.filter((batch) => linkedBatchIDs.has(batch.batchID))
-  const tone = tool.status === "error" ? "error" : tool.status === "aborted" ? "warning"
+  const tone = waiting ? 'warning' : tool.status === "error" ? "error" : tool.status === "aborted" ? "warning"
     : tool.status === "running" ? "info" : "success"
-  const statusColor = tool.status === "error" ? "text-danger" : tool.status === "aborted" ? "text-warning"
+  const statusColor = waiting ? 'text-warning' : tool.status === "error" ? "text-danger" : tool.status === "aborted" ? "text-warning"
     : tool.status === "running" ? "text-info" : "text-success"
-  const ToolIcon = tool.status === "error" || tool.status === "aborted" ? AlertCircle : Wrench
+  const ToolIcon = waiting ? HelpCircle : tool.status === "error" || tool.status === "aborted" ? AlertCircle : Wrench
 
   return (
     <div className={cn(noticeSurface({ tone }), "chat-trace my-[0.65vh] overflow-hidden")}>
@@ -110,7 +121,7 @@ function ToolCardView({
         <span
           className={cn(
             "shrink-0 rounded-full border px-[0.6em] py-[0.1em] text-[0.8em]",
-            tool.status === "error"
+            waiting ? 'border-warning/30 text-warning' : tool.status === "error"
               ? "border-danger/30 text-danger"
               : tool.status === "aborted"
                 ? "border-warning/30 text-warning"
@@ -119,7 +130,7 @@ function ToolCardView({
                   : "border-success/30 text-success",
           )}
         >
-          {statusLabel(tool.status)}
+          {label}
         </span>
         {tool.duration ? <span className="shrink-0 text-[0.8em] text-text-muted">{tool.duration}ms</span> : null}
         <ChevronRight
@@ -138,7 +149,7 @@ function ToolCardView({
           >
             <div className="grid min-w-0 gap-[1vh] border-t border-border bg-accent-dim px-[1.2vh] py-[1.1vh]">
               <div className="chat-tool-label flex flex-wrap gap-x-[1.2vh] text-text-muted">
-                <span>状态：{statusLabel(tool.status)}</span>
+                <span>状态：{label}</span>
                 {command?.exit_code !== undefined && command.exit_code !== null ? <span>退出码：{command.exit_code}</span> : null}
                 {command?.duration_ms !== undefined ? <span>耗时：{command.duration_ms}ms</span> : null}
                 {tool.errorCode ? <span>错误码：{tool.errorCode}</span> : null}
@@ -200,6 +211,13 @@ function ToolCardView({
           </motion.div>
         ) : null}
       </AnimatePresence>
+      <ToolQuestionRequests {...questionScope} />
+      {!waiting && answers.length > 0 && <section aria-label="已提交的回答" className="grid gap-3 border-t border-border px-4 py-3">
+        {answers.map((item, index) => <div key={index} className="min-w-0 text-sm">
+          <p className="break-words text-text-muted">{item.question}</p>
+          <p className="mt-1 whitespace-pre-wrap break-words text-text"><span className="text-text-muted">你的回答：</span>{item.answers.join('、')}</p>
+        </div>)}
+      </section>}
       <PluginUiSlot slot="tool_card" tool={tool} />
       {linkedSubagents.length ? (
         <SubagentActivityCard
