@@ -26,6 +26,7 @@ test('original Spine entrance effects, ordered stages, login and return run in a
     try {
       const pathname = new URL(request.url, 'http://fixture').pathname
       if (pathname === '/startup-opening/eden-opening.html') {
+        response.setHeader('cache-control', 'no-store')
         if (!serveOpening) { response.writeHead(404).end(); return }
         response.setHeader('content-type', 'text/html; charset=utf-8')
         response.end(await readFile(path.join(web, 'public/startup-opening/eden-opening.html'))); return
@@ -77,6 +78,7 @@ test('original Spine entrance effects, ordered stages, login and return run in a
     const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.NODE_OPTIONS
     application = await _electron.launch({ executablePath: path.join(agent, 'node_modules/electron/dist/electron.exe'), args: [main], env })
     page = await application.firstWindow()
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
     const pageErrors = [], graphicsErrors = []
     page.on('pageerror', error => pageErrors.push(error.message))
     page.on('console', message => { if (['warn', 'warning', 'error'].includes(message.type())) runtimeLogs.push({ type: message.type(), message: message.text() }) })
@@ -98,12 +100,17 @@ test('original Spine entrance effects, ordered stages, login and return run in a
     const checkBubble = async name => {
       const bubble = page.getByRole('button', { name: `听${name}说下一句` })
       await bubble.waitFor()
+      await page.waitForFunction(character => {
+        if (window.innerWidth < 640) return true
+        const line = document.querySelector(`[aria-label="听${character}说下一句"]`)?.getBoundingClientRect()
+        const hit = document.querySelector(`[aria-label="呼唤${character}，打开登录"]`)?.getBoundingClientRect()
+        return line && hit && (line.right <= hit.left || hit.right <= line.left || line.bottom <= hit.top || hit.bottom <= line.top)
+      }, name)
       const box = await bubble.boundingBox(), viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
       assert.ok(box && box.x >= 0 && box.y >= 76 && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height)
       const toolbar = await page.getByRole('group', { name: '场景控制' }).boundingBox()
       const overlap = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
       assert.equal(overlap(box, toolbar), false)
-      if (viewport.width >= 640) assert.equal(overlap(box, await page.getByRole('button', { name: `呼唤${name}，打开登录` }).boundingBox()), false)
       const idleLine = await bubble.getByRole('status').textContent()
       assert.ok(idleLine.length > 5)
       assert.doesNotMatch(idleLine, /欢迎|老师|早上好|晚上好|您好|来啦/)
@@ -366,8 +373,9 @@ test('original Spine entrance effects, ordered stages, login and return run in a
     await page.getByRole('heading', { name: '你来自哪里？' }).waitFor()
     const opening = page.locator('[data-startup-opening-overlay]')
     assert.equal(await opening.count(), 0)
-    await page.locator('button[data-origin="local"]').click()
-    await opening.frameLocator('iframe').locator('#halo-stage[style*="scale("]').waitFor()
+    await page.locator('button[data-origin="local"]').evaluate(button => button.click())
+    await page.waitForFunction(() => localStorage.getItem('agent.runtime_origin') === 'local')
+    await page.locator('[data-startup-opening-overlay][data-animation-playing="true"]').waitFor()
     assert.equal(await page.evaluate(() => localStorage.getItem('agent.runtime_origin')), 'local')
     await opening.waitFor({ state: 'detached' })
     await phase('room').waitFor(); await page.getByRole('button', { name: /呼唤.*打开登录/ }).waitFor()

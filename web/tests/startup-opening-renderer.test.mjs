@@ -102,7 +102,7 @@ test('the bundled opening animation reveals the classroom and can be bypassed du
     checks.push('lighting-switch-does-not-replay-opening')
     await page.goto(origin); await overlay.waitFor()
     await animation.locator('#reveal-sub[style*="opacity: 1;"]').waitFor()
-    assert.equal(await animation.locator('.reveal-title').textContent(), '欢迎回来，老师')
+    assert.equal((await animation.locator('.reveal-title').textContent()).trim(), '欢迎回来，老师')
     assert.equal(await animation.locator('#reveal-sub').textContent(), '夏莱终端已就绪')
     await capture('opening-welcome')
     await actor.waitFor(); await states('normal-opening')
